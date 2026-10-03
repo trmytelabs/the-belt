@@ -5,7 +5,7 @@ between workers, pick up packages and sort them to the appropriate dock. The gam
 includes keyboard, mouse and touch controls.
 
 This private repository contains the current development snapshot (`0.0.0`). It
-has a working production build, but no automated gameplay test suite or published
+has a working production build and a browser smoke suite, with no published
 release. Review playability in the browser when changing game behavior.
 
 ## Run locally
@@ -35,11 +35,23 @@ npm run preview
 The build runs TypeScript checking and then creates the production bundle in
 `dist/`. Preview serves that bundle locally. Generated output and dependency
 folders are ignored; the GitHub workflow only installs from `package-lock.json`
-and runs the build. It does not deploy or publish a release.
+and runs the build and browser checks. It does not deploy or publish a release.
+
+To run the browser smoke checks against a fresh production build:
+
+```sh
+npx playwright install chromium
+npm run test:browser
+```
+
+The suite covers keyboard/touch start, worker switching, grabbing/dropping,
+results, restart and script errors. It uses a loopback server and isolated
+synthetic state. TypeScript strict checking is enabled. Dependabot maintains
+compatible dependencies; major upgrades require a separate planned review.
 
 The page references Google Fonts when a network connection is available.
-Browser behavior, touch input and gameplay still need manual checks after relevant
-changes; a successful build does not verify those interactions.
+Timed events, physical-device usability and audible sound still need manual
+checks after relevant changes; the smoke suite does not verify every game flow.
 
 ## Source and history
 
