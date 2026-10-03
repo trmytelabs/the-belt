@@ -49,9 +49,11 @@ results, restart and script errors. It uses a loopback server and isolated
 synthetic state. TypeScript strict checking is enabled. Dependabot maintains
 compatible dependencies; major upgrades require a separate planned review.
 
-CI checks the real Canvas fallback on the GPU-free Linux runner and the default
-renderer in Windows Edge. Both jobs run the same gameplay assertions; they do
-not change the production game configuration or bypass its countdown.
+CI checks the real Canvas fallback on GPU-free Linux and Windows runners. Local
+checks retain the default renderer unless `BELT_BROWSER_RENDERER=canvas` is set.
+Both CI jobs run the same gameplay assertions; they do not change the production
+game configuration or bypass its countdown. The default WebGL renderer still
+needs a local check on a machine with usable graphics support.
 
 The page references Google Fonts when a network connection is available.
 Timed events, physical-device usability and audible sound still need manual

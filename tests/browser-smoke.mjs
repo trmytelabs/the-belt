@@ -9,8 +9,8 @@ let browser;
 try {
   browser = await chromium.launch({
     headless: true,
-    // GPU-free Linux runners exercise the real Canvas fallback. Windows and
-    // local checks retain the browser's default renderer selection.
+    // GPU-free CI runners exercise the real Canvas fallback. Local checks
+    // retain the browser's default renderer selection unless requested.
     ...(process.env.BELT_BROWSER_RENDERER === 'canvas' ? { args: ['--disable-webgl'] } : {}),
     ...(process.env.BELT_BROWSER_EXECUTABLE
       ? { executablePath: process.env.BELT_BROWSER_EXECUTABLE }
@@ -94,6 +94,8 @@ try {
     await page.evaluate(() => {
       const scene = window.fixtureGame.scene.getScene('GameScene');
       const player = scene.inputSystem.getActivePlayer();
+      // Keep the fixture away from automatic dock sorting while checking carry.
+      player.setPosition(350, 300);
       const parcel = scene.spawnSystem.getPackages()[0];
       parcel.setPosition(player.x, player.y);
       parcel.speed = 0;
