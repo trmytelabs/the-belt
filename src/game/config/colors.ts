@@ -1,0 +1,28 @@
+export const colors = {
+  upsBrownDark: 0x3a2410,
+  upsBrownMid: 0x5a3a18,
+  upsBrownLight: 0x7a4f24,
+  upsBrownHighlight: 0x9a6428,
+  warehouseFloor: 0x403832,
+  warehouseFloorDark: 0x2a241e,
+  ceiling: 0x1a1815,
+  belt: 0x1a1a1a,
+  beltMid: 0x2d2d2d,
+  beltRail: 0x5a5a5a,
+  fluorescent: 0xfff8c4,
+  warningRed: 0xe02020,
+  destBlue: 0x1a4d8f,
+  destOrange: 0x2f9f4a,
+  destYellow: 0xe0c818,
+  destPurple: 0xa040c0,
+  stinkGreen: 0x7a8a4a,
+  termiteShirt: 0x3a78c8,
+  termiteHat: 0xe0c818,
+  skankyShirt: 0xa04020,
+  skankyHair: 0x5a3a18,
+  skinTone: 0xc89878,
+  white: 0xffffff,
+  black: 0x000000,
+} as const satisfies Record<string, number>;
+
+export type ColorPalette = typeof colors;
