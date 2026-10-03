@@ -9,7 +9,11 @@ let browser;
 try {
   browser = await chromium.launch({
     headless: true,
-    ...(process.env.BELT_BROWSER_EXECUTABLE ? { executablePath: process.env.BELT_BROWSER_EXECUTABLE } : {})
+    // Use the full browser's current headless mode. The legacy headless shell
+    // can render WebGL too slowly for Phaser's fixed-frame countdown on CI.
+    ...(process.env.BELT_BROWSER_EXECUTABLE
+      ? { executablePath: process.env.BELT_BROWSER_EXECUTABLE }
+      : { channel: 'chromium' })
   });
   for (const mobile of [false, true]) {
     const context = await browser.newContext({
