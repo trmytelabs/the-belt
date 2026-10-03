@@ -9,8 +9,9 @@ let browser;
 try {
   browser = await chromium.launch({
     headless: true,
-    // Use the full browser's current headless mode. The legacy headless shell
-    // can render WebGL too slowly for Phaser's fixed-frame countdown on CI.
+    // GPU-free Linux runners exercise the real Canvas fallback. Windows and
+    // local checks retain the browser's default renderer selection.
+    ...(process.env.BELT_BROWSER_RENDERER === 'canvas' ? { args: ['--disable-webgl'] } : {}),
     ...(process.env.BELT_BROWSER_EXECUTABLE
       ? { executablePath: process.env.BELT_BROWSER_EXECUTABLE }
       : { channel: 'chromium' })
@@ -47,6 +48,9 @@ try {
     await page.goto(server.resolvedUrls.local[0]);
     const active = scene => page.waitForFunction(key => window.fixtureGame?.scene.isActive(key), scene);
     await active('TitleScene');
+    if (process.env.BELT_BROWSER_RENDERER === 'canvas') {
+      assert.equal(await page.evaluate(() => window.fixtureGame.renderer.type), 1, 'Canvas fallback must be exercised');
+    }
     assert.equal(await page.locator('#app canvas').count(), 1);
     const start = async () => {
       if (mobile) await page.locator('#app canvas').tap();
@@ -75,10 +79,10 @@ try {
     if (mobile) {
       assert.equal(await page.locator('.mobile-control-layer').count(), 1);
       await page.getByText('SWITCH', { exact: true }).tap();
-    } else await page.keyboard.press('Tab');
+    } else await page.keyboard.press('Tab', { delay: 50 });
     assert.notEqual(await playerId(), first);
     if (mobile) await page.getByText('SWITCH', { exact: true }).tap();
-    else await page.keyboard.press('Tab');
+    else await page.keyboard.press('Tab', { delay: 50 });
     assert.equal(await playerId(), first, 'a single action must switch exactly once');
     if (!mobile) {
       const before = await page.evaluate(() => window.fixtureGame.scene.getScene('GameScene').inputSystem.getActivePlayer().y);
@@ -96,7 +100,7 @@ try {
     });
     const grab = async () => {
       if (mobile) await page.getByText('GRAB', { exact: true }).tap();
-      else await page.keyboard.press('Space');
+      else await page.keyboard.press('Space', { delay: 50 });
     };
     await grab();
     await page.waitForFunction(() => Boolean(window.fixtureGame.scene.getScene('GameScene').inputSystem.getActivePlayer().heldPackage));
@@ -118,7 +122,7 @@ try {
     if (mobile) {
       assert.equal(await page.locator('.mobile-control-layer').count(), 1);
       await page.getByText('SWITCH', { exact: true }).tap();
-    } else await page.keyboard.press('Tab');
+    } else await page.keyboard.press('Tab', { delay: 50 });
     assert.notEqual(await playerId(), restarted, 'restart must retain one input listener');
     assert.deepEqual(errors, []);
     console.log(`PASS ${mobile ? 'touch' : 'keyboard'} start, switch, grab/drop, results and restart; no script errors`);
