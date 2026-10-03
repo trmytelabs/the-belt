@@ -18,7 +18,10 @@ try {
     });
     const errors = [];
     const page = await context.newPage();
-    page.on('pageerror', error => errors.push(error.message));
+    page.on('pageerror', error => {
+      errors.push(error.message);
+      console.error('Browser script error:', error.message);
+    });
     // Prevent optional fonts from making this check depend on a third party.
     await page.route('https://fonts.googleapis.com/**', route => route.fulfill({ body: '' }));
     await page.route('https://fonts.gstatic.com/**', route => route.fulfill({ body: '' }));
@@ -45,7 +48,22 @@ try {
       if (mobile) await page.locator('#app canvas').tap();
       else await page.keyboard.press('Enter');
       await active('GameScene');
-      await page.waitForFunction(() => window.fixtureGame.scene.getScene('GameScene').shiftSystem.isGameplayActive());
+      try {
+        await page.waitForFunction(() => window.fixtureGame.scene.getScene('GameScene').shiftSystem.isGameplayActive());
+      } catch (error) {
+        console.error('Start diagnostics:', await page.evaluate(() => {
+          const game = window.fixtureGame;
+          const scene = game.scene.getScene('GameScene');
+          return {
+            visibility: document.visibilityState, focused: document.hasFocus(),
+            fps: game.loop.actualFps, running: game.loop.running,
+            active: game.scene.isActive('GameScene'), transitioning: scene.isSceneTransitioning,
+            phase: scene.shiftSystem.phase, countdown: scene.shiftSystem.countdownIndex,
+            countdownTimer: scene.shiftSystem.countdownTimerMs
+          };
+        }));
+        throw error;
+      }
     };
     const playerId = () => page.evaluate(() => window.fixtureGame.scene.getScene('GameScene').inputSystem.getActivePlayer().id);
     await start();
