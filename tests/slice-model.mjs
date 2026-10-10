@@ -215,6 +215,115 @@ test('the opening lesson keeps six-second arrivals and phases never bunch two ar
   assert.deepEqual(arrivals.map((arrival) => arrival.time), [0, 6_000, 12_000, 18_000, 24_000, 30_000, 36_000, 40_000, 44_000]);
 });
 
+test('original comic freight opens the shift without changing its teaching routes or carry weights', () => {
+  const model = new ShiftModel();
+  for (let time = 0; time < 30_000; time += 20) {
+    for (const parcel of model.packages) parcel.state = 'delivered';
+    model.update(20);
+  }
+  assert.deepEqual(model.packages.map(({ route, kind, label }) => ({ route, kind, label })), [
+    { route: 'A', kind: 'mallwood', label: 'MALLWOOD RD EAST' },
+    { route: 'B', kind: 'goji', label: 'GOJI BERRIES' },
+    { route: 'C', kind: 'lobsters', label: 'LIVE LOBSTERS' },
+    { route: 'A', kind: 'duck', label: 'LE DUCK' },
+    { route: 'B', kind: 'makeup', label: 'MAKEUP LOTION' },
+    { route: 'C', kind: 'mesa', label: 'MESA BOOGIE' },
+  ]);
+  assert.deepEqual(model.packages.map((parcel) => parcel.size), ['normal', 'normal', 'heavy', 'normal', 'normal', 'heavy']);
+});
+
+test('comic parcel identity survives pickup, handoff, pile recovery, and dispatch', () => {
+  const model = new ShiftModel();
+  const parcel = model.packages[0];
+  const originalIdentity = { kind: parcel.kind, label: parcel.label, route: parcel.route };
+  reachFirst(model);
+  model.activeWorker.y = 550;
+  model.action();
+  model.switchWorker();
+  model.activeWorker.x = 560;
+  model.activeWorker.y = 550;
+  model.action();
+  assert.equal(model.heldPackage.id, parcel.id);
+  model.action();
+  advance(model, 1_300);
+  assert.equal(parcel.state, 'missed');
+  model.switchWorker();
+  model.activeWorker.y = 580;
+  model.action();
+  assert.equal(model.heldPackage.id, parcel.id);
+  model.activeWorker.x = 260;
+  model.activeWorker.y = 300;
+  model.action();
+  assert.equal(parcel.state, 'delivered');
+  assert.deepEqual({ kind: parcel.kind, label: parcel.label, route: parcel.route }, originalIdentity);
+});
+
+test('Brian announces once and sends exactly five bulk parcels before ordinary freight resumes', () => {
+  const model = new ShiftModel();
+  const arrivals = [{ time: 0, parcel: model.packages[0] }];
+  const announcements = [];
+  let previousCount = 1;
+  for (let time = 0; time < 75_000; time += 20) {
+    for (const parcel of model.packages) {
+      if (parcel.y > 550) parcel.state = 'delivered';
+    }
+    model.update(20);
+    if (model.packages.length > previousCount) {
+      arrivals.push({ time: model.elapsedMs, parcel: model.packages.at(-1) });
+      previousCount = model.packages.length;
+    }
+    const beltParcels = model.packages.filter((parcel) => parcel.state === 'belt').sort((a, b) => a.y - b.y);
+    for (let index = 1; index < beltParcels.length; index += 1) {
+      assert.ok(beltParcels[index].y - beltParcels[index - 1].y >= SHIFT_LAYOUT.parcelGap);
+    }
+    for (const event of model.drainEvents()) {
+      if (event.message.startsWith('BRIAN:')) announcements.push({ time: model.elapsedMs, message: event.message });
+    }
+  }
+  assert.deepEqual(announcements, [{ time: 63_000, message: 'BRIAN: SENDING 5 DOWN TO BULK!' }]);
+  const burst = arrivals.slice(13, 18);
+  assert.deepEqual(burst.map(({ time }) => time), [64_000, 65_900, 67_800, 69_700, 71_600]);
+  assert.deepEqual(burst.map(({ parcel }) => parcel.kind), ['atv', 'lobsters', 'mesa', 'panchetters', 'mallwood']);
+  assert.ok(burst.every(({ parcel }) => parcel.route === 'C' && parcel.size === 'heavy'));
+  assert.equal(model.brianRemaining, 0);
+  assert.equal(arrivals[18].time, 74_600);
+  assert.equal(arrivals[18].parcel.route, 'A');
+  assert.equal(arrivals[18].parcel.kind, 'snakes');
+  assert.deepEqual(arrivals.slice(0, 13).map(({ time }) => time), [
+    0, 6_000, 12_000, 18_000, 24_000, 30_000, 36_000, 40_000, 44_000, 48_000, 52_000, 56_000, 60_000,
+  ], 'Brian must not change the first63seconds of teaching and ordinary freight');
+});
+
+test('pausing and braking Brian’s burst delay arrivals without consuming his remaining parcels', () => {
+  const model = new ShiftModel();
+  for (let time = 0; time < 64_000; time += 20) {
+    for (const parcel of model.packages) parcel.state = 'delivered';
+    model.update(20);
+  }
+  assert.equal(model.brianRemaining, 4);
+  const firstBulk = model.packages.at(-1);
+  const count = model.packages.length;
+  const travel = model.beltTravel;
+  model.paused = true;
+  advance(model, 1_000);
+  assert.equal(model.elapsedMs, 64_000);
+  assert.equal(model.brianRemaining, 4);
+  model.paused = false;
+  model.brake();
+  advance(model, 2_000);
+  assert.equal(model.packages.length, count);
+  assert.equal(model.brianRemaining, 4);
+  assert.equal(model.beltTravel, travel);
+  advance(model, 1_880);
+  assert.equal(model.packages.length, count);
+  model.update(20);
+  assert.equal(model.packages.length, count + 1);
+  assert.equal(model.brianRemaining, 3);
+  const secondBulk = model.packages.at(-1);
+  assert.equal(secondBulk.kind, 'lobsters');
+  assert.ok(firstBulk.y - secondBulk.y >= SHIFT_LAYOUT.parcelGap);
+});
+
 test('intake closes at ninety seconds and unfinished freight receives ten seconds of cleanup', () => {
   const model = new ShiftModel();
   reachFirst(model);
@@ -263,4 +372,12 @@ test('full deterministic shift is winnable through public movement and action in
   assert.ok(model.sorted >= 20, 'the normal-input simulation should manage the whole representative workload');
   assert.deepEqual([...seen].filter((phase) => phase !== 'cleanup'), ['lesson', 'flow', 'rush', 'ended']);
   assert.equal(model.missed, 0);
+  assert.deepEqual([...new Set(model.packages.map((parcel) => parcel.label))].sort(), [
+    'MALLWOOD RD EAST', 'GOJI BERRIES', 'LIVE LOBSTERS', 'LE DUCK', 'MAKEUP LOTION',
+    'MESA BOOGIE', 'PANCHETTERS', 'THE SNAKES CELL', 'SMALL ATV', 'PARCEL',
+  ].sort(), 'all original comic parcel references must actually reach a normal playable shift');
+  assert.deepEqual(model.packages.map((parcel) => parcel.route), [
+    'A', 'B', 'C', 'A', 'B', 'C', 'B', 'A', 'C', 'B', 'A', 'B', 'C',
+    'C', 'C', 'C', 'C', 'C', 'A', 'B', 'C', 'B', 'A', 'B',
+  ], 'Brian’s five-parcel bulk incident should be the only change to the route sequence');
 });

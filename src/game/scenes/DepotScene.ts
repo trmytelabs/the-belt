@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 
-import { DepotArt, createParcelArt, createWorkerArt } from '../slice/DepotArt';
+import { DepotArt, createParcelArt, createWorkerArt, updateParcelArt } from '../slice/DepotArt';
+import { DepotLife } from '../slice/DepotLife';
 import { ShiftModel, type ShiftEvent, type Route } from '../slice/ShiftModel';
 import { audioSystem, type SoundEffect } from '../systems/AudioSystem';
 
@@ -15,6 +16,7 @@ export class DepotScene extends Phaser.Scene {
   public model!: ShiftModel;
   public state: 'briefing' | 'playing' | 'paused' | 'results' = 'briefing';
   private depot!: DepotArt;
+  private life!: DepotLife;
   private workers: ReturnType<typeof createWorkerArt>[] = [];
   private parcels = new Map<number, ParcelView>();
   private keys!: Record<string, Phaser.Input.Keyboard.Key>;
@@ -64,6 +66,7 @@ export class DepotScene extends Phaser.Scene {
     this.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     this.cameras.main.setBackgroundColor('#11252c');
     this.depot = new DepotArt(this);
+    this.life = new DepotLife(this, this.model);
     this.guide = this.add.graphics().setDepth(18);
     this.workers = this.model.workers.map(worker => createWorkerArt(this, worker.side));
     this.drawConsole();
@@ -92,6 +95,7 @@ export class DepotScene extends Phaser.Scene {
     const movement = this.state === 'playing' ? this.movement() : { x: 0, y: 0 };
     this.model.update(delta, movement);
     for (const event of this.model.drainEvents()) this.handleEvent(event);
+    if (this.state === 'playing') this.life.update();
     this.syncWorld(this.state === 'playing' ? delta : 0);
     this.updateConsole();
     if (this.model.ended && this.state !== 'results') this.showResults();
@@ -182,7 +186,7 @@ export class DepotScene extends Phaser.Scene {
       visibleIds.add(parcel.id);
       let view = this.parcels.get(parcel.id);
       if (!view) {
-        view = { container: createParcelArt(this, parcel.route, parcel.size === 'heavy'), state: parcel.state, transferUntil: 0 };
+        view = { container: createParcelArt(this, parcel.route, parcel.size === 'heavy', parcel.kind), state: parcel.state, transferUntil: 0 };
         view.container.setPosition(parcel.x, parcel.y);
         this.parcels.set(parcel.id, view);
       }
@@ -191,6 +195,7 @@ export class DepotScene extends Phaser.Scene {
         view.state = parcel.state;
       }
       const container = view.container;
+      updateParcelArt(container, parcel.kind, this.reducedMotion ? 0 : this.model.elapsedMs);
       const isHeld = parcel.state === 'held';
       if (isHeld && this.time.now < view.transferUntil) {
         const blend = Math.min(1, delta / 30);
@@ -245,7 +250,7 @@ export class DepotScene extends Phaser.Scene {
     g.fillStyle(0x27424a).fillRect(0, 125, 960, 2);
     g.fillStyle(0xedba6d).fillRect(28, 27, 5, 43);
     this.label(46, 21, 'THE BELT', 35, INK, true);
-    this.label(47, 62, 'NIGHT SHIFT   /   DEPOT 07', 11, MUTED, true).setLetterSpacing(2);
+    this.label(47, 62, 'TERMITE & SKANKY / NIGHT SORT', 10, MUTED, true).setLetterSpacing(1);
     this.label(320, 25, 'DISPATCHED', 10, MUTED, true).setLetterSpacing(1);
     this.countText = this.label(320, 43, '00 / 12', 26, INK, true);
     this.label(487, 25, 'SHIFT SCORE', 10, MUTED, true).setLetterSpacing(1);
@@ -270,7 +275,7 @@ export class DepotScene extends Phaser.Scene {
     this.label(260, 676, 'TAB  SWITCH', 11, MUTED, true);
     this.label(447, 676, 'SPACE / CLICK  GRAB · DELIVER', 11, MUTED, true);
     this.label(789, 676, 'ESC  PAUSE', 11, MUTED, true);
-    this.label(28, 702, '90 SECONDS. TWO WORKERS. ONE VERY BUSY BELT.', 8, '#637f87', true).setLetterSpacing(1.5);
+    this.label(28, 702, 'SORT FAST. MISS NOTHING. SURVIVE THE SHIFT.', 8, '#637f87', true).setLetterSpacing(1.5);
     this.toast = this.label(480, 157, '', 14, INK, true).setOrigin(0.5).setDepth(75)
       .setPadding(14, 9).setBackgroundColor('#10232a').setVisible(false);
   }
@@ -295,8 +300,8 @@ export class DepotScene extends Phaser.Scene {
         && Math.abs(player.y - (held.route === 'C' ? 492 : 300)) <= 56;
       this.actionText.setText(wrongSide ? `ROUTE ${held.route} · return to belt, then TAB to hand off`
         : inDock ? `[ SPACE ]  DELIVER ${ROUTE_NAME[held.route]}`
-        : `CARRYING ${held.route} · follow the dots  /  SPACE puts down`);
-    } else this.actionText.setText(nearby ? `[ SPACE ]  ${nearby.state === 'missed' ? 'RECOVER' : 'GRAB'} ROUTE ${nearby.route}` : 'Approach the belt · match letter to dock');
+        : `${held.label}  →  ${held.route === 'C' ? 'C BULK' : held.route === 'A' ? 'A LEFT' : 'B RIGHT'}  /  SPACE puts down`);
+    } else this.actionText.setText(nearby ? `[ SPACE ] ${nearby.state === 'missed' ? 'RECOVER' : 'GRAB'} ${nearby.label} · ${nearby.route}` : 'Approach the belt · match letter to dock');
     this.brakeText.setText(m.brakeRemainingMs > 0 ? '■  BELT BRAKED'
       : m.brakeCooldownMs > 0 ? `[ E ]  RECHARGE ${Math.ceil(m.brakeCooldownMs / 1000)}s` : '[ E ]  BRAKE READY');
     this.pauseText.setText(this.state === 'paused' ? '▶ RESUME' : 'Ⅱ PAUSE');
@@ -311,6 +316,7 @@ export class DepotScene extends Phaser.Scene {
   }
 
   private handleEvent(event: ShiftEvent): void {
+    this.life.onEvent(event);
     const sounds: Partial<Record<ShiftEvent['type'], SoundEffect>> = {
       grab: 'grab', drop: 'drop', sort: 'correct', wrong: 'wrong', miss: 'pile-up',
       recover: 'dig', brake: 'belt-stop', switch: 'switch', phase: 'event-alert', end: 'shift-end',
@@ -355,7 +361,7 @@ export class DepotScene extends Phaser.Scene {
   }
 
   private showBriefing(): void {
-    this.showPanel('DEPOT 07 / PLAYABLE PREVIEW', 'MAKE EVERY PARCEL COUNT.', [
+    this.showPanel('TERMITE & SKANKY / THE WHOLE CREW IS HERE', 'ANOTHER NIGHT ON THE BELT.', [
       'Dispatch 12 parcels in a 90-second night shift.',
       'A goes left. B goes right. C goes to either bulk bay.',
       'Move with WASD / arrows. TAB switches your worker.',

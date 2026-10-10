@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import type { ParcelKind } from './ShiftModel';
 
 /** Editable, resolution-independent artwork for the night shift vertical slice. */
 export type DepotRoute = 'A' | 'B' | 'C';
@@ -56,6 +57,7 @@ export class DepotArt {
     this.drawTruck('right');
     this.drawBulk('left');
     this.drawBulk('right');
+    this.drawDepotPersonality();
     this.drawDock('A', 'left', 260, 300);
     this.drawDock('B', 'right', 700, 300);
     this.drawDock('C', 'left', 260, 492);
@@ -273,7 +275,7 @@ export class DepotArt {
     line(g, hx - 6, 493, hx + 6, 493, 0xb79554, 3);
     g.fillStyle(0x081d27).fillCircle(hx - 10, 514, 6).fillCircle(hx + 10, 514, 6);
     g.fillStyle(0x6c7b6b).fillRect(hx - 9, 506, 20, 5);
-    label(this.scene, x, 423, 'OVERSIZE / HOLD', 9, '#b7ab86').setDepth(4);
+    label(this.scene, x, 442, 'OVERSIZE / HOLD', 9, '#b7ab86').setDepth(4);
     label(this.scene, x, 570, 'KEEP ACCESS CLEAR', 8, '#6d8888').setDepth(4);
   }
 
@@ -296,10 +298,48 @@ export class DepotArt {
     highlight.lineStyle(2, color, 0.95).strokeRoundedRect(x - 27, y - 35, 54, 70, 5);
     this.dockHighlights.push({ route, side, art: highlight });
   }
+
+  private drawDepotPersonality() {
+    const g = this.scene.add.graphics().setDepth(4);
+    // AJ's improvised massage business, squeezed between the actual freight bays.
+    g.fillStyle(0x0b2027, 0.5).fillEllipse(159, 413, 80, 17);
+    g.fillStyle(0x604330).fillRoundedRect(123, 397, 70, 12, 4);
+    g.fillStyle(0xa78061).fillRoundedRect(124, 393, 66, 12, 5);
+    g.fillStyle(0xbed0b4).fillRoundedRect(127, 394, 16, 9, 3);
+    g.fillStyle(0x405453).fillRect(130, 408, 4, 11).fillRect(182, 408, 4, 11);
+    label(this.scene, 151, 388, "AJ'S MASSAGE", 6, '#bbbd95').setDepth(5);
+    // A well-loved amp sticker and a shipping label that only this depot would print.
+    g.fillStyle(0x172830).fillRoundedRect(186, 542, 27, 14, 2);
+    g.lineStyle(1, 0xb7a270, 0.65).strokeRoundedRect(186, 542, 27, 14, 2);
+    label(this.scene, 199, 546, 'MESA', 5, '#d5c7a2').setDepth(5);
+    label(this.scene, 199, 552, 'BOOGIE', 5, '#d5c7a2').setDepth(5);
+    g.fillStyle(0x6e734a).fillRoundedRect(59, 552, 53, 12, 1);
+    label(this.scene, 85, 558, "THE SNAKES CELL", 5, '#dae1b1').setDepth(5);
+    // Ben's literal shoulder demon and Bannerman's LEGO have dedicated little spaces.
+    g.fillStyle(0x493144).fillRoundedRect(74, 599, 65, 11, 2);
+    label(this.scene, 106, 604, 'PAULA ABDUL', 6, '#e5a0c9').setDepth(5);
+    g.fillStyle(0xad5547).fillRect(187, 589, 12, 8);
+    g.fillStyle(0x507fa3).fillRect(199, 584, 14, 12);
+    g.fillStyle(0xc9ad58).fillRect(183, 580, 12, 9);
+    for (const x of [186, 191]) g.fillStyle(0xe0c371).fillEllipse(x, 580, 3, 2);
+    for (const x of [202, 209]) g.fillStyle(0x7fa9b7).fillEllipse(x, 584, 3, 2);
+    // Donna's Warcraft husband has colonized a spare packing table.
+    g.fillStyle(0x664e39).fillRoundedRect(882, 594, 53, 5, 1);
+    g.fillStyle(0x253e49).fillRoundedRect(910, 570, 23, 21, 2);
+    g.fillStyle(0x718670).fillRect(913, 573, 17, 12);
+    polygon(g, [914, 584, 919, 577, 923, 582, 928, 576, 930, 584], 0x36544b);
+    g.fillStyle(0xc9ab71).fillCircle(924, 576, 2);
+    g.fillStyle(0x1e3540).fillRect(920, 590, 3, 5);
+    g.fillStyle(0x826344).fillCircle(893, 584, 6);
+    g.fillStyle(0x53617a).fillRoundedRect(886, 588, 13, 12, 4);
+    label(this.scene, 858, 605, 'WARCRAFT HUSBAND', 5, '#94aaa0').setDepth(5);
+  }
 }
 
+const parcelDecorations = new WeakMap<Phaser.GameObjects.Container, Phaser.GameObjects.Graphics>();
+
 /** Origin is the parcel contact center. No idle motion is baked into its art. */
-export function createParcelArt(scene: Phaser.Scene, route: DepotRoute, heavy = false): Phaser.GameObjects.Container {
+export function createParcelArt(scene: Phaser.Scene, route: DepotRoute, heavy = false, kind: ParcelKind = 'standard'): Phaser.GameObjects.Container {
   const root = scene.add.container(0, 0);
   const g = scene.add.graphics();
   const w = heavy ? 45 : 34;
@@ -322,12 +362,124 @@ export function createParcelArt(scene: Phaser.Scene, route: DepotRoute, heavy = 
     g.fillStyle(0x4b594f).fillRect(l + 5, t + 1, 3, h - 2).fillRect(r - 8, t + 1, 3, h - 2);
     g.fillStyle(0x819180).fillRect(l + 5, t + 1, 1, h - 8).fillRect(r - 8, t + 1, 1, h - 8);
   }
-  g.fillStyle(0x6e5840, 0.4).fillRoundedRect(l + 5, t + 6, 17, 16, 1);
-  g.fillStyle(DEPOT_ROUTE_COLORS[route]).fillRoundedRect(l + 4, t + 5, 17, 16, 1);
+  // Original freight keeps its own silhouette, rather than becoming anonymous boxes.
+  if (kind === 'goji') {
+    g.fillStyle(0x142820, 0.5).fillEllipse(0, 11, 38, 10);
+    g.fillStyle(0x6e7048).fillEllipse(0, 0, 37, 33);
+    g.fillStyle(0xb8ad70).fillEllipse(-2, -2, 31, 29);
+    polygon(g, [-8, -14, -11, -21, 5, -21, 9, -14, 2, -12], 0xc4b885);
+    line(g, -8, -15, 9, -15, 0x567649, 3);
+    for (const [x, y] of [[7, -5], [12, 0], [5, 3]]) {
+      g.fillStyle(0xad5349).fillEllipse(x, y, 7, 5);
+      g.fillStyle(0xe18b63).fillCircle(x - 1, y - 1, 1);
+    }
+    line(g, 13, 5, 11, 10, 0x7e794e, 1);
+  } else if (kind === 'lobsters' || kind === 'snakes') {
+    g.fillStyle(kind === 'snakes' ? 0x3b503e : 0x56655a).fillRoundedRect(l - 1, t, w + 2, h, 2);
+    g.fillStyle(0x233c39).fillRect(l + 3, t + 4, w - 6, h - 10);
+    if (kind === 'lobsters') {
+      g.fillStyle(0xbd5547).fillEllipse(8, 0, 9, 22);
+      for (const y of [-5, 0, 5]) line(g, 2, y, 15, y + 2, 0xd9805f, 1);
+      line(g, 6, -7, 4, -18, 0xde9b6c, 1);
+      line(g, 10, -7, 14, -18, 0xde9b6c, 1);
+    } else {
+      g.lineStyle(4, 0xabbc72).beginPath().moveTo(7, 9).lineTo(14, 5).lineTo(4, -1).lineTo(13, -6).strokePath();
+      g.fillStyle(0xc6cb84).fillEllipse(12, -7, 10, 6);
+      g.fillStyle(0x24352a).fillCircle(15, -8, 1);
+      for (let x = l + 6; x < r; x += 8) line(g, x, t + 2, x, b - 2, 0x84917c, 2);
+    }
+    for (const y of [t, b - 5]) {
+      g.fillStyle(kind === 'snakes' ? 0x758266 : 0xb59668).fillRect(l - 1, y, w + 2, 5);
+      line(g, l + 1, y, r, y, 0xc4b28d, 1);
+    }
+    for (const x of [l, r - 4]) g.fillStyle(0x887c5b).fillRect(x, t, 4, h);
+  } else if (kind === 'mesa') {
+    g.fillStyle(0x18252b).fillRoundedRect(l, t, w, h, 3);
+    g.fillStyle(0x405050).fillRoundedRect(l + 3, t + 9, w - 6, h - 13, 1);
+    for (let y = t + 12; y < b - 3; y += 3) line(g, l + 4, y, r - 4, y, 0xa4a184, 1, 0.35);
+    for (let x = l + 6; x < r - 3; x += 4) line(g, x, t + 10, x, b - 4, 0xb4a687, 1, 0.2);
+    g.fillStyle(0xaaa088).fillRect(l + 3, t + 3, w - 6, 4);
+    for (let x = l + 7; x < r - 4; x += 7) g.fillStyle(0x253b40).fillCircle(x, t + 5, 1.5);
+    g.lineStyle(2, 0x8f998c).strokeRoundedRect(-7, t - 4, 14, 5, 2);
+    for (const x of [l + 1, r - 4]) g.fillStyle(0xb1a58a).fillRect(x, b - 5, 3, 4);
+  } else if (kind === 'atv') {
+    // Four chunky tires, red fairing, handlebar and two shipping straps.
+    for (const x of [-15, 15]) for (const y of [-10, 6]) {
+      g.fillStyle(0x12232b).fillRoundedRect(x - 6, y - 7, 12, 13, 3);
+      for (let ty = y - 5; ty < y + 6; ty += 4) line(g, x - 5, ty, x + 5, ty, 0x546361, 1);
+    }
+    g.fillStyle(0x9b4940).fillRoundedRect(-12, -17, 24, 34, 5);
+    g.fillStyle(0xce6d4c).fillRoundedRect(-10, -17, 20, 12, 5);
+    g.fillStyle(0x25373b).fillRoundedRect(-5, -4, 10, 15, 3);
+    line(g, -12, -8, 12, -8, 0xbac5ae, 2);
+    for (const x of [-9, 9]) g.fillStyle(0xdfb773).fillRect(x, t, 2, h);
+    g.fillStyle(0xdad7a0).fillRect(-8, -15, 5, 3).fillRect(3, -15, 5, 3);
+  } else if (kind === 'duck') {
+    // The shipping label really does have a duck on it.
+    g.fillStyle(0xe0c169).fillEllipse(9, 4, 13, 9).fillCircle(12, -3, 5);
+    polygon(g, [15, -3, 21, -1, 15, 1], 0xcd8449);
+    g.fillStyle(0x354440).fillCircle(13, -4, 1);
+    line(g, 5, 5, 12, 3, 0xb08d47, 1);
+  } else if (kind === 'makeup') {
+    g.fillStyle(0x794554).fillRoundedRect(5, -9, 10, 18, 3);
+    g.fillStyle(0xd49da8).fillRoundedRect(6, -8, 8, 15, 2);
+    g.fillStyle(0xe4c7b0).fillRect(6, -12, 8, 4);
+    g.fillStyle(0xab6481).fillRect(7, -1, 6, 4);
+  } else if (kind === 'panchetters') {
+    g.fillStyle(0x738257).fillRect(l + 1, t + 2, w - 4, 5);
+    g.fillStyle(0xb9584a).fillCircle(11, 6, 5);
+    g.fillStyle(0xe5c8a1).fillCircle(11, 6, 2.5);
+    line(g, l + 1, b - 8, r - 2, b - 8, 0x66593f, 1);
+  }
+  root.add(g);
+  const decoration = scene.add.graphics();
+  root.add(decoration);
+  parcelDecorations.set(root, decoration);
+  const badge = scene.add.graphics();
+  badge.fillStyle(0x6e5840, 0.4).fillRoundedRect(l + 5, t + 6, 17, 16, 1);
+  badge.fillStyle(DEPOT_ROUTE_COLORS[route]).fillRoundedRect(l + 4, t + 5, 17, 16, 1);
   for (let x = l + 25; x < r - 3; x += 2) line(g, x, b - 13, x, b - 8, 0x5a5844, 1, 0.8);
   const letter = label(scene, l + 12.5, t + 13, route, 12, '#19383b');
-  root.add([g, letter]);
+  root.add([badge, letter]);
+  if (kind !== 'standard') {
+    const stamp: Record<Exclude<ParcelKind, 'standard'>, string> = {
+      mallwood: 'MALLWOOD', goji: 'GOJI', lobsters: 'LIVE', duck: 'LE DUCK',
+      makeup: 'LOTION', mesa: 'MESA', panchetters: 'PANCHETTERS', atv: 'ATV', snakes: 'CELL',
+    };
+    root.add(label(scene, 1, b - 3, stamp[kind], kind === 'panchetters' ? 4 : 5, kind === 'mesa' ? '#e7d6b6' : '#eae2be'));
+  }
+  updateParcelArt(root, kind, 0);
   return root;
+}
+
+/** Only small local accents animate: parcel contact coordinates always stay fixed. */
+export function updateParcelArt(container: Phaser.GameObjects.Container, kind: ParcelKind, timeMs: number): void {
+  const g = parcelDecorations.get(container);
+  if (!g) return;
+  g.clear();
+  if (kind === 'mallwood') {
+    for (let i = 0; i < 3; i++) {
+      const phase = (timeMs / 1400 + i * 0.3) % 1;
+      const x = -10 + i * 10;
+      const y = -17 - phase * 13;
+      line(g, x, y, x + Math.sin(timeMs / 300 + i) * 3, y - 6, 0xa1b979, 2, (1 - phase) * 0.7);
+    }
+    g.fillStyle(0x73834f, 0.7).fillEllipse(11, 10, 8, 3);
+  } else if (kind === 'lobsters') {
+    for (const direction of [-1, 1]) {
+      const x = direction * 25;
+      const y = -7 + Math.sin(timeMs / 240 + direction) * 2;
+      line(g, direction * 15, -1, x, y + 5, 0xb35b45, 3);
+      g.fillStyle(0xda7857).fillEllipse(x, y, 8, 13);
+      polygon(g, [x - 1, y - 7, x + 1, y - 1, x + 4, y - 7], 0x344b43);
+      line(g, x - 2, y - 3, x - 2, y + 2, 0xf1b680, 1);
+    }
+  } else if (kind === 'makeup') {
+    g.fillStyle(0xb66d91, 0.8).fillEllipse(13, 14, 17, 5);
+    const pulse = (Math.sin(timeMs / 320) + 1) / 2;
+    g.fillStyle(0xe4a9bd, 0.8).fillCircle(20, 10 - pulse * 2, 2 + pulse);
+    g.lineStyle(1, 0xf2c1cb, 0.7).strokeCircle(16, 12, 2);
+  }
 }
 
 export interface DepotWorkerArt {
@@ -338,7 +490,7 @@ export interface DepotWorkerArt {
 /** Illustrated workers with independently articulated arms and boots. */
 export function createWorkerArt(scene: Phaser.Scene, side: DepotSide): DepotWorkerArt {
   const root = scene.add.container(0, 0);
-  const accent = side === 'left' ? 0x9dcdbb : 0xe0b477;
+  const accent = side === 'left' ? 0xd6bf69 : 0xdfb892;
   const shadow = scene.add.ellipse(0, 24, 36, 13, 0x06141e, 0.48);
   const ring = scene.add.ellipse(0, 24, 43, 18).setStrokeStyle(2, 0xdbedc7, 0.75);
   root.add([shadow, ring]);
@@ -354,11 +506,17 @@ export function createWorkerArt(scene: Phaser.Scene, side: DepotSide): DepotWork
     root.add(leg);
   }
 
+  if (side === 'right') {
+    const hairBack = scene.add.graphics();
+    hairBack.fillStyle(0x402f25).fillRoundedRect(-13, -34, 27, 38, 10);
+    hairBack.fillStyle(0x654331).fillRoundedRect(-12, -31, 8, 35, 4).fillRoundedRect(7, -30, 7, 34, 4);
+    root.add(hairBack);
+  }
   const body = scene.add.graphics();
   body.fillStyle(0x101f29).fillRoundedRect(-15, -19, 30, 35, 8);
-  body.fillStyle(0x3e6771).fillRoundedRect(-13, -18, 26, 30, 7);
-  polygon(body, [-12, -12, -7, -16, -5, 11, -12, 10], 0x254854);
-  polygon(body, [11, -13, 13, -9, 13, 8, 7, 12, 7, -15], 0x28434f);
+  body.fillStyle(side === 'left' ? 0x447ca5 : 0xa75a42).fillRoundedRect(-13, -18, 26, 30, 7);
+  polygon(body, [-12, -12, -7, -16, -5, 11, -12, 10], side === 'left' ? 0x315a81 : 0x723f35);
+  polygon(body, [11, -13, 13, -9, 13, 8, 7, 12, 7, -15], side === 'left' ? 0x284b70 : 0x834733);
   body.fillStyle(accent).fillRect(-9, -13, 4, 20).fillRect(5, -13, 4, 20);
   body.fillStyle(0xd6dbc0).fillRect(-11, 2, 22, 3);
   body.fillStyle(0x4c746f).fillRoundedRect(-3, -8, 6, 8, 1);
@@ -371,7 +529,7 @@ export function createWorkerArt(scene: Phaser.Scene, side: DepotSide): DepotWork
     const arm = scene.add.container(direction * 13, -11);
     const art = scene.add.graphics();
     art.fillStyle(0x152e3a).fillRoundedRect(-4, -2, 9, 20, 4);
-    art.fillStyle(0x4b7680).fillRoundedRect(-3, -3, 7, 16, 3);
+    art.fillStyle(side === 'left' ? 0x477da2 : 0xb56b50).fillRoundedRect(-3, -3, 7, 16, 3);
     art.fillStyle(accent).fillRect(-3, 7, 7, 3);
     art.fillStyle(0x172b34).fillRoundedRect(-4, 13, 10, 10, 4);
     art.fillStyle(0xc4b697).fillRoundedRect(-3, 12, 8, 8, 3);
@@ -387,10 +545,18 @@ export function createWorkerArt(scene: Phaser.Scene, side: DepotSide): DepotWork
   head.fillStyle(0xe3b58b).fillRoundedRect(-5, -28, 11, 11, 5);
   head.fillStyle(0x7a5d48).fillRoundedRect(-8, -21, 16, 8, 4);
   head.fillStyle(0xc99d76).fillRoundedRect(-6, -22, 12, 6, 4);
-  head.fillStyle(0x112e38).fillRoundedRect(-10, -33, 20, 12, 5);
-  head.fillStyle(accent).fillRoundedRect(-10, -34, 20, 9, 5);
-  head.fillStyle(side === 'left' ? 0x60978f : 0xae824e).fillRoundedRect(-10, -27, 22, 5, 2);
-  line(head, -6, -33, 6, -33, 0xf1e5bd, 1, 0.6);
+  if (side === 'left') {
+    head.fillStyle(0x5c5534).fillRoundedRect(-11, -33, 22, 12, 4);
+    head.fillStyle(accent).fillRoundedRect(-9, -37, 18, 12, 3);
+    head.fillStyle(0xb99d4e).fillRoundedRect(-14, -27, 29, 4, 2);
+    line(head, -6, -35, 6, -35, 0xf1e5bd, 1, 0.7);
+  } else {
+    head.fillStyle(0x6a4932).fillRoundedRect(-11, -35, 22, 12, 7);
+    polygon(head, [-10, -28, -4, -31, -7, -19, -7, -6, -12, -4, -13, -22], 0x755038);
+    polygon(head, [4, -32, 11, -28, 12, 2, 7, 0, 7, -22], 0x5c3d2c);
+    line(head, -9, -25, -10, -7, 0xa17749, 1, 0.65);
+    line(head, 8, -24, 10, -3, 0x9b7146, 1, 0.55);
+  }
   head.fillStyle(0x1b3842).fillRect(-7, -23, 5, 2).fillRect(3, -23, 5, 2);
   root.add(head);
   return {

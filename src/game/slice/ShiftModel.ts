@@ -6,6 +6,7 @@
  * the tread phase and parcel positions: there is no separate parcel velocity.
  */
 export type Route = 'A' | 'B' | 'C';
+export type ParcelKind = 'standard' | 'mallwood' | 'goji' | 'lobsters' | 'duck' | 'makeup' | 'mesa' | 'panchetters' | 'atv' | 'snakes';
 export type WorkerId = 'termite' | 'skanky';
 export type PackageState = 'belt' | 'held' | 'floor' | 'delivered' | 'missed';
 export type ShiftPhase = 'lesson' | 'flow' | 'rush' | 'cleanup' | 'ended';
@@ -23,6 +24,8 @@ export interface Worker {
 export interface Parcel {
   id: number;
   route: Route;
+  kind: ParcelKind;
+  label: string;
   size: 'normal' | 'heavy';
   x: number;
   y: number;
@@ -62,10 +65,46 @@ const ROUTE_NAMES: Record<Route, string> = {
   B: 'B · PAYTMAN · right dock',
   C: 'C · BULK · either lower dock',
 };
-const ROUTE_SEQUENCE: readonly Route[] = [
-  'A', 'B', 'C', 'A', 'B', 'C',
-  'B', 'A', 'C', 'B', 'A', 'B', 'C', 'A', 'C', 'B', 'A', 'C', 'A', 'B', 'C', 'B',
+// Names come from the original SpawnSystem and GameScene's Hussan phone gag.
+// The preview schedules them deliberately so the game's references cannot be
+// lost to rare-item rolls during a single 90-second review shift.
+const PARCEL_LABELS: Record<ParcelKind, string> = {
+  standard: 'PARCEL',
+  mallwood: 'MALLWOOD RD EAST',
+  goji: 'GOJI BERRIES',
+  lobsters: 'LIVE LOBSTERS',
+  duck: 'LE DUCK',
+  makeup: 'MAKEUP LOTION',
+  mesa: 'MESA BOOGIE',
+  panchetters: 'PANCHETTERS',
+  atv: 'SMALL ATV',
+  snakes: 'THE SNAKES CELL',
+};
+const PARCEL_SEQUENCE: readonly { route: Route; kind: ParcelKind }[] = [
+  { route: 'A', kind: 'mallwood' },
+  { route: 'B', kind: 'goji' },
+  { route: 'C', kind: 'lobsters' },
+  { route: 'A', kind: 'duck' },
+  { route: 'B', kind: 'makeup' },
+  { route: 'C', kind: 'mesa' },
+  { route: 'B', kind: 'panchetters' },
+  { route: 'A', kind: 'snakes' },
+  { route: 'C', kind: 'atv' },
+  { route: 'B', kind: 'standard' },
+  { route: 'A', kind: 'mallwood' },
+  { route: 'B', kind: 'goji' },
+  { route: 'C', kind: 'lobsters' },
+  { route: 'A', kind: 'panchetters' },
+  { route: 'C', kind: 'mesa' },
+  { route: 'B', kind: 'makeup' },
+  { route: 'A', kind: 'duck' },
+  { route: 'C', kind: 'atv' },
+  { route: 'A', kind: 'snakes' },
+  { route: 'B', kind: 'standard' },
+  { route: 'C', kind: 'lobsters' },
+  { route: 'B', kind: 'panchetters' },
 ];
+const BRIAN_BULK_SEQUENCE: readonly ParcelKind[] = ['atv', 'lobsters', 'mesa', 'panchetters', 'mallwood'];
 
 const clamp = (value: number, low: number, high: number): number => Math.max(low, Math.min(high, value));
 const distance = (a: { x: number; y: number }, b: { x: number; y: number }): number => Math.hypot(a.x - b.x, a.y - b.y);
@@ -94,6 +133,7 @@ export class ShiftModel {
   public paused = false;
   public brakeRemainingMs = 0;
   public brakeCooldownMs = 0;
+  public brianRemaining = 0;
   public ended = false;
   public won = false;
 
@@ -280,7 +320,8 @@ export class ShiftModel {
         this.spawnElapsedMs -= this.nextSpawnIntervalMs;
         // A phase change applies to the next interval, so it cannot produce
         // an unexpected short gap immediately after the previous parcel.
-        this.nextSpawnIntervalMs = this.phase === 'lesson' ? 6_000 : this.phase === 'flow' ? 4_000 : 3_000;
+        this.nextSpawnIntervalMs = this.brianRemaining > 0 ? 1_900
+          : this.phase === 'lesson' ? 6_000 : this.phase === 'flow' ? 4_000 : 3_000;
       }
     } else {
       const unfinished = this.packages.some((parcel) => parcel.state !== 'delivered');
@@ -355,12 +396,16 @@ export class ShiftModel {
   private spawnPackage(): boolean {
     const spawnY = SHIFT_LAYOUT.beltTop + 26;
     if (this.packages.some((parcel) => parcel.state === 'belt' && Math.abs(parcel.y - spawnY) < SHIFT_LAYOUT.parcelGap)) return false;
-    const route = ROUTE_SEQUENCE[(this.nextId - 1) % ROUTE_SEQUENCE.length];
+    const brianSending = this.brianRemaining > 0;
+    const { route, kind } = brianSending
+      ? { route: 'C' as const, kind: BRIAN_BULK_SEQUENCE[BRIAN_BULK_SEQUENCE.length - this.brianRemaining] }
+      : PARCEL_SEQUENCE[(this.nextId - 1) % PARCEL_SEQUENCE.length];
     this.packages.push({
-      id: this.nextId++, route, size: route === 'C' ? 'heavy' : 'normal',
+      id: this.nextId++, route, kind, label: PARCEL_LABELS[kind], size: route === 'C' ? 'heavy' : 'normal',
       x: SHIFT_LAYOUT.beltX, y: spawnY, state: 'belt', workerId: null,
       beltOffset: spawnY - this.beltTravel, recovered: false, missCounted: false,
     });
+    if (brianSending) this.brianRemaining -= 1;
     return true;
   }
 
@@ -376,7 +421,8 @@ export class ShiftModel {
     const phase: ShiftPhase = this.elapsedMs < 36_000 ? 'lesson' : this.elapsedMs < 63_000 ? 'flow' : this.elapsedMs < this.durationMs ? 'rush' : 'cleanup';
     if (phase === this.phase) return;
     this.phase = phase;
-    const message = phase === 'flow' ? 'STEADY FLOW · freight every 4 seconds' : phase === 'rush' ? 'LAST PUSH · freight every 3 seconds' : phase === 'cleanup' ? 'INTAKE CLOSED · 10 seconds to clear your freight' : 'Find your rhythm';
+    if (phase === 'rush') this.brianRemaining = BRIAN_BULK_SEQUENCE.length;
+    const message = phase === 'flow' ? 'STEADY FLOW · freight every 4 seconds' : phase === 'rush' ? 'BRIAN: SENDING 5 DOWN TO BULK!' : phase === 'cleanup' ? 'INTAKE CLOSED · 10 seconds to clear your freight' : 'Find your rhythm';
     this.emit('phase', message, { x: 480, y: 122 });
   }
 

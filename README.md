@@ -34,6 +34,13 @@ Touch devices have a movement stick and Switch, Grab / Deliver, and Brake
 buttons. Landscape gives a closer view; portrait reserves room below the game
 for controls. The preview includes a restartable results screen.
 
+The new scene includes the original crew and workplace humor: Kylie's coffee,
+AJ and Vic's massage, Shan's rants, the United Way announcement, Ben's
+dodge-training disaster and Paula's response. Recognizable special freight
+includes GOJI BERRIES, LIVE LOBSTERS, LE DUCK, MESA BOOGIE and SMALL ATV. At
+63 seconds Brian announces five parcels down to bulk, creating a short burst
+that rewards switching workers and using the brake.
+
 The **original full shift**, including its NPCs, special freight and timed
 events, is retained. Choose **Play the original full shift** in the preview
 briefing (keyboard O), or open the local URL with `?mode=classic`. Its controls
@@ -67,7 +74,7 @@ The model suite checks belt contact through speed ramps and stops, placement,
 recovery, pacing, and a complete winning shift. Browser checks cover both the
 original game and the new section: organic A/B/C deliveries using real keys,
 keyboard/touch controls, belt rendering, pause, brake, handoff, recovery,
-results, restart and script errors. They use a loopback server and isolated
+results, restart, character references and script errors. They use a loopback server and isolated
 synthetic state for edge cases. TypeScript strict checking is enabled. Dependabot maintains
 compatible dependencies; major upgrades require a separate planned review.
 
