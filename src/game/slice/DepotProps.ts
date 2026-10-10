@@ -17,11 +17,12 @@ export function createCrewTruckArt(scene: Phaser.Scene, name: string, purple: bo
   g.fillStyle(purple ? 0x744974 : 0x947b52).fillRoundedRect(-20, -14, 52, 28, 3);
   g.fillStyle(purple ? 0xa47aa0 : 0xbda078).fillRect(-18, -13, 48, 2);
   for (let x = -14; x < 32; x += 7) g.lineStyle(1, 0x172931, 0.25).lineBetween(x, -9, x, 10);
-  g.fillStyle(purple ? 0x4a344e : 0x4e4638).fillRoundedRect(-17, -5, 46, 11, 2);
+  g.fillStyle(purple ? 0x4a344e : 0x4e4638).fillRoundedRect(-19, -11, 50, 22, 2);
   g.fillStyle(0x80928b).fillRect(31, -11, 3, 22);
   g.fillStyle(0xddb67b).fillRect(30, -12, 3, 3).fillRect(30, 10, 3, 3);
   root.add(chassis);
-  root.add(text(scene, side === 'left' ? 6 : -6, 0, name, name.length > 10 ? 5 : 6));
+  const lettering = name.length > 9 ? name.replace(' ', '\n') : name;
+  root.add(text(scene, side === 'left' ? 6 : -6, 0, lettering, 8).setAlign('center'));
   return root;
 }
 

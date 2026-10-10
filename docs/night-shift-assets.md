@@ -31,6 +31,10 @@ are no AI-generated bitmaps, external character assets or imported recordings.
 All eight personal trucks, Paytman's swimming fish, the five-slot Ralph truck,
 driver keys, curry fumes, spill cracks, recovered star, inactive-worker zZz,
 John's articulated gestures and AJ's massage are editable Phaser geometry.
+Full named freight now carries tied paper labels at a readable size; personal
+truck lettering uses larger nameplates. Ben's pointed hell-gate pillars,
+red/orange opening and fire are redrawn from the original `BenGunmanEvent` in
+`DepotLife.ts`, with a longer adult-demon emergence and body-drag sequence.
 
 The palette uses desaturated blue/teal concrete and steel, kraft cardboard,
 timber, warm work lights, and restricted cyan/sage/amber destination accents.

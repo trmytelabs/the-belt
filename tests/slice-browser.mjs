@@ -129,10 +129,10 @@ try {
       await page.keyboard.up(key);
     }
   };
-  for (const [route, index, dockX, dockY, kind, name, stamp] of [
-    ['A', 0, 280, 300, 'mallwood', 'MALLWOOD RD EAST', 'MALLWOOD'],
-    ['B', 1, 680, 300, 'goji', 'GOJI BERRIES', 'GOJI'],
-    ['C', 1, 680, 492, 'lobsters', 'LIVE LOBSTERS', 'LIVE'],
+  for (const [route, index, dockX, dockY, kind, name] of [
+    ['A', 0, 280, 300, 'mallwood', 'MALLWOOD RD EAST'],
+    ['B', 1, 680, 300, 'goji', 'GOJI BERRIES'],
+    ['C', 1, 680, 492, 'lobsters', 'LIVE LOBSTERS'],
   ]) {
     if (await read(() => window.fixtureGame.scene.getScene('DepotScene').model.activeIndex) !== index) await press('Tab');
     await walkTo(index === 0 ? 400 : 560, 300);
@@ -143,12 +143,16 @@ try {
       const scene = window.fixtureGame.scene.getScene('DepotScene');
       const parcel = scene.model.heldPackage;
       return { kind: parcel.kind, label: parcel.label,
-        stamps: scene.parcels.get(parcel.id).container.list.filter(child => child.type === 'Text').map(child => child.text) };
+        stamps: scene.parcels.get(parcel.id).container.list.filter(child => child.type === 'Text').map(child => child.text.replace(/\s+/g, ' ').trim()) };
     });
     assert.equal(freight.kind, kind, 'opening freight must preserve the original named parcel identities');
     assert.equal(freight.label, name);
-    assert.ok(freight.stamps.includes(route) && freight.stamps.includes(stamp),
-      'the rendered special parcel must keep both its routing letter and identifying stamp');
+    assert.ok(freight.stamps.includes(route) && freight.stamps.includes(name),
+      'the rendered special parcel must keep both its routing letter and complete reference name');
+    if (route === 'A' && process.env.BELT_SCREENSHOT_DIR) {
+      await page.waitForTimeout(150);
+      await page.screenshot({ path: join(process.env.BELT_SCREENSHOT_DIR, 'after-mallwood.png') });
+    }
     if (route === 'C') {
       await press('Escape');
       const readCast = () => read(() => {

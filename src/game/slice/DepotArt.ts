@@ -478,10 +478,25 @@ export function createParcelArt(scene: Phaser.Scene, route: DepotRoute, heavy = 
   else root.add([badge, letter]);
   if (kind !== 'standard') {
     const stamp: Partial<Record<ParcelKind, string>> = {
-      mallwood: 'MALLWOOD', goji: 'GOJI', lobsters: 'LIVE', duck: 'LE DUCK',
-      makeup: 'LOTION', mesa: 'MESA', panchetters: 'PANCHETTERS', atv: 'ATV', snakes: 'THE SNAKES CELL',
+      mallwood: 'MALLWOOD\nRD EAST', goji: 'GOJI\nBERRIES', lobsters: 'LIVE\nLOBSTERS', duck: 'LE DUCK',
+      makeup: 'MAKEUP\nLOTION', mesa: 'MESA\nBOOGIE', panchetters: 'PANCHETTERS', atv: 'SMALL ATV',
     };
-    if (stamp[kind]) root.add(label(scene, 1, kind === 'snakes' ? 0 : b - 3, stamp[kind]!, kind === 'panchetters' ? 4 : kind === 'snakes' ? 6 : 5, kind === 'mesa' ? '#e7d6b6' : '#eae2be'));
+    if (kind === 'snakes') root.add(label(scene, 1, 0, 'THE SNAKES CELL', 6, '#eae2be'));
+    else if (stamp[kind]) {
+      // The full joke belongs on the freight itself. A tied paper tag keeps it
+      // legible without covering the destination badge or the object's shape.
+      const copy = label(scene, 0, 0, stamp[kind]!, 9, '#24383b').setAlign('center');
+      const tagWidth = copy.width + 9;
+      const tagHeight = copy.height + 5;
+      const tagY = t - tagHeight / 2 - 5;
+      const tag = scene.add.graphics();
+      tag.lineStyle(1, 0xcbb27f).lineBetween(0, t + 3, 0, tagY + tagHeight / 2);
+      tag.fillStyle(0x0d252d, 0.5).fillRoundedRect(-tagWidth / 2 + 1, tagY - tagHeight / 2 + 2, tagWidth, tagHeight, 2);
+      tag.fillStyle(0xead6aa).fillRoundedRect(-tagWidth / 2, tagY - tagHeight / 2, tagWidth, tagHeight, 2);
+      tag.lineStyle(1, 0xbca375).strokeRoundedRect(-tagWidth / 2, tagY - tagHeight / 2, tagWidth, tagHeight, 2);
+      copy.y = tagY;
+      root.add([tag, copy]);
+    }
   }
   const recoveredBadge = scene.add.star(r - 4, t + 4, 4, 2, 4, 0xffffff).setStrokeStyle(1, INK, 0.7).setVisible(false);
   root.add(recoveredBadge);
@@ -499,12 +514,14 @@ export function updateParcelArt(container: Phaser.GameObjects.Container, kind: P
   if (kind === 'mallwood') {
     for (let i = 0; i < 3; i++) {
       const phase = (timeMs / 1400 + i * 0.3) % 1;
-      const x = -10 + i * 10;
-      const y = -17 - phase * 13;
-      line(g, x, y, x + Math.sin(timeMs / 300 + i) * 3, y - 6, i === 1 ? 0xb94a2f : 0xd18a1f, 2, (1 - phase) * 0.7);
+      const direction = i === 1 ? 1 : -1;
+      const x = direction * (28 + phase * 17);
+      const y = -13 - phase * 28;
+      // Curry fumes curl around the tied label instead of disappearing behind it.
+      line(g, x, y, x + direction * 3 + Math.sin(timeMs / 300 + i) * 2, y - 6, i === 1 ? 0xb94a2f : 0xd18a1f, 2, (1 - phase) * 0.7);
     }
-    g.fillStyle(0xd18a1f, 0.7).fillCircle(-20, -19, 2);
-    g.fillStyle(0xb94a2f, 0.65).fillCircle(20, -23, 2);
+    g.fillStyle(0xd18a1f, 0.7).fillCircle(-27, -15, 2);
+    g.fillStyle(0xb94a2f, 0.65).fillCircle(27, -15, 2);
   } else if (kind === 'lobsters') {
     for (const direction of [-1, 1]) {
       const x = direction * 25;

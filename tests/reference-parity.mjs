@@ -87,6 +87,14 @@ test('Mesa copy comes verbatim from the original offer, choice and transition', 
   // outcome tests rather than pretending the old source already rolled a risk.
 });
 
+test('Ben, the gunman and Paula retain their exact original words and punctuation', () => {
+  const actual = new Set(allStrings(source('slice/DepotLife.ts')).map(normalized));
+  for (const name of ['BEN_LINE', 'GUNMAN_LINE', 'PAULA_LINE']) {
+    const original = literal(variable('entities/BenGunmanEvent.ts', name));
+    assert.ok(actual.has(normalized(original)), `${name} must retain original wording and punctuation`);
+  }
+});
+
 test('every original named shipping label exists and actually spawns during the new shift', () => {
   const shippingLabels = new Set();
   function visit(node) {

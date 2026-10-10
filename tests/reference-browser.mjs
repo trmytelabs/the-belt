@@ -59,16 +59,31 @@ try {
   assert.deepEqual(await read(() => ({ ...window.fixtureGame.scene.getScene('DepotScene').model.activeWorker })), workerAtCountdown,
     'movement and grab controls must remain gated during countdown');
   await page.waitForFunction(() => window.fixtureGame.scene.getScene('DepotScene').state === 'playing');
+  const truckNames = await read(() => window.fixtureGame.scene.getScene('DepotScene').depot.departureObjects
+    .flatMap(({ object }) => (object.list ?? []).filter(child => child.type === 'Text')
+      .map(child => ({ text: child.text.replace(/\s+/g, ' ').trim(), size: Number.parseFloat(child.style.fontSize) }))));
+  for (const name of ['HUSSAN', 'AJ', 'PAULA ABDUL', 'BANNERMAN', 'FRUIT LOOP', 'BRIAN', 'DORIS', 'DONNA']) {
+    assert.ok(truckNames.some(label => label.text === name && label.size >= 8), `${name} must be readable on its actual truck`);
+  }
   await read(() => {
     window.fixtureGame.loop.sleep();
     window.referenceWindows = { left: [], right: [] };
+    window.renderedFreightLabels = new Set();
   });
   const advance = async target => page.evaluate(target => {
     const scene = window.fixtureGame.scene.getScene('DepotScene');
     while (scene.model.elapsedMs < target) {
       if (scene.state !== 'playing') throw new Error(`Fixture unexpectedly stopped at ${scene.model.elapsedMs}: ${scene.state}`);
       scene.toastUntil = 0;
-      for (const parcel of scene.model.packages) parcel.state = 'delivered';
+      for (const parcel of scene.model.packages) {
+        const view = scene.parcels.get(parcel.id);
+        if (view?.container.visible) {
+          const label = view.container.list.find(child => child.type === 'Text'
+            && child.visible && child.text.replace(/\s+/g, ' ').trim() === parcel.label);
+          if (label && Number.parseFloat(label.style.fontSize) >= 9) window.renderedFreightLabels.add(parcel.label);
+        }
+        parcel.state = 'delivered';
+      }
       for (const worker of scene.model.workers) worker.heldId = null;
       scene.update(scene.time.now, Math.min(100, target - scene.model.elapsedMs));
       for (const side of ['left', 'right']) {
@@ -98,6 +113,7 @@ try {
       towel: s.life.towel.visible, bang: s.life.bang.visible ? s.life.bang.text : null,
       dead: s.life.deadMarker.visible, ben: s.life.cast.get('ben').art.visible,
       demon: s.life.cast.get('demon').art.visible, paula: s.life.cast.get('paula').art.visible,
+      demonScale: s.life.cast.get('demon').art.scaleX,
       benX: s.life.cast.get('ben').art.x, benY: s.life.cast.get('ben').art.y,
       johnX: s.life.cast.get('john').art.x, johnVisible: s.life.cast.get('john').art.visible,
       gunman: s.life.cast.get('gunman').art.visible,
@@ -160,9 +176,9 @@ try {
   assert.deepEqual(await read(() => window.fixtureGame.scene.getScene('DepotScene').life.speech.get('left').panel.list.filter(x => x.type === 'Text').map(x => x.text)), benPanel,
     'an actual belt miss must not replace Ben\'s setup');
   const shotWords = [];
-  await advance(76_500);
+  await advance(77_300);
   const dodgeStart = await snapshot();
-  await advance(77_200);
+  await advance(78_100);
   const dodgeNext = await snapshot();
   assert.ok(Math.abs(dodgeNext.benX - dodgeStart.benX) + Math.abs(dodgeNext.benY - dodgeStart.benY) > 10,
     'Ben must demonstrate the dodge training before the shots');
@@ -173,17 +189,24 @@ try {
   }
   assert.deepEqual(shotWords, [...SHOT_WORDS], 'five distinct cartoon impacts must render in the original sequence');
   assert.equal((await snapshot()).dead, true);
-  await advance(81_500);
+  await advance(82_000);
   assert.equal((await snapshot()).demon, true);
+  const emergingDemon = await snapshot();
+  await advance(82_700);
+  await screenshot('after-gate-fixture.png');
+  await advance(83_300);
+  assert.ok((await snapshot()).demonScale > emergingDemon.demonScale + 0.3,
+    'the adult demon must visibly rise to full size before dragging Ben');
   const dragStart = await snapshot();
   await screenshot('after-incident.png');
-  await advance(82_300);
+  await advance(84_600);
   assert.ok((await snapshot()).benX < dragStart.benX - 10, 'the demon must visibly drag Ben toward the portal before he disappears');
-  await advance(84_200);
+  await advance(86_500);
   assert.equal((await snapshot()).ben, false);
   assert.equal((await snapshot()).paula, true);
-  await advance(89_700);
-  assert.equal((await snapshot()).paula, false);
+  const paulaPanel = await read(() => window.fixtureGame.scene.getScene('DepotScene').life.speech.get('left').panel.list.filter(x => x.type === 'Text').map(x => x.text));
+  assert.equal(paulaPanel[0], 'PAULA ABDUL');
+  assert.equal(paulaPanel[1], 'GREAT\nNOW WHICH BITCH\nIS GOING TO LOAD\nMY FUCKING TRUCK');
 
   await read(() => { window.fixtureGame.scene.getScene('DepotScene').model.bulkSorted = 5; });
   await advance(90_100);
@@ -193,6 +216,8 @@ try {
   await advance(92_000);
   assert.equal((await snapshot()).ralphState, 'loading');
   assert.ok((await snapshot()).ralphTruckX < ralphArriving.ralphTruckX, 'Ralph truck must drive into the depot');
+  await advance(92_700);
+  assert.equal((await snapshot()).paula, false);
   for (let trip = 0; trip < 5; trip++) {
     await advance(93_600 + trip * 3000);
     const lifted = await snapshot();
@@ -240,6 +265,10 @@ try {
   assert.ok((await snapshot()).exhaustCommands > 0, 'exhaust continues after drivers get back into their trucks');
   await advance(130_000);
   await advance(149_500);
+  const renderedLabels = await read(() => [...window.renderedFreightLabels]);
+  for (const name of ['MALLWOOD RD EAST', 'GOJI BERRIES', 'LIVE LOBSTERS', 'LE DUCK', 'MAKEUP LOTION', 'MESA BOOGIE', 'PANCHETTERS', 'SMALL ATV']) {
+    assert.ok(renderedLabels.includes(name), `${name} must appear in full on spawned freight, not only in the HUD or model`);
+  }
   const dialogueWindows = await read(() => Object.values(window.referenceWindows).flat());
   for (const copy of [...COUGH_LINES, ...WORKER_SWEARS]) {
     const window = dialogueWindows.find(record => record.copy === copy.replace(/\n/g, ' '));

@@ -230,50 +230,94 @@ export class DepotLife {
     const gunman = this.cast.get('gunman')!.art;
     const demon = this.cast.get('demon')!.art;
     const paula = this.cast.get('paula')!.art;
-    gunman.setVisible(time >= 68000 && time < 81500);
+    gunman.setVisible(time >= 68000 && time < 81700);
     gunman.y = time < 69500 ? Phaser.Math.Linear(650, 528, Phaser.Math.Clamp((time - 68000) / 1500, 0, 1))
-      : time < 80000 ? 528 : Phaser.Math.Linear(528, 650, (time - 80000) / 1500);
-    this.once('gunman', 69500, () => this.say('gunman', "I'M GOING TO\nROB THIS PLACE!", 2400, 1));
-    this.once('ben-training', 72000, () => this.say('ben', "DON'T WORRY GUYS. I GOT THIS. I TOOK TRAINING ON HOW TO DODGE GUNS", 4400, 1));
-    const dodgeTime = Phaser.Math.Clamp(time - 76400, 0, 2100);
-    const fallenX = 112 + Math.sin(2100 / 230) * 22;
-    const fallenY = 554 + Math.cos(2100 / 180) * 15;
-    if (time >= 76400 && time < 80500) {
-      ben.x = 58 + Math.sin(dodgeTime / 230) * 22 + dodgeTime / 2100 * 54;
-      ben.y = 554 + Math.cos(dodgeTime / 180) * 15;
-      if (time < 80020 && !this.reducedMotion) ben.rotation = Math.sin(time / 120) * 0.2;
-    } else if (time < 76400) ben.setPosition(48, 570);
+      : time < 80500 ? 528 : Phaser.Math.Linear(528, 650, (time - 80500) / 1200);
+    // Exact source wording and line breaks; the full boast precedes the dodge.
+    this.once('gunman', 69500, () => this.say('gunman', "I'M GOING TO\nROB THIS PLACE!", 2400, 2));
+    this.once('ben-training', 72000, () => this.say('ben', "DON'T WORRY GUYS\nI GOT THIS\nI TOOK TRAINING ON\nHOW TO DODGE GUNS", 5200, 2));
+    const dodge = Phaser.Math.Clamp((time - 77200) / 1300, 0, 1);
+    const fallenX = 122;
+    const fallenY = 558;
+    ben.setVisible(time < 85600).setScale(0.8).setAlpha(1);
+    this.cast.get('ben')!.tag.setVisible(time < 80020);
+    if (time >= 77200 && time < 80020) {
+      ben.setPosition(48 + 74 * dodge + Math.sin(dodge * Math.PI * 4) * 17,
+        570 - 12 * dodge + Math.sin(dodge * Math.PI * 3) * 11);
+      ben.rotation = this.reducedMotion ? 0 : Math.sin(time / 120) * 0.2;
+    } else if (time < 77200) ben.setPosition(48, 570);
+    else ben.setPosition(fallenX, fallenY).setRotation(Math.PI / 2 * Phaser.Math.Clamp((time - 80020) / 280, 0, 1));
     for (const [index, at] of [78500, 78760, 79180, 79500, 80020].entries()) {
       this.once(`shot-${index}`, at, () => { this.bang.setText(SHOT_WORDS[index]); audioSystem.play('gunshot'); });
     }
     // Comic impact lettering instead of full-screen flashes or screen shake.
     this.bang.setVisible(time >= 78500 && time < 80500);
     if (!this.reducedMotion) this.bang.setScale(1 + Math.sin(time / 130) * 0.06);
-    this.deadMarker.setVisible(time >= 80020 && time < 83000);
-    if (time >= 80020 && time < 80500) ben.setRotation(Math.PI / 2 * Phaser.Math.Clamp((time - 80020) / 280, 0, 1));
-    this.portal.clear();
-    const portalProgress = Phaser.Math.Clamp((time - 80000) / 1000, 0, 1);
-    if (time >= 80000 && time < 83500) {
-      const closing = time > 82500 ? 1 - (time - 82500) / 1000 : 1;
-      this.portal.fillStyle(0x2a1737).fillEllipse(58, 571, 65 * portalProgress * closing, 22 * portalProgress * closing);
-      this.portal.lineStyle(2, 0xa472af, 0.8).strokeEllipse(58, 571, 62 * portalProgress * closing, 21 * portalProgress * closing);
+    this.deadMarker.setVisible(time >= 80020 && time < 85600).setRotation(-ben.rotation);
+
+    const opening = Phaser.Math.Clamp((time - 80500) / 1200, 0, 1);
+    const departure = Phaser.Math.Clamp((time - 85000) / 600, 0, 1);
+    this.portal.setVisible(time >= 80500 && time < 85600);
+    this.drawHellGate(time, opening, departure);
+    demon.setVisible(time >= 81700 && time < 85600).setDepth(16).setAlpha(1);
+    if (time >= 81700 && time < 85000) {
+      const emergence = Phaser.Math.Clamp((time - 81700) / 1500, 0, 1);
+      const drag = Phaser.Math.Clamp((time - 83200) / 1800, 0, 1);
+      // The adult reaches Ben's ankles, then both travel at the same speed.
+      // Their 46px separation keeps the demon's hand on the rotated boot.
+      demon.setScale(Phaser.Math.Linear(0.25, 1.24, emergence)).setPosition(
+        Phaser.Math.Linear(60, 76, emergence) - 20 * drag,
+        Phaser.Math.Linear(566, 537, emergence) + 8 * drag).setRotation(0);
+      ben.setPosition(fallenX - 20 * drag, fallenY + 8 * drag).setRotation(Math.PI / 2);
+    } else if (time >= 85000 && time < 85600) {
+      // Only shrink after the body reaches the gate: a distinct final descent.
+      const sink = Phaser.Math.Easing.Quadratic.In(departure);
+      demon.setPosition(Phaser.Math.Linear(56, 60, sink), Phaser.Math.Linear(545, 559, sink))
+        .setScale(1.24 * (1 - sink)).setAlpha(1 - sink).setRotation(0);
+      ben.setPosition(Phaser.Math.Linear(102, 60, sink), Phaser.Math.Linear(566, 559, sink))
+        .setRotation(Math.PI / 2).setScale(0.8 * (1 - sink)).setAlpha(1 - sink);
     }
-    demon.setVisible(time >= 80500 && time < 83000);
-    if (time >= 80500 && time < 83000) {
-      const emergence = Phaser.Math.Clamp((time - 80500) / 700, 0, 1);
-      const drag = Phaser.Math.Clamp((time - 81200) / 1200, 0, 1);
-      const closing = 1 - Phaser.Math.Clamp((time - 82400) / 600, 0, 1);
-      const bodyX = Phaser.Math.Linear(fallenX, 58, drag);
-      const bodyY = Phaser.Math.Linear(fallenY, 565, drag);
-      demon.setScale((0.2 + emergence * 0.6) * closing).setPosition(
-        Phaser.Math.Linear(58, bodyX - 13, emergence), Phaser.Math.Linear(560, bodyY - 8, emergence));
-      ben.setPosition(bodyX, bodyY).setRotation(Math.PI / 2).setScale(0.8 * closing);
+    this.deadMarker.setRotation(-ben.rotation);
+    // Paula arrives only after the body and demon have fully disappeared.
+    paula.setVisible(time >= 85600 && time < 92500);
+    paula.x = time < 86400 ? Phaser.Math.Linear(-25, 112, Phaser.Math.Clamp((time - 85600) / 800, 0, 1))
+      : time < 91600 ? 112 : Phaser.Math.Linear(112, -25, (time - 91600) / 900);
+    paula.rotation = this.reducedMotion || time < 86400 || time >= 91600 ? 0 : Math.sin(time / 130) * 0.025;
+    this.once('paula', 86400, () => this.say('paula', 'GREAT\nNOW WHICH BITCH\nIS GOING TO LOAD\nMY FUCKING TRUCK', 5200, 2));
+  }
+
+  /** BenGunmanEvent's pointed red/black gate and concentric orange hellfire. */
+  private drawHellGate(time: number, opening: number, departure: number): void {
+    const g = this.portal;
+    g.clear();
+    if (!g.visible) return;
+    const amount = Phaser.Math.Easing.Cubic.Out(opening) * (1 - departure * departure);
+    g.setPosition(60, 581 - 52 * amount).setScale(amount, amount).setAlpha(1 - departure);
+    g.setData('incidentStage', time < 81700 ? 'gate-opening' : time < 83200 ? 'demon-emerging' : time < 85000 ? 'body-dragging' : 'departure');
+    const pulse = this.reducedMotion ? 0 : Math.sin(time / 190) * 0.025;
+    g.fillStyle(0x170d0b, 0.52).fillEllipse(0, 55, 102, 15);
+    g.fillStyle(0x140000).fillEllipse(0, 0, 64, 98);
+    g.fillStyle(0x5c0707).fillRoundedRect(-46, -55, 14, 109, 3).fillRoundedRect(32, -55, 14, 109, 3);
+    g.fillStyle(0x240000).fillTriangle(-51, -53, -39, -79, -27, -53).fillTriangle(27, -53, 39, -79, 51, -53);
+    g.fillStyle(0x80312a).fillTriangle(-47, -53, -39, -72, -37, -53).fillTriangle(31, -53, 39, -72, 41, -53);
+    g.fillStyle(0x301613).fillRect(-47, 48, 17, 7).fillRect(30, 48, 17, 7);
+    g.fillStyle(0xb34a31).fillRect(-35, -51, 3, 96).fillRect(32, -51, 3, 96);
+    for (const y of [-37, -8, 21]) {
+      g.lineStyle(1, 0x30110e).lineBetween(-45, y, -34, y).lineBetween(34, y, 45, y);
     }
-    if (time >= 83000) ben.setVisible(false);
-    paula.setVisible(time >= 83000 && time < 89500);
-    paula.x = time < 84100 ? Phaser.Math.Linear(-25, 112, Phaser.Math.Clamp((time - 83000) / 1100, 0, 1))
-      : time < 88000 ? 112 : Phaser.Math.Linear(112, -25, (time - 88000) / 1500);
-    this.once('paula', 84100, () => this.say('paula', 'GREAT. NOW WHICH BITCH IS GOING TO LOAD MY FUCKING TRUCK', 4400, 1));
+    g.lineStyle(4, 0xff2b1c, 0.85).strokeEllipse(0, 0, 64 * (1 + pulse), 98 * (1 - pulse));
+    g.lineStyle(2, 0xff8a25, 0.86).strokeEllipse(0, 0, 44, 82);
+    g.fillStyle(0x9f230d, 0.35).fillEllipse(0, 7, 31, 66);
+    // Five nested tongues stay inside the opening; no screen flash or floor glow.
+    for (let index = 0; index < 5; index++) {
+      const x = -20 + index * 10;
+      const flicker = this.reducedMotion ? 0 : Math.sin(time / 150 + index * 1.8) * 4;
+      const top = 12 - (2 - Math.abs(index - 2)) * 12 + flicker;
+      g.fillStyle(index % 2 ? 0xff8a25 : 0xcf3c18, 0.88).fillTriangle(x - 8, 34, x + 3, top, x + 8, 37);
+      g.fillStyle(0xffd36b, 0.74).fillTriangle(x - 3, 36, x + 2, top + 13, x + 5, 37);
+    }
+    g.lineStyle(2, 0xffd36b, 0.56).beginPath().moveTo(-14, -34).lineTo(10, -14)
+      .lineTo(-6, 5).lineTo(13, 27).strokePath();
   }
 
   public onEvent(event: ShiftEvent): void {

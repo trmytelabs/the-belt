@@ -285,3 +285,34 @@ including independent sound toggles and native key-repeat suppression.
 Physical-device sound
 quality, finger ergonomics and a human's ability to finish a full shift remain
 manual judgments; passing deterministic/browser checks does not establish them.
+
+## Visibility correction after the full reference recheck
+
+The follow-up audit found that source presence alone had overstated preservation.
+Six special freight names were abbreviated on the objects, personal truck names
+were only 5–6 px, and Ben's original pointed hell gate had become a small purple
+oval. Those details were technically represented but their identity was weakened.
+
+- All eight named freight types now show their full authored names on attached
+  9 px paper shipping tags, independently of the HUD. The route badge and object
+  silhouette remain exposed. The rendered browser check follows actual spawned
+  parcels throughout the shift and requires every full name to appear on its art.
+- All eight personal trucks have 8 px lettering. PAULA ABDUL and FRUIT LOOP use
+  two lines within the nameplate. Browser checks inspect each actual truck label.
+- Ben's gate again has pointed pillars and a red/orange fire opening. The adult
+  demon rises, reaches full size, drags Ben, then sinks with him before Paula
+  arrives. This sequence stays in the outer bay, away from the sorting lanes.
+- Ben's boast and Paula's complaint now use the exact original words and
+  punctuation. A source-derived regression compares these lines and the gunman's
+  threat, allowing only whitespace differences.
+
+Hussan's original depiction is a worker with a phone and a separate green case
+labelled THE SNAKES CELL. His collection, CELL label and dance remain intact;
+there was no literal snake character in the retained original source. Ben's
+shoulder demon remains visible before the later adult-demon event.
+
+Validation for this correction: TypeScript/production build, all 32 model and
+source checks, the complete Canvas reference browser suite, and WebGL keyboard,
+touch and rotation gameplay checks passed. The production bundle is
+`index-CAYoksaw.js`. Fresh Mallwood gameplay and timed gate/incident screenshots
+were visually inspected; the latter are explicitly synthetic clock fixtures.
