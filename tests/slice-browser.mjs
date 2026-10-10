@@ -17,6 +17,10 @@ try {
   });
   const context = await browser.newContext({ viewport: { width: 1200, height: 900 } });
   const page = await context.newPage();
+  if (process.env.BELT_BROWSER_CPU_RATE) {
+    const diagnosticsSession = await context.newCDPSession(page);
+    await diagnosticsSession.send('Emulation.setCPUThrottlingRate', { rate: Number(process.env.BELT_BROWSER_CPU_RATE) });
+  }
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.route('https://fonts.googleapis.com/**', route => route.fulfill({ body: '' }));
@@ -58,6 +62,15 @@ try {
   if (process.env.BELT_SCREENSHOT_DIR) await page.screenshot({ path: join(process.env.BELT_SCREENSHOT_DIR, 'after-title.png') });
   await press('Enter');
   await page.waitForFunction(() => window.fixtureGame.scene.getScene('DepotScene').state === 'playing');
+  await read(() => {
+    window.fixtureInputs = [];
+    const scene = window.fixtureGame.scene.getScene('DepotScene');
+    scene.input.keyboard.on('keydown', event => {
+      window.fixtureInputs.push({ code: event.code, repeat: event.repeat, elapsed: scene.model.elapsedMs,
+        worker: { ...scene.model.activeWorker }, held: scene.model.heldPackage?.state, sorted: scene.model.sorted });
+      if (window.fixtureInputs.length > 30) window.fixtureInputs.shift();
+    });
+  });
 
   const initialWorker = await read(() => window.fixtureGame.scene.getScene('DepotScene').model.activeIndex);
   await press('Tab');
@@ -168,7 +181,13 @@ try {
     const beforeSort = await read(() => window.fixtureGame.scene.getScene('DepotScene').model.sorted);
     await walkTo(dockX, dockY);
     await press('Space');
-    assert.equal(await read(() => window.fixtureGame.scene.getScene('DepotScene').model.sorted), beforeSort + 1);
+    const afterSort = await read(() => {
+      const s = window.fixtureGame.scene.getScene('DepotScene');
+      return { sorted: s.model.sorted, state: s.state, worker: { ...s.model.activeWorker }, held: s.model.heldPackage,
+        parcels: s.model.packages, toast: s.toast.text, fps: s.game.loop.actualFps, inputs: window.fixtureInputs,
+        queue: s.input.keyboard.manager.queue.map(event => ({ code: event.code, type: event.type, time: event.timeStamp })) };
+    });
+    assert.equal(afterSort.sorted, beforeSort + 1, `Opening ${route} delivery diagnostics: ${JSON.stringify(afterSort)}`);
   }
   assert.equal(await read(() => window.fixtureGame.scene.getScene('DepotScene').model.missed), 0,
     'the opening lesson must allow all three routes without a miss');
@@ -283,8 +302,44 @@ try {
     'restart must install exactly one input listener');
   assert.deepEqual(await read(() => window.fixtureGame.scene.getScene('DepotScene').life.history), [],
     'restart must reset cast cue history along with the shift');
+
+  // Real keyboard events can arrive between two game frames on a slow device.
+  // Phaser revisits its whole event queue until POST_STEP. Suspend only the
+  // frame loop, not DOM input, and require each physical press to act once.
+  const queuedParcel = await arrange('A');
+  await page.waitForFunction(() => window.fixtureGame.input.keyboard.queue.length === 0);
+  await read(() => window.fixtureGame.loop.sleep());
+  try {
+    const queuedState = () => read(() => {
+      const scene = window.fixtureGame.scene.getScene('DepotScene');
+      return { active: scene.model.activeIndex, held: scene.model.workers.map(worker => worker.heldId),
+        muted: scene.muted, queued: scene.input.keyboard.manager.queue.map(event => event.code + ':' + event.type) };
+    });
+    await page.keyboard.press('Space');
+    assert.equal((await queuedState()).held[0], queuedParcel.id, 'one Space must grab once before the next frame');
+    await page.keyboard.press('ArrowLeft');
+    await page.keyboard.press('Tab');
+    const switched = await queuedState();
+    assert.equal(switched.active, 1, `one Tab must switch once despite earlier queued events: ${JSON.stringify(switched)}`);
+    assert.deepEqual(switched.held, [queuedParcel.id, null], 'later input must not replay the earlier grab as a drop');
+    await page.keyboard.press('KeyM');
+    const muted = await queuedState();
+    assert.notEqual(muted.muted, switched.muted, 'one M must toggle sound once');
+    await page.keyboard.press('ArrowUp');
+    const unrelated = await queuedState();
+    assert.equal(unrelated.muted, muted.muted, 'later input must not replay the sound toggle');
+    assert.equal(unrelated.active, 1, 'later input must not replay the worker switch');
+    assert.deepEqual(unrelated.held, [queuedParcel.id, null], 'later input must preserve the held parcel');
+    await page.keyboard.down('Tab');
+    assert.equal((await queuedState()).active, 0, 'a new physical Tab press must still work within the same frame');
+    await page.keyboard.down('Tab');
+    await page.keyboard.up('Tab');
+    assert.equal((await queuedState()).active, 0, 'native key repeat must not trigger another switch');
+  } finally {
+    await read(() => window.fixtureGame.loop.wake());
+  }
   assert.deepEqual(errors, []);
-  console.log('PASS slice named freight and resident cast, opening banter, keyboard A/B/C loop, belt synchronization, pause/brake, sorting, handoff, recovery and results/restart; no script errors');
+  console.log('PASS slice named freight and resident cast, opening banter, keyboard A/B/C loop, belt synchronization, pause/brake, sorting, handoff, recovery, results/restart and exactly-once keyboard input between frames; no script errors');
   await context.close();
 
   const touchContext = await browser.newContext({ viewport: { width: 430, height: 932 }, isMobile: true, hasTouch: true });

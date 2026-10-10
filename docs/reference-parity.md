@@ -251,16 +251,18 @@ open classic mode to reach these references.
 Checks run on 2026-10-10:
 
 - TypeScript and production build passed; final bundle at this checkpoint is
-  `index-DbkF80CP.js`. The existing large-bundle advisory remains.
+  `index-ZXm9sDJL.js`. The existing large-bundle advisory remains.
 - `node --test tests/reference-parity.mjs`: all nine source/reference checks
   passed. The model suite separately covers deterministic rules and grading.
-- Canvas original-game keyboard/touch smoke passed against the final build.
-- Canvas ordinary gameplay/touch/rotation checks passed after the countdown
-  startup correction. The final visitor-visibility and held-CELL changes were
-  then checked by the complete Canvas reference suite, which passed.
-- Default WebGL ordinary and reference browser checks both passed against the
-  final build, including keyboard/touch/rotation and the full story fixtures.
-  Both suites confirmed the actual WebGL renderer (Phaser renderer type 2).
+- Canvas original-game keyboard/touch smoke passed before the final input-only
+  correction to `DepotScene`; the original scene was unchanged by that fix.
+- Canvas ordinary gameplay/touch/rotation checks and the complete reference
+  suite passed against the final build, including the queued-input regression
+  and Mesa keyboard leave/dream paths.
+- Default WebGL ordinary gameplay/touch/rotation checks passed against the final
+  build, including the queued-input regression. The full WebGL reference suite
+  passed at the preceding build, before that input-only correction. Both suites
+  confirmed the actual WebGL renderer (Phaser renderer type 2).
 
 Screenshots were inspected, not merely captured. Organic `after-game`,
 `after-personality`, `after-massage`, title and mobile captures show ordinary
@@ -272,6 +274,14 @@ capture bug that had shown stale canvas pixels despite updated logical state.
 
 The tests also found and fixed a real countdown regression: Phaser's initially
 false `Game.hasFocus` paused an already-focused fresh page. Focus handling now
-tracks actual blur/focus events, including Mesa return. Physical-device sound
+tracks actual blur/focus events, including Mesa return. CI later exposed an
+input replay bug: Phaser can revisit old DOM key events when several arrive
+before its next frame clears the queue. A deterministic regression suspended
+the frame loop, then sent real Space, ArrowLeft and Tab events. The old build
+dropped the held parcel and switched twice for one Tab press; the corrected
+scene processes each native event once. Canvas and WebGL now pass that test,
+including independent sound toggles and native key-repeat suppression.
+
+Physical-device sound
 quality, finger ergonomics and a human's ability to finish a full shift remain
 manual judgments; passing deterministic/browser checks does not establish them.

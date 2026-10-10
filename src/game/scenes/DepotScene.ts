@@ -187,8 +187,12 @@ export class DepotScene extends Phaser.Scene {
     if (!keyboard) return;
     this.keys = keyboard.addKeys('W,A,S,D,UP,DOWN,LEFT,RIGHT') as Record<string, Phaser.Input.Keyboard.Key>;
     keyboard.addCapture(['SPACE', 'TAB', 'UP', 'DOWN', 'LEFT', 'RIGHT']);
+    // Phaser may revisit queued DOM events when several keys arrive before
+    // POST_STEP clears its queue. One physical press must cause one action.
+    const handled = new WeakSet<KeyboardEvent>();
     keyboard.on('keydown', (event: KeyboardEvent) => {
-      if (event.repeat) return;
+      if (event.repeat || handled.has(event)) return;
+      handled.add(event);
       if (event.code === 'KeyM') { this.toggleSound(); return; }
       if (event.code === 'Escape' || event.code === 'KeyP') { this.togglePause(); return; }
       if (event.code === 'Enter') {
