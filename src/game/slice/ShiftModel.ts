@@ -6,10 +6,11 @@
  * the tread phase and parcel positions: there is no separate parcel velocity.
  */
 export type Route = 'A' | 'B' | 'C';
-export type ParcelKind = 'standard' | 'mallwood' | 'goji' | 'lobsters' | 'duck' | 'makeup' | 'mesa' | 'panchetters' | 'atv' | 'snakes';
+export type ParcelKind = 'envelope' | 'smallbox' | 'standard' | 'bigbox' | 'longbox' | 'mallwood' | 'goji' | 'lobsters' | 'duck' | 'makeup' | 'mesa' | 'panchetters' | 'atv' | 'snakes';
 export type WorkerId = 'termite' | 'skanky';
 export type PackageState = 'belt' | 'held' | 'floor' | 'delivered' | 'missed';
 export type ShiftPhase = 'lesson' | 'flow' | 'rush' | 'cleanup' | 'ended';
+export type ShiftGrade = 'S' | 'A' | 'B' | 'C' | 'F';
 
 export interface Worker {
   id: WorkerId;
@@ -36,10 +37,12 @@ export interface Parcel {
   /** A recovered parcel cannot incur a second first-miss penalty. */
   recovered: boolean;
   missCounted: boolean;
+  broken: boolean;
+  breakY: number | null;
 }
 
 export interface ShiftEvent {
-  type: 'grab' | 'drop' | 'sort' | 'wrong' | 'miss' | 'recover' | 'brake' | 'switch' | 'phase' | 'end';
+  type: 'grab' | 'drop' | 'sort' | 'wrong' | 'miss' | 'recover' | 'brake' | 'switch' | 'phase' | 'brian' | 'spill' | 'end';
   message: string;
   x: number;
   y: number;
@@ -67,9 +70,13 @@ const ROUTE_NAMES: Record<Route, string> = {
 };
 // Names come from the original SpawnSystem and GameScene's Hussan phone gag.
 // The preview schedules them deliberately so the game's references cannot be
-// lost to rare-item rolls during a single 90-second review shift.
+// lost to rare-item rolls during a single warehouse shift.
 const PARCEL_LABELS: Record<ParcelKind, string> = {
+  envelope: 'ENVELOPE',
+  smallbox: 'SMALL BOX',
   standard: 'PARCEL',
+  bigbox: 'BIG BOX',
+  longbox: 'LONG BOX',
   mallwood: 'MALLWOOD RD EAST',
   goji: 'GOJI BERRIES',
   lobsters: 'LIVE LOBSTERS',
@@ -88,7 +95,7 @@ const PARCEL_SEQUENCE: readonly { route: Route; kind: ParcelKind }[] = [
   { route: 'B', kind: 'makeup' },
   { route: 'C', kind: 'mesa' },
   { route: 'B', kind: 'panchetters' },
-  { route: 'A', kind: 'snakes' },
+  { route: 'A', kind: 'envelope' },
   { route: 'C', kind: 'atv' },
   { route: 'B', kind: 'standard' },
   { route: 'A', kind: 'mallwood' },
@@ -99,12 +106,20 @@ const PARCEL_SEQUENCE: readonly { route: Route; kind: ParcelKind }[] = [
   { route: 'B', kind: 'makeup' },
   { route: 'A', kind: 'duck' },
   { route: 'C', kind: 'atv' },
-  { route: 'A', kind: 'snakes' },
+  { route: 'A', kind: 'bigbox' },
   { route: 'B', kind: 'standard' },
   { route: 'C', kind: 'lobsters' },
   { route: 'B', kind: 'panchetters' },
+  { route: 'A', kind: 'smallbox' },
+  { route: 'B', kind: 'longbox' },
 ];
 const BRIAN_BULK_SEQUENCE: readonly ParcelKind[] = ['atv', 'lobsters', 'mesa', 'panchetters', 'mallwood'];
+/** Original Player carry weights, mapped to each freight's original form. */
+const CARRY_MULTIPLIER: Record<ParcelKind, number> = {
+  envelope: 1, smallbox: 0.95, standard: 0.85, bigbox: 0.7, longbox: 0.7,
+  mallwood: 0.7, goji: 0.9, lobsters: 0.55, duck: 0.95, makeup: 0.85,
+  mesa: 0.4, panchetters: 0.85, atv: 0.4, snakes: 0.85,
+};
 
 const clamp = (value: number, low: number, high: number): number => Math.max(low, Math.min(high, value));
 const distance = (a: { x: number; y: number }, b: { x: number; y: number }): number => Math.hypot(a.x - b.x, a.y - b.y);
@@ -116,9 +131,9 @@ export class ShiftModel {
     { id: 'skanky', x: 578, y: 380, side: 'right', heldId: null, facing: 'left', moving: false },
   ];
   public readonly packages: Parcel[] = [];
-  public readonly durationMs = 90_000;
+  public readonly durationMs = 180_000;
   public readonly cleanupMs = 10_000;
-  public readonly goal = 12;
+  public readonly goal = 24;
   public readonly capacity = 5;
   public activeIndex = 0;
   public elapsedMs = 0;
@@ -127,10 +142,13 @@ export class ShiftModel {
   public phase: ShiftPhase = 'lesson';
   public score = 0;
   public sorted = 0;
+  public bulkSorted = 0;
   public missed = 0;
   public combo = 0;
   public bestCombo = 0;
   public paused = false;
+  /** Vic/Shan can stop the machinery while workers and the shift clock continue. */
+  public eventStopped = false;
   public brakeRemainingMs = 0;
   public brakeCooldownMs = 0;
   public brianRemaining = 0;
@@ -141,6 +159,8 @@ export class ShiftModel {
   private nextId = 1;
   private spawnElapsedMs = 0;
   private nextSpawnIntervalMs = 6_000;
+  private brianSent = false;
+  private wrongSortErrors = 0;
   private readonly countedMisses = new Set<number>();
 
   constructor() {
@@ -161,6 +181,31 @@ export class ShiftModel {
 
   public get pileup(): number {
     return this.packages.filter((parcel) => parcel.state === 'missed').length;
+  }
+
+  public get errors(): number {
+    return this.missed + this.wrongSortErrors;
+  }
+
+  public get accuracy(): number {
+    const total = this.sorted + this.errors;
+    return total === 0 ? 100 : Math.round(this.sorted / total * 100);
+  }
+
+  public get grade(): ShiftGrade {
+    if (this.accuracy >= 95 && this.errors === 0) return 'S';
+    if (this.accuracy >= 90) return 'A';
+    if (this.accuracy >= 80) return 'B';
+    if (this.accuracy >= 70 && this.errors < 10) return 'C';
+    return 'F';
+  }
+
+  public get gradeQuote(): string {
+    const quotes: Record<ShiftGrade, string> = {
+      S: 'PERFECT SHIFT', A: 'GOOD WORK', B: 'ACCEPTABLE',
+      C: 'SHAN IS WATCHING', F: 'DO NOT COME BACK MONDAY',
+    };
+    return quotes[this.grade];
   }
 
   public get heldPackage(): Parcel | null {
@@ -241,6 +286,7 @@ export class ShiftModel {
     if (dock) {
       if (dock !== held.route) {
         this.combo = 0;
+        if (!held.recovered) this.wrongSortErrors += 1;
         this.emit('wrong', `This parcel needs ${ROUTE_NAMES[held.route]}`, worker, held);
       } else {
         this.deliver(worker, held);
@@ -290,13 +336,18 @@ export class ShiftModel {
     const oldElapsed = this.elapsedMs;
     this.elapsedMs += deltaMs;
     this.updatePhase();
+    if (!this.brianSent && this.elapsedMs >= 63_000 && this.elapsedMs < this.durationMs) {
+      this.brianSent = true;
+      this.brianRemaining = BRIAN_BULK_SEQUENCE.length;
+      this.emit('brian', 'BRIAN: SENDING 5 DOWN TO BULK!', { x: 480, y: 122 });
+    }
     const previousBrakeMs = this.brakeRemainingMs;
     this.brakeRemainingMs = Math.max(0, this.brakeRemainingMs - deltaMs);
     this.brakeCooldownMs = Math.max(0, this.brakeCooldownMs - deltaMs);
-    const movingMs = Math.max(0, deltaMs - previousBrakeMs);
+    const movingMs = this.eventStopped ? 0 : Math.max(0, deltaMs - previousBrakeMs);
     const startSpeed = this.speedAt(oldElapsed + (deltaMs - movingMs));
     const endSpeed = this.speedAt(this.elapsedMs);
-    this.beltSpeed = this.brakeRemainingMs > 0 ? 0 : endSpeed;
+    this.beltSpeed = this.eventStopped || this.brakeRemainingMs > 0 ? 0 : endSpeed;
     this.beltTravel += ((startSpeed + endSpeed) / 2) * movingMs / 1000;
 
     this.moveWorker(deltaMs, move);
@@ -307,6 +358,10 @@ export class ShiftModel {
     for (const parcel of this.packages) {
       if (parcel.state !== 'belt') continue;
       parcel.y = this.beltTravel + parcel.beltOffset;
+      if (movingMs > 0 && parcel.kind === 'makeup' && !parcel.broken && parcel.breakY !== null && parcel.y >= parcel.breakY) {
+        parcel.broken = true;
+        this.emit('spill', parcel.label, parcel, parcel);
+      }
       if (parcel.y >= SHIFT_LAYOUT.beltBottom) this.miss(parcel);
     }
 
@@ -339,7 +394,7 @@ export class ShiftModel {
     worker.moving = magnitude > 0;
     if (!worker.moving) return;
     const held = this.heldPackage;
-    const speed = held ? held.size === 'heavy' ? 170 : 195 : 235;
+    const speed = 235 * (held ? CARRY_MULTIPLIER[held.kind] : 1);
     const normalized = Math.max(1, magnitude);
     const previousX = worker.x;
     const previousY = worker.y;
@@ -375,6 +430,7 @@ export class ShiftModel {
     this.release(worker, parcel);
     this.score += award;
     this.sorted += 1;
+    if (parcel.route === 'C') this.bulkSorted += 1;
     this.combo += 1;
     this.bestCombo = Math.max(this.bestCombo, this.combo);
     this.emit('sort', `${parcel.recovered ? 'RECOVERED' : 'SORTED'} +${award}`, parcel, parcel, award);
@@ -400,10 +456,12 @@ export class ShiftModel {
     const { route, kind } = brianSending
       ? { route: 'C' as const, kind: BRIAN_BULK_SEQUENCE[BRIAN_BULK_SEQUENCE.length - this.brianRemaining] }
       : PARCEL_SEQUENCE[(this.nextId - 1) % PARCEL_SEQUENCE.length];
+    const id = this.nextId++;
     this.packages.push({
-      id: this.nextId++, route, kind, label: PARCEL_LABELS[kind], size: route === 'C' ? 'heavy' : 'normal',
+      id, route, kind, label: PARCEL_LABELS[kind], size: CARRY_MULTIPLIER[kind] <= 0.7 ? 'heavy' : 'normal',
       x: SHIFT_LAYOUT.beltX, y: spawnY, state: 'belt', workerId: null,
       beltOffset: spawnY - this.beltTravel, recovered: false, missCounted: false,
+      broken: false, breakY: kind === 'makeup' ? 220 + id * 73 % 301 : null,
     });
     if (brianSending) this.brianRemaining -= 1;
     return true;
@@ -412,17 +470,16 @@ export class ShiftModel {
   private speedAt(elapsedMs: number): number {
     if (elapsedMs < 36_000) return 50;
     if (elapsedMs < 42_000) return 50 + 18 * smoothStep((elapsedMs - 36_000) / 6_000);
-    if (elapsedMs < 63_000) return 68;
-    if (elapsedMs < 69_000) return 68 + 17 * smoothStep((elapsedMs - 63_000) / 6_000);
+    if (elapsedMs < 126_000) return 68;
+    if (elapsedMs < 132_000) return 68 + 17 * smoothStep((elapsedMs - 126_000) / 6_000);
     return 85;
   }
 
   private updatePhase(): void {
-    const phase: ShiftPhase = this.elapsedMs < 36_000 ? 'lesson' : this.elapsedMs < 63_000 ? 'flow' : this.elapsedMs < this.durationMs ? 'rush' : 'cleanup';
+    const phase: ShiftPhase = this.elapsedMs < 36_000 ? 'lesson' : this.elapsedMs < 126_000 ? 'flow' : this.elapsedMs < this.durationMs ? 'rush' : 'cleanup';
     if (phase === this.phase) return;
     this.phase = phase;
-    if (phase === 'rush') this.brianRemaining = BRIAN_BULK_SEQUENCE.length;
-    const message = phase === 'flow' ? 'STEADY FLOW · freight every 4 seconds' : phase === 'rush' ? 'BRIAN: SENDING 5 DOWN TO BULK!' : phase === 'cleanup' ? 'INTAKE CLOSED · 10 seconds to clear your freight' : 'Find your rhythm';
+    const message = phase === 'flow' ? 'STEADY FLOW · freight every 4 seconds' : phase === 'rush' ? 'LAST PUSH · freight every 3 seconds' : phase === 'cleanup' ? 'INTAKE CLOSED · 10 seconds to clear your freight' : 'Find your rhythm';
     this.emit('phase', message, { x: 480, y: 122 });
   }
 

@@ -18,9 +18,10 @@ npm run dev
 ```
 
 Open the local URL printed by Vite. The default entry is the **Night Shift / Depot
-07** playable preview: one polished 90-second section, followed by up to ten
+07** playable preview: one polished three-minute warehouse section, followed by up to ten
 seconds to clear remaining freight. Press Enter or tap **Start Shift**. Dispatch
-12 parcels and keep the recovery backlog below five.
+24 parcels and keep the recovery backlog below five. The original **3, 2, 1,
+SORT!** countdown starts the shift.
 
 - WASD / arrows move; Tab or right-click switches workers.
 - Space or left-click grabs, delivers inside a dock, or puts a parcel down.
@@ -34,12 +35,21 @@ Touch devices have a movement stick and Switch, Grab / Deliver, and Brake
 buttons. Landscape gives a closer view; portrait reserves room below the game
 for controls. The preview includes a restartable results screen.
 
-The new scene includes the original crew and workplace humor: Kylie's coffee,
-AJ and Vic's massage, Shan's rants, the United Way announcement, Ben's
-dodge-training disaster and Paula's response. Recognizable special freight
-includes GOJI BERRIES, LIVE LOBSTERS, LE DUCK, MESA BOOGIE and SMALL ATV. At
-63 seconds Brian announces five parcels down to bulk, creating a short burst
-that rewards switching workers and using the brake.
+The new scene includes the source's specific references: all of Kylie's coffee
+lines and Shan's rants, AJ and Vic's massage, the United Way announcement and
+swearing crew, Ben's dodge-training disaster, demon and Paula, and the original
+named freight. Hussan collects and dances with THE SNAKES CELL. Vic stops the
+belt and Shan physically restarts it. Brian sends five real parcels to bulk;
+after five accumulate, Ralph loads them into his five-ton truck and heads back
+to his three sets of triplets. The crew has its own trucks and personal props,
+including Paytman's fish tank and Donna's Warcraft vignette. Drivers, keys,
+exhaust, coughs, clock-out lines, departures and original grade quotes return.
+
+Vic's Mesa offer supports Y/N and touch. Leaving keeps the parcel; stealing
+risks ending the shift. A successful theft shows Skanky's original bedroom dream
+and resumes this shift. The advertised one-in-five capture risk was unfinished
+in the original source; it is now implemented. See the source inventory and
+restoration evidence in [reference parity](docs/reference-parity.md).
 
 The **original full shift**, including its NPCs, special freight and timed
 events, is retained. Choose **Play the original full shift** in the preview
@@ -71,11 +81,15 @@ npm run test:browser
 ```
 
 The model suite checks belt contact through speed ramps and stops, placement,
-recovery, pacing, and a complete winning shift. Browser checks cover both the
+recovery, pacing, and a complete winning shift. Source parity checks extract
+the original dialogue pools and compare their exact content with the preview.
+Browser checks cover both the
 original game and the new section: organic A/B/C deliveries using real keys,
 keyboard/touch controls, belt rendering, pause, brake, handoff, recovery,
-results, restart, character references and script errors. They use a loopback server and isolated
-synthetic state for edge cases. TypeScript strict checking is enabled. Dependabot maintains
+results, restart, readable dialogue variants, scripted story stages, Mesa
+choices/dream, crew loading, Ralph's five pickups, and departures. They use a
+loopback server, real opening inputs and isolated synthetic clock/cargo fixtures
+for later events and edge cases. TypeScript strict checking is enabled. Dependabot maintains
 compatible dependencies; major upgrades require a separate planned review.
 
 CI checks the real Canvas fallback on GPU-free Linux and Windows runners. Local
@@ -88,8 +102,9 @@ The original scenes reference Google Fonts when a network connection is availabl
 the preview uses system fonts and editable engine-native art. See
 [asset provenance](docs/night-shift-assets.md) and
 [the preview's scope and design](docs/night-shift-preview.md).
-Timed events, physical-device usability and audible sound still need manual
-checks after relevant changes; the smoke suite does not verify every game flow.
+Physical-device usability and audible sound still need manual checks. Automated
+coverage of timed events uses controlled fixtures, not a claim that every story
+was encountered in one unassisted playthrough.
 
 ## Source and history
 

@@ -7,16 +7,16 @@ const profiles: Record<string, Profile> = {
   aj: { shirt: 0xc49a75, hair: 0x72523b, skin: 0xc49a75 },
   ben: { shirt: 0x5d6170, hair: 0x554638, skin: 0xc19878 },
   paula: { shirt: 0xb85a94, hair: 0x543344, skin: 0xb78363 },
-  bannerman: { shirt: 0xa18c4d, hair: 0x71563d, skin: 0xc6a079 },
+  bannerman: { shirt: 0x8b6f34, hair: 0x71563d, skin: 0xc6a079 },
   fruitloop: { shirt: 0x88aa56, hair: 0x79613b, skin: 0xc6a079 },
   doris: { shirt: 0x85638f, hair: 0xd2b86c, skin: 0xcfa585 },
   brian: { shirt: 0x82705b, hair: 0x6b4a32, skin: 0xbc926e },
   donna: { shirt: 0x608c7b, hair: 0xaf774f, skin: 0xcba380 },
   vic: { shirt: 0x727f83, hair: 0xb4b4a1, skin: 0xc29c7a },
   shan: { shirt: 0xd5d8bb, hair: 0x84928a, skin: 0xc98277 },
-  john: { shirt: 0xcfac61, hair: 0x6d5542, skin: 0xbf9672 },
+  john: { shirt: 0x2f4f64, hair: 0x3a2a19, skin: 0xbf9672 },
   kylie: { shirt: 0xbc598a, hair: 0x83569a, skin: 0xd0a684 },
-  ralph: { shirt: 0x527888, hair: 0x8a7051, skin: 0xbf9272, width: 29 },
+  ralph: { shirt: 0x8b6f47, hair: 0x8a7051, skin: 0xd1a07d, width: 24 },
   gunman: { shirt: 0x30383f, hair: 0x2c2b2b, skin: 0xb88462, width: 27 },
 };
 
@@ -33,19 +33,26 @@ function miniDemon(g: Phaser.GameObjects.Graphics, x: number, y: number) {
   g.fillStyle(0x653251).fillTriangle(x - 5, y, x - 15, y - 4, x - 9, y + 9)
     .fillTriangle(x + 5, y, x + 15, y - 4, x + 9, y + 9);
   g.fillStyle(0xa166a3).fillRoundedRect(x - 7, y - 5, 14, 17, 5);
-  g.fillStyle(0xd4b38d).fillTriangle(x - 6, y - 4, x - 6, y - 11, x - 1, y - 4)
+  g.fillStyle(0xa166a3).fillTriangle(x - 6, y - 4, x - 6, y - 11, x - 1, y - 4)
     .fillTriangle(x + 1, y - 4, x + 6, y - 11, x + 6, y - 4);
   g.fillStyle(0xe69c90).fillCircle(x - 3, y + 1, 1.5).fillCircle(x + 3, y + 1, 1.5);
   stroke(g, x - 2, y + 6, x + 2, y + 7, 0x382637, 1);
 }
 
 const accents = new WeakMap<Phaser.GameObjects.Container, { id: string; graphics: Phaser.GameObjects.Graphics }>();
+type ColleaguePose = 'idle' | 'shout' | 'crouch' | 'massage';
+const articulatedParts = new WeakMap<Phaser.GameObjects.Container, {
+  body: Phaser.GameObjects.Graphics;
+  arms: Phaser.GameObjects.Container[];
+  legs: Phaser.GameObjects.Container[];
+}>();
 
 /** Root positions this container; props and decorative motion never move its feet. */
 export function createColleagueArt(scene: Phaser.Scene, name: string): Phaser.GameObjects.Container {
   const normalized = name.toLowerCase();
   const id = aliases[normalized] ?? normalized;
   const p = profiles[id] ?? profiles.vic;
+  const articulated = id === 'john' || id === 'aj';
   const root = scene.add.container(0, 0);
   const w = p.width ?? 23;
   const g = scene.add.graphics();
@@ -87,6 +94,7 @@ export function createColleagueArt(scene: Phaser.Scene, name: string): Phaser.Ga
 
   // Every colleague retains their source silhouette and a distinctive prop.
   for (const x of [-6, 6]) {
+    if (articulated) continue;
     g.fillStyle(id === 'aj' ? p.skin : 0x253a45).fillRoundedRect(x - 4, 7, 8, 15, 2);
     g.fillStyle(id === 'aj' ? p.skin : 0x152730).fillRoundedRect(x - 5, 19, 10, 6, 2);
     stroke(g, x - 3, 21, x + 3, 21, id === 'aj' ? 0xe0b28a : 0x6d7c77, 1);
@@ -100,6 +108,7 @@ export function createColleagueArt(scene: Phaser.Scene, name: string): Phaser.Ga
   g.fillStyle(id === 'aj' ? 0x4c665c : 0x2e4750).fillRoundedRect(-w / 2 + 1, 7, w - 2, 8, 2);
   g.fillStyle(0xb2ad8d).fillRect(-2, 8, 4, 3);
   for (const x of [-w / 2 - 3, w / 2 + 3]) {
+    if (articulated) continue;
     g.fillStyle(id === 'aj' ? p.skin : p.shirt).fillRoundedRect(x - 3, -14, 7, 21, 3);
     g.fillStyle(p.skin).fillRoundedRect(x - 3, 2, 7, 7, 3);
   }
@@ -108,8 +117,8 @@ export function createColleagueArt(scene: Phaser.Scene, name: string): Phaser.Ga
     stroke(g, 2, -5, 9, -6, 0x997254, 1, 0.6);
     stroke(g, 0, -3, 0, 3, 0x9f7959, 1, 0.5);
   }
-  if (id === 'bannerman' || id === 'john') {
-    for (const x of [-8, 5]) g.fillStyle(id === 'john' ? 0xe4c276 : 0xc8bd73).fillRect(x, -15, 4, 22);
+  if (id === 'ralph' || id === 'john') {
+    for (const x of [-8, 5]) g.fillStyle(0xe4c276).fillRect(x, -15, 4, 22);
     g.fillStyle(0xd6dcc0).fillRect(-11, 1, 22, 3);
   }
   if (id === 'shan') {
@@ -148,21 +157,12 @@ export function createColleagueArt(scene: Phaser.Scene, name: string): Phaser.Ga
     g.fillStyle(0xdc8b63).fillCircle(15, -2, 1.5).fillCircle(20, -2, 1.5);
   } else if (id === 'doris') {
     g.fillStyle(0xdec678).fillCircle(-7, -31, 5).fillCircle(0, -34, 6).fillCircle(7, -31, 5);
-    g.lineStyle(1, 0x544341).strokeCircle(-4, -24, 3).strokeCircle(4, -24, 3);
-    stroke(g, -1, -24, 1, -24, 0x544341, 1);
     stroke(g, 9, -15, 22, -15, 0xd9d4ba, 2);
     g.fillStyle(0xd8865d).fillCircle(22, -15, 1.5);
-  } else if (id === 'brian') {
-    g.fillStyle(0x46778f).fillRoundedRect(-10, -34, 20, 9, 5);
-    g.fillStyle(0x294f6a).fillRoundedRect(-11, -27, 25, 4, 2);
   } else if (id === 'donna') {
     g.fillStyle(p.hair).fillRoundedRect(-12, -33, 8, 27, 4).fillRoundedRect(7, -31, 6, 27, 3);
     g.lineStyle(1, 0xd9c381).beginPath().moveTo(-6, -12).lineTo(0, -6).lineTo(6, -12).strokePath();
     g.fillStyle(0xe8c96e).fillCircle(0, -5, 2);
-    g.fillStyle(0x705940).fillRoundedRect(8, -6, 13, 18, 2);
-    g.fillStyle(0xc8c5a4).fillRect(10, -4, 9, 13);
-    g.fillStyle(0x7e978d).fillRect(13, -7, 4, 3);
-    for (const y of [0, 3, 6]) stroke(g, 11, y, 17, y, 0x718779, 1);
   } else if (id === 'vic') {
     stroke(g, -8, -28, -1, -26, 0x5a5d56, 2);
     stroke(g, 2, -26, 8, -28, 0x5a5d56, 2);
@@ -172,10 +172,8 @@ export function createColleagueArt(scene: Phaser.Scene, name: string): Phaser.Ga
     stroke(g, -9, -27, -9, -4, 0xc88dba, 1);
     g.fillStyle(0xe6c5a0).fillCircle(-11, -19, 2).fillCircle(11, -19, 2);
   } else if (id === 'ralph') {
-    g.fillStyle(0x8e9f97).fillRoundedRect(-13, -36, 26, 10, 4);
-    g.fillStyle(0x5f7b7b).fillRoundedRect(-14, -28, 29, 4, 2);
-    g.fillStyle(0x997a51).fillRoundedRect(-7, -19, 14, 7, 3);
-    g.fillStyle(0xcaa17b).fillRect(-4, -18, 8, 2);
+    g.fillStyle(0xd8bf64).fillRoundedRect(-11, -36, 22, 10, 4);
+    g.fillStyle(0xb7984d).fillRoundedRect(-12, -28, 26, 4, 2);
   } else if (id === 'paula') {
     g.fillStyle(0x67334c).fillRoundedRect(-12, -35, 25, 10, 5);
     g.fillStyle(0x66394d).fillRoundedRect(-13, -29, 5, 24, 2).fillRoundedRect(9, -29, 5, 24, 2);
@@ -191,6 +189,27 @@ export function createColleagueArt(scene: Phaser.Scene, name: string): Phaser.Ga
     g.fillStyle(p.skin).fillRoundedRect(-21, -1, 7, 5, 2).fillRoundedRect(3, -1, 7, 5, 2);
   }
 
+  if (articulated) {
+    const arms: Phaser.GameObjects.Container[] = [];
+    const legs: Phaser.GameObjects.Container[] = [];
+    for (const direction of [-1, 1]) {
+      const leg = scene.add.graphics();
+      leg.fillStyle(id === 'aj' ? p.skin : 0x253a45).fillRoundedRect(-4, 0, 8, 15, 2);
+      leg.fillStyle(id === 'aj' ? p.skin : 0x152730).fillRoundedRect(-5, 12, 10, 6, 2);
+      stroke(leg, -3, 14, 3, 14, id === 'aj' ? 0xe0b28a : 0x6d7c77, 1);
+      const legRoot = scene.add.container(direction * 6, 7, [leg]);
+      root.add(legRoot);
+      legs.push(legRoot);
+      const arm = scene.add.graphics();
+      arm.fillStyle(p.skin).fillRoundedRect(-3, 0, 7, 18, 3);
+      arm.fillStyle(id === 'aj' ? 0xd8ad86 : p.shirt).fillRoundedRect(-3, -1, 7, id === 'aj' ? 6 : 8, 3);
+      arm.fillStyle(p.skin).fillRoundedRect(-4, 15, 9, 7, 3);
+      const armRoot = scene.add.container(direction * (w / 2 + 2), -14, [arm]);
+      root.add(armRoot);
+      arms.push(armRoot);
+    }
+    articulatedParts.set(root, { body: g, arms, legs });
+  }
   const effect = scene.add.graphics();
   root.add(effect);
   accents.set(root, { id, graphics: effect });
@@ -199,7 +218,30 @@ export function createColleagueArt(scene: Phaser.Scene, name: string): Phaser.Ga
   return root;
 }
 
-/** Cigarette wisps and Brian's stink remain local to their original character. */
+/** Source John gestures and AJ kneading are limb poses, independent of foot motion. */
+export function setColleaguePose(container: Phaser.GameObjects.Container, pose: ColleaguePose, timeMs = container.scene.time.now): void {
+  const parts = articulatedParts.get(container);
+  if (!parts) return;
+  const motion = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : Math.sin(timeMs / 115);
+  parts.body.setPosition(0, pose === 'crouch' ? 6 : 0).setScale(1, pose === 'crouch' ? 0.82 : 1);
+  parts.legs.forEach((leg, index) => {
+    const direction = index === 0 ? -1 : 1;
+    leg.setPosition(direction * (pose === 'crouch' ? 9 : 6), pose === 'crouch' ? 15 : 7)
+      .setRotation(pose === 'crouch' ? -direction * 0.55 : 0).setScale(1, pose === 'crouch' ? 0.62 : 1);
+  });
+  parts.arms.forEach((arm, index) => {
+    const direction = index === 0 ? -1 : 1;
+    arm.setScale(1).setPosition(direction * 13.5, -14).setRotation(0);
+    if (pose === 'shout') arm.setRotation(-direction * (2.05 + motion * 0.06));
+    else if (pose === 'crouch') arm.setPosition(direction * 17, 3).setRotation(-direction * 1.15);
+    else if (pose === 'massage') {
+      arm.setPosition(direction * 11, -10 + (index === 0 ? motion : -motion) * 2);
+      arm.setRotation(1.12 + (index === 0 ? motion : -motion) * 0.1).setScale(1, 1.12);
+    }
+  });
+}
+
+/** Source accents remain local, including Shan's red face during a rant. */
 export function updateColleagueArt(container: Phaser.GameObjects.Container, timeMs: number): void {
   const accent = accents.get(container);
   if (!accent) return;
@@ -215,5 +257,12 @@ export function updateColleagueArt(container: Phaser.GameObjects.Container, time
       const phase = (timeMs / 1500 + i / 3) % 1;
       stroke(g, -12 + i * 11, -34 - phase * 8, -10 + i * 11, -39 - phase * 8, 0x9cad72, 2, 0.55 * (1 - phase));
     }
+  } else if (id === 'shan' && container.getData('ranting')) {
+    // ShanNpc's source head color, restricted to the face so his white shirt and red tie stay readable.
+    g.fillStyle(0xd06262).fillRoundedRect(-9, -31, 18, 20, 7);
+    g.fillStyle(0xf1ce9c, 0.16).fillRoundedRect(-5, -28, 10, 11, 4);
+    g.fillStyle(profiles.shan.hair).fillRoundedRect(-10, -34, 20, 9, 5).fillRoundedRect(-10, -30, 4, 10, 2);
+    g.fillStyle(0x283737).fillCircle(-3, -23, 1).fillCircle(4, -23, 1);
+    stroke(g, -2, -16, 3, -16, 0x785640, 1);
   }
 }

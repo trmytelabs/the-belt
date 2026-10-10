@@ -1,31 +1,43 @@
 import Phaser from 'phaser';
-import { createColleagueArt, updateColleagueArt } from './DepotCastArt';
+import { createColleagueArt, updateColleagueArt, setColleaguePose } from './DepotCastArt';
+import { type DepotArt } from './DepotArt';
+import { DepotRoutines, type DepotColleague } from './DepotRoutines';
+import { KYLIE_QUOTES, SHAN_RANTS, WORKER_SWEARS, COUGH_LINES, SHOT_WORDS, CLOCK_OUT_LINES, MESA } from './DepotReferences';
 import type { ShiftEvent, ShiftModel } from './ShiftModel';
 import { audioSystem } from '../systems/AudioSystem';
 
-type Colleague = { art: Phaser.GameObjects.Container; tag: Phaser.GameObjects.Text; name: string; x: number; y: number };
-type Speech = { panel: Phaser.GameObjects.Container; expires: number; priority: number };
+type Speech = { panel: Phaser.GameObjects.Container; expires: number; priority: number; id: string; copy: string; duration: number };
 
 /** The original warehouse's people and running jokes, staged outside the sort lanes. */
 export class DepotLife {
   public readonly history: string[] = [];
-  private readonly cast = new Map<string, Colleague>();
+  private readonly cast = new Map<string, DepotColleague>();
+  public readonly routines: DepotRoutines;
   private readonly cues = new Set<string>();
   private readonly speech = new Map<'left' | 'right', Speech>();
+  private readonly pendingSpeech: { id: string; copy: string; duration: number; priority: number }[] = [];
   private readonly scene: Phaser.Scene;
   private readonly model: ShiftModel;
-  private bulkDelivered = 0;
   private johnUntil = 0;
-  private ralphUntil = 0;
+  private johnSpoken = false;
   private shanUntil = 0;
   private vicUntil = 0;
+  private mesaOffering = false;
+  private rantIndex = 1;
+  private celebrationMs = 0;
+  private readonly depot: DepotArt;
+  private readonly deadMarker: Phaser.GameObjects.Text;
+  private readonly towel: Phaser.GameObjects.Graphics;
+  private readonly beltButton: Phaser.GameObjects.Arc;
+  private readonly restartButton: Phaser.GameObjects.Arc;
   private readonly reducedMotion: boolean;
   private readonly portal: Phaser.GameObjects.Graphics;
   private readonly bang: Phaser.GameObjects.Text;
 
-  constructor(scene: Phaser.Scene, model: ShiftModel) {
+  constructor(scene: Phaser.Scene, model: ShiftModel, depot: DepotArt) {
     this.scene = scene;
     this.model = model;
+    this.depot = depot;
     this.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const residents: [string, string, number, number][] = [
       ['hussan', 'HUSSAN', 51, 201], ['aj', 'AJ', 191, 398],
@@ -45,12 +57,26 @@ export class DepotLife {
       fontFamily: 'Arial, sans-serif', fontSize: '15px', fontStyle: 'bold',
       color: '#f0dfb3', stroke: '#713e42', strokeThickness: 4,
     }).setOrigin(0.5).setDepth(17).setVisible(false);
+    this.deadMarker = scene.add.text(0, -15, 'X_X', {
+      fontFamily: 'Arial', fontSize: '13px', fontStyle: 'bold', color: '#f4e0bd', stroke: '#372632', strokeThickness: 3,
+    }).setOrigin(0.5).setVisible(false);
+    this.cast.get('ben')!.art.add(this.deadMarker);
+    this.towel = scene.add.graphics().setDepth(17).setVisible(false);
+    this.towel.fillStyle(0xd4d8bf).fillRoundedRect(131, 385, 19, 22, 3);
+    this.towel.lineStyle(2, 0x859b93).lineBetween(133, 390, 148, 390);
+    scene.add.rectangle(220, 407, 21, 28, 0x50696b).setStrokeStyle(2, 0x83948c).setDepth(14);
+    this.beltButton = scene.add.circle(220, 405, 7, 0xb55e50).setDepth(15);
+    scene.add.text(220, 425, 'STOP', { fontFamily: 'Arial', fontSize: '7px', color: '#cbd3b9' }).setOrigin(0.5).setDepth(15);
+    scene.add.rectangle(740, 407, 21, 28, 0x50696b).setStrokeStyle(2, 0x83948c).setDepth(14);
+    this.restartButton = scene.add.circle(740, 405, 7, 0xb55e50).setDepth(15);
+    scene.add.text(740, 425, 'START', { fontFamily: 'Arial', fontSize: '7px', color: '#cbd3b9' }).setOrigin(0.5).setDepth(15);
+    this.routines = new DepotRoutines(scene, model, depot, this.cast, this.say.bind(this));
   }
 
   private add(id: string, name: string, x: number, y: number, visible: boolean): void {
     const art = createColleagueArt(this.scene, id).setPosition(x, y).setDepth(15).setVisible(visible);
     art.setScale(art.scaleX * 0.8);
-    const tag = this.scene.add.text(0, 39, name, {
+    const tag = this.scene.add.text(0, ['ben', 'bannerman', 'donna'].includes(id) ? -46 : 39, name, {
       fontFamily: 'Arial, sans-serif', fontSize: '10px', fontStyle: 'bold',
       color: '#d0d3b9', stroke: '#142b34', strokeThickness: 3,
     }).setOrigin(0.5);
@@ -63,47 +89,139 @@ export class DepotLife {
     for (const [side, bubble] of this.speech) {
       if (time >= bubble.expires) { bubble.panel.destroy(true); this.speech.delete(side); }
     }
+    for (const side of ['left', 'right'] as const) {
+      if (this.speech.has(side)) continue;
+      const next = this.pendingSpeech.findIndex(item => this.speakerSide(item.id) === side);
+      if (next >= 0) {
+        const item = this.pendingSpeech.splice(next, 1)[0];
+        this.say(item.id, item.copy, item.duration, item.priority);
+      }
+    }
     // A few purposeful idle gestures; the crew stays out of both workers' lanes.
     for (const id of ['hussan', 'brian', 'fruitloop', 'doris', 'ben', 'bannerman', 'donna']) {
       const colleague = this.cast.get(id)!;
       colleague.art.rotation = this.reducedMotion ? 0 : Math.sin(time / (id === 'brian' ? 210 : 1100) + colleague.x) * (id === 'brian' ? 0.025 : 0.013);
       updateColleagueArt(colleague.art, this.reducedMotion ? 0 : time);
     }
-    this.once('coffee', 2800, () => this.say('kylie', 'WHERE IS MY\nTIMMY HORTANS?!', 4900, 1));
+    KYLIE_QUOTES.forEach((quote, index) => this.once(`coffee-${index}`, 2800 + index * 3700, () => this.say('kylie', quote, 3500, 1)));
     const kylie = this.cast.get('kylie')!;
-    kylie.art.setVisible(time > 1800 && time < 11500);
+    kylie.art.setVisible(time > 1800 && time < 15500);
     kylie.art.x = time < 4500 ? Phaser.Math.Linear(986, 863, Phaser.Math.Clamp((time - 1800) / 2700, 0, 1))
-      : time < 8300 ? 863 : Phaser.Math.Linear(863, 985, (time - 8300) / 3200);
+      : time < 12300 ? 863 : Phaser.Math.Linear(863, 985, (time - 12300) / 3200);
+    kylie.art.y = time < 12300 ? 400 : Phaser.Math.Linear(400, 361, Phaser.Math.Clamp((time - 12300) / 850, 0, 1));
     kylie.art.rotation = this.reducedMotion ? 0 : Math.sin(time / 120) * 0.04;
 
     this.once('john', 13000, () => this.john());
     const john = this.cast.get('john')!;
     john.art.setVisible(time < this.johnUntil);
-    john.art.setScale(0.8, this.reducedMotion ? 0.8 : 0.76 + Math.sin(time / 160) * 0.04);
+    const johnElapsed = 4600 - (this.johnUntil - time);
+    john.art.x = johnElapsed < 600 ? Phaser.Math.Linear(-40, 77, Phaser.Math.Clamp(johnElapsed / 600, 0, 1))
+      : johnElapsed < 3950 ? 77 : Phaser.Math.Linear(77, -40, Phaser.Math.Clamp((johnElapsed - 3950) / 650, 0, 1));
+    john.art.setScale(0.8);
+    setColleaguePose(john.art, johnElapsed < 600 || johnElapsed >= 3950 ? 'idle' : johnElapsed < 2100 ? 'shout' : 'crouch', this.reducedMotion ? 0 : time);
+    if (john.art.visible && johnElapsed >= 600 && !this.johnSpoken) {
+      this.johnSpoken = true;
+      this.say('john', "DON'T STACK\nBOXES ON BOXES!", 3600);
+    }
 
     this.once('massage', 23500, () => this.say('vic', 'I NEED A\nQUICK TUNE UP', 4800, 1));
     const vic = this.cast.get('vic')!;
     const massage = time >= 21000 && time < 33500;
     const lyingDown = time > 24700 && time < 30800;
-    vic.art.setVisible(massage || time < this.vicUntil);
+    vic.art.setVisible(massage || time < this.vicUntil || this.mesaOffering);
     vic.art.x = !massage ? 132 : time < 23700 ? Phaser.Math.Linear(-40, 132, Phaser.Math.Clamp((time - 21000) / 2700, 0, 1))
       : time < 30800 ? 132 : Phaser.Math.Linear(132, -40, (time - 30800) / 2700);
     vic.art.rotation = lyingDown ? Math.PI / 2 : 0;
     vic.tag.setVisible(!lyingDown);
+    this.towel.setVisible(lyingDown);
     const aj = this.cast.get('aj')!;
-    aj.art.rotation = time > 24700 && time < 30800 && !this.reducedMotion ? Math.sin(time / 95) * 0.08 : 0;
+    aj.art.rotation = 0;
+    if (massage) aj.art.setPosition(lyingDown ? 174 : 191, 398);
+    setColleaguePose(aj.art, lyingDown ? 'massage' : 'idle', this.reducedMotion ? 0 : time);
 
-    this.once('snake', 41400, () => this.say('hussan', 'THE SNAKES CELL!', 3600));
-    this.once('paid-day', 51200, () => {
+    this.once('paid-day', 134000, () => {
       this.shanUntil = time + 7200;
       this.say('shan', 'TERMITE AND SKANKY HAVE BOTH WON A FREE PAID DAY OFF FROM UNITED WAY', 4100, 1);
     });
-    this.once('paid-day-response', 55600, () => this.say('doris', 'YOU GOTTA BE\nFUCKING KIDDING', 3900, 1));
+    // Let each pair finish speaking. All six original variants remain readable.
+    ['hussan', 'fruitloop', 'aj', 'doris', 'bannerman', 'donna'].forEach((id, index) => {
+      this.once(`paid-day-response-${index}`, 138600 + Math.floor(index / 2) * 3500,
+        () => this.say(id, WORKER_SWEARS[index], 3300, 1));
+    });
+    this.once('paid-day-response-brian', 149100, () => this.say('brian', WORKER_SWEARS[0], 3300, 1));
     this.cast.get('shan')!.art.setVisible(time < this.shanUntil);
     this.once('brian-response', 64600, () => this.say(this.model.activeWorker.id, 'YOU ARE SERIOUSLY SENDING 5 DOWN TO BULK?', 4700, 1));
     this.updateBenIncident(time);
-    this.once('ralph', 87500, () => this.ralph());
-    this.cast.get('ralph')!.art.setVisible(time < this.ralphUntil);
+    this.updateButtonIncident(time);
+    const shan = this.cast.get('shan')!.art;
+    shan.setData('ranting', time < this.shanUntil);
+    updateColleagueArt(shan, this.reducedMotion ? 0 : time);
+    this.once('drivers', 114000, () => audioSystem.play('truck'));
+    COUGH_LINES.forEach((line, index) => this.once(`cough-${index}`, 116000 + index * 3000,
+      () => { this.say(index % 2 === 0 ? 'hussan' : 'doris', line, 2800, 1); audioSystem.play('npc-talk'); }));
+    const reserved = new Set<string>();
+    if (time >= 21000 && time < 33500) reserved.add('aj');
+    if (time >= 68000) reserved.add('ben');
+    if (this.routines.isHussanBusy(time)) reserved.add('hussan');
+    this.routines.update(time, reserved);
+    this.depot.updateDetails(this.reducedMotion ? 0 : time);
+  }
+
+  private updateButtonIncident(time: number): void {
+    const vic = this.cast.get('vic')!.art;
+    const shan = this.cast.get('shan')!.art;
+    if (time >= 94000 && time < 102000) {
+      vic.setVisible(true).setRotation(0).setPosition(
+        time < 96000 ? Phaser.Math.Linear(40, 208, (time - 94000) / 2000) : time < 97500 ? 208 : Phaser.Math.Linear(208, -35, (time - 97500) / 4500), 397);
+    }
+    this.once('vic-stop', 96000, () => {
+      this.model.eventStopped = true;
+      this.beltButton.setFillStyle(0xefb574);
+      this.say('vic', 'BELT STOPPED', 2600, 1);
+      audioSystem.play('belt-stop');
+    });
+    if (time >= 99200 && time < 108000) {
+      shan.setVisible(true).setPosition(time < 101200 ? Phaser.Math.Linear(960, 752, (time - 99200) / 2000)
+        : time < 104000 ? 752 : Phaser.Math.Linear(752, 980, (time - 104000) / 4000), 397);
+    } else shan.setPosition(880, 395);
+    this.once('shan-rant', 99600, () => this.rant());
+    this.once('shan-restart', 101800, () => {
+      this.model.eventStopped = false;
+      this.beltButton.setFillStyle(0xb55e50);
+      this.restartButton.setFillStyle(0xa6cc9a);
+      this.say('shan', 'BELT RUNNING', 2200, 1);
+      audioSystem.play('button');
+    });
+  }
+
+  public setMesaOffer(visible: boolean): void {
+    this.mesaOffering = visible;
+    const vic = this.cast.get('vic')!.art;
+    vic.setVisible(visible).setRotation(0).setPosition(visible ? -35 : 401, 278);
+    this.cast.get('vic')!.tag.setVisible(true);
+    if (visible) {
+      this.scene.tweens.add({ targets: vic, x: 401, duration: 1100, ease: 'Sine.easeOut' });
+      this.say('vic', MESA.offer, 60000, 2);
+    }
+    else {
+      for (const [side, speech] of this.speech) {
+        if (speech.priority === 2) { speech.panel.destroy(true); this.speech.delete(side); }
+      }
+    }
+  }
+
+  public mesaThought(): void {
+    const skanky = this.model.workers[1];
+    const thought = this.scene.add.container(skanky.x, skanky.y - 75).setDepth(115);
+    const cloud = this.scene.add.graphics();
+    cloud.fillStyle(0xf0dfb3).fillEllipse(0, 0, 132, 76).fillCircle(-30, 51, 8).fillCircle(-17, 66, 4);
+    const text = this.scene.add.text(0, 0, MESA.thought, {
+      fontFamily: 'Arial', fontSize: '16px', fontStyle: 'bold', color: '#19313a', align: 'center',
+    }).setOrigin(0.5);
+    thought.add([cloud, text]);
+    this.scene.tweens.add({ targets: thought, scale: this.reducedMotion ? 1 : 1.7, duration: 700 });
+    this.scene.time.delayedCall(850, () => thought.destroy(true));
+    this.history.push(`SKANKY: ${MESA.thought.replace(/\n/g, ' ')}`);
   }
 
   /** The original dodge-training / demon / Paula gag plays in the outer bay. */
@@ -117,18 +235,22 @@ export class DepotLife {
       : time < 80000 ? 528 : Phaser.Math.Linear(528, 650, (time - 80000) / 1500);
     this.once('gunman', 69500, () => this.say('gunman', "I'M GOING TO\nROB THIS PLACE!", 2400, 1));
     this.once('ben-training', 72000, () => this.say('ben', "DON'T WORRY GUYS. I GOT THIS. I TOOK TRAINING ON HOW TO DODGE GUNS", 4400, 1));
-    if (time >= 76400 && time < 78500) {
-      ben.x = 58 + Math.sin((time - 76400) / 230) * 22;
-      ben.y = 554 + Math.cos((time - 76400) / 180) * 15;
-      if (!this.reducedMotion) ben.rotation = Math.sin(time / 120) * 0.2;
+    const dodgeTime = Phaser.Math.Clamp(time - 76400, 0, 2100);
+    const fallenX = 112 + Math.sin(2100 / 230) * 22;
+    const fallenY = 554 + Math.cos(2100 / 180) * 15;
+    if (time >= 76400 && time < 80500) {
+      ben.x = 58 + Math.sin(dodgeTime / 230) * 22 + dodgeTime / 2100 * 54;
+      ben.y = 554 + Math.cos(dodgeTime / 180) * 15;
+      if (time < 80020 && !this.reducedMotion) ben.rotation = Math.sin(time / 120) * 0.2;
     } else if (time < 76400) ben.setPosition(48, 570);
-    for (const [index, at] of [78500, 78900, 79400].entries()) {
-      this.once(`shot-${index}`, at, () => { audioSystem.play('gunshot'); });
+    for (const [index, at] of [78500, 78760, 79180, 79500, 80020].entries()) {
+      this.once(`shot-${index}`, at, () => { this.bang.setText(SHOT_WORDS[index]); audioSystem.play('gunshot'); });
     }
     // Comic impact lettering instead of full-screen flashes or screen shake.
-    this.bang.setVisible(time >= 78500 && time < 79900);
+    this.bang.setVisible(time >= 78500 && time < 80500);
     if (!this.reducedMotion) this.bang.setScale(1 + Math.sin(time / 130) * 0.06);
-    if (time >= 79400 && time < 80500) ben.setRotation(Math.PI / 2);
+    this.deadMarker.setVisible(time >= 80020 && time < 83000);
+    if (time >= 80020 && time < 80500) ben.setRotation(Math.PI / 2 * Phaser.Math.Clamp((time - 80020) / 280, 0, 1));
     this.portal.clear();
     const portalProgress = Phaser.Math.Clamp((time - 80000) / 1000, 0, 1);
     if (time >= 80000 && time < 83500) {
@@ -138,10 +260,14 @@ export class DepotLife {
     }
     demon.setVisible(time >= 80500 && time < 83000);
     if (time >= 80500 && time < 83000) {
-      const emergence = Phaser.Math.Clamp((time - 80500) / 1000, 0, 1);
-      const closing = time > 82000 ? 1 - (time - 82000) / 1000 : 1;
-      demon.setScale((0.2 + emergence * 0.6) * closing).setPosition(58, 560 - emergence * 20);
-      ben.setPosition(58, 565).setRotation(Math.PI / 2).setScale(0.8 * closing);
+      const emergence = Phaser.Math.Clamp((time - 80500) / 700, 0, 1);
+      const drag = Phaser.Math.Clamp((time - 81200) / 1200, 0, 1);
+      const closing = 1 - Phaser.Math.Clamp((time - 82400) / 600, 0, 1);
+      const bodyX = Phaser.Math.Linear(fallenX, 58, drag);
+      const bodyY = Phaser.Math.Linear(fallenY, 565, drag);
+      demon.setScale((0.2 + emergence * 0.6) * closing).setPosition(
+        Phaser.Math.Linear(58, bodyX - 13, emergence), Phaser.Math.Linear(560, bodyY - 8, emergence));
+      ben.setPosition(bodyX, bodyY).setRotation(Math.PI / 2).setScale(0.8 * closing);
     }
     if (time >= 83000) ben.setVisible(false);
     paula.setVisible(time >= 83000 && time < 89500);
@@ -153,37 +279,53 @@ export class DepotLife {
   public onEvent(event: ShiftEvent): void {
     const item = this.model.packages.find(parcel => parcel.id === event.packageId);
     if (event.type === 'brake') {
-      this.shanUntil = this.model.elapsedMs + 4200;
-      this.say('shan', 'WHO STOPPED THE\n#@%! BELT?!', 3900);
+      this.rant();
     } else if (event.type === 'miss') {
       this.john();
-    } else if (event.type === 'grab' && item?.kind === 'mesa') {
-      this.vicUntil = this.model.elapsedMs + 3600;
-      this.say('vic', 'VIC WANTS THE MESA', 3600);
-      audioSystem.play('correct');
     } else if (event.type === 'grab' && item?.kind === 'lobsters') {
       this.say('fruitloop', 'LIVE LOBSTERS?!', 3300);
     } else if (event.type === 'grab' && item?.kind === 'snakes') {
       this.say('hussan', 'THE SNAKES CELL!', 3300);
-    } else if (event.type === 'phase' && this.model.phase === 'rush') {
+    } else if (event.type === 'brian') {
       this.say('brian', 'SENDING 5 DOWN', 4200, 1);
-    } else if (event.type === 'sort' && event.route === 'C') {
-      this.bulkDelivered += 1;
-      if (this.bulkDelivered === 3) this.ralph();
-    } else if (event.type === 'end') {
-      this.say(this.model.activeWorker.id, this.model.won ? 'WE SURVIVED!' : 'FUCK THIS.', 6000, 1);
     }
   }
 
-  private john(): void {
-    this.johnUntil = this.model.elapsedMs + 4000;
-    this.say('john', "DON'T STACK\nBOXES ON BOXES!", 3600);
+  private rant(): void {
+    this.shanUntil = this.model.elapsedMs + 4200;
+    this.say('shan', SHAN_RANTS[this.rantIndex % SHAN_RANTS.length], 3900);
+    this.rantIndex += 1;
   }
 
-  private ralph(): void {
-    this.ralphUntil = this.model.elapsedMs + 5600;
-    this.say('ralph', 'I NEED TO HURRY UP AND GET BACK TO MY 3 SETS OF TRIPLETS!', 4900);
-    audioSystem.play('truck');
+  private john(): void {
+    this.johnUntil = this.model.elapsedMs + 4600;
+    this.johnSpoken = false;
+  }
+
+  public beginCelebration(): void {
+    this.celebrationMs = 0;
+    this.pendingSpeech.length = 0;
+    this.routines.hideFreight();
+    this.say('termite', 'SHIFT DONE!', 2500, 2);
+    this.say('skanky', 'CLOCKED OUT!', 2500, 2);
+  }
+
+  public updateCelebration(delta: number): boolean {
+    this.celebrationMs += Math.min(delta, 100);
+    const residents = ['hussan', 'fruitloop', 'aj', 'doris', 'bannerman', 'donna', 'hussan', 'brian'];
+    CLOCK_OUT_LINES.forEach((line, index) => {
+      const at = 2700 + Math.floor(index / 2) * 2500;
+      const key = `clock-out-${index}`;
+      if (this.celebrationMs >= at && !this.cues.has(key)) {
+        this.cues.add(key); this.say(residents[index], line, 2350, 2);
+      }
+    });
+    for (const colleague of this.cast.values()) {
+      if (!colleague.art.visible) continue;
+      colleague.art.rotation = this.reducedMotion ? 0 : Math.sin(this.celebrationMs / 140 + colleague.x) * 0.06;
+    }
+    this.depot.departTrucks(Phaser.Math.Clamp((this.celebrationMs - 1600) / 5500, 0, 1));
+    return this.celebrationMs >= 13000;
   }
 
   private once(key: string, at: number, action: () => void): void {
@@ -192,7 +334,7 @@ export class DepotLife {
     action();
   }
 
-  private say(id: string, copy: string, duration: number, priority = 0): void {
+  public say(id: string, copy: string, duration: number, priority = 0): void {
     const worker = this.model.workers.find(worker => worker.id === id);
     const colleague = this.cast.get(id);
     const speaker = worker ? { name: worker.id.toUpperCase(), x: worker.x } : colleague;
@@ -200,7 +342,26 @@ export class DepotLife {
     const side = speaker.x < 480 ? 'left' : 'right';
     const current = this.speech.get(side);
     // A reactive aside must not cut off a set-up or punchline midway through.
-    if (current && current.expires > this.model.elapsedMs && current.priority > priority) return;
+    const clock = this.model.elapsedMs + this.celebrationMs;
+    if (current && current.expires > clock && current.priority >= priority && priority < 2) {
+      if (!this.pendingSpeech.some(item => item.id === id && item.copy === copy)) {
+        this.pendingSpeech.push({ id, copy, duration, priority });
+      }
+      return;
+    }
+    if (current && current.expires > clock && current.priority < priority && current.priority < 2) {
+      if (!this.pendingSpeech.some(item => item.id === current.id && item.copy === current.copy)) {
+        this.pendingSpeech.unshift({ id: current.id, copy: current.copy, duration: current.duration, priority: current.priority });
+      }
+    }
+    // Reactive visitors may have finished their walk while their line waited.
+    // Keep the actual speaker on the floor for the full readable speech window.
+    if (id === 'shan') this.shanUntil = Math.max(this.shanUntil, this.model.elapsedMs + duration + 300);
+    if (id === 'john') {
+      if (this.model.elapsedMs >= this.johnUntil) this.johnUntil = this.model.elapsedMs + 4600;
+      else this.johnUntil = Math.max(this.johnUntil, this.model.elapsedMs + duration + 300);
+      this.johnSpoken = true;
+    }
     current?.panel.destroy(true);
     const x = side === 'left' ? 18 : 740;
     const y = 155;
@@ -218,8 +379,13 @@ export class DepotLife {
     bg.lineStyle(2, 0xb59b6b).strokeRoundedRect(x, y, 202, height, 7);
     bg.fillStyle(0xf0dfb3).fillTriangle(x + 38, y + height - 1, x + 54, y + height - 1, x + 47, y + height + 10);
     const panel = this.scene.add.container(0, 0, [bg, name, text]).setDepth(45);
-    this.speech.set(side, { panel, expires: this.model.elapsedMs + duration, priority });
+    this.speech.set(side, { panel, expires: clock + duration, priority, id, copy, duration });
     this.history.push(`${speaker.name}: ${copy.replace(/\n/g, ' ')}`);
     audioSystem.play('npc-talk');
+  }
+
+  private speakerSide(id: string): 'left' | 'right' {
+    const worker = this.model.workers.find(worker => worker.id === id);
+    return (worker?.x ?? this.cast.get(id)?.x ?? 0) < 480 ? 'left' : 'right';
   }
 }

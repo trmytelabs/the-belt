@@ -9,7 +9,7 @@ export class MesaDreamScene extends Phaser.Scene {
     super('MesaDreamScene');
   }
 
-  create(): void {
+  create(data: { returnScene?: string } = {}): void {
     audioSystem.startMusic('results');
     this.cameras.main.setBackgroundColor(0x171124);
     this.drawBedroom();
@@ -22,7 +22,13 @@ export class MesaDreamScene extends Phaser.Scene {
       this.cameras.main.fadeOut(420, 18, 12, 8);
       this.time.delayedCall(450, () => {
         audioSystem.startMusic('game');
-        this.scene.start('GameScene');
+        if (data.returnScene) {
+          this.scene.stop();
+          this.scene.resume(data.returnScene);
+          this.scene.get(data.returnScene).events.emit('mesa-dream-finished');
+        } else {
+          this.scene.start('GameScene');
+        }
       });
     });
   }

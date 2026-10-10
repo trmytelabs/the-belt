@@ -18,7 +18,7 @@ test('belt parcels stay locked to tread travel, including speed changes and brak
   const model = new ShiftModel();
   const parcel = model.packages[0];
   const offset = parcel.y - model.beltTravel;
-  for (const elapsed of [0, 36_000, 63_000]) {
+  for (const elapsed of [0, 36_000, 126_000]) {
     model.elapsedMs = elapsed;
     const beforeY = parcel.y;
     const beforeTravel = model.beltTravel;
@@ -78,13 +78,52 @@ test('movement normalizes diagonals, respects lane bounds, and slows heavy carri
   assert.ok(Math.abs(displacement(straight.activeWorker) - displacement(diagonal.activeWorker)) < 1e-9);
   const heavy = new ShiftModel();
   heavy.packages[0].size = 'heavy';
+  heavy.packages[0].kind = 'mesa';
   reachFirst(heavy);
   const startY = heavy.activeWorker.y;
   heavy.update(100, { x: 0, y: 1 });
-  assert.ok(Math.abs(heavy.activeWorker.y - startY - 17) < 1e-9);
-  advance(heavy, 5_000, { x: 1, y: 1 });
+  assert.ok(Math.abs(heavy.activeWorker.y - startY - 9.4) < 1e-9);
+  advance(heavy, 6_000, { x: 1, y: 1 });
   assert.equal(heavy.activeWorker.x, 400);
   assert.equal(heavy.activeWorker.y, 580);
+});
+
+test('every original freight form restores its distinct carrying weight', () => {
+  const multipliers = {
+    envelope: 1, smallbox: 0.95, standard: 0.85, bigbox: 0.7, longbox: 0.7,
+    mallwood: 0.7, goji: 0.9, lobsters: 0.55, duck: 0.95, makeup: 0.85,
+    mesa: 0.4, panchetters: 0.85, atv: 0.4,
+  };
+  for (const [kind, multiplier] of Object.entries(multipliers)) {
+    const model = new ShiftModel();
+    model.packages[0].kind = kind;
+    reachFirst(model);
+    const before = model.activeWorker.y;
+    model.update(100, { x: 0, y: 1 });
+    assert.ok(Math.abs(model.activeWorker.y - before - 23.5 * multiplier) < 1e-9, `${kind} must retain its original carry multiplier`);
+  }
+});
+
+test('a Vic/Shan machinery stop freezes freight and intake while workers and the shift clock continue', () => {
+  const model = new ShiftModel();
+  const parcel = model.packages[0];
+  const firstY = parcel.y;
+  model.eventStopped = true;
+  advance(model, 6_000);
+  assert.equal(model.elapsedMs, 6_000);
+  assert.equal(model.beltTravel, 0);
+  assert.equal(parcel.y, firstY);
+  assert.equal(model.packages.length, 1);
+  assert.equal(model.beltSpeed, 0);
+  const firstX = model.activeWorker.x;
+  model.update(100, { x: -1, y: 0 });
+  assert.ok(model.activeWorker.x < firstX);
+  assert.equal(model.elapsedMs, 6_100);
+  model.eventStopped = false;
+  model.update(100);
+  assert.equal(model.beltTravel, 5);
+  assert.equal(parcel.y, firstY + 5);
+  assert.equal(parcel.y - model.beltTravel, parcel.beltOffset);
 });
 
 test('correct sort is explicit, releases contact, and rewards a continued streak', () => {
@@ -125,8 +164,30 @@ test('wrong dock keeps the parcel and gives one route-specific explanation per p
   assert.match(events[0].message, /A.*left dock/);
   assert.equal(model.heldPackage.id, 1);
   assert.equal(model.sorted, 0);
+  assert.equal(model.errors, 1);
   advance(model, 1_000);
   assert.equal(model.drainEvents().length, 0, 'feedback should not repeat every frame');
+  assert.equal(model.errors, 1, 'remaining in a wrong dock must not create frame-by-frame errors');
+});
+
+test('original grade thresholds and punchlines remain available in the warehouse results', () => {
+  const cases = [
+    [10, 0, 100, 'S', 'PERFECT SHIFT'],
+    [19, 1, 95, 'A', 'GOOD WORK'],
+    [9, 1, 90, 'A', 'GOOD WORK'],
+    [8, 2, 80, 'B', 'ACCEPTABLE'],
+    [7, 3, 70, 'C', 'SHAN IS WATCHING'],
+    [6, 4, 60, 'F', 'DO NOT COME BACK MONDAY'],
+    [24, 10, 71, 'F', 'DO NOT COME BACK MONDAY'],
+  ];
+  for (const [sorted, missed, accuracy, grade, quote] of cases) {
+    const model = new ShiftModel();
+    model.sorted = sorted;
+    model.missed = missed;
+    assert.equal(model.accuracy, accuracy);
+    assert.equal(model.grade, grade);
+    assert.equal(model.gradeQuote, quote);
+  }
 });
 
 test('occupied belt placement is rejected; successful handoff preserves shared travel', () => {
@@ -215,7 +276,7 @@ test('the opening lesson keeps six-second arrivals and phases never bunch two ar
   assert.deepEqual(arrivals.map((arrival) => arrival.time), [0, 6_000, 12_000, 18_000, 24_000, 30_000, 36_000, 40_000, 44_000]);
 });
 
-test('original comic freight opens the shift without changing its teaching routes or carry weights', () => {
+test('original comic freight opens the shift with its teaching routes and original forms', () => {
   const model = new ShiftModel();
   for (let time = 0; time < 30_000; time += 20) {
     for (const parcel of model.packages) parcel.state = 'delivered';
@@ -229,7 +290,7 @@ test('original comic freight opens the shift without changing its teaching route
     { route: 'B', kind: 'makeup', label: 'MAKEUP LOTION' },
     { route: 'C', kind: 'mesa', label: 'MESA BOOGIE' },
   ]);
-  assert.deepEqual(model.packages.map((parcel) => parcel.size), ['normal', 'normal', 'heavy', 'normal', 'normal', 'heavy']);
+  assert.deepEqual(model.packages.map((parcel) => parcel.size), ['heavy', 'normal', 'heavy', 'normal', 'normal', 'heavy']);
 });
 
 test('comic parcel identity survives pickup, handoff, pile recovery, and dispatch', () => {
@@ -258,12 +319,50 @@ test('comic parcel identity survives pickup, handoff, pile recovery, and dispatc
   assert.deepEqual({ kind: parcel.kind, label: parcel.label, route: parcel.route }, originalIdentity);
 });
 
+test('makeup arrives intact then cracks once at its seeded belt position, preserving damage when carried', () => {
+  const model = new ShiftModel();
+  const replay = new ShiftModel();
+  for (let time = 0; time < 24_000; time += 20) {
+    for (const simulation of [model, replay]) {
+      for (const parcel of simulation.packages) parcel.state = 'delivered';
+      simulation.update(20);
+    }
+  }
+  const makeup = model.packages.at(-1);
+  assert.equal(makeup.kind, 'makeup');
+  assert.equal(makeup.broken, false);
+  assert.ok(makeup.breakY >= 220 && makeup.breakY <= 520);
+  assert.equal(makeup.breakY, replay.packages.at(-1).breakY);
+  const untilBreakMs = (makeup.breakY - makeup.y) / 50 * 1000;
+  advance(model, untilBreakMs - 20);
+  assert.equal(makeup.broken, false);
+  model.eventStopped = true;
+  advance(model, 1_000);
+  assert.equal(makeup.broken, false, 'an intact parcel does not crack while the belt is stopped');
+  model.eventStopped = false;
+  model.drainEvents();
+  model.update(20);
+  assert.equal(makeup.broken, true);
+  const spills = model.drainEvents().filter((event) => event.type === 'spill');
+  assert.equal(spills.length, 1);
+  assert.equal(spills[0].message, 'MAKEUP LOTION');
+  assert.equal(spills[0].packageId, makeup.id);
+  model.activeWorker.x = 400;
+  model.activeWorker.y = makeup.y;
+  model.action();
+  assert.equal(model.heldPackage.id, makeup.id);
+  model.action();
+  advance(model, 500);
+  assert.equal(makeup.broken, true);
+  assert.equal(model.drainEvents().some((event) => event.type === 'spill'), false);
+});
+
 test('Brian announces once and sends exactly five bulk parcels before ordinary freight resumes', () => {
   const model = new ShiftModel();
   const arrivals = [{ time: 0, parcel: model.packages[0] }];
   const announcements = [];
   let previousCount = 1;
-  for (let time = 0; time < 75_000; time += 20) {
+  for (let time = 0; time < 76_000; time += 20) {
     for (const parcel of model.packages) {
       if (parcel.y > 550) parcel.state = 'delivered';
     }
@@ -277,18 +376,19 @@ test('Brian announces once and sends exactly five bulk parcels before ordinary f
       assert.ok(beltParcels[index].y - beltParcels[index - 1].y >= SHIFT_LAYOUT.parcelGap);
     }
     for (const event of model.drainEvents()) {
-      if (event.message.startsWith('BRIAN:')) announcements.push({ time: model.elapsedMs, message: event.message });
+      if (event.type === 'brian') announcements.push({ time: model.elapsedMs, message: event.message });
     }
   }
   assert.deepEqual(announcements, [{ time: 63_000, message: 'BRIAN: SENDING 5 DOWN TO BULK!' }]);
   const burst = arrivals.slice(13, 18);
   assert.deepEqual(burst.map(({ time }) => time), [64_000, 65_900, 67_800, 69_700, 71_600]);
   assert.deepEqual(burst.map(({ parcel }) => parcel.kind), ['atv', 'lobsters', 'mesa', 'panchetters', 'mallwood']);
-  assert.ok(burst.every(({ parcel }) => parcel.route === 'C' && parcel.size === 'heavy'));
+  assert.ok(burst.every(({ parcel }) => parcel.route === 'C'));
+  assert.deepEqual(burst.map(({ parcel }) => parcel.size), ['heavy', 'heavy', 'heavy', 'normal', 'heavy']);
   assert.equal(model.brianRemaining, 0);
-  assert.equal(arrivals[18].time, 74_600);
+  assert.equal(arrivals[18].time, 75_600);
   assert.equal(arrivals[18].parcel.route, 'A');
-  assert.equal(arrivals[18].parcel.kind, 'snakes');
+  assert.equal(arrivals[18].parcel.kind, 'bigbox');
   assert.deepEqual(arrivals.slice(0, 13).map(({ time }) => time), [
     0, 6_000, 12_000, 18_000, 24_000, 30_000, 36_000, 40_000, 44_000, 48_000, 52_000, 56_000, 60_000,
   ], 'Brian must not change the first63seconds of teaching and ordinary freight');
@@ -324,10 +424,10 @@ test('pausing and braking Brian’s burst delay arrivals without consuming his r
   assert.ok(firstBulk.y - secondBulk.y >= SHIFT_LAYOUT.parcelGap);
 });
 
-test('intake closes at ninety seconds and unfinished freight receives ten seconds of cleanup', () => {
+test('intake closes at three minutes and unfinished freight receives ten seconds of cleanup', () => {
   const model = new ShiftModel();
   reachFirst(model);
-  model.elapsedMs = 89_980;
+  model.elapsedMs = 179_980;
   model.update(20);
   assert.equal(model.phase, 'cleanup');
   const count = model.packages.length;
@@ -342,7 +442,7 @@ test('intake closes at ninety seconds and unfinished freight receives ten second
 test('full deterministic shift is winnable through public movement and action inputs', () => {
   const model = new ShiftModel();
   const seen = new Set();
-  for (let tick = 0; tick < 6_000 && !model.ended; tick += 1) {
+  for (let tick = 0; tick < 10_000 && !model.ended; tick += 1) {
     const held = model.heldPackage;
     let target;
     if (held) {
@@ -369,15 +469,19 @@ test('full deterministic shift is winnable through public movement and action in
   assert.equal(model.ended, true);
   assert.equal(model.won, true);
   assert.ok(model.sorted >= model.goal);
-  assert.ok(model.sorted >= 20, 'the normal-input simulation should manage the whole representative workload');
+  assert.ok(model.sorted >= 24, 'the normal-input simulation must meet the full warehouse shift target');
+  assert.equal(model.sorted, model.packages.length, 'the original freight weights must still allow the full workload to be dispatched');
   assert.deepEqual([...seen].filter((phase) => phase !== 'cleanup'), ['lesson', 'flow', 'rush', 'ended']);
   assert.equal(model.missed, 0);
   assert.deepEqual([...new Set(model.packages.map((parcel) => parcel.label))].sort(), [
     'MALLWOOD RD EAST', 'GOJI BERRIES', 'LIVE LOBSTERS', 'LE DUCK', 'MAKEUP LOTION',
-    'MESA BOOGIE', 'PANCHETTERS', 'THE SNAKES CELL', 'SMALL ATV', 'PARCEL',
+    'MESA BOOGIE', 'PANCHETTERS', 'SMALL ATV', 'PARCEL', 'ENVELOPE', 'SMALL BOX', 'BIG BOX', 'LONG BOX',
   ].sort(), 'all original comic parcel references must actually reach a normal playable shift');
-  assert.deepEqual(model.packages.map((parcel) => parcel.route), [
+  assert.deepEqual(model.packages.slice(0, 24).map((parcel) => parcel.route), [
     'A', 'B', 'C', 'A', 'B', 'C', 'B', 'A', 'C', 'B', 'A', 'B', 'C',
     'C', 'C', 'C', 'C', 'C', 'A', 'B', 'C', 'B', 'A', 'B',
   ], 'Brian’s five-parcel bulk incident should be the only change to the route sequence');
+  assert.equal(model.packages.some((parcel) => parcel.kind === 'snakes'), false, 'Hussan’s CELL belongs to its separate NPC event');
+  const events = model.drainEvents();
+  assert.equal(events.filter((event) => event.type === 'brian').length, 1, 'the later rush phase must not repeat Brian’s incident');
 });

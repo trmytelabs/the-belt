@@ -137,7 +137,6 @@ try {
     assert.ok(freight.stamps.includes(route) && freight.stamps.includes(stamp),
       'the rendered special parcel must keep both its routing letter and identifying stamp');
     if (route === 'C') {
-      await page.waitForFunction(() => window.fixtureGame.scene.getScene('DepotScene').life.history.includes('FRUIT LOOP: LIVE LOBSTERS?!'));
       await press('Escape');
       const readCast = () => read(() => {
         const scene = window.fixtureGame.scene.getScene('DepotScene');
@@ -155,7 +154,7 @@ try {
       assert.deepEqual(await readCast(), frozenCast, 'pause must freeze cast gestures, speech expiry and timed banter');
       await press('Escape');
       if (process.env.BELT_SCREENSHOT_DIR) {
-        // This is real opening play: John and Fruit Loop react while the worker
+        // This is real opening play: Kylie searches for coffee while the worker
         // carries the naturally spawned lobsters. No scene state is fabricated.
         await page.waitForTimeout(150);
         await page.screenshot({ path: join(process.env.BELT_SCREENSHOT_DIR, 'after-personality.png') });
@@ -174,7 +173,7 @@ try {
   assert.equal(await read(() => window.fixtureGame.scene.getScene('DepotScene').model.missed), 0,
     'the opening lesson must allow all three routes without a miss');
   const openingBanter = await read(() => window.fixtureGame.scene.getScene('DepotScene').life.history);
-  assert.ok(openingBanter.includes('KYLIE: WHERE IS MY TIMMY HORTANS?!'), 'Kylie must enter and complain during normal opening play');
+  assert.ok(openingBanter.includes('KYLIE: WHERE IS MY TIMMY HORTANS'), 'Kylie must enter and complain during normal opening play');
   assert.ok(openingBanter.includes("JOHN RUSHTON: DON'T STACK BOXES ON BOXES!"), 'the timed John interruption must occur during normal opening play');
 
   await press('KeyE');
@@ -263,102 +262,16 @@ try {
   assert.equal(await read(() => window.fixtureGame.scene.getScene('DepotScene').model.score), recovery.score + 60,
     'a recovered bulk parcel awards the documented half score');
 
-  // Let the earlier scheduled massage run and expire in both screenshot and
-  // normal CI runs before testing Vic's independent Mesa pickup reaction.
-  for (const time of [30_000, 40_000]) {
-    await page.evaluate(time => {
-      const model = window.fixtureGame.scene.getScene('DepotScene').model;
-      for (const parcel of model.packages) parcel.state = 'delivered';
-      for (const worker of model.workers) worker.heldId = null;
-      model.elapsedMs = time;
-    }, time);
-    await page.waitForFunction(time => window.fixtureGame.scene.getScene('DepotScene').model.elapsedMs > time, time);
-  }
-  await arrange('C');
-  await read(() => {
-    const parcel = window.fixtureGame.scene.getScene('DepotScene').model.packages[0];
-    parcel.kind = 'mesa'; parcel.label = 'MESA BOOGIE';
-  });
-  await press('Space');
-  await page.waitForFunction(() => window.fixtureGame.scene.getScene('DepotScene').life.history.includes('VIC: VIC WANTS THE MESA'));
-  assert.equal(await read(() => window.fixtureGame.scene.getScene('DepotScene').life.cast.get('vic').art.visible), true,
-    'Vic must be physically present for his Mesa reaction after the massage ends');
-
-  // Isolated clock fixtures cover later cast cues without waiting through a
-  // second complete shift. Production update/event delivery still runs each cue.
-  for (const [time, expected] of [
-    [41_500, 'HUSSAN: THE SNAKES CELL!'],
-    [51_300, 'SHAN O MACK: TERMITE AND SKANKY HAVE BOTH WON A FREE PAID DAY OFF FROM UNITED WAY'],
-    [55_700, 'DORIS: YOU GOTTA BE FUCKING KIDDING'],
-    [63_100, 'BRIAN: SENDING 5 DOWN'],
-    [64_700, `${await read(() => window.fixtureGame.scene.getScene('DepotScene').model.activeWorker.id.toUpperCase())}: YOU ARE SERIOUSLY SENDING 5 DOWN TO BULK?`],
-    [68_000, null],
-    [69_500, "GUNMAN: I'M GOING TO ROB THIS PLACE!"],
-    [72_000, "BEN: DON'T WORRY GUYS. I GOT THIS. I TOOK TRAINING ON HOW TO DODGE GUNS"],
-    [76_400, null],
-    [78_500, null],
-    [79_400, null],
-    [80_500, null],
-    [81_500, null],
-    [83_000, null],
-    [84_100, 'PAULA ABDUL: GREAT. NOW WHICH BITCH IS GOING TO LOAD MY FUCKING TRUCK'],
-    [87_500, 'RALPH: I NEED TO HURRY UP AND GET BACK TO MY 3 SETS OF TRIPLETS!'],
-    [89_500, null],
-  ]) {
-    await page.evaluate(time => {
-      const model = window.fixtureGame.scene.getScene('DepotScene').model;
-      for (const parcel of model.packages) parcel.state = 'delivered';
-      for (const worker of model.workers) worker.heldId = null;
-      model.elapsedMs = time;
-    }, time);
-    await page.waitForFunction(time => window.fixtureGame.scene.getScene('DepotScene').model.elapsedMs > time, time);
-    if (expected) {
-      await page.waitForFunction(expected => window.fixtureGame.scene.getScene('DepotScene').life.history.includes(expected), expected);
-    }
-    if (time === 72_000) {
-      const beforeMiss = await read(() => {
-        const scene = window.fixtureGame.scene.getScene('DepotScene');
-        return { missed: scene.model.missed, johnLines: scene.life.history.filter(line => line.startsWith('JOHN RUSHTON:')).length };
-      });
-      await read(() => {
-        const model = window.fixtureGame.scene.getScene('DepotScene').model;
-        const parcel = model.packages.find(parcel => !parcel.missCounted);
-        Object.assign(parcel, { state: 'belt', x: 480, y: 609.9, beltOffset: 609.9 - model.beltTravel, workerId: null });
-      });
-      await page.waitForFunction(missed => window.fixtureGame.scene.getScene('DepotScene').model.missed > missed, beforeMiss.missed);
-      const afterMiss = await read(() => {
-        const scene = window.fixtureGame.scene.getScene('DepotScene');
-        return {
-          johnLines: scene.life.history.filter(line => line.startsWith('JOHN RUSHTON:')).length,
-          speech: scene.life.speech.get('left').panel.list.filter(child => child.type === 'Text').map(child => child.text),
-        };
-      });
-      assert.equal(afterMiss.johnLines, beforeMiss.johnLines, 'reactive misses must not interrupt a scripted setup');
-      assert.equal(afterMiss.speech[0], 'BEN');
-      assert.ok(afterMiss.speech[1].includes('DODGE GUNS'), 'Ben must finish his setup before the next incident beat');
-    } else if (time === 78_500) {
-      assert.equal(await read(() => window.fixtureGame.scene.getScene('DepotScene').life.bang.visible), true,
-        'cartoon shots must appear during the original Ben incident');
-    } else if (time === 81_500) {
-      assert.equal(await read(() => window.fixtureGame.scene.getScene('DepotScene').life.cast.get('demon').art.visible), true,
-        'the Ben/Paula dialogue must retain its actual demon incident staging');
-      if (process.env.BELT_SCREENSHOT_DIR) await page.screenshot({ path: join(process.env.BELT_SCREENSHOT_DIR, 'after-incident.png') });
-    } else if (time === 89_500) {
-      assert.equal(await read(() => window.fixtureGame.scene.getScene('DepotScene').life.cast.get('paula').art.visible), false,
-        'Paula must leave after the staged reaction');
-    }
-    assert.deepEqual(errors, [], `no script errors at the ${time / 1000}s incident checkpoint`);
-  }
-  const laterBanter = await read(() => window.fixtureGame.scene.getScene('DepotScene').life.history);
-  assert.ok(laterBanter.includes('VIC: I NEED A QUICK TUNE UP'));
-  assert.equal(laterBanter.filter(line => line.startsWith('KYLIE:')).length, 1, 'a scheduled complaint must not repeat every frame');
-
+  // Full cast mechanics and reference variants are checked independently in
+  // reference-browser.mjs. Preserve this suite's organic controls/restart scope.
   await read(() => {
     const model = window.fixtureGame.scene.getScene('DepotScene').model;
     for (const parcel of model.packages) parcel.state = 'delivered';
     model.sorted = model.goal;
     model.elapsedMs = model.durationMs - 1;
   });
+  await page.waitForFunction(() => window.fixtureGame.scene.getScene('DepotScene').state === 'celebrating');
+  await press('Enter');
   await page.waitForFunction(() => window.fixtureGame.scene.getScene('DepotScene').state === 'results');
   assert.equal(await read(() => window.fixtureGame.scene.getScene('DepotScene').model.won), true);
   await press('Enter');
@@ -371,7 +284,7 @@ try {
   assert.deepEqual(await read(() => window.fixtureGame.scene.getScene('DepotScene').life.history), [],
     'restart must reset cast cue history along with the shift');
   assert.deepEqual(errors, []);
-  console.log('PASS slice named freight and resident cast, timed/reaction banter, keyboard A/B/C loop, belt synchronization, pause/brake, sorting, handoff, recovery and results/restart; no script errors');
+  console.log('PASS slice named freight and resident cast, opening banter, keyboard A/B/C loop, belt synchronization, pause/brake, sorting, handoff, recovery and results/restart; no script errors');
   await context.close();
 
   const touchContext = await browser.newContext({ viewport: { width: 430, height: 932 }, isMobile: true, hasTouch: true });

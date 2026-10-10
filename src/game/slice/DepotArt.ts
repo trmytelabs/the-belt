@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import type { ParcelKind } from './ShiftModel';
+import { createCrewTruckArt, createPaytmanTankArt } from './DepotProps';
 
 /** Editable, resolution-independent artwork for the night shift vertical slice. */
 export type DepotRoute = 'A' | 'B' | 'C';
@@ -45,10 +46,15 @@ function pallet(g: Phaser.GameObjects.Graphics, x: number, y: number, w = 90, h 
 /** Static depot scenery; only belt treads and the mechanical drive animate. */
 export class DepotArt {
   public readonly belt: Phaser.GameObjects.TileSprite;
+  public readonly crewTruckPoints: Record<string, { x: number; y: number }> = {};
+  public bulkStockCount = 0;
   private readonly scene: Phaser.Scene;
   private readonly dockHighlights: { route: DepotRoute; side: DepotSide; art: Phaser.GameObjects.Graphics }[] = [];
   private readonly drive: Phaser.GameObjects.Container;
   private readonly statusLight: Phaser.GameObjects.Arc;
+  private readonly departureObjects: { object: Phaser.GameObjects.Container | Phaser.GameObjects.Text; x: number; direction: number }[] = [];
+  private readonly bulkStock: Phaser.GameObjects.Graphics[] = [];
+  private fishTank: ReturnType<typeof createPaytmanTankArt> | null = null;
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
@@ -136,6 +142,18 @@ export class DepotArt {
     for (const dock of this.dockHighlights) dock.art.setAlpha(dock.route === route ? 1 : 0);
   }
 
+  updateDetails(timeMs: number): void { this.fishTank?.update(timeMs); }
+
+  departTrucks(progress: number): void {
+    const distance = Phaser.Math.Clamp(progress, 0, 1) * 1040;
+    for (const truck of this.departureObjects) truck.object.setX(truck.x + distance * truck.direction);
+  }
+
+  setBulkStock(count: number): void {
+    this.bulkStockCount = Math.max(0, Math.floor(count));
+    this.bulkStock.forEach((box, index) => box.setVisible(index < this.bulkStockCount));
+  }
+
   flashDock(route: DepotRoute, side: DepotSide) {
     const dock = this.dockHighlights.find((d) => d.route === route && d.side === side);
     if (!dock) return;
@@ -197,8 +215,6 @@ export class DepotArt {
       g.fillStyle(0x0a202a, 0.4).fillRect(x + 6, 141, 9, 34);
     }
     for (let x = 35; x < 941; x += 12) line(g, x, 615, x + 4, 620, 0x53676b, 1, 0.3);
-    label(scene, 128, 180, 'DISPATCH  01', 10, '#8caaa7').setDepth(1);
-    label(scene, 832, 180, 'DISPATCH  02', 10, '#8caaa7').setDepth(1);
     label(scene, 351, 591, 'WEST WALK', 8, '#6e8a8b').setDepth(1);
     label(scene, 609, 591, 'EAST WALK', 8, '#6e8a8b').setDepth(1);
   }
@@ -207,6 +223,7 @@ export class DepotArt {
     const scene = this.scene;
     const reflected = side === 'right';
     const root = scene.add.container(reflected ? 960 : 0, 0).setDepth(3);
+    this.departureObjects.push({ object: root, x: root.x, direction: reflected ? 1 : -1 });
     if (reflected) root.setScale(-1, 1);
     const g = scene.add.graphics();
     root.add(g);
@@ -242,9 +259,9 @@ export class DepotArt {
     for (let y = 272; y < 327; y += 8) line(g, 231, y, 240, y, 0x8b9983, 1, 0.55);
     g.fillStyle(0xddab6b).fillRect(207, 238, 5, 6).fillRect(207, 338, 5, 6);
     const lx = reflected ? 824 : 136;
-    label(scene, lx, 282, route === 'A' ? 'HERES UR' : 'PAYTMAN', 12, '#e0e5ce').setDepth(4);
-    label(scene, lx, 300, route === 'A' ? 'SOVICE' : 'EXPRESS', 10, '#a7bbb1').setDepth(4);
-    label(scene, reflected ? 835 : 125, 380, 'TRAILER READY', 8, '#6f9290').setDepth(4);
+    const first = label(scene, lx, 282, route === 'A' ? 'HERES UR' : 'PAYTMAN', 12, '#e0e5ce').setDepth(4);
+    const second = label(scene, lx, 300, route === 'A' ? 'SOVICE' : '', 10, '#a7bbb1').setDepth(4);
+    for (const object of [first, second]) this.departureObjects.push({ object, x: object.x, direction: reflected ? 1 : -1 });
   }
 
   private drawBulk(side: DepotSide) {
@@ -255,6 +272,9 @@ export class DepotArt {
     pallet(g, x + (side === 'left' ? 18 : -18), 503, 105, 61);
     // A restrained three-crate stack: timber frames, nails, metal corner caps.
     const crate = (cx: number, cy: number, w: number, h: number) => {
+      const g = this.scene.add.graphics().setDepth(3);
+      g.setData('bulkStockIndex', this.bulkStock.length);
+      this.bulkStock.push(g);
       g.fillStyle(0x172a2c, 0.55).fillRect(cx - w / 2 + 4, cy - h / 2 + 9, w, h);
       g.fillStyle(0x726249).fillRect(cx - w / 2, cy - h / 2 + 5, w, h);
       g.fillStyle(0x9b865d).fillRect(cx - w / 2, cy - h / 2, w, h - 4);
@@ -265,9 +285,15 @@ export class DepotArt {
       }
       line(g, cx - w / 2 + 2, cy - h / 2 + 1, cx + w / 2 - 2, cy - h / 2 + 1, 0xd3b580, 1, 0.7);
     };
-    crate(x + 30, 496, 49, 40);
-    crate(x - 17, 495, 39, 43);
-    crate(x + 5, 474, 38, 35);
+    // Both bulk docks feed this common dispatch stack; Ralph collects from here.
+    if (side === 'right') {
+      crate(782, 509, 34, 31);
+      crate(817, 509, 34, 31);
+      crate(852, 509, 29, 31);
+      crate(799, 488, 37, 31);
+      crate(835, 487, 35, 31);
+      crate(817, 468, 34, 31);
+    }
     // Upright hand truck adds a recognizable silhouette without crowding walks.
     const hx = side === 'left' ? x - 62 : x + 62;
     g.lineStyle(5, 0x172731).strokeRoundedRect(hx - 8, 449, 18, 70, 6);
@@ -307,20 +333,11 @@ export class DepotArt {
     g.fillStyle(0xa78061).fillRoundedRect(124, 393, 66, 12, 5);
     g.fillStyle(0xbed0b4).fillRoundedRect(127, 394, 16, 9, 3);
     g.fillStyle(0x405453).fillRect(130, 408, 4, 11).fillRect(182, 408, 4, 11);
-    label(this.scene, 151, 388, "AJ'S MASSAGE", 6, '#bbbd95').setDepth(5);
-    // A well-loved amp sticker and a shipping label that only this depot would print.
-    g.fillStyle(0x172830).fillRoundedRect(186, 542, 27, 14, 2);
-    g.lineStyle(1, 0xb7a270, 0.65).strokeRoundedRect(186, 542, 27, 14, 2);
-    label(this.scene, 199, 546, 'MESA', 5, '#d5c7a2').setDepth(5);
-    label(this.scene, 199, 552, 'BOOGIE', 5, '#d5c7a2').setDepth(5);
-    g.fillStyle(0x6e734a).fillRoundedRect(59, 552, 53, 12, 1);
-    label(this.scene, 85, 558, "THE SNAKES CELL", 5, '#dae1b1').setDepth(5);
-    // Ben's literal shoulder demon and Bannerman's LEGO have dedicated little spaces.
-    g.fillStyle(0x493144).fillRoundedRect(74, 599, 65, 11, 2);
-    label(this.scene, 106, 604, 'PAULA ABDUL', 6, '#e5a0c9').setDepth(5);
+    // Bannerman's original red, blue, yellow and green LEGO construction.
     g.fillStyle(0xad5547).fillRect(187, 589, 12, 8);
     g.fillStyle(0x507fa3).fillRect(199, 584, 14, 12);
     g.fillStyle(0xc9ad58).fillRect(183, 580, 12, 9);
+    g.fillStyle(0x6c9758).fillRect(207, 590, 12, 7);
     for (const x of [186, 191]) g.fillStyle(0xe0c371).fillEllipse(x, 580, 3, 2);
     for (const x of [202, 209]) g.fillStyle(0x7fa9b7).fillEllipse(x, 584, 3, 2);
     // Donna's Warcraft husband has colonized a spare packing table.
@@ -332,18 +349,37 @@ export class DepotArt {
     g.fillStyle(0x1e3540).fillRect(920, 590, 3, 5);
     g.fillStyle(0x826344).fillCircle(893, 584, 6);
     g.fillStyle(0x53617a).fillRoundedRect(886, 588, 13, 12, 4);
-    label(this.scene, 858, 605, 'WARCRAFT HUSBAND', 5, '#94aaa0').setDepth(5);
+    const trucks: [string, string, number, number, 'left' | 'right'][] = [
+      ['hussan', 'HUSSAN', 149, 192, 'left'], ['aj', 'AJ', 142, 375, 'left'],
+      ['ben', 'PAULA ABDUL', 70, 603, 'left'], ['bannerman', 'BANNERMAN', 182, 603, 'left'],
+      ['fruitloop', 'FRUIT LOOP', 844, 175, 'right'], ['brian', 'BRIAN', 847, 208, 'right'],
+      ['doris', 'DORIS', 845, 375, 'right'], ['donna', 'DONNA', 860, 603, 'right'],
+    ];
+    for (const [id, name, x, y, side] of trucks) {
+      const truck = createCrewTruckArt(this.scene, name, id === 'ben', side).setPosition(x, y).setDepth(3);
+      this.crewTruckPoints[id] = { x: x + (side === 'left' ? 36 : -36), y };
+      this.departureObjects.push({ object: truck, x, direction: side === 'left' ? -1 : 1 });
+    }
+    this.crewTruckPoints.froodoo = this.crewTruckPoints.fruitloop;
+    this.crewTruckPoints.dorothy = this.crewTruckPoints.doris;
+    this.fishTank = createPaytmanTankArt(this.scene);
+    this.fishTank.container.setPosition(918, 410).setDepth(4);
+    this.departureObjects.push({ object: this.fishTank.container, x: 918, direction: 1 });
   }
 }
 
 const parcelDecorations = new WeakMap<Phaser.GameObjects.Container, Phaser.GameObjects.Graphics>();
+const parcelRecoveredBadges = new WeakMap<Phaser.GameObjects.Container, Phaser.GameObjects.Star>();
 
 /** Origin is the parcel contact center. No idle motion is baked into its art. */
 export function createParcelArt(scene: Phaser.Scene, route: DepotRoute, heavy = false, kind: ParcelKind = 'standard'): Phaser.GameObjects.Container {
   const root = scene.add.container(0, 0);
   const g = scene.add.graphics();
-  const w = heavy ? 45 : 34;
-  const h = heavy ? 37 : 30;
+  const dimensions: Partial<Record<ParcelKind, [number, number]>> = {
+    envelope: [37, 20], smallbox: [30, 27], bigbox: [48, 41], longbox: [56, 26],
+    mallwood: [52, 29], goji: [34, 36], lobsters: [48, 35], atv: [50, 40], snakes: [58, 23],
+  };
+  const [w, h] = dimensions[kind] ?? (heavy ? [45, 37] : [34, 30]);
   const l = -w / 2;
   const r = w / 2;
   const t = -h / 2;
@@ -358,12 +394,17 @@ export function createParcelArt(scene: Phaser.Scene, route: DepotRoute, heavy = 
   g.fillStyle(0xe4cb95, 0.8).fillRect(3, t + 1, 5, h - 8);
   g.fillStyle(0xbaa072).fillRect(3, b - 6, 5, 5);
   line(g, 5, t + 1, 5, b - 8, 0xf8e8b9, 1, 0.5);
-  if (heavy) {
+  if (heavy && kind !== 'mallwood' && kind !== 'longbox' && kind !== 'bigbox') {
     g.fillStyle(0x4b594f).fillRect(l + 5, t + 1, 3, h - 2).fillRect(r - 8, t + 1, 3, h - 2);
     g.fillStyle(0x819180).fillRect(l + 5, t + 1, 1, h - 8).fillRect(r - 8, t + 1, 1, h - 8);
   }
   // Original freight keeps its own silhouette, rather than becoming anonymous boxes.
-  if (kind === 'goji') {
+  if (kind === 'envelope') {
+    g.fillStyle(0xc7ae80).fillRoundedRect(l, t, w, h - 2, 2);
+    polygon(g, [l + 1, t + 1, 0, 2, r - 1, t + 1], 0xe1c89b);
+    line(g, l + 2, b - 4, -2, 0, 0xa78b61, 1);
+    line(g, 2, 0, r - 2, b - 4, 0xa78b61, 1);
+  } else if (kind === 'goji') {
     g.fillStyle(0x142820, 0.5).fillEllipse(0, 11, 38, 10);
     g.fillStyle(0x6e7048).fillEllipse(0, 0, 37, 33);
     g.fillStyle(0xb8ad70).fillEllipse(-2, -2, 31, 29);
@@ -374,22 +415,19 @@ export function createParcelArt(scene: Phaser.Scene, route: DepotRoute, heavy = 
       g.fillStyle(0xe18b63).fillCircle(x - 1, y - 1, 1);
     }
     line(g, 13, 5, 11, 10, 0x7e794e, 1);
-  } else if (kind === 'lobsters' || kind === 'snakes') {
-    g.fillStyle(kind === 'snakes' ? 0x3b503e : 0x56655a).fillRoundedRect(l - 1, t, w + 2, h, 2);
+  } else if (kind === 'snakes') {
+    // The source is a labelled green CELL case; it never depicts a literal snake.
+    g.fillStyle(0x2d3a22).fillRoundedRect(l, t, w, h, 5);
+    g.lineStyle(2, 0xd6bc64).strokeRoundedRect(l, t, w, h, 5);
+  } else if (kind === 'lobsters') {
+    g.fillStyle(0x56655a).fillRoundedRect(l - 1, t, w + 2, h, 2);
     g.fillStyle(0x233c39).fillRect(l + 3, t + 4, w - 6, h - 10);
-    if (kind === 'lobsters') {
-      g.fillStyle(0xbd5547).fillEllipse(8, 0, 9, 22);
-      for (const y of [-5, 0, 5]) line(g, 2, y, 15, y + 2, 0xd9805f, 1);
-      line(g, 6, -7, 4, -18, 0xde9b6c, 1);
-      line(g, 10, -7, 14, -18, 0xde9b6c, 1);
-    } else {
-      g.lineStyle(4, 0xabbc72).beginPath().moveTo(7, 9).lineTo(14, 5).lineTo(4, -1).lineTo(13, -6).strokePath();
-      g.fillStyle(0xc6cb84).fillEllipse(12, -7, 10, 6);
-      g.fillStyle(0x24352a).fillCircle(15, -8, 1);
-      for (let x = l + 6; x < r; x += 8) line(g, x, t + 2, x, b - 2, 0x84917c, 2);
-    }
+    g.fillStyle(0xbd5547).fillEllipse(8, 0, 9, 22);
+    for (const y of [-5, 0, 5]) line(g, 2, y, 15, y + 2, 0xd9805f, 1);
+    line(g, 6, -7, 4, -18, 0xde9b6c, 1);
+    line(g, 10, -7, 14, -18, 0xde9b6c, 1);
     for (const y of [t, b - 5]) {
-      g.fillStyle(kind === 'snakes' ? 0x758266 : 0xb59668).fillRect(l - 1, y, w + 2, 5);
+      g.fillStyle(0xb59668).fillRect(l - 1, y, w + 2, 5);
       line(g, l + 1, y, r, y, 0xc4b28d, 1);
     }
     for (const x of [l, r - 4]) g.fillStyle(0x887c5b).fillRect(x, t, 4, h);
@@ -425,35 +463,36 @@ export function createParcelArt(scene: Phaser.Scene, route: DepotRoute, heavy = 
     g.fillStyle(0xd49da8).fillRoundedRect(6, -8, 8, 15, 2);
     g.fillStyle(0xe4c7b0).fillRect(6, -12, 8, 4);
     g.fillStyle(0xab6481).fillRect(7, -1, 6, 4);
-  } else if (kind === 'panchetters') {
-    g.fillStyle(0x738257).fillRect(l + 1, t + 2, w - 4, 5);
-    g.fillStyle(0xb9584a).fillCircle(11, 6, 5);
-    g.fillStyle(0xe5c8a1).fillCircle(11, 6, 2.5);
-    line(g, l + 1, b - 8, r - 2, b - 8, 0x66593f, 1);
   }
   root.add(g);
   const decoration = scene.add.graphics();
   root.add(decoration);
   parcelDecorations.set(root, decoration);
   const badge = scene.add.graphics();
-  badge.fillStyle(0x6e5840, 0.4).fillRoundedRect(l + 5, t + 6, 17, 16, 1);
-  badge.fillStyle(DEPOT_ROUTE_COLORS[route]).fillRoundedRect(l + 4, t + 5, 17, 16, 1);
+  const badgeTop = t + (kind === 'envelope' ? 1 : 5);
+  badge.fillStyle(0x6e5840, 0.4).fillRoundedRect(l + 5, badgeTop + 1, 17, 16, 1);
+  badge.fillStyle(DEPOT_ROUTE_COLORS[route]).fillRoundedRect(l + 4, badgeTop, 17, 16, 1);
   for (let x = l + 25; x < r - 3; x += 2) line(g, x, b - 13, x, b - 8, 0x5a5844, 1, 0.8);
-  const letter = label(scene, l + 12.5, t + 13, route, 12, '#19383b');
-  root.add([badge, letter]);
+  const letter = label(scene, l + 12.5, badgeTop + 8, route, 12, '#19383b');
+  if (kind === 'snakes') { badge.destroy(); letter.destroy(); }
+  else root.add([badge, letter]);
   if (kind !== 'standard') {
-    const stamp: Record<Exclude<ParcelKind, 'standard'>, string> = {
+    const stamp: Partial<Record<ParcelKind, string>> = {
       mallwood: 'MALLWOOD', goji: 'GOJI', lobsters: 'LIVE', duck: 'LE DUCK',
-      makeup: 'LOTION', mesa: 'MESA', panchetters: 'PANCHETTERS', atv: 'ATV', snakes: 'CELL',
+      makeup: 'LOTION', mesa: 'MESA', panchetters: 'PANCHETTERS', atv: 'ATV', snakes: 'THE SNAKES CELL',
     };
-    root.add(label(scene, 1, b - 3, stamp[kind], kind === 'panchetters' ? 4 : 5, kind === 'mesa' ? '#e7d6b6' : '#eae2be'));
+    if (stamp[kind]) root.add(label(scene, 1, kind === 'snakes' ? 0 : b - 3, stamp[kind]!, kind === 'panchetters' ? 4 : kind === 'snakes' ? 6 : 5, kind === 'mesa' ? '#e7d6b6' : '#eae2be'));
   }
+  const recoveredBadge = scene.add.star(r - 4, t + 4, 4, 2, 4, 0xffffff).setStrokeStyle(1, INK, 0.7).setVisible(false);
+  root.add(recoveredBadge);
+  parcelRecoveredBadges.set(root, recoveredBadge);
   updateParcelArt(root, kind, 0);
   return root;
 }
 
 /** Only small local accents animate: parcel contact coordinates always stay fixed. */
-export function updateParcelArt(container: Phaser.GameObjects.Container, kind: ParcelKind, timeMs: number): void {
+export function updateParcelArt(container: Phaser.GameObjects.Container, kind: ParcelKind, timeMs: number, broken = false, recovered = false): void {
+  parcelRecoveredBadges.get(container)?.setVisible(recovered);
   const g = parcelDecorations.get(container);
   if (!g) return;
   g.clear();
@@ -462,9 +501,10 @@ export function updateParcelArt(container: Phaser.GameObjects.Container, kind: P
       const phase = (timeMs / 1400 + i * 0.3) % 1;
       const x = -10 + i * 10;
       const y = -17 - phase * 13;
-      line(g, x, y, x + Math.sin(timeMs / 300 + i) * 3, y - 6, 0xa1b979, 2, (1 - phase) * 0.7);
+      line(g, x, y, x + Math.sin(timeMs / 300 + i) * 3, y - 6, i === 1 ? 0xb94a2f : 0xd18a1f, 2, (1 - phase) * 0.7);
     }
-    g.fillStyle(0x73834f, 0.7).fillEllipse(11, 10, 8, 3);
+    g.fillStyle(0xd18a1f, 0.7).fillCircle(-20, -19, 2);
+    g.fillStyle(0xb94a2f, 0.65).fillCircle(20, -23, 2);
   } else if (kind === 'lobsters') {
     for (const direction of [-1, 1]) {
       const x = direction * 25;
@@ -474,7 +514,8 @@ export function updateParcelArt(container: Phaser.GameObjects.Container, kind: P
       polygon(g, [x - 1, y - 7, x + 1, y - 1, x + 4, y - 7], 0x344b43);
       line(g, x - 2, y - 3, x - 2, y + 2, 0xf1b680, 1);
     }
-  } else if (kind === 'makeup') {
+  } else if (kind === 'makeup' && broken) {
+    g.lineStyle(2, 0x7a4258).beginPath().moveTo(-12, -2).lineTo(-5, -8).lineTo(4, 2).lineTo(13, -5).strokePath();
     g.fillStyle(0xb66d91, 0.8).fillEllipse(13, 14, 17, 5);
     const pulse = (Math.sin(timeMs / 320) + 1) / 2;
     g.fillStyle(0xe4a9bd, 0.8).fillCircle(20, 10 - pulse * 2, 2 + pulse);
@@ -494,6 +535,8 @@ export function createWorkerArt(scene: Phaser.Scene, side: DepotSide): DepotWork
   const shadow = scene.add.ellipse(0, 24, 36, 13, 0x06141e, 0.48);
   const ring = scene.add.ellipse(0, 24, 43, 18).setStrokeStyle(2, 0xdbedc7, 0.75);
   root.add([shadow, ring]);
+  const sleepy = label(scene, 0, -48, 'zZz', 10, '#e5e9d6');
+  root.add(sleepy);
 
   const legs: Phaser.GameObjects.Graphics[] = [];
   for (const x of [-7, 7]) {
@@ -573,6 +616,8 @@ export function createWorkerArt(scene: Phaser.Scene, side: DepotSide): DepotWork
       arms[0].y = holding ? -8 : -11;
       arms[1].y = holding ? -8 : -11;
       ring.setVisible(active);
+      sleepy.setVisible(!active);
+      root.setAlpha(active ? 1 : 0.6);
       body.y = moving ? -Math.abs(stride) * 0.7 : 0;
       head.y = body.y;
       shadow.scaleX = moving ? 1 - Math.abs(stride) * 0.025 : 1;
