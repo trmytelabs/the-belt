@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 
 import { BootScene } from '../scenes/BootScene';
+import { DepotScene } from '../scenes/DepotScene';
 import { GameOverScene } from '../scenes/GameOverScene';
 import { GameScene } from '../scenes/GameScene';
 import { MesaDreamScene } from '../scenes/MesaDreamScene';
@@ -44,6 +45,7 @@ export const gameConfig: Phaser.Types.Core.GameConfig = {
   scene: [
     BootScene,
     PreloadScene,
+    DepotScene,
     TitleScene,
     GameScene,
     MesaDreamScene,

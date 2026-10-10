@@ -17,9 +17,27 @@ npm ci
 npm run dev
 ```
 
-Open the local URL printed by Vite. Press Enter or tap the title screen to start.
-Use Tab or right-click to switch workers, and Space or left-click to grab or drop
-a package. Touch controls are available on mobile screens.
+Open the local URL printed by Vite. The default entry is the **Night Shift / Depot
+07** playable preview: one polished 90-second section, followed by up to ten
+seconds to clear remaining freight. Press Enter or tap **Start Shift**. Dispatch
+12 parcels and keep the recovery backlog below five.
+
+- WASD / arrows move; Tab or right-click switches workers.
+- Space or left-click grabs, delivers inside a dock, or puts a parcel down.
+- Route A goes to the left truck, B to the right truck, and heavy C freight to
+  either lower bulk bay. Letters and colors identify every route.
+- E brakes the belt for two seconds, with an eight-second cooldown.
+- Escape pauses; M toggles sound. Losing focus pauses the preview automatically.
+- Pick up missed freight near the belt exit to recover it for half base points.
+
+Touch devices have a movement stick and Switch, Grab / Deliver, and Brake
+buttons. Landscape gives a closer view; portrait reserves room below the game
+for controls. The preview includes a restartable results screen.
+
+The **original full shift**, including its NPCs, special freight and timed
+events, is retained. Choose **Play the original full shift** in the preview
+briefing (keyboard O), or open the local URL with `?mode=classic`. Its controls
+remain unchanged; it starts with Enter or a title-screen tap.
 
 Node 24 is recorded in `.node-version` and used by CI. The locked Vite dependency
 requires Node `^20.19.0 || >=22.12.0`; use the documented Node version so local and
@@ -41,12 +59,16 @@ To run the browser smoke checks against a fresh production build:
 
 ```sh
 npx playwright install chromium
+npm run test:model
 npm run test:browser
 ```
 
-The suite covers keyboard/touch start, worker switching, grabbing/dropping,
-results, restart and script errors. It uses a loopback server and isolated
-synthetic state. TypeScript strict checking is enabled. Dependabot maintains
+The model suite checks belt contact through speed ramps and stops, placement,
+recovery, pacing, and a complete winning shift. Browser checks cover both the
+original game and the new section: organic A/B/C deliveries using real keys,
+keyboard/touch controls, belt rendering, pause, brake, handoff, recovery,
+results, restart and script errors. They use a loopback server and isolated
+synthetic state for edge cases. TypeScript strict checking is enabled. Dependabot maintains
 compatible dependencies; major upgrades require a separate planned review.
 
 CI checks the real Canvas fallback on GPU-free Linux and Windows runners. Local
@@ -55,7 +77,10 @@ Both CI jobs run the same gameplay assertions; they do not change the production
 game configuration or bypass its countdown. The default WebGL renderer still
 needs a local check on a machine with usable graphics support.
 
-The page references Google Fonts when a network connection is available.
+The original scenes reference Google Fonts when a network connection is available;
+the preview uses system fonts and editable engine-native art. See
+[asset provenance](docs/night-shift-assets.md) and
+[the preview's scope and design](docs/night-shift-preview.md).
 Timed events, physical-device usability and audible sound still need manual
 checks after relevant changes; the smoke suite does not verify every game flow.
 
