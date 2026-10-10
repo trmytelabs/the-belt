@@ -49,6 +49,14 @@ export class DepotScene extends Phaser.Scene {
     // immediately after changing its parent, before any canvas button is used.
     this.scale.getParentBounds();
     this.scale.refresh();
+    // Parent CSS changes during rotation can settle after Phaser's resize
+    // event. Observe layout directly, including while its frame loop is idle.
+    const resizeObserver = new ResizeObserver(() => {
+      this.scale.getParentBounds();
+      this.scale.refresh();
+    });
+    const parent = document.getElementById('app');
+    if (parent) resizeObserver.observe(parent);
     this.parcels = new Map();
     this.touchMove = { x: 0, y: 0 };
     this.overlay = null;
@@ -71,6 +79,7 @@ export class DepotScene extends Phaser.Scene {
       this.game.events.off(Phaser.Core.Events.BLUR, blur);
       this.mobileLayer?.remove();
       this.mobileLayer = null;
+      resizeObserver.disconnect();
       document.body.classList.remove('depot-mode');
       this.scale.getParentBounds();
       this.scale.refresh();

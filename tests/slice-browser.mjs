@@ -247,12 +247,44 @@ try {
   });
   await touchPage.goto(server.resolvedUrls.local[0]);
   await touchPage.waitForFunction(() => window.fixtureGame?.scene.isActive('DepotScene'));
-  const waitForCanvasFit = () => touchPage.waitForFunction(() => {
-    const actual = document.querySelector('#app canvas').getBoundingClientRect();
-    const available = document.querySelector('#app').getBoundingClientRect();
-    const expectedWidth = Math.min(available.width, available.height * 4 / 3);
-    return Math.abs(actual.width - expectedWidth) < 1;
-  });
+  const waitForCanvasFit = async () => {
+    try {
+      await touchPage.waitForFunction(() => {
+        const actual = document.querySelector('#app canvas').getBoundingClientRect();
+        const available = document.querySelector('#app').getBoundingClientRect();
+        const expectedWidth = Math.min(available.width, available.height * 4 / 3);
+        return Math.abs(actual.width - expectedWidth) < 1;
+      });
+    } catch (error) {
+      console.error('Canvas fit diagnostics:', await touchPage.evaluate(() => {
+        const canvas = document.querySelector('#app canvas');
+        const app = document.querySelector('#app');
+        const game = window.fixtureGame;
+        const scale = game.scale;
+        const available = app.getBoundingClientRect();
+        return {
+          viewport: { width: innerWidth, height: innerHeight },
+          visibility: document.visibilityState, focused: document.hasFocus(),
+          coarse: matchMedia('(pointer: coarse)').matches,
+          portrait: matchMedia('(orientation: portrait)').matches,
+          scene: game.scene.getScene('DepotScene').state,
+          loop: { running: game.loop.running, fps: game.loop.actualFps },
+          canvas: canvas.getBoundingClientRect().toJSON(),
+          app: available.toJSON(),
+          expectedWidth: Math.min(available.width, available.height * 4 / 3),
+          canvasStyle: canvas.getAttribute('style'),
+          appStyle: { width: getComputedStyle(app).width, height: getComputedStyle(app).height },
+          phaser: {
+            canvasBounds: scale.canvasBounds,
+            parentSize: { width: scale.parentSize.width, height: scale.parentSize.height },
+            displaySize: { width: scale.displaySize.width, height: scale.displaySize.height },
+            displayScale: { x: scale.displayScale.x, y: scale.displayScale.y },
+          },
+        };
+      }));
+      throw error;
+    }
+  };
   const tapCanvas = async (x, y) => {
     await waitForCanvasFit();
     await touchPage.waitForFunction(() => {
@@ -299,12 +331,19 @@ try {
   };
   await assertControlsOutsideCanvas();
   if (process.env.BELT_SCREENSHOT_DIR) await touchPage.screenshot({ path: join(process.env.BELT_SCREENSHOT_DIR, 'after-mobile.png') });
-  await touchPage.setViewportSize({ width: 932, height: 430 });
-  await touchPage.waitForFunction(() => window.innerWidth > window.innerHeight);
-  // Wait for Phaser's resize pass, then inspect the genuinely rotated layout.
-  await waitForCanvasFit();
-  await assertControlsOutsideCanvas();
-  if (process.env.BELT_SCREENSHOT_DIR) await touchPage.screenshot({ path: join(process.env.BELT_SCREENSHOT_DIR, 'after-mobile-landscape.png') });
+  // A browser can resize while game frames are suspended. Require the actual
+  // parent-layout adapter to fit the canvas without relying on a later STEP.
+  // Wake the public game loop afterward; the real taps below verify input too.
+  await touchPage.evaluate(() => window.fixtureGame.loop.sleep());
+  try {
+    await touchPage.setViewportSize({ width: 932, height: 430 });
+    await touchPage.waitForFunction(() => window.innerWidth > window.innerHeight);
+    await waitForCanvasFit();
+    await assertControlsOutsideCanvas();
+    if (process.env.BELT_SCREENSHOT_DIR) await touchPage.screenshot({ path: join(process.env.BELT_SCREENSHOT_DIR, 'after-mobile-landscape.png') });
+  } finally {
+    await touchPage.evaluate(() => window.fixtureGame.loop.wake());
+  }
   await touchPage.evaluate(() => {
     const model = window.fixtureGame.scene.getScene('DepotScene').model;
     for (const worker of model.workers) worker.heldId = null;
@@ -322,7 +361,7 @@ try {
   await touchPage.getByRole('button', { name: 'SWITCH', exact: true }).tap();
   assert.equal(await touchPage.evaluate(() => window.fixtureGame.scene.getScene('DepotScene').model.activeIndex), 1);
   assert.deepEqual(touchErrors, []);
-  console.log('PASS slice touch start, joystick movement, switch, grab, brake and results/restart; no script errors');
+  console.log('PASS slice touch start, joystick movement, switch, grab, brake, rotation without game frames and results/restart; no script errors');
   await touchContext.close();
 } finally {
   await browser?.close();
