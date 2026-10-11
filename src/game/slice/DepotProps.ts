@@ -3,54 +3,67 @@ import Phaser from 'phaser';
 const text = (scene: Phaser.Scene, x: number, y: number, copy: string, size: number, color = '#eee2bd') =>
   scene.add.text(x, y, copy, { fontFamily: 'Arial, sans-serif', fontSize: `${size}px`, fontStyle: 'bold', color }).setOrigin(0.5);
 
-/** The eight named trucks from GameScene.createAmbientWorkers, drawn to bay scale. */
-export function createCrewTruckArt(scene: Phaser.Scene, name: string, purple: boolean, side: 'left' | 'right'): Phaser.GameObjects.Container {
-  const root = scene.add.container(0, 0);
-  const chassis = scene.add.container(0, 0).setScale(side === 'left' ? 1 : -1, 1);
+type TruckStyle = { name: string; side: 'left' | 'right'; body?: number; trim?: number; accent?: number; loaded?: boolean };
+
+/** One authored 148×84 truck, shared by both workers, all eight colleagues and Ralph. */
+export function createDepotTruckArt(scene: Phaser.Scene, style: TruckStyle): Phaser.GameObjects.Container {
+  const root = scene.add.container(0, 0).setSize(148, 84);
+  root.setData('truckFootprint', { width: 148, height: 84 }).setData('truckLabel', style.name);
+  const direction = style.side === 'left' ? 1 : -1;
+  const chassis = scene.add.container(0, 0).setScale(direction, 1);
   const g = scene.add.graphics();
   chassis.add(g);
-  g.fillStyle(0x0a1a22, 0.55).fillRoundedRect(-35, -10, 72, 27, 5);
-  for (const x of [-20, 22]) g.fillStyle(0x122028).fillRoundedRect(x - 5, -15, 10, 30, 3);
-  g.fillStyle(0x644e36).fillRoundedRect(-36, -9, 17, 20, 4);
-  g.fillStyle(0x8f774f).fillRoundedRect(-35, -10, 14, 19, 3);
-  g.fillStyle(0x345560).fillRoundedRect(-32, -7, 7, 12, 2);
-  g.fillStyle(purple ? 0x744974 : 0x947b52).fillRoundedRect(-20, -14, 52, 28, 3);
-  g.fillStyle(purple ? 0xa47aa0 : 0xbda078).fillRect(-18, -13, 48, 2);
-  for (let x = -14; x < 32; x += 7) g.lineStyle(1, 0x172931, 0.25).lineBetween(x, -9, x, 10);
-  g.fillStyle(purple ? 0x4a344e : 0x4e4638).fillRoundedRect(-19, -11, 50, 22, 2);
-  g.fillStyle(0x80928b).fillRect(31, -11, 3, 22);
-  g.fillStyle(0xddb67b).fillRect(30, -12, 3, 3).fillRect(30, 10, 3, 3);
   root.add(chassis);
-  const lettering = name.length > 9 ? name.replace(' ', '\n') : name;
-  root.add(text(scene, side === 'left' ? 6 : -6, 0, lettering, 8).setAlign('center'));
+  const body = style.body ?? 0x947b52;
+  const trim = style.trim ?? 0xbda078;
+  g.fillStyle(0x071820, 0.55).fillRoundedRect(-72, -31, 146, 73, 7);
+  for (const x of [-51, 40]) {
+    for (const y of [-32, 32]) {
+      g.fillStyle(0x0a1921).fillRoundedRect(x - 8, y - 9, 16, 18, 4);
+      g.fillStyle(0x4e6467).fillRoundedRect(x - 5, y - 6, 10, 12, 3);
+      g.fillStyle(0x233b44).fillRect(x - 2, y - 5, 4, 10);
+    }
+  }
+  // The outward cab and inward loading door keep the original floorplan readable.
+  g.fillStyle(0x654f37).fillRoundedRect(-73, -25, 39, 53, 7);
+  g.fillStyle(0xa0875d).fillRoundedRect(-71, -26, 34, 49, 6);
+  g.fillStyle(0x345763).fillRoundedRect(-66, -18, 21, 29, 4);
+  g.fillStyle(0x9ebdb5, 0.38).fillTriangle(-64, -16, -54, -16, -64, 6);
+  g.fillStyle(0x405863).fillRect(-44, -16, 4, 29);
+  g.fillStyle(0xa1b2a5).fillRoundedRect(-74, -14, 4, 28, 1);
+  g.fillStyle(0xdfc28a).fillRect(-71, -22, 4, 5).fillRect(-71, 17, 4, 5);
+  g.fillStyle(0x273f48).fillRoundedRect(-38, -35, 102, 70, 5);
+  g.fillStyle(body).fillRoundedRect(-36, -35, 99, 66, 4);
+  g.fillStyle(trim).fillRect(-32, -33, 91, 3);
+  for (let x = -29; x < 60; x += 11) {
+    g.lineStyle(1, 0x203b42, 0.42).lineBetween(x, -26, x, 25);
+    g.lineStyle(1, trim, 0.55).lineBetween(x + 2, -26, x + 2, 25);
+  }
+  g.fillStyle(style.accent ?? 0xa2946f, 0.9).fillRect(-35, 24, 97, 5);
+  g.fillStyle(0x283e45).fillRoundedRect(-27, style.loaded ? -25 : -16, 80, style.loaded ? 18 : 31, 3);
+  g.lineStyle(1, trim, 0.5).strokeRoundedRect(-27, style.loaded ? -25 : -16, 80, style.loaded ? 18 : 31, 3);
+  g.fillStyle(0x263d45).fillRect(63, -31, 8, 62);
+  g.fillStyle(0x87958a).fillRect(66, -28, 5, 56);
+  g.fillStyle(0x344d54).fillRect(70, -25, 4, 50);
+  for (const y of [-22, 20]) {
+    g.fillStyle(0xdab878).fillRect(62, y, 4, 4);
+    g.fillStyle(0xb3b9a6).fillRect(65, y + 1, 6, 2);
+  }
+  const lettering = style.name === 'HERES UR SOVICE' ? 'HERES UR\nSOVICE'
+    : style.name === 'PAULA ABDUL' ? 'PAULA ABDUL' : style.name;
+  root.add(text(scene, direction * 13, style.loaded ? -16 : -1, lettering, style.name.length > 10 ? 10 : 11).setAlign('center'));
   return root;
 }
 
-/** Original RALPH 5 TON truck, with five visible cargo slots controlled by Life. */
+export function createCrewTruckArt(scene: Phaser.Scene, name: string, purple: boolean, side: 'left' | 'right'): Phaser.GameObjects.Container {
+  return createDepotTruckArt(scene, { name, side, body: purple ? 0x744974 : 0x947b52, trim: purple ? 0xa47aa0 : 0xbda078 });
+}
+
+/** The same truck footprint, with five visible cargo slots controlled by Life. */
 export function createRalphTruckArt(scene: Phaser.Scene): Phaser.GameObjects.Container {
-  const root = scene.add.container(0, 0);
-  const g = scene.add.graphics();
-  root.add(g);
-  g.fillStyle(0x081a23, 0.55).fillRoundedRect(-60, -20, 123, 49, 6);
-  for (const x of [-45, -10, 42]) {
-    g.fillStyle(0x15252c).fillCircle(x, 21, 8);
-    g.fillStyle(0x6a7676).fillCircle(x, 21, 4);
-    g.fillStyle(0x2a3d44).fillCircle(x, 21, 2);
-  }
-  g.fillStyle(0x656b70).fillRoundedRect(-59, -24, 88, 45, 4);
-  g.fillStyle(0x9caba1).fillRect(-56, -23, 82, 2);
-  g.fillStyle(0xc6ad62).fillRect(-56, -4, 82, 6);
-  g.fillStyle(0x4c545c).fillRoundedRect(-56, -18, 80, 12, 2);
-  g.fillStyle(0x7b6244).fillRoundedRect(28, -13, 33, 34, 4);
-  g.fillStyle(0xa58a5d).fillRoundedRect(30, -15, 28, 33, 4);
-  g.fillStyle(0x74a6ad).fillRoundedRect(36, -11, 19, 13, 2);
-  g.fillStyle(0xc8b084).fillCircle(44, -2, 4);
-  g.fillStyle(0x415862).fillRect(57, 2, 4, 12);
-  g.fillStyle(0xa4b0a4).fillRect(57, 16, 7, 5);
-  g.fillStyle(0xdccb93).fillRect(58, 5, 4, 4);
-  root.add(text(scene, -16, -12, 'RALPH 5 TON', 8));
+  const root = createDepotTruckArt(scene, { name: 'RALPH 5 TON', side: 'right', body: 0x69777b, trim: 0xa2b0a7, accent: 0xc6ad62, loaded: true });
   const boxes: Phaser.GameObjects.Graphics[] = [];
-  for (const [x, y] of [[-44, 9], [-25, 9], [-6, 9], [-34, 0], [-15, 0]]) {
+  for (const [x, y] of [[-39, 16], [-17, 16], [5, 16], [-28, 4], [-6, 4]]) {
     const box = scene.add.graphics().setVisible(false);
     box.fillStyle(0x705338).fillRoundedRect(x - 7, y - 4, 15, 12, 1);
     box.fillStyle(0xc2a071).fillRoundedRect(x - 7, y - 6, 15, 10, 1);

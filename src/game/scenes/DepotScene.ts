@@ -5,7 +5,7 @@ import { DepotLife } from '../slice/DepotLife';
 import { DepotMesaEncounter } from '../slice/DepotMesaEncounter';
 import { DepotCamera } from '../slice/DepotCamera';
 import { MESA } from '../slice/DepotReferences';
-import { ShiftModel, type ShiftEvent, type Route } from '../slice/ShiftModel';
+import { ShiftModel, SHIFT_LAYOUT, type ShiftEvent, type Route } from '../slice/ShiftModel';
 import { audioSystem, type SoundEffect } from '../systems/AudioSystem';
 
 const INK = '#edf0de';
@@ -296,7 +296,7 @@ export class DepotScene extends Phaser.Scene {
         container.y += (parcel.y - container.y) * blend;
       } else container.setPosition(parcel.x, parcel.y);
       if (parcel.state === 'missed') {
-        container.setPosition(478 + (backlogIndex % 2) * 6, 600 - backlogIndex * 7);
+        container.setPosition(SHIFT_LAYOUT.recoveryPile.x - 2 + (backlogIndex % 2) * 6, SHIFT_LAYOUT.recoveryPile.y - backlogIndex * 5);
         backlogIndex += 1;
       }
       container.setDepth(isHeld ? 28 : parcel.state === 'missed' ? 21 + backlogIndex / 10 : 20);
@@ -315,8 +315,11 @@ export class DepotScene extends Phaser.Scene {
     if (this.state !== 'playing') return;
     if (parcel) {
       const routeSide = parcel.route === 'A' ? 'left' : parcel.route === 'B' ? 'right' : worker.side;
-      const targetX = routeSide === 'left' ? 275 : 685;
-      const targetY = parcel.route === 'C' ? 492 : 300;
+      const target = parcel.route === 'C'
+        ? worker.side === 'left' ? SHIFT_LAYOUT.bulkLeft : SHIFT_LAYOUT.bulkRight
+        : parcel.route === 'A' ? SHIFT_LAYOUT.dockA : SHIFT_LAYOUT.dockB;
+      const targetX = target.x;
+      const targetY = target.y;
       if (routeSide === worker.side) {
         this.guide.lineStyle(2, ROUTE[parcel.route], 0.32);
         const length = Phaser.Math.Distance.Between(worker.x, worker.y, targetX, targetY);
@@ -392,8 +395,7 @@ export class DepotScene extends Phaser.Scene {
     const nearby = m.nearestPackage();
     if (held) {
       const wrongSide = (held.route === 'A' && player.side === 'right') || (held.route === 'B' && player.side === 'left');
-      const inDock = (player.side === 'left' ? player.x <= 312 : player.x >= 648)
-        && Math.abs(player.y - (held.route === 'C' ? 492 : 300)) <= 56;
+      const inDock = m.currentDock() === held.route;
       this.actionText.setText(wrongSide ? `ROUTE ${held.route} · return to belt, then TAB to hand off`
         : inDock ? `[ SPACE ]  DELIVER ${ROUTE_NAME[held.route]}`
         : `${held.label}  →  ${held.route === 'C' ? 'C BULK' : held.route === 'A' ? 'A LEFT' : 'B RIGHT'}  /  SPACE puts down`);
@@ -435,7 +437,7 @@ export class DepotScene extends Phaser.Scene {
         this.parcels.delete(event.packageId);
         this.tweens.add({
           targets: delivered.container,
-          x: deliverySide === 'left' ? 178 : 782,
+          x: event.route === 'C' ? SHIFT_LAYOUT.bulkPile.x : deliverySide === 'left' ? 296 : 664,
           y: event.y,
           scale: 0.8, alpha: 0,
           duration: this.reducedMotion ? 80 : 300,
@@ -472,7 +474,7 @@ export class DepotScene extends Phaser.Scene {
   private showBriefing(): void {
     this.showPanel('TERMITE & SKANKY / THE WHOLE CREW IS HERE', 'ANOTHER NIGHT ON THE BELT.', [
       `Dispatch ${this.model.goal} parcels in a three-minute night shift.`,
-      'A goes left. B goes right. C goes to either bulk bay.',
+      'A and B go to your trucks. C goes to BULK at the belt end.',
       'Move with WASD / arrows. TAB switches your worker.',
       'SPACE grabs, delivers at a dock, or puts a parcel down.',
       'E brakes. V shows the whole belt. Recover misses before 5 pile up.',

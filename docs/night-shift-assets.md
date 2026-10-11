@@ -35,6 +35,10 @@ Full named freight now carries tied paper labels at a readable size; personal
 truck lettering uses larger nameplates. Ben's pointed hell-gate pillars,
 red/orange opening and fire are redrawn from the original `BenGunmanEvent` in
 `DepotLife.ts`, with a longer adult-demon emergence and body-drag sequence.
+The truck artwork now shares one 148 × 84 template across player, coworker and
+Ralph trucks. Original truck coordinates and row order come from `GameScene.ts`;
+bulk and recovery are separate areas at the conveyor end. The revised layout
+uses the same editable geometry and adds no external assets.
 
 The palette uses desaturated blue/teal concrete and steel, kraft cardboard,
 timber, warm work lights, and restricted cyan/sage/amber destination accents.

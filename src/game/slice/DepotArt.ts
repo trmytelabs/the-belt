@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
-import type { ParcelKind } from './ShiftModel';
-import { createCrewTruckArt, createPaytmanTankArt } from './DepotProps';
+import { SHIFT_LAYOUT, type ParcelKind } from './ShiftModel';
+import { createCrewTruckArt, createDepotTruckArt, createPaytmanTankArt } from './DepotProps';
 
 /** Editable, resolution-independent artwork for the night shift vertical slice. */
 export type DepotRoute = 'A' | 'B' | 'C';
@@ -49,7 +49,7 @@ export class DepotArt {
   public readonly crewTruckPoints: Record<string, { x: number; y: number }> = {};
   public bulkStockCount = 0;
   private readonly scene: Phaser.Scene;
-  private readonly dockHighlights: { route: DepotRoute; side: DepotSide; art: Phaser.GameObjects.Graphics }[] = [];
+  private readonly dockHighlights: { route: DepotRoute; side: DepotSide; x: number; y: number; art: Phaser.GameObjects.Graphics }[] = [];
   private readonly drive: Phaser.GameObjects.Container;
   private readonly statusLight: Phaser.GameObjects.Arc;
   private readonly departureObjects: { object: Phaser.GameObjects.Container | Phaser.GameObjects.Text; x: number; direction: number }[] = [];
@@ -61,17 +61,19 @@ export class DepotArt {
     this.drawFloor();
     this.drawTruck('left');
     this.drawTruck('right');
-    this.drawBulk('left');
-    this.drawBulk('right');
+    this.drawBulk();
     this.drawDepotPersonality();
-    this.drawDock('A', 'left', 260, 300);
-    this.drawDock('B', 'right', 700, 300);
-    this.drawDock('C', 'left', 260, 492);
-    this.drawDock('C', 'right', 700, 492);
+    this.drawDock('A', 'left', SHIFT_LAYOUT.dockA.x, SHIFT_LAYOUT.dockA.y);
+    this.drawDock('B', 'right', SHIFT_LAYOUT.dockB.x, SHIFT_LAYOUT.dockB.y);
+    this.drawDock('C', 'left', SHIFT_LAYOUT.bulkLeft.x, SHIFT_LAYOUT.bulkLeft.y);
+    this.drawDock('C', 'right', SHIFT_LAYOUT.bulkRight.x, SHIFT_LAYOUT.bulkRight.y);
 
+    const top = SHIFT_LAYOUT.beltTop;
+    const bottom = SHIFT_LAYOUT.beltBottom;
+    const length = bottom - top;
     const bg = scene.add.graphics().setDepth(6);
-    bg.fillStyle(0x07141d, 0.7).fillRoundedRect(419, 141, 125, 480, 9);
-    bg.fillStyle(0x152932).fillRoundedRect(428, 139, 104, 478, 8);
+    bg.fillStyle(0x07141d, 0.7).fillRoundedRect(419, top - 5, 125, length + 16, 9);
+    bg.fillStyle(0x152932).fillRoundedRect(428, top - 7, 104, length + 14, 8);
     const textureKey = 'night-shift-belt-slats';
     if (!scene.textures.exists(textureKey)) {
       const tex = scene.add.graphics();
@@ -88,21 +90,21 @@ export class DepotArt {
       tex.generateTexture(textureKey, 80, 48);
       tex.destroy();
     }
-    this.belt = scene.add.tileSprite(480, 378, 80, 464, textureKey).setDepth(7);
+    this.belt = scene.add.tileSprite(SHIFT_LAYOUT.beltX, top + length / 2, 80, length, textureKey).setDepth(7);
 
     const rails = scene.add.graphics().setDepth(9);
     for (const x of [428, 523]) {
-      rails.fillStyle(0x10252e).fillRoundedRect(x - 2, 145, 14, 464, 3);
-      rails.fillStyle(0x617574).fillRoundedRect(x, 145, 9, 461, 2);
-      rails.fillStyle(0x9ca99a).fillRect(x + 1, 149, 2, 453);
-      rails.fillStyle(0x354d54).fillRect(x + 7, 148, 3, 456);
-      for (let y = 173; y < 601; y += 48) {
+      rails.fillStyle(0x10252e).fillRoundedRect(x - 2, top - 1, 14, length, 3);
+      rails.fillStyle(0x617574).fillRoundedRect(x, top - 1, 9, length - 3, 2);
+      rails.fillStyle(0x9ca99a).fillRect(x + 1, top + 3, 2, length - 11);
+      rails.fillStyle(0x354d54).fillRect(x + 7, top + 2, 3, length - 8);
+      for (let y = top + 27; y < bottom - 9; y += 48) {
         rails.fillStyle(0x142a32).fillCircle(x + 4, y + 1, 2.5);
         rails.fillStyle(0xa9b6a9).fillCircle(x + 4, y, 1.5);
       }
     }
     // Rollers cover the ends of the moving surface, keeping tread emergence grounded.
-    for (const y of [149, 600]) {
+    for (const y of [top + 3, bottom - 10]) {
       rails.fillStyle(0x0e222c).fillRoundedRect(437, y - 4, 86, 16, 5);
       rails.fillStyle(0x627b7b).fillRoundedRect(439, y - 3, 82, 10, 4);
       rails.fillStyle(0x8c9a91).fillRect(441, y - 2, 78, 2);
@@ -110,25 +112,25 @@ export class DepotArt {
       for (let x = 447; x <= 515; x += 12) line(rails, x, y - 2, x, y + 6, 0x344b51, 1, 0.7);
     }
     // Intake hood and cast shadow, deliberately restrained rather than emissive.
-    rails.fillStyle(0x06141e, 0.4).fillRect(438, 155, 84, 13);
-    polygon(rails, [419, 132, 538, 132, 530, 154, 428, 154], 0x324d54);
-    rails.fillStyle(0x516b6b).fillRoundedRect(420, 132, 118, 14, 3);
-    line(rails, 424, 134, 534, 134, 0x8f9e91, 2);
-    label(scene, 479, 139, 'FEED  /  01', 8, '#c0cec0').setDepth(10);
-    rails.fillStyle(0x111f27).fillRoundedRect(453, 607, 56, 11, 3);
-    for (let x = 456; x < 505; x += 8) line(rails, x, 609, x + 3, 614, 0x977a49, 3);
+    rails.fillStyle(0x06141e, 0.4).fillRect(438, top + 9, 84, 13);
+    polygon(rails, [419, top - 14, 538, top - 14, 530, top + 8, 428, top + 8], 0x324d54);
+    rails.fillStyle(0x516b6b).fillRoundedRect(420, top - 14, 118, 14, 3);
+    line(rails, 424, top - 12, 534, top - 12, 0x8f9e91, 2);
+    label(scene, 479, top - 7, 'FEED  /  01', 8, '#c0cec0').setDepth(10);
+    rails.fillStyle(0x111f27).fillRoundedRect(453, bottom - 3, 56, 11, 3);
+    for (let x = 456; x < 505; x += 8) line(rails, x, bottom - 1, x + 3, bottom + 4, 0x977a49, 3);
 
     const motor = scene.add.graphics().setDepth(8);
-    motor.fillStyle(0x091821, 0.7).fillRoundedRect(532, 545, 31, 50, 5);
-    motor.fillStyle(0x476364).fillRoundedRect(532, 540, 24, 43, 4);
-    motor.fillStyle(0x6b8380).fillRect(534, 542, 19, 4);
-    for (let y = 551; y < 578; y += 5) line(motor, 536, y, 553, y, 0x263e48, 2);
+    motor.fillStyle(0x091821, 0.7).fillRoundedRect(532, bottom - 65, 31, 50, 5);
+    motor.fillStyle(0x476364).fillRoundedRect(532, bottom - 70, 24, 43, 4);
+    motor.fillStyle(0x6b8380).fillRect(534, bottom - 68, 19, 4);
+    for (let y = bottom - 59; y < bottom - 32; y += 5) line(motor, 536, y, 553, y, 0x263e48, 2);
     const driveArt = scene.add.graphics();
     driveArt.fillStyle(0x89988a).fillCircle(0, 0, 7);
     driveArt.fillStyle(0x2c4850).fillCircle(0, 0, 4);
     line(driveArt, -6, 0, 6, 0, 0xb0b6a0, 2);
-    this.drive = scene.add.container(541, 585, [driveArt]).setDepth(10);
-    this.statusLight = scene.add.circle(541, 549, 2, 0xa6cc9a).setDepth(10);
+    this.drive = scene.add.container(541, bottom - 25, [driveArt]).setDepth(10);
+    this.statusLight = scene.add.circle(541, bottom - 61, 2, 0xa6cc9a).setDepth(10);
   }
 
   /** Absolute travel is shared with packages, so tread motion never drifts. */
@@ -158,121 +160,97 @@ export class DepotArt {
     const dock = this.dockHighlights.find((d) => d.route === route && d.side === side);
     if (!dock) return;
     const spark = this.scene.add.graphics().setDepth(11);
-    const x = side === 'left' ? 260 : 700;
-    const y = route === 'C' ? 492 : 300;
-    spark.lineStyle(3, DEPOT_ROUTE_COLORS[route], 0.9).strokeRoundedRect(x - 27, y - 33, 54, 66, 6);
+    const x = route === 'C' ? SHIFT_LAYOUT.bulkPile.x : dock.x;
+    const y = route === 'C' ? SHIFT_LAYOUT.bulkPile.y : dock.y;
+    const w = route === 'C' ? 122 : 54;
+    const h = route === 'C' ? 46 : 66;
+    spark.lineStyle(3, DEPOT_ROUTE_COLORS[route], 0.9).strokeRoundedRect(x - w / 2, y - h / 2, w, h, 6);
     this.scene.tweens.add({ targets: spark, alpha: 0, duration: 450, onComplete: () => spark.destroy() });
   }
 
   private drawFloor() {
     const scene = this.scene;
     const g = scene.add.graphics().setDepth(0);
-    g.fillStyle(0x14262f).fillRect(0, 128, 960, 494);
-    g.fillStyle(0x253c43).fillRoundedRect(15, 139, 930, 478, 8);
-    g.fillStyle(0x314950).fillRect(230, 150, 190, 456).fillRect(540, 150, 190, 456);
-    g.fillStyle(0x2b444b).fillRect(299, 150, 100, 456).fillRect(561, 150, 100, 456);
+    const top = SHIFT_LAYOUT.worldTop;
+    const bottom = SHIFT_LAYOUT.worldBottom;
+    g.fillStyle(0x14262f).fillRect(0, top, 960, bottom - top);
+    g.fillStyle(0x253c43).fillRoundedRect(15, top + 9, 930, bottom - top - 12, 8);
+    g.fillStyle(0x314950).fillRect(328, top + 14, 90, bottom - top - 24).fillRect(542, top + 14, 90, bottom - top - 24);
+    g.fillStyle(0x2b444b).fillRect(349, top + 14, 49, bottom - top - 24).fillRect(562, top + 14, 49, bottom - top - 24);
     // Offset concrete tiles, tiny deterministic aggregate, and expansion joints.
-    for (let y = 155; y < 612; y += 76) {
+    for (let y = top + 25; y < bottom - 8; y += 76) {
       const row = Math.floor(y / 76);
       line(g, 20, y, 938, y, 0x0e2933, 2, 0.23);
       line(g, 20, y + 2, 938, y + 2, 0x728886, 1, 0.09);
-      for (let x = 32 + (row % 2) * 60; x < 944; x += 120) line(g, x, y, x, Math.min(615, y + 76), 0x122c35, 1, 0.27);
+      for (let x = 32 + (row % 2) * 60; x < 944; x += 120) line(g, x, y, x, Math.min(bottom - 5, y + 76), 0x122c35, 1, 0.27);
     }
     for (let i = 0; i < 650; i++) {
       const x = 24 + ((i * 277 + 31) % 910);
-      const y = 156 + ((i * 163 + 37) % 452);
+      const y = top + 26 + ((i * 163 + 37) % (bottom - top - 38));
       g.fillStyle(i % 3 === 0 ? 0x091e28 : 0x829387, 0.075).fillRect(x, y, i % 5 === 0 ? 3 : 1, 1);
     }
-    // Bays are recessed into darker loading aprons.
-    g.fillStyle(0x142e38).fillRoundedRect(24, 209, 201, 186, 5).fillRoundedRect(735, 209, 201, 186, 5);
-    for (const x of [221, 737]) {
-      g.fillStyle(0x768b83, 0.25).fillRect(x, 199, 2, 367);
-      for (let y = 230; y < 581; y += 20) g.fillStyle(0x7d9288, 0.38).fillRect(x - 3, y, 8, 9);
+    // The source's four truck rows lead down to the two workers' trucks.
+    for (const y of [148, 244, 340, 436]) {
+      for (const x of [244, 716]) {
+        g.fillStyle(0x172f37).fillRoundedRect(x - 79, y - 45, 158, 90, 4);
+        g.lineStyle(1, 0x657e7c, 0.23).strokeRoundedRect(x - 79, y - 45, 158, 90, 4);
+      }
     }
-    for (const x of [306, 654]) {
-      line(g, x, 188, x, 577, 0x97aaa0, 1, 0.18);
-      for (let y = 221; y < 588; y += 53) line(g, x - 3, y, x + 3, y, 0xacc0ac, 1, 0.3);
+    for (const x of [268, 692]) g.fillStyle(0x172f37).fillRoundedRect(x - 79, 487, 158, 90, 4);
+    for (const x of [325, 635]) {
+      for (let y = 111; y < 480; y += 20) g.fillStyle(0x7d9288, 0.38).fillRect(x - 2, y, 4, 9);
+    }
+    for (const x of [346, 614]) {
+      line(g, x, 110, x, 475, 0x97aaa0, 1, 0.18);
+      for (let y = 135; y < 478; y += 53) line(g, x - 3, y, x + 3, y, 0xacc0ac, 1, 0.3);
     }
     // Painted direction arrows remain low contrast behind the actors.
-    for (const x of [355, 605]) {
-      for (const y of [208, 552]) {
+    for (const x of [374, 586]) {
+      for (const y of [208, 445]) {
         polygon(g, [x - 7, y + 3, x - 2, y + 3, x - 2, y - 3, x + 2, y - 3, x + 2, y + 3, x + 7, y + 3, x, y + 10], 0xa6b5a1, 0.16);
       }
     }
     // Warm overhead work lights, kept off the central read/play lane.
     for (const x of [105, 855]) {
-      polygon(g, [x - 38, 150, x + 38, 150, x + 104, 350, x - 104, 350], 0xd6b87d, 0.035);
-      g.fillStyle(0x091c25).fillRoundedRect(x - 46, 143, 92, 17, 5);
-      g.fillStyle(0xc4ba91).fillRoundedRect(x - 39, 146, 78, 5, 2);
-      g.fillStyle(0xf1de9f).fillRect(x - 34, 147, 68, 2);
+      polygon(g, [x - 38, top + 20, x + 38, top + 20, x + 104, top + 220, x - 104, top + 220], 0xd6b87d, 0.035);
+      g.fillStyle(0x091c25).fillRoundedRect(x - 46, top + 13, 92, 17, 5);
+      g.fillStyle(0xc4ba91).fillRoundedRect(x - 39, top + 16, 78, 5, 2);
+      g.fillStyle(0xf1de9f).fillRect(x - 34, top + 17, 68, 2);
     }
     // Wall edge, girders and a narrow drainage channel anchor the miniature.
-    g.fillStyle(0x0c202a).fillRect(0, 130, 960, 7).fillRect(0, 613, 960, 9);
-    line(g, 16, 138, 944, 138, 0x5a7376, 1, 0.45);
-    for (const x of [17, 218, 742, 943]) {
-      g.fillStyle(0x102630).fillRect(x - 5, 139, 11, 37);
-      g.fillStyle(0x50686b).fillRect(x - 5, 139, 4, 35);
-      g.fillStyle(0x0a202a, 0.4).fillRect(x + 6, 141, 9, 34);
+    g.fillStyle(0x0c202a).fillRect(0, top, 960, 7).fillRect(0, bottom - 7, 960, 7);
+    line(g, 16, top + 8, 944, top + 8, 0x5a7376, 1, 0.45);
+    for (const x of [17, 326, 634, 943]) {
+      g.fillStyle(0x102630).fillRect(x - 5, top + 9, 11, 37);
+      g.fillStyle(0x50686b).fillRect(x - 5, top + 9, 4, 35);
+      g.fillStyle(0x0a202a, 0.4).fillRect(x + 6, top + 11, 9, 34);
     }
-    for (let x = 35; x < 941; x += 12) line(g, x, 615, x + 4, 620, 0x53676b, 1, 0.3);
-    label(scene, 351, 591, 'WEST WALK', 8, '#6e8a8b').setDepth(1);
-    label(scene, 609, 591, 'EAST WALK', 8, '#6e8a8b').setDepth(1);
+    for (let x = 35; x < 941; x += 12) line(g, x, bottom - 5, x + 4, bottom, 0x53676b, 1, 0.3);
+    label(scene, 355, 632, 'WEST WALK', 8, '#6e8a8b').setDepth(1);
+    label(scene, 605, 632, 'EAST WALK', 8, '#6e8a8b').setDepth(1);
   }
 
   private drawTruck(side: DepotSide) {
-    const scene = this.scene;
-    const reflected = side === 'right';
-    const root = scene.add.container(reflected ? 960 : 0, 0).setDepth(3);
-    this.departureObjects.push({ object: root, x: root.x, direction: reflected ? 1 : -1 });
-    if (reflected) root.setScale(-1, 1);
-    const g = scene.add.graphics();
-    root.add(g);
-    const route = reflected ? 'B' : 'A';
-    const accent = DEPOT_ROUTE_COLORS[route];
-    g.fillStyle(0x081820, 0.55).fillRoundedRect(35, 239, 190, 139, 10);
-    // Rubber tires are visibly separate from the steel body.
-    g.fillStyle(0x0a1820).fillRoundedRect(57, 238, 28, 14, 4).fillRoundedRect(57, 351, 28, 14, 4)
-      .fillRoundedRect(167, 238, 25, 14, 4).fillRoundedRect(167, 351, 25, 14, 4);
-    g.fillStyle(0x344f59).fillRoundedRect(30, 253, 45, 94, 10);
-    g.fillStyle(0x4d6a72).fillRoundedRect(31, 252, 35, 88, 8);
-    g.fillStyle(0x203b49).fillRoundedRect(35, 264, 22, 62, 5);
-    polygon(g, [36, 265, 45, 265, 38, 312, 36, 312], 0x8eafb0, 0.2);
-    g.fillStyle(0xa7baa8).fillRoundedRect(29, 260, 4, 14, 2).fillRoundedRect(29, 327, 4, 9, 2);
-    g.fillStyle(0x081c26).fillRect(40, 284, 3, 30);
-    g.fillStyle(0x547077).fillRoundedRect(65, 230, 147, 133, 5);
-    g.fillStyle(0x80918b).fillRoundedRect(67, 226, 141, 127, 4);
-    g.fillStyle(0xa5aca0).fillRect(71, 228, 132, 4);
-    g.fillStyle(0x738780).fillRect(70, 239, 133, 100);
-    for (let x = 80; x < 206; x += 13) {
-      line(g, x, 240, x, 338, 0x435e63, 1, 0.55);
-      line(g, x + 2, 240, x + 2, 338, 0xa4b09e, 1, 0.35);
-    }
-    g.fillStyle(accent, 0.74).fillRect(68, 343, 137, 7);
-    g.fillStyle(0x233f48).fillRoundedRect(83, 269, 105, 44, 3);
-    g.lineStyle(1, 0x95aaa0, 0.45).strokeRoundedRect(83, 269, 105, 44, 3);
-    g.fillStyle(0x253e48).fillRect(204, 233, 11, 119);
-    g.fillStyle(0x0d252f).fillRect(213, 241, 13, 102);
-    g.fillStyle(0x607671).fillRect(217, 244, 6, 96);
-    g.fillStyle(0x122b36).fillRoundedRect(223, 246, 9, 93, 2);
-    // Stepped steel transfer plate visually touches the sorting bay.
-    polygon(g, [228, 260, 243, 268, 243, 326, 228, 334], 0x546963);
-    for (let y = 272; y < 327; y += 8) line(g, 231, y, 240, y, 0x8b9983, 1, 0.55);
-    g.fillStyle(0xddab6b).fillRect(207, 238, 5, 6).fillRect(207, 338, 5, 6);
-    const lx = reflected ? 824 : 136;
-    const first = label(scene, lx, 282, route === 'A' ? 'HERES UR' : 'PAYTMAN', 12, '#e0e5ce').setDepth(4);
-    const second = label(scene, lx, 300, route === 'A' ? 'SOVICE' : '', 10, '#a7bbb1').setDepth(4);
-    for (const object of [first, second]) this.departureObjects.push({ object, x: object.x, direction: reflected ? 1 : -1 });
+    const point = side === 'left' ? { x: 268, y: 532 } : { x: 692, y: 532 };
+    const route = side === 'left' ? 'A' : 'B';
+    const truck = createDepotTruckArt(this.scene, {
+      name: route === 'A' ? 'HERES UR SOVICE' : 'PAYTMAN', side,
+      body: route === 'A' ? 0x4f8495 : 0x789369,
+      trim: route === 'A' ? 0x8dafae : 0xaac49d, accent: DEPOT_ROUTE_COLORS[route],
+    }).setPosition(point.x, point.y).setDepth(3);
+    this.departureObjects.push({ object: truck, x: point.x, direction: side === 'left' ? -1 : 1 });
   }
 
-  private drawBulk(side: DepotSide) {
-    const x = side === 'left' ? 129 : 831;
+  private drawBulk() {
+    const { x, y } = SHIFT_LAYOUT.bulkPile;
     const g = this.scene.add.graphics().setDepth(3);
-    g.fillStyle(0x173039).fillRoundedRect(x - 84, 433, 164, 121, 5);
-    g.lineStyle(1, 0x62746d, 0.5).strokeRoundedRect(x - 84, 433, 164, 121, 5);
-    pallet(g, x + (side === 'left' ? 18 : -18), 503, 105, 61);
-    // A restrained three-crate stack: timber frames, nails, metal corner caps.
+    g.setData('bulkPile', { x, y });
+    g.fillStyle(0x173039).fillRoundedRect(x - 63, y - 23, 126, 49, 4);
+    g.lineStyle(1, 0xc2a771, 0.55).strokeRoundedRect(x - 63, y - 23, 126, 49, 4);
+    pallet(g, x, y, 116, 40);
+    // One common stock pile at the actual end of the belt.
     const crate = (cx: number, cy: number, w: number, h: number) => {
-      const g = this.scene.add.graphics().setDepth(3);
+      const g = this.scene.add.graphics().setDepth(3 + cy / 10000);
       g.setData('bulkStockIndex', this.bulkStock.length);
       this.bulkStock.push(g);
       g.fillStyle(0x172a2c, 0.55).fillRect(cx - w / 2 + 4, cy - h / 2 + 9, w, h);
@@ -285,86 +263,80 @@ export class DepotArt {
       }
       line(g, cx - w / 2 + 2, cy - h / 2 + 1, cx + w / 2 - 2, cy - h / 2 + 1, 0xd3b580, 1, 0.7);
     };
-    // Both bulk docks feed this common dispatch stack; Ralph collects from here.
-    if (side === 'right') {
-      crate(782, 509, 34, 31);
-      crate(817, 509, 34, 31);
-      crate(852, 509, 29, 31);
-      crate(799, 488, 37, 31);
-      crate(835, 487, 35, 31);
-      crate(817, 468, 34, 31);
-    }
-    // Upright hand truck adds a recognizable silhouette without crowding walks.
-    const hx = side === 'left' ? x - 62 : x + 62;
-    g.lineStyle(5, 0x172731).strokeRoundedRect(hx - 8, 449, 18, 70, 6);
-    g.lineStyle(3, 0xb79554).strokeRoundedRect(hx - 8, 445, 16, 65, 6);
-    line(g, hx - 6, 493, hx + 6, 493, 0xb79554, 3);
-    g.fillStyle(0x081d27).fillCircle(hx - 10, 514, 6).fillCircle(hx + 10, 514, 6);
-    g.fillStyle(0x6c7b6b).fillRect(hx - 9, 506, 20, 5);
-    label(this.scene, x, 442, 'OVERSIZE / HOLD', 9, '#b7ab86').setDepth(4);
-    label(this.scene, x, 570, 'KEEP ACCESS CLEAR', 8, '#6d8888').setDepth(4);
+    for (const cy of [y + 6, y - 9]) for (const cx of [x, x - 30, x + 30]) crate(cx, cy, 26, 20);
+    this.setBulkStock(0);
+    label(this.scene, x, y + 28, 'BULK / DISPATCH', 7, '#c5b384').setDepth(4);
+    const recovery = SHIFT_LAYOUT.recoveryPile;
+    const tray = this.scene.add.graphics().setDepth(3).setData('recoveryPile', { ...recovery });
+    tray.fillStyle(0x0a2028).fillRoundedRect(recovery.x - 59, recovery.y - 13, 118, 26, 4);
+    tray.lineStyle(2, 0x788784).strokeRoundedRect(recovery.x - 59, recovery.y - 13, 118, 26, 4);
+    for (let dx = -51; dx < 54; dx += 13) line(tray, recovery.x + dx, recovery.y - 9, recovery.x + dx, recovery.y + 9, 0x364f56, 1, 0.7);
+    label(this.scene, recovery.x, recovery.y + 18, 'MISSED / RECOVER', 7, '#afaaa0').setDepth(4);
   }
 
   private drawDock(route: DepotRoute, side: DepotSide, x: number, y: number) {
     const scene = this.scene;
     const color = DEPOT_ROUTE_COLORS[route];
+    const compact = route === 'C';
+    const width = compact ? 36 : 54;
+    const height = compact ? 42 : 70;
     const g = scene.add.graphics().setDepth(4);
-    g.fillStyle(0x152f37, 0.55).fillRoundedRect(x - 27, y - 35, 54, 70, 5);
-    g.lineStyle(2, color, 0.52).strokeRoundedRect(x - 27, y - 35, 54, 70, 5);
-    const arrow = side === 'left' ? -1 : 1;
-    for (const oy of [-25, 24]) {
+    g.fillStyle(0x152f37, 0.55).fillRoundedRect(x - width / 2, y - height / 2, width, height, 5);
+    g.lineStyle(2, color, 0.52).strokeRoundedRect(x - width / 2, y - height / 2, width, height, 5);
+    const arrow = (side === 'left' ? 1 : -1) * (compact ? -1 : 1);
+    for (const oy of compact ? [-14, 14] : [-25, 24]) {
       line(g, x - 8 * arrow, y + oy - 4, x - 13 * arrow, y + oy, color, 2, 0.55);
       line(g, x - 13 * arrow, y + oy, x - 8 * arrow, y + oy + 4, color, 2, 0.55);
     }
-    g.fillStyle(0x18313a).fillRoundedRect(x - 15, y - 16, 30, 32, 4);
-    label(scene, x, y - 1, route, 24, `#${color.toString(16).padStart(6, '0')}`).setDepth(5);
-    label(scene, x, y + 48, route === 'C' ? 'BULK' : 'LOAD', 8, '#8baba5').setDepth(5);
+    g.fillStyle(0x18313a).fillRoundedRect(x - (compact ? 12 : 15), y - (compact ? 11 : 16), compact ? 24 : 30, compact ? 22 : 32, 4);
+    label(scene, x, y - 1, route, compact ? 18 : 24, `#${color.toString(16).padStart(6, '0')}`).setDepth(5);
+    label(scene, x, y + (compact ? 31 : 48), compact ? 'BULK' : 'LOAD', 8, '#8baba5').setDepth(5);
     const highlight = scene.add.graphics().setDepth(4).setAlpha(0);
-    highlight.fillStyle(color, 0.16).fillRoundedRect(x - 26, y - 34, 52, 68, 5);
-    highlight.lineStyle(2, color, 0.95).strokeRoundedRect(x - 27, y - 35, 54, 70, 5);
-    this.dockHighlights.push({ route, side, art: highlight });
+    highlight.fillStyle(color, 0.16).fillRoundedRect(x - width / 2 + 1, y - height / 2 + 1, width - 2, height - 2, 5);
+    highlight.lineStyle(2, color, 0.95).strokeRoundedRect(x - width / 2, y - height / 2, width, height, 5);
+    this.dockHighlights.push({ route, side, x, y, art: highlight });
   }
 
   private drawDepotPersonality() {
     const g = this.scene.add.graphics().setDepth(4);
-    // AJ's improvised massage business, squeezed between the actual freight bays.
-    g.fillStyle(0x0b2027, 0.5).fillEllipse(159, 413, 80, 17);
-    g.fillStyle(0x604330).fillRoundedRect(123, 397, 70, 12, 4);
-    g.fillStyle(0xa78061).fillRoundedRect(124, 393, 66, 12, 5);
-    g.fillStyle(0xbed0b4).fillRoundedRect(127, 394, 16, 9, 3);
-    g.fillStyle(0x405453).fillRect(130, 408, 4, 11).fillRect(182, 408, 4, 11);
+    // Personal props stay beside their original coworker rows.
+    g.fillStyle(0x0b2027, 0.5).fillEllipse(150, 301, 80, 17);
+    g.fillStyle(0x604330).fillRoundedRect(115, 285, 70, 12, 4);
+    g.fillStyle(0xa78061).fillRoundedRect(116, 281, 66, 12, 5);
+    g.fillStyle(0xbed0b4).fillRoundedRect(119, 282, 16, 9, 3);
+    g.fillStyle(0x405453).fillRect(122, 296, 4, 11).fillRect(174, 296, 4, 11);
     // Bannerman's original red, blue, yellow and green LEGO construction.
-    g.fillStyle(0xad5547).fillRect(187, 589, 12, 8);
-    g.fillStyle(0x507fa3).fillRect(199, 584, 14, 12);
-    g.fillStyle(0xc9ad58).fillRect(183, 580, 12, 9);
-    g.fillStyle(0x6c9758).fillRect(207, 590, 12, 7);
-    for (const x of [186, 191]) g.fillStyle(0xe0c371).fillEllipse(x, 580, 3, 2);
-    for (const x of [202, 209]) g.fillStyle(0x7fa9b7).fillEllipse(x, 584, 3, 2);
+    g.fillStyle(0xad5547).fillRect(135, 486, 16, 10);
+    g.fillStyle(0x507fa3).fillRect(149, 478, 16, 14);
+    g.fillStyle(0xc9ad58).fillRect(130, 475, 14, 11);
+    g.fillStyle(0x6c9758).fillRect(160, 489, 13, 9);
+    for (const x of [133, 139]) g.fillStyle(0xe0c371).fillEllipse(x, 475, 3, 2);
+    for (const x of [152, 160]) g.fillStyle(0x7fa9b7).fillEllipse(x, 478, 3, 2);
     // Donna's Warcraft husband has colonized a spare packing table.
-    g.fillStyle(0x664e39).fillRoundedRect(882, 594, 53, 5, 1);
-    g.fillStyle(0x253e49).fillRoundedRect(910, 570, 23, 21, 2);
-    g.fillStyle(0x718670).fillRect(913, 573, 17, 12);
-    polygon(g, [914, 584, 919, 577, 923, 582, 928, 576, 930, 584], 0x36544b);
-    g.fillStyle(0xc9ab71).fillCircle(924, 576, 2);
-    g.fillStyle(0x1e3540).fillRect(920, 590, 3, 5);
-    g.fillStyle(0x826344).fillCircle(893, 584, 6);
-    g.fillStyle(0x53617a).fillRoundedRect(886, 588, 13, 12, 4);
+    g.fillStyle(0x664e39).fillRoundedRect(784, 489, 53, 5, 1);
+    g.fillStyle(0x253e49).fillRoundedRect(812, 465, 23, 21, 2);
+    g.fillStyle(0x718670).fillRect(815, 468, 17, 12);
+    polygon(g, [816, 479, 821, 472, 825, 477, 830, 471, 832, 479], 0x36544b);
+    g.fillStyle(0xc9ab71).fillCircle(826, 471, 2);
+    g.fillStyle(0x1e3540).fillRect(822, 485, 3, 5);
+    g.fillStyle(0x826344).fillCircle(795, 479, 6);
+    g.fillStyle(0x53617a).fillRoundedRect(788, 483, 13, 12, 4);
     const trucks: [string, string, number, number, 'left' | 'right'][] = [
-      ['hussan', 'HUSSAN', 149, 192, 'left'], ['aj', 'AJ', 142, 375, 'left'],
-      ['ben', 'PAULA ABDUL', 70, 603, 'left'], ['bannerman', 'BANNERMAN', 182, 603, 'left'],
-      ['fruitloop', 'FRUIT LOOP', 844, 175, 'right'], ['brian', 'BRIAN', 847, 208, 'right'],
-      ['doris', 'DORIS', 845, 375, 'right'], ['donna', 'DONNA', 860, 603, 'right'],
+      ['hussan', 'HUSSAN', 244, 148, 'left'], ['aj', 'AJ', 244, 244, 'left'],
+      ['ben', 'PAULA ABDUL', 244, 340, 'left'], ['bannerman', 'BANNERMAN', 244, 436, 'left'],
+      ['fruitloop', 'FRUIT LOOP', 716, 148, 'right'], ['doris', 'DORIS', 716, 244, 'right'],
+      ['brian', 'BRIAN', 716, 340, 'right'], ['donna', 'DONNA', 716, 436, 'right'],
     ];
     for (const [id, name, x, y, side] of trucks) {
       const truck = createCrewTruckArt(this.scene, name, id === 'ben', side).setPosition(x, y).setDepth(3);
-      this.crewTruckPoints[id] = { x: x + (side === 'left' ? 36 : -36), y };
+      this.crewTruckPoints[id] = { x: x + (side === 'left' ? 80 : -80), y };
       this.departureObjects.push({ object: truck, x, direction: side === 'left' ? -1 : 1 });
     }
     this.crewTruckPoints.froodoo = this.crewTruckPoints.fruitloop;
     this.crewTruckPoints.dorothy = this.crewTruckPoints.doris;
     this.fishTank = createPaytmanTankArt(this.scene);
-    this.fishTank.container.setPosition(918, 410).setDepth(4);
-    this.departureObjects.push({ object: this.fishTank.container, x: 918, direction: 1 });
+    this.fishTank.container.setPosition(762, 558).setDepth(4);
+    this.departureObjects.push({ object: this.fishTank.container, x: 762, direction: 1 });
   }
 }
 

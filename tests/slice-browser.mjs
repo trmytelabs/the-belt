@@ -116,7 +116,9 @@ try {
   // Complete the opening A/B/C dispatches using only controls and naturally
   // spawned parcels. The model is observed, never moved or accelerated here.
   const walkTo = async (x, y) => {
-    for (const [axis, target, lowKey, highKey] of [['x', x, 'ArrowLeft', 'ArrowRight'], ['y', y, 'ArrowUp', 'ArrowDown']]) {
+    // Follow the clear belt aisle vertically, then approach the loading door.
+    // Cutting across first would walk into the restored truck's corner.
+    for (const [axis, target, lowKey, highKey] of [['y', y, 'ArrowUp', 'ArrowDown'], ['x', x, 'ArrowLeft', 'ArrowRight']]) {
       const current = await page.evaluate(axis => window.fixtureGame.scene.getScene('DepotScene').model.activeWorker[axis], axis);
       if (Math.abs(current - target) < 4) continue;
       const direction = current < target ? 1 : -1;
@@ -130,9 +132,9 @@ try {
     }
   };
   for (const [route, index, dockX, dockY, kind, name] of [
-    ['A', 0, 280, 300, 'mallwood', 'MALLWOOD RD EAST'],
-    ['B', 1, 680, 300, 'goji', 'GOJI BERRIES'],
-    ['C', 1, 680, 492, 'lobsters', 'LIVE LOBSTERS'],
+    ['A', 0, 360, 532, 'mallwood', 'MALLWOOD RD EAST'],
+    ['B', 1, 600, 532, 'goji', 'GOJI BERRIES'],
+    ['C', 1, 560, 580, 'lobsters', 'LIVE LOBSTERS'],
   ]) {
     if (await read(() => window.fixtureGame.scene.getScene('DepotScene').model.activeIndex) !== index) await press('Tab');
     await walkTo(index === 0 ? 400 : 560, 300);
@@ -192,6 +194,16 @@ try {
         queue: s.input.keyboard.manager.queue.map(event => ({ code: event.code, type: event.type, time: event.timeStamp })) };
     });
     assert.equal(afterSort.sorted, beforeSort + 1, `Opening ${route} delivery diagnostics: ${JSON.stringify(afterSort)}`);
+    if (route === 'C') {
+      await page.waitForTimeout(400);
+      const bulk = await read(() => {
+        const scene = window.fixtureGame.scene.getScene('DepotScene');
+        const delivered = scene.model.packages.find(parcel => parcel.route === 'C' && parcel.state === 'delivered');
+        return { x: delivered.x, y: delivered.y, stock: scene.depot.bulkStockCount, action: scene.actionText.text };
+      });
+      assert.deepEqual([bulk.x, bulk.y, bulk.stock], [480, 580, 1], 'C must reach the actual shared pile immediately beyond the belt');
+      if (process.env.BELT_SCREENSHOT_DIR) await page.screenshot({ path: join(process.env.BELT_SCREENSHOT_DIR, 'after-layout-bulk.png') });
+    }
   }
   assert.equal(await read(() => window.fixtureGame.scene.getScene('DepotScene').model.missed), 0,
     'the opening lesson must allow all three routes without a miss');
@@ -236,9 +248,7 @@ try {
   const first = await arrange('A');
   await press('Space');
   assert.equal(await read(() => window.fixtureGame.scene.getScene('DepotScene').model.activeWorker.heldId), first.id);
-  await page.keyboard.down('ArrowLeft');
-  await page.waitForFunction(() => window.fixtureGame.scene.getScene('DepotScene').model.activeWorker.x < 300);
-  await page.keyboard.up('ArrowLeft');
+  await walkTo(360, 532);
   assert.equal(await read(() => window.fixtureGame.scene.getScene('DepotScene').model.sorted), first.sorted,
     'entering a dock must not silently deliver before the action');
   await press('Space');
@@ -250,7 +260,7 @@ try {
 
   const wrong = await arrange('B');
   await press('Space');
-  await read(() => { window.fixtureGame.scene.getScene('DepotScene').model.activeWorker.x = 280; });
+  await read(() => { Object.assign(window.fixtureGame.scene.getScene('DepotScene').model.activeWorker, { x: 360, y: 532 }); });
   await press('Space');
   await press('Space');
   assert.equal(await read(() => window.fixtureGame.scene.getScene('DepotScene').model.activeWorker.heldId), wrong.id,
@@ -258,7 +268,7 @@ try {
   assert.equal(await read(() => window.fixtureGame.scene.getScene('DepotScene').model.score), wrong.score);
 
   // Move back to the belt, set down, and let the other worker take the parcel.
-  await read(() => { window.fixtureGame.scene.getScene('DepotScene').model.activeWorker.x = 400; });
+  await read(() => { Object.assign(window.fixtureGame.scene.getScene('DepotScene').model.activeWorker, { x: 400, y: 300 }); });
   await press('Space');
   assert.equal(await read(() => window.fixtureGame.scene.getScene('DepotScene').model.activeWorker.heldId), null);
   await press('Tab');
@@ -269,7 +279,7 @@ try {
   await press('Space');
   assert.equal(await read(() => window.fixtureGame.scene.getScene('DepotScene').model.activeWorker.heldId), wrong.id,
     'a replaced parcel must be available to the opposite worker');
-  await read(() => { window.fixtureGame.scene.getScene('DepotScene').model.activeWorker.x = 690; });
+  await read(() => { Object.assign(window.fixtureGame.scene.getScene('DepotScene').model.activeWorker, { x: 600, y: 532 }); });
   await press('Space');
   assert.equal(await read(() => window.fixtureGame.scene.getScene('DepotScene').model.sorted), wrong.sorted + 1);
 
@@ -277,15 +287,15 @@ try {
   await read(() => {
     const model = window.fixtureGame.scene.getScene('DepotScene').model;
     const parcel = model.packages[0];
-    parcel.y = 609; parcel.beltOffset = 609 - model.beltTravel;
-    model.activeWorker.y = 580;
+    parcel.y = 549; parcel.beltOffset = 549 - model.beltTravel;
+    model.activeWorker.y = 620;
   });
   await page.waitForFunction(() => window.fixtureGame.scene.getScene('DepotScene').model.pileup === 1);
   await press('Space');
   assert.equal(await read(() => window.fixtureGame.scene.getScene('DepotScene').model.pileup), 0);
   await read(() => {
     const worker = window.fixtureGame.scene.getScene('DepotScene').model.activeWorker;
-    worker.x = 280; worker.y = 492;
+    worker.x = 400; worker.y = 580;
   });
   await press('Space');
   assert.equal(await read(() => window.fixtureGame.scene.getScene('DepotScene').model.score), recovery.score + 60,

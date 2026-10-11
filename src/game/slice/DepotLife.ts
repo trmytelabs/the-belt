@@ -50,20 +50,20 @@ export class DepotLife {
     this.depot = depot;
     this.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const residents: [string, string, number, number][] = [
-      ['hussan', 'HUSSAN', 51, 201], ['aj', 'AJ', 191, 398],
-      ['ben', 'BEN', 48, 570], ['bannerman', 'BANNERMAN', 177, 570],
-      ['fruitloop', 'FRUIT LOOP', 910, 201], ['doris', 'DORIS', 790, 398],
-      ['brian', 'BRIAN', 796, 201], ['donna', 'DONNA', 908, 570],
+      ['hussan', 'HUSSAN', 150, 198], ['aj', 'AJ', 150, 294],
+      ['ben', 'BEN', 150, 390], ['bannerman', 'BANNERMAN', 150, 486],
+      ['fruitloop', 'FRUIT LOOP', 810, 198], ['doris', 'DORIS', 810, 294],
+      ['brian', 'BRIAN', 810, 390], ['donna', 'DONNA', 810, 486],
     ];
     for (const [id, name, x, y] of residents) this.add(id, name, x, y, true);
     for (const [id, name, x, y] of [
-      ['kylie', 'KYLIE', 850, 400], ['vic', 'VIC', 130, 399],
+      ['kylie', 'KYLIE', 850, 400], ['vic', 'VIC', 132, 286],
       ['john', 'JOHN RUSHTON', 77, 397], ['shan', 'SHAN O MACK', 880, 395],
-      ['ralph', 'RALPH', 797, 569], ['paula', 'PAULA ABDUL', 112, 562],
-      ['gunman', 'GUNMAN', 202, 528], ['demon', '', 58, 540],
+      ['ralph', 'RALPH', 751, 610], ['paula', 'PAULA ABDUL', 214, 382],
+      ['gunman', 'GUNMAN', 344, 348], ['demon', '', 160, 360],
     ] as [string, string, number, number][]) this.add(id, name, x, y, false);
     this.portal = scene.add.graphics().setDepth(14);
-    this.bang = scene.add.text(124, 513, 'BANG!', {
+    this.bang = scene.add.text(226, 333, 'BANG!', {
       fontFamily: 'Arial, sans-serif', fontSize: '15px', fontStyle: 'bold',
       color: '#f0dfb3', stroke: '#713e42', strokeThickness: 4,
     }).setOrigin(0.5).setDepth(17).setVisible(false);
@@ -72,14 +72,14 @@ export class DepotLife {
     }).setOrigin(0.5).setVisible(false);
     this.cast.get('ben')!.art.add(this.deadMarker);
     this.towel = scene.add.graphics().setDepth(17).setVisible(false);
-    this.towel.fillStyle(0xd4d8bf).fillRoundedRect(131, 385, 19, 22, 3);
-    this.towel.lineStyle(2, 0x859b93).lineBetween(133, 390, 148, 390);
-    scene.add.rectangle(220, 407, 21, 28, 0x50696b).setStrokeStyle(2, 0x83948c).setDepth(14);
-    this.beltButton = scene.add.circle(220, 405, 7, 0xb55e50).setDepth(15);
-    scene.add.text(220, 425, 'STOP', { fontFamily: 'Arial', fontSize: '7px', color: '#cbd3b9' }).setOrigin(0.5).setDepth(15);
-    scene.add.rectangle(740, 407, 21, 28, 0x50696b).setStrokeStyle(2, 0x83948c).setDepth(14);
-    this.restartButton = scene.add.circle(740, 405, 7, 0xb55e50).setDepth(15);
-    scene.add.text(740, 425, 'START', { fontFamily: 'Arial', fontSize: '7px', color: '#cbd3b9' }).setOrigin(0.5).setDepth(15);
+    this.towel.fillStyle(0xd4d8bf).fillRoundedRect(131, 272, 19, 22, 3);
+    this.towel.lineStyle(2, 0x859b93).lineBetween(133, 277, 148, 277);
+    scene.add.rectangle(420, 407, 21, 28, 0x50696b).setStrokeStyle(2, 0x83948c).setDepth(14);
+    this.beltButton = scene.add.circle(420, 405, 7, 0xb55e50).setDepth(15);
+    scene.add.text(420, 425, 'STOP', { fontFamily: 'Arial', fontSize: '7px', color: '#cbd3b9' }).setOrigin(0.5).setDepth(15);
+    scene.add.rectangle(540, 407, 21, 28, 0x50696b).setStrokeStyle(2, 0x83948c).setDepth(14);
+    this.restartButton = scene.add.circle(540, 405, 7, 0xb55e50).setDepth(15);
+    scene.add.text(540, 425, 'START', { fontFamily: 'Arial', fontSize: '7px', color: '#cbd3b9' }).setOrigin(0.5).setDepth(15);
     this.routines = new DepotRoutines(scene, model, depot, this.cast, this.say.bind(this));
   }
 
@@ -134,12 +134,13 @@ export class DepotLife {
     vic.art.setVisible(massage || time < this.vicUntil || this.mesaOffering);
     vic.art.x = !massage ? 132 : time < 23700 ? Phaser.Math.Linear(-40, 132, Phaser.Math.Clamp((time - 21000) / 2700, 0, 1))
       : time < 30800 ? 132 : Phaser.Math.Linear(132, -40, (time - 30800) / 2700);
+    if (massage) vic.art.y = 286;
     vic.art.rotation = lyingDown ? Math.PI / 2 : 0;
     vic.tag.setVisible(!lyingDown);
     this.towel.setVisible(lyingDown);
     const aj = this.cast.get('aj')!;
     aj.art.rotation = 0;
-    if (massage) aj.art.setPosition(lyingDown ? 174 : 191, 398);
+    if (massage) aj.art.setPosition(lyingDown ? 174 : aj.x, lyingDown ? 286 : aj.y);
     setColleaguePose(aj.art, lyingDown ? 'massage' : 'idle', this.reducedMotion ? 0 : time);
 
     this.once('paid-day', 134000, () => {
@@ -250,7 +251,7 @@ export class DepotLife {
     const shan = this.cast.get('shan')!.art;
     if (time >= 94000 && time < 102000) {
       vic.setVisible(true).setRotation(0).setPosition(
-        time < 96000 ? Phaser.Math.Linear(40, 208, (time - 94000) / 2000) : time < 97500 ? 208 : Phaser.Math.Linear(208, -35, (time - 97500) / 4500), 397);
+        time < 96000 ? Phaser.Math.Linear(40, 408, (time - 94000) / 2000) : time < 97500 ? 408 : Phaser.Math.Linear(408, -35, (time - 97500) / 4500), 397);
     }
     this.once('vic-stop', 96000, () => {
       this.model.eventStopped = true;
@@ -259,8 +260,8 @@ export class DepotLife {
       audioSystem.play('belt-stop');
     });
     if (time >= 99200 && time < 108000) {
-      shan.setVisible(true).setPosition(time < 101200 ? Phaser.Math.Linear(960, 752, (time - 99200) / 2000)
-        : time < 104000 ? 752 : Phaser.Math.Linear(752, 980, (time - 104000) / 4000), 397);
+      shan.setVisible(true).setPosition(time < 101200 ? Phaser.Math.Linear(960, 552, (time - 99200) / 2000)
+        : time < 104000 ? 552 : Phaser.Math.Linear(552, 980, (time - 104000) / 4000), 397);
     } else shan.setPosition(880, 395);
     this.once('shan-rant', 99600, () => this.rant());
     this.once('shan-restart', 101800, () => {
@@ -309,21 +310,21 @@ export class DepotLife {
     const demon = this.cast.get('demon')!.art;
     const paula = this.cast.get('paula')!.art;
     gunman.setVisible(time >= 68000 && time < 81700);
-    gunman.y = time < 69500 ? Phaser.Math.Linear(650, 528, Phaser.Math.Clamp((time - 68000) / 1500, 0, 1))
-      : time < 80500 ? 528 : Phaser.Math.Linear(528, 650, (time - 80500) / 1200);
+    gunman.y = time < 69500 ? Phaser.Math.Linear(470, 348, Phaser.Math.Clamp((time - 68000) / 1500, 0, 1))
+      : time < 80500 ? 348 : Phaser.Math.Linear(348, 470, (time - 80500) / 1200);
     // Exact source wording and line breaks; the full boast precedes the dodge.
     this.once('gunman', 69500, () => this.say('gunman', "I'M GOING TO\nROB THIS PLACE!", 2400, 2), time);
     this.once('ben-training', 72000, () => this.say('ben', "DON'T WORRY GUYS\nI GOT THIS\nI TOOK TRAINING ON\nHOW TO DODGE GUNS", 5200, 2), time);
     const dodge = Phaser.Math.Clamp((time - 77200) / 1300, 0, 1);
-    const fallenX = 122;
-    const fallenY = 558;
+    const fallenX = 224;
+    const fallenY = 378;
     ben.setVisible(time < 85600).setScale(0.8).setAlpha(1);
     this.cast.get('ben')!.tag.setVisible(time < 80020);
     if (time >= 77200 && time < 80020) {
-      ben.setPosition(48 + 74 * dodge + Math.sin(dodge * Math.PI * 4) * 17,
-        570 - 12 * dodge + Math.sin(dodge * Math.PI * 3) * 11);
+      ben.setPosition(150 + 74 * dodge + Math.sin(dodge * Math.PI * 4) * 17,
+        390 - 12 * dodge + Math.sin(dodge * Math.PI * 3) * 11);
       ben.rotation = this.reducedMotion ? 0 : Math.sin(time / 120) * 0.2;
-    } else if (time < 77200) ben.setPosition(48, 570);
+    } else if (time < 77200) ben.setPosition(150, 390);
     else ben.setPosition(fallenX, fallenY).setRotation(Math.PI / 2 * Phaser.Math.Clamp((time - 80020) / 280, 0, 1));
     for (const [index, at] of [78500, 78760, 79180, 79500, 80020].entries()) {
       this.once(`shot-${index}`, at, () => { this.bang.setText(SHOT_WORDS[index]); audioSystem.play('gunshot'); }, time);
@@ -344,22 +345,22 @@ export class DepotLife {
       // The adult reaches Ben's ankles, then both travel at the same speed.
       // Their 46px separation keeps the demon's hand on the rotated boot.
       demon.setScale(Phaser.Math.Linear(0.25, 1.24, emergence)).setPosition(
-        Phaser.Math.Linear(60, 76, emergence) - 20 * drag,
-        Phaser.Math.Linear(566, 537, emergence) + 8 * drag).setRotation(0);
+        Phaser.Math.Linear(162, 178, emergence) - 20 * drag,
+        Phaser.Math.Linear(386, 357, emergence) + 8 * drag).setRotation(0);
       ben.setPosition(fallenX - 20 * drag, fallenY + 8 * drag).setRotation(Math.PI / 2);
     } else if (time >= 85000 && time < 85600) {
       // Only shrink after the body reaches the gate: a distinct final descent.
       const sink = Phaser.Math.Easing.Quadratic.In(departure);
-      demon.setPosition(Phaser.Math.Linear(56, 60, sink), Phaser.Math.Linear(545, 559, sink))
+      demon.setPosition(Phaser.Math.Linear(158, 162, sink), Phaser.Math.Linear(365, 379, sink))
         .setScale(1.24 * (1 - sink)).setAlpha(1 - sink).setRotation(0);
-      ben.setPosition(Phaser.Math.Linear(102, 60, sink), Phaser.Math.Linear(566, 559, sink))
+      ben.setPosition(Phaser.Math.Linear(204, 162, sink), Phaser.Math.Linear(386, 379, sink))
         .setRotation(Math.PI / 2).setScale(0.8 * (1 - sink)).setAlpha(1 - sink);
     }
     this.deadMarker.setRotation(-ben.rotation);
     // Paula arrives only after the body and demon have fully disappeared.
     paula.setVisible(time >= 85600 && time < 92500);
-    paula.x = time < 86400 ? Phaser.Math.Linear(-25, 112, Phaser.Math.Clamp((time - 85600) / 800, 0, 1))
-      : time < 91600 ? 112 : Phaser.Math.Linear(112, -25, (time - 91600) / 900);
+    paula.x = time < 86400 ? Phaser.Math.Linear(77, 214, Phaser.Math.Clamp((time - 85600) / 800, 0, 1))
+      : time < 91600 ? 214 : Phaser.Math.Linear(214, 77, (time - 91600) / 900);
     paula.rotation = this.reducedMotion || time < 86400 || time >= 91600 ? 0 : Math.sin(time / 130) * 0.025;
     this.once('paula', 86400, () => this.say('paula', 'GREAT\nNOW WHICH BITCH\nIS GOING TO LOAD\nMY FUCKING TRUCK', 5200, 2), time);
   }
@@ -370,7 +371,7 @@ export class DepotLife {
     g.clear();
     if (!g.visible) return;
     const amount = Phaser.Math.Easing.Cubic.Out(opening) * (1 - departure * departure);
-    g.setPosition(60, 581 - 52 * amount).setScale(amount, amount).setAlpha(1 - departure);
+    g.setPosition(162, 401 - 52 * amount).setScale(amount, amount).setAlpha(1 - departure);
     g.setData('incidentStage', time < 81700 ? 'gate-opening' : time < 83200 ? 'demon-emerging' : time < 85000 ? 'body-dragging' : 'departure');
     const pulse = this.reducedMotion ? 0 : Math.sin(time / 190) * 0.025;
     g.fillStyle(0x170d0b, 0.52).fillEllipse(0, 55, 102, 15);

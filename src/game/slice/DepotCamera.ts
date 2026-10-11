@@ -1,12 +1,12 @@
 import Phaser from 'phaser';
-import type { Worker } from './ShiftModel';
+import { SHIFT_LAYOUT, type Worker } from './ShiftModel';
 
 /** Separate world and screen cameras keep the console and hit targets stationary. */
 export class DepotCamera {
   public readonly world: Phaser.Cameras.Scene2D.Camera;
   public readonly hud: Phaser.Cameras.Scene2D.Camera;
   public overview = false;
-  private center = { x: 480, y: 376 };
+  private center = { x: 480, y: 370 };
   private zoom = 1;
   private readonly reducedMotion: boolean;
 
@@ -52,13 +52,13 @@ export class DepotCamera {
   public update(delta: number, worker: Worker, mode: 'follow' | 'interlude' | 'overview' | 'hold'): void {
     if (mode === 'hold') return;
     const wide = mode === 'overview' || (mode === 'follow' && this.overview);
-    const targetZoom = mode === 'interlude' ? 2.45 : wide ? 1 : 1.45;
+    const targetZoom = mode === 'interlude' ? 2.45 : wide ? 494 / (SHIFT_LAYOUT.worldBottom - SHIFT_LAYOUT.worldTop) : 1.45;
     const halfWidth = 960 / targetZoom / 2;
     const halfHeight = 494 / targetZoom / 2;
-    const target = mode === 'interlude' ? { x: 150, y: 535 }
-      : wide ? { x: 480, y: 376 } : { x: worker.side === 'left' ? 344 : 616, y: worker.y };
-    target.x = Phaser.Math.Clamp(target.x, halfWidth, 960 - halfWidth);
-    target.y = Phaser.Math.Clamp(target.y, 126 + halfHeight, 620 - halfHeight);
+    const target = mode === 'interlude' ? { x: 248, y: 355 }
+      : wide ? { x: 480, y: 370 } : { x: worker.side === 'left' ? 344 : 616, y: worker.y };
+    target.x = halfWidth >= 480 ? 480 : Phaser.Math.Clamp(target.x, halfWidth, 960 - halfWidth);
+    target.y = Phaser.Math.Clamp(target.y, SHIFT_LAYOUT.worldTop + halfHeight, SHIFT_LAYOUT.worldBottom - halfHeight);
     // Exponential smoothing has the same feel at different frame rates. Reduced
     // motion retains the closer view but removes animated camera travel.
     const blend = this.reducedMotion ? 1 : 1 - Math.exp(-Math.min(Math.max(delta, 0), 100) / 165);
@@ -71,8 +71,8 @@ export class DepotCamera {
   private apply(): void {
     const halfWidth = 480 / this.zoom;
     const halfHeight = 247 / this.zoom;
-    this.center.x = Phaser.Math.Clamp(this.center.x, halfWidth, 960 - halfWidth);
-    this.center.y = Phaser.Math.Clamp(this.center.y, 126 + halfHeight, 620 - halfHeight);
+    this.center.x = halfWidth >= 480 ? 480 : Phaser.Math.Clamp(this.center.x, halfWidth, 960 - halfWidth);
+    this.center.y = Phaser.Math.Clamp(this.center.y, SHIFT_LAYOUT.worldTop + halfHeight, SHIFT_LAYOUT.worldBottom - halfHeight);
     this.world.setZoom(this.zoom).centerOn(this.center.x, this.center.y);
   }
 }

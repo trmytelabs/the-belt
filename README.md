@@ -26,11 +26,13 @@ SORT!** countdown starts the shift.
 - WASD / arrows move; Tab or right-click switches workers.
 - Space or left-click grabs, delivers inside a dock, or puts a parcel down.
 - Route A goes to the left truck, B to the right truck, and heavy C freight to
-  either lower bulk bay. Letters and colors identify every route.
+  the shared bulk pile at the belt's end. Letters and colors identify every route.
 - E brakes the belt for two seconds, with an eight-second cooldown.
 - Escape pauses; M toggles sound. Losing focus pauses the preview automatically.
 - The closer camera follows your worker up and down the belt and reframes when
   you switch workers. V, or the Overview button, shows the whole warehouse.
+- The original five truck rows and named bays are preserved. All trucks share
+  the same size, with the two player trucks in the bottom row.
 - Pick up missed freight near the belt exit to recover it for half base points.
 
 Touch devices have a movement stick and Switch, Grab / Deliver, and Brake

@@ -95,6 +95,14 @@ eases back to the worker. Reduced-motion preference removes camera interpolation
 The HUD, speech panels, menus and their hit targets use a separate fixed camera.
 Text textures use higher resolution so authored labels stay sharp in close-ups.
 
+The floor plan follows the original game: four coworker truck rows on each side,
+followed by HERES UR SOVICE and PAYTMAN at the bottom. All eleven trucks, including
+Ralph's arrival, use the same 148 × 84 footprint and shared artwork. The bulk pile
+is centered immediately beyond the conveyor, with a separate recovery tray below
+it. Either worker can deliver C freight from their side of this one pile; Ralph
+collects the same stock. The full-floor camera includes all five rows and the end
+of the belt. Personal props and event choreography follow their original bays.
+
 `ShiftModel.ts` owns the deterministic simulation. Belt parcels store an offset
 from one absolute conveyor travel distance, which also drives the tread texture
 and motor rotation. Speed changes and brakes cannot put parcel motion out of

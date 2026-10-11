@@ -52,21 +52,29 @@ export interface ShiftEvent {
 }
 
 export const SHIFT_LAYOUT = {
+  worldTop: 90,
+  worldBottom: 650,
   beltX: 480,
   beltTop: 146,
-  beltBottom: 610,
+  beltBottom: 550,
   grabRadius: 102,
   parcelGap: 68,
-  dockA: { x: 260, y: 300 },
-  dockB: { x: 700, y: 300 },
-  bulkLeft: { x: 260, y: 492 },
-  bulkRight: { x: 700, y: 492 },
+  dockA: { x: 360, y: 532 },
+  dockB: { x: 600, y: 532 },
+  bulkPile: { x: 480, y: 580 },
+  bulkLeft: { x: 400, y: 580 },
+  bulkRight: { x: 560, y: 580 },
+  recoveryPile: { x: 480, y: 626 },
+  workerMinY: 180,
+  workerMaxY: 620,
+  leftLane: { minX: 330, maxX: 400 },
+  rightLane: { minX: 560, maxX: 630 },
 } as const;
 
 const ROUTE_NAMES: Record<Route, string> = {
   A: 'A · HERES UR SOVICE · left dock',
   B: 'B · PAYTMAN · right dock',
-  C: 'C · BULK · either lower dock',
+  C: 'C · BULK · shared pile at the belt end',
 };
 // Names come from the original SpawnSystem and GameScene's Hussan phone gag.
 // The preview schedules them deliberately so the game's references cannot be
@@ -127,8 +135,8 @@ const smoothStep = (value: number): number => value * value * (3 - 2 * value);
 
 export class ShiftModel {
   public readonly workers: Worker[] = [
-    { id: 'termite', x: 382, y: 380, side: 'left', heldId: null, facing: 'right', moving: false },
-    { id: 'skanky', x: 578, y: 380, side: 'right', heldId: null, facing: 'left', moving: false },
+    { id: 'termite', x: 382, y: 500, side: 'left', heldId: null, facing: 'right', moving: false },
+    { id: 'skanky', x: 578, y: 500, side: 'right', heldId: null, facing: 'left', moving: false },
   ];
   public readonly packages: Parcel[] = [];
   public readonly durationMs = 180_000;
@@ -294,7 +302,7 @@ export class ShiftModel {
       return;
     }
 
-    if (Math.abs(worker.x - SHIFT_LAYOUT.beltX) <= SHIFT_LAYOUT.grabRadius) {
+    if (Math.abs(worker.x - SHIFT_LAYOUT.beltX) <= SHIFT_LAYOUT.grabRadius && worker.y <= SHIFT_LAYOUT.beltBottom) {
       const dropY = clamp(worker.y, SHIFT_LAYOUT.beltTop + 28, SHIFT_LAYOUT.beltBottom - 42);
       if (this.packages.some((parcel) => parcel.id !== held.id && parcel.state === 'belt' && Math.abs(parcel.y - dropY) < SHIFT_LAYOUT.parcelGap)) {
         this.emit('wrong', 'Belt space occupied · move along the belt to place it', worker, held);
@@ -309,8 +317,8 @@ export class ShiftModel {
       return;
     }
 
-    const floorX = clamp(worker.x + (worker.side === 'left' ? 23 : -23), worker.side === 'left' ? 246 : 542, worker.side === 'left' ? 418 : 714);
-    const floorY = clamp(worker.y + 12, 190, 584);
+    const floorX = clamp(worker.x + (worker.side === 'left' ? 23 : -23), worker.side === 'left' ? SHIFT_LAYOUT.leftLane.minX + 6 : 542, worker.side === 'left' ? 418 : SHIFT_LAYOUT.rightLane.maxX - 6);
+    const floorY = clamp(worker.y + 12, SHIFT_LAYOUT.workerMinY + 10, SHIFT_LAYOUT.worldBottom - 18);
     if (this.packages.some((parcel) => parcel.id !== held.id && parcel.state === 'floor' && distance(parcel, { x: floorX, y: floorY }) < 54)) {
       this.emit('wrong', 'Floor space occupied · take one step aside', worker, held);
       return;
@@ -398,8 +406,25 @@ export class ShiftModel {
     const normalized = Math.max(1, magnitude);
     const previousX = worker.x;
     const previousY = worker.y;
-    worker.x = clamp(worker.x + x / normalized * speed * deltaMs / 1000, worker.side === 'left' ? 240 : 560, worker.side === 'left' ? 400 : 720);
-    worker.y = clamp(worker.y + y / normalized * speed * deltaMs / 1000, 180, 580);
+    const lane = worker.side === 'left' ? SHIFT_LAYOUT.leftLane : SHIFT_LAYOUT.rightLane;
+    const frontX = worker.side === 'left' ? SHIFT_LAYOUT.dockA.x : SHIFT_LAYOUT.dockB.x;
+    const truckTop = SHIFT_LAYOUT.dockA.y - 56;
+    const truckBottom = SHIFT_LAYOUT.dockA.y + 56;
+    let nextX = clamp(worker.x + x / normalized * speed * deltaMs / 1000, lane.minX, lane.maxX);
+    let nextY = clamp(worker.y + y / normalized * speed * deltaMs / 1000, SHIFT_LAYOUT.workerMinY, SHIFT_LAYOUT.workerMaxY);
+    // Resolve each axis against the main truck plus the worker's clearance.
+    // A vertical approach stops at its edge; the player can then walk inward
+    // around the front without being teleported sideways or catching a corner.
+    if (previousY > truckTop && previousY < truckBottom) {
+      nextX = worker.side === 'left' ? Math.max(frontX, nextX) : Math.min(frontX, nextX);
+    }
+    const outsideFront = worker.side === 'left' ? nextX < frontX : nextX > frontX;
+    if (outsideFront) {
+      if (previousY <= truckTop && nextY > truckTop) nextY = truckTop;
+      else if (previousY >= truckBottom && nextY < truckBottom) nextY = truckBottom;
+    }
+    worker.x = nextX;
+    worker.y = nextY;
     worker.moving = previousX !== worker.x || previousY !== worker.y;
     worker.facing = Math.abs(x) > Math.abs(y) ? x > 0 ? 'right' : 'left' : y > 0 ? 'down' : 'up';
   }
@@ -414,10 +439,13 @@ export class ShiftModel {
     parcel.workerId = null;
   }
 
-  private currentDock(worker: Worker): Route | null {
-    if (worker.side === 'left' ? worker.x > 312 : worker.x < 648) return null;
-    if (Math.abs(worker.y - 300) <= 56) return worker.side === 'left' ? 'A' : 'B';
-    if (Math.abs(worker.y - 492) <= 56) return 'C';
+  public currentDock(worker: Worker = this.activeWorker): Route | null {
+    const lane = worker.side === 'left' ? SHIFT_LAYOUT.leftLane : SHIFT_LAYOUT.rightLane;
+    if (worker.x < lane.minX || worker.x > lane.maxX) return null;
+    const dock = worker.side === 'left' ? SHIFT_LAYOUT.dockA : SHIFT_LAYOUT.dockB;
+    if (Math.abs(worker.x - dock.x) <= 32 && Math.abs(worker.y - dock.y) <= 20) return worker.side === 'left' ? 'A' : 'B';
+    const bulk = worker.side === 'left' ? SHIFT_LAYOUT.bulkLeft : SHIFT_LAYOUT.bulkRight;
+    if (Math.abs(worker.x - bulk.x) <= 26 && worker.y >= 562 && worker.y <= 606) return 'C';
     return null;
   }
 
@@ -425,8 +453,9 @@ export class ShiftModel {
     const base = parcel.route === 'C' ? 120 : 100;
     const award = parcel.recovered ? base / 2 : base + Math.min(this.combo, 10) * 15;
     parcel.state = 'delivered';
-    parcel.x = worker.side === 'left' ? 260 : 700;
-    parcel.y = parcel.route === 'C' ? 492 : 300;
+    const destination = parcel.route === 'C' ? SHIFT_LAYOUT.bulkPile : parcel.route === 'A' ? SHIFT_LAYOUT.dockA : SHIFT_LAYOUT.dockB;
+    parcel.x = destination.x;
+    parcel.y = destination.y;
     this.release(worker, parcel);
     this.score += award;
     this.sorted += 1;
@@ -438,8 +467,8 @@ export class ShiftModel {
 
   private miss(parcel: Parcel): void {
     parcel.state = 'missed';
-    parcel.x = SHIFT_LAYOUT.beltX;
-    parcel.y = SHIFT_LAYOUT.beltBottom;
+    parcel.x = SHIFT_LAYOUT.recoveryPile.x;
+    parcel.y = SHIFT_LAYOUT.recoveryPile.y;
     if (!this.countedMisses.has(parcel.id)) {
       this.countedMisses.add(parcel.id);
       parcel.missCounted = true;

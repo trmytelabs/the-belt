@@ -65,6 +65,29 @@ try {
   for (const name of ['HUSSAN', 'AJ', 'PAULA ABDUL', 'BANNERMAN', 'FRUIT LOOP', 'BRIAN', 'DORIS', 'DONNA']) {
     assert.ok(truckNames.some(label => label.text === name && label.size >= 8), `${name} must be readable on its actual truck`);
   }
+  const truckLayout = await read(() => {
+    const scene = window.fixtureGame.scene.getScene('DepotScene');
+    const trucks = scene.depot.departureObjects.map(({ object }) => object)
+      .filter(object => object.getData('truckFootprint'));
+    return [...trucks, scene.life.routines.ralphTruck].map(object => ({
+      name: object.getData('truckLabel'), x: object.x, y: object.y,
+      footprint: object.getData('truckFootprint'), width: object.width, height: object.height,
+      scaleX: object.scaleX, scaleY: object.scaleY,
+    }));
+  });
+  assert.equal(truckLayout.length, 11, 'both player trucks, eight crew trucks and Ralph must use the same renderer');
+  for (const truck of truckLayout) {
+    assert.deepEqual(truck.footprint, { width: 148, height: 84 }, truck.name);
+    assert.deepEqual([truck.width, truck.height, truck.scaleX, truck.scaleY], [148, 84, 1, 1], `${truck.name} must render at the common size`);
+  }
+  for (const [name, x, y] of [
+    ['HUSSAN', 244, 148], ['AJ', 244, 244], ['PAULA ABDUL', 244, 340], ['BANNERMAN', 244, 436],
+    ['FRUIT LOOP', 716, 148], ['DORIS', 716, 244], ['BRIAN', 716, 340], ['DONNA', 716, 436],
+    ['HERES UR SOVICE', 268, 532], ['PAYTMAN', 692, 532],
+  ]) {
+    const truck = truckLayout.find(truck => truck.name === name);
+    assert.deepEqual([truck?.x, truck?.y], [x, y], `${name} must occupy its original truck bay`);
+  }
   await read(() => {
     window.fixtureGame.loop.sleep();
     window.referenceWindows = { left: [], right: [] };
@@ -179,7 +202,7 @@ try {
     const s = window.fixtureGame.scene.getScene('DepotScene');
     for (const parcel of s.model.packages) parcel.state = 'delivered';
     const [belt, held, missed] = s.model.packages;
-    Object.assign(belt, { state: 'belt', x: 480, y: 595, beltOffset: 595 - s.model.beltTravel, workerId: null });
+    Object.assign(belt, { state: 'belt', x: 480, y: 535, beltOffset: 535 - s.model.beltTravel, workerId: null });
     const worker = s.model.workers[0];
     Object.assign(held, { state: 'held', x: worker.x + 18, y: worker.y - 17, workerId: worker.id });
     worker.heldId = held.id;
@@ -290,6 +313,15 @@ try {
   assert.ok((await snapshot()).ralphTruckX < ralphArriving.ralphTruckX, 'Ralph truck must drive into the depot');
   await advance(92_700);
   assert.equal((await snapshot()).paula, false);
+  const firstPickup = await read(() => window.fixtureGame.scene.getScene('DepotScene').life.routines.ralphStart + 3400);
+  await advance(firstPickup);
+  const bulkContact = await read(() => {
+    const r = window.fixtureGame.scene.getScene('DepotScene').life.routines;
+    return { box: { x: r.ralphBox.x, y: r.ralphBox.y, visible: r.ralphBox.visible },
+      truck: { x: r.ralphTruck.x, y: r.ralphTruck.y } };
+  });
+  assert.deepEqual(bulkContact.box, { x: 480, y: 580, visible: true }, 'Ralph must lift from the same central bulk pile used for C deliveries');
+  assert.deepEqual(bulkContact.truck, { x: 840, y: 606 }, 'Ralph must park clear of Paytman and the loading lanes');
   for (let trip = 0; trip < 5; trip++) {
     await advance(93_600 + trip * 3000);
     const lifted = await snapshot();

@@ -342,3 +342,28 @@ fixed controls, rotation, event framing and text-density consistency; fresh
 desktop/mobile screenshots were inspected. The density assertion was added
 after screenshot review caught Phaser's text setter leaving Canvas texture
 resolution out of sync with its style. Both density values are now kept equal.
+
+## Original layout and consistent truck scale
+
+The depot again uses the source's four coworker truck rows plus the two player
+trucks at the bottom. All ten original parking centers match `GameScene.ts`.
+Player, coworker and Ralph trucks share one 148 × 84 renderer; blue HERES UR
+SOVICE, green PAYTMAN and purple PAULA ABDUL retain their color identities.
+Personal props and resident homes follow their original rows. Ben's complete
+event is reframed beside his restored truck, with unchanged words and timing.
+
+The one bulk pile is centered just beyond the belt, followed by a separate
+missed-freight recovery tray. Both workers deliver C to that shared stock, and
+Ralph makes five carrying trips from it. The A/B docks now sit at their trucks'
+loading doors. Workers cannot enter the main truck bodies; approaching a corner
+stops movement without snapping the worker sideways. Stop/start controls sit
+beside the conveyor rather than overlapping the restored trucks.
+
+Validation on `index-BkVvEh79.js`: TypeScript/production build, all 38 model and
+source checks, WebGL keyboard/touch sorting and the full reference-event suite,
+Canvas camera/touch/rotation and the original-game browser smoke suite passed.
+Tests verify all eleven truck sizes, all ten original parked positions, real
+keyboard A/B/C dispatches, the central bulk destination, Ralph's pickup contact,
+separate recovery, stable truck collision and a winning full simulated shift.
+Fresh overview, normal bulk delivery and timed demon screenshots were inspected.
+The first two use normal controls; the late demon scene uses a clock fixture.

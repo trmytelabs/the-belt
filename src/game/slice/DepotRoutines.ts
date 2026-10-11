@@ -12,7 +12,7 @@ type Speaker = (id: string, text: string, duration: number, priority?: number) =
 const RESIDENTS = ['hussan', 'aj', 'ben', 'bannerman', 'fruitloop', 'doris', 'brian', 'donna'];
 const mix = (a: number, b: number, t: number) => Phaser.Math.Linear(a, b, Phaser.Math.Clamp(t, 0, 1));
 
-/** Original coworker freight routines and special cargo events, on the new floor plan. */
+/** Original coworker freight routines and special cargo events, on the source floor plan. */
 export class DepotRoutines {
   public readonly crewLoads = new Map<string, number>();
   public snakeState: 'waiting' | 'belt' | 'collecting' | 'dancing' | 'done' = 'waiting';
@@ -51,10 +51,14 @@ export class DepotRoutines {
       fontFamily: 'Arial', fontSize: '9px', fontStyle: 'bold', color: '#f2dfac', stroke: '#19343b', strokeThickness: 3,
     }).setOrigin(0.5);
     this.cell.add(this.cellCaption);
-    this.ralphTruck = createRalphTruckArt(scene).setPosition(1040, 467).setDepth(16).setVisible(false);
+    this.ralphTruck = createRalphTruckArt(scene).setPosition(1040, 606).setDepth(16).setVisible(false);
     this.ralphBox = createParcelArt(scene, 'C').setScale(0.48).setDepth(18).setVisible(false);
     this.exhaust = scene.add.graphics().setDepth(12);
-    this.driverPoints = [...RESIDENTS.map(id => depot.crewTruckPoints[id]), { x: 44, y: 300 }, { x: 916, y: 300 }];
+    // Crew points mark the inward loading doors. Cab doors are 132px outward.
+    this.driverPoints = [...RESIDENTS.map(id => {
+      const rear = depot.crewTruckPoints[id];
+      return { x: rear.x + (rear.x < 480 ? -132 : 132), y: rear.y };
+    }), { x: 216, y: 532 }, { x: 744, y: 532 }];
     this.drivers = this.driverPoints.map(() => createDriverArt(scene).setScale(0.48).setDepth(18).setVisible(false));
   }
 
@@ -69,20 +73,24 @@ export class DepotRoutines {
       const clock = Math.max(0, time - (this.crewEpoch.get(id) ?? (7500 + index * 1100)));
       const cycle = clock % period;
       const truck = this.depot.crewTruckPoints[id];
-      const loadingPoint = { x: truck.x, y: Math.min(583, truck.y) };
-      const pickup = { x: colleague.x < 480 ? 212 : 748, y: colleague.y };
+      const loadingPoint = { x: truck.x, y: truck.y };
+      const pickup = { x: colleague.x < 480 ? 400 : 560, y: colleague.y };
       const start = { x: colleague.x, y: colleague.y };
+      const returnCorner = { x: loadingPoint.x, y: colleague.y };
       let from = start; let to = start; let amount = 0;
       if (clock > 0 && cycle < 2200) { to = pickup; amount = cycle / 2200; }
       else if (clock > 0 && cycle < 2600) { from = pickup; to = pickup; }
       else if (clock > 0 && cycle < 4800) { from = pickup; to = loadingPoint; amount = (cycle - 2600) / 2200; }
       else if (clock > 0 && cycle < 5300) { from = loadingPoint; to = loadingPoint; }
-      else if (clock > 0 && cycle < 7500) { from = loadingPoint; to = start; amount = (cycle - 5300) / 2200; }
+      // Walk around the rear corner before returning along the resident's row.
+      // A straight line back would pass through the parked truck body.
+      else if (clock > 0 && cycle < 6000) { from = loadingPoint; to = returnCorner; amount = (cycle - 5300) / 700; }
+      else if (clock > 0 && cycle < 7500) { from = returnCorner; to = start; amount = (cycle - 6000) / 1500; }
       colleague.art.setPosition(mix(from.x, to.x, amount), mix(from.y, to.y, amount));
       const moving = from !== to && amount > 0;
       colleague.art.rotation = moving && !this.reducedMotion ? Math.sin(time / 115) * 0.035 : 0;
       const carrying = clock > 0 && cycle >= 2600 && cycle < 4900;
-      parcel.setVisible(carrying).setPosition(colleague.art.x + (colleague.x < 480 ? 10 : -10), colleague.art.y - 3);
+      parcel.setVisible(carrying).setPosition(colleague.art.x + (colleague.x < 480 ? -10 : 10), colleague.art.y - 3);
       this.crewLoads.set(id, clock <= 0 ? 0 : Math.floor(clock / period) + Number(cycle >= 4900));
     });
     this.updateCell(time);
@@ -105,7 +113,9 @@ export class DepotRoutines {
       this.cell.y = 164 + this.model.beltTravel - this.cellTravel;
       // Hussan approaches along the intake apron above the workers' walk lanes.
       const approach = Phaser.Math.Clamp((this.cell.y - 164) / 44, 0, 1);
-      hussan.art.setPosition(mix(51, 411, approach), 174);
+      // Reach the apron through the clear aisle below his first-row truck.
+      hussan.art.setPosition(approach < 0.75 ? mix(hussan.x, 350, approach / 0.75) : mix(350, 411, (approach - 0.75) / 0.25),
+        approach < 0.75 ? hussan.y : mix(hussan.y, 174, (approach - 0.75) / 0.25));
       if (this.cell.y >= 208) { this.snakeState = 'collecting'; this.cellTime = time; }
     }
     if (this.snakeState === 'collecting') {
@@ -124,7 +134,9 @@ export class DepotRoutines {
       if (elapsed >= 3200) { this.snakeState = 'done'; this.cellTime = time; this.cell.setVisible(false); hussan.art.setRotation(0); }
     }
     if (this.snakeState === 'done' && time < this.cellTime + 1600) {
-      hussan.art.setPosition(mix(411, hussan.x, (time - this.cellTime) / 1600), mix(174, hussan.y, (time - this.cellTime) / 1600));
+      const returning = (time - this.cellTime) / 1600;
+      hussan.art.setPosition(returning < 0.25 ? mix(411, 350, returning / 0.25) : mix(350, hussan.x, (returning - 0.25) / 0.75),
+        returning < 0.25 ? mix(174, hussan.y, returning / 0.25) : hussan.y);
     }
   }
 
@@ -137,9 +149,10 @@ export class DepotRoutines {
     if (this.ralphState === 'waiting' || this.ralphState === 'done') { ralph.setVisible(false); return; }
     const elapsed = time - this.ralphStart;
     if (elapsed < 1800) {
-      this.ralphTruck.x = mix(1040, 846, elapsed / 1800);
+      this.ralphTruck.x = mix(1040, 840, elapsed / 1800);
       ralph.setVisible(false); return;
     }
+    this.ralphTruck.x = 840;
     if (this.ralphState === 'entering') {
       this.ralphState = 'loading';
       this.say('ralph', 'I NEED TO HURRY UP\nAND GET BACK TO MY\n3 SETS OF TRIPLETS!', 4900, 1);
@@ -153,15 +166,17 @@ export class DepotRoutines {
       this.ralphLifted = Math.min(5, loaded + Number(trip >= 1600));
       setRalphTruckLoad(this.ralphTruck, loaded);
       ralph.setVisible(true);
-      if (trip < 1300) ralph.setPosition(mix(883, 785, trip / 1300), mix(480, 506, trip / 1300));
-      else if (trip < 1600) ralph.setPosition(785, 506);
-      else ralph.setPosition(mix(785, 883, (trip - 1600) / 1400), mix(506, 480, (trip - 1600) / 1400));
-      this.ralphBox.setVisible(trip >= 1600).setPosition(ralph.x - 9, ralph.y - 4);
+      // The parcel is anchored to his right hand (+9,-4): at pickup that hand
+      // meets the single bulk pile (480,580), and at delivery the rear (760,606).
+      if (trip < 1300) ralph.setPosition(mix(751, 471, trip / 1300), mix(610, 584, trip / 1300));
+      else if (trip < 1600) ralph.setPosition(471, 584);
+      else ralph.setPosition(mix(471, 751, (trip - 1600) / 1400), mix(584, 610, (trip - 1600) / 1400));
+      this.ralphBox.setVisible(trip >= 1600).setPosition(ralph.x + 9, ralph.y - 4);
     } else {
       this.ralphState = 'leaving'; this.ralphLoaded = 5; this.ralphLifted = 5;
       setRalphTruckLoad(this.ralphTruck, 5);
       this.ralphBox.setVisible(false); ralph.setVisible(false);
-      this.ralphTruck.x = mix(846, 1060, (loading - 15000) / 2200);
+      this.ralphTruck.x = mix(840, 1060, (loading - 15000) / 2200);
       if (loading >= 17200) { this.ralphState = 'done'; this.ralphTruck.setVisible(false); }
     }
   }
@@ -173,7 +188,7 @@ export class DepotRoutines {
     this.drivers.forEach((driver, index) => {
       const point = this.driverPoints[index];
       driver.setVisible(this.driversVisible);
-      driver.setPosition(point.x + (point.x < 480 ? -30 : 30), point.y + mix(21, 0, (time - 114000 - index * 70) / 2200));
+      driver.setPosition(point.x, point.y + mix(48, 21, (time - 114000 - index * 70) / 2200));
     });
     if (!active) return;
     for (let index = 0; index < this.driverPoints.length; index++) {
@@ -182,7 +197,7 @@ export class DepotRoutines {
         const phase = ((time - 114000) / 2600 + puff / 3 + index / 7) % 1;
         const direction = point.x < 480 ? 1 : -1;
         this.exhaust.fillStyle(0x71837c, 0.19 * (1 - phase)).fillEllipse(
-          point.x + direction * (20 + phase * 34), point.y + 12 - phase * 18,
+          point.x + direction * (122 + phase * 34), point.y + 30 - phase * 18,
           8 + phase * 19, 6 + phase * 12);
       }
     }

@@ -113,8 +113,12 @@ try {
   assert.equal(switched.worker.id, 'skanky');
   assertHud(switched);
   await press('KeyV');
-  await page.waitForFunction(() => Math.abs(window.fixtureGame.scene.getScene('DepotScene').view.world.zoom - 1) < 0.02);
+  await page.waitForFunction(() => Math.abs(window.fixtureGame.scene.getScene('DepotScene').view.world.zoom - 494 / 560) < 0.02);
   assert.equal((await measure(page)).overview, true);
+  await page.waitForTimeout(400);
+  const overview = await measure(page);
+  assert.ok(overview.worldEdges.top <= 91 && overview.worldEdges.bottom >= 649, 'overview must include every truck row, bulk and the recovery tray');
+  if (process.env.BELT_SCREENSHOT_DIR) await page.screenshot({ path: join(process.env.BELT_SCREENSHOT_DIR, 'after-layout-overview.png') });
   await press('KeyV');
   await page.waitForFunction(() => window.fixtureGame.scene.getScene('DepotScene').view.world.zoom > 1.4);
   const pause = await controlPoint(page, 'pauseText');
@@ -139,12 +143,12 @@ try {
   await page.waitForFunction(() => window.fixtureGame.scene.getScene('DepotScene').state === 'interlude');
   await page.waitForFunction(() => {
     const camera = window.fixtureGame.scene.getScene('DepotScene').view.world;
-    return camera.zoom > 2.44 && camera.getWorldPoint(0, 126).x < 5;
+    return camera.zoom > 2.44 && Math.abs(camera.getWorldPoint(480, 373).x - 248) < 2;
   });
   const eventView = await measure(page);
-  assert.ok(eventView.worldEdges.left < 10 && eventView.worldEdges.right > 225,
+  assert.ok(eventView.worldEdges.left < 110 && eventView.worldEdges.right > 330,
     'event framing must include the gate, Ben and gunman together');
-  assert.ok(eventView.worldEdges.top < 450 && eventView.worldEdges.bottom > 590,
+  assert.ok(eventView.worldEdges.top < 270 && eventView.worldEdges.bottom > 410,
     'the pointed gate and dragging body must both fit vertically');
   assertHud(eventView);
   await page.evaluate(() => {
@@ -186,17 +190,17 @@ try {
   const session = await mobile.context.newCDPSession(touch);
   const touchBefore = await measure(touch);
   await session.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: stick.x + stick.width / 2, y: stick.y + stick.height / 2 }] });
-  await session.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: stick.x + stick.width / 2, y: stick.y + stick.height / 2 + 28 }] });
-  await touch.waitForFunction(() => window.fixtureGame.scene.getScene('DepotScene').model.activeWorker.y > 485);
+  await session.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: stick.x + stick.width / 2, y: stick.y + stick.height / 2 - 28 }] });
+  await touch.waitForFunction(() => window.fixtureGame.scene.getScene('DepotScene').model.activeWorker.y < 350);
   await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   await touch.waitForTimeout(200);
-  assert.ok((await measure(touch)).scrollY > touchBefore.scrollY + 20, 'touch movement must drive the same camera follow');
+  assert.ok((await measure(touch)).scrollY < touchBefore.scrollY - 20, 'touch movement must drive the same camera follow');
   await touch.getByRole('button', { name: 'SWITCH', exact: true }).tap();
   await touch.waitForFunction(() => window.fixtureGame.scene.getScene('DepotScene').view.world.getWorldPoint(480, 373).x > 580);
   assert.equal((await measure(touch)).worker.id, 'skanky');
   const overviewTouch = await controlPoint(touch, 'viewText');
   await touch.touchscreen.tap(overviewTouch.x, overviewTouch.y);
-  await touch.waitForFunction(() => Math.abs(window.fixtureGame.scene.getScene('DepotScene').view.world.zoom - 1) < 0.02);
+  await touch.waitForFunction(() => Math.abs(window.fixtureGame.scene.getScene('DepotScene').view.world.zoom - 494 / 560) < 0.02);
   assert.equal((await measure(touch)).overview, true, 'the overview control must also work without a keyboard');
   const closerTouch = await controlPoint(touch, 'viewText');
   await touch.touchscreen.tap(closerTouch.x, closerTouch.y);
