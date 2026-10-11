@@ -489,7 +489,7 @@ try {
     window.fixtureGame.scene.getScene('MesaDreamScene').children.list.forEach(visit);
     return found;
   });
-  for (const label of ['BULK RULES', 'PAYTMAN SUCKS', 'NO REPEATS', 'BUILT THE BELT', 'MESA BOOGIE']) assert.ok(dreamCopy.includes(label));
+  for (const label of ['BULK RULES', 'PAYTMAN SUCKS', 'NO REPEATS', 'BUILT THE BELT', 'MESA BOOGIE', 'LUMINES', 'PS3']) assert.ok(dreamCopy.includes(label));
   await page.waitForFunction(() => window.fixtureGame.scene.getScene('MesaDreamScene').cameras.main.fadeEffect.progress >= 1);
   await screenshot('after-mesa-dream-fixture.png');
   await page.waitForFunction(() => window.fixtureGame.scene.isActive('DepotScene') && !window.fixtureGame.scene.isActive('MesaDreamScene'));

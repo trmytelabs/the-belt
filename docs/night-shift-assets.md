@@ -25,9 +25,14 @@ The crew, props and special freight are redrawn from the repository's original
 `DepotRoutines.ts` and `DepotMesaEncounter.ts` stage their story beats and props.
 These references
 are inherited game content, not newly invented replacements. It preserves the
-original names, intentional spellings and profanity. The original artwork
-remains available; `MesaDreamScene.ts` gains only an optional return path to the
-preview. Its bedroom illustration and references are reused intact.
+original names, intentional spellings and profanity. The original warehouse
+artwork remains available. The shared `MesaDreamScene.ts` uses the upgraded illustration
+in `src/game/art/MesaBedroomArt.ts`: moonlit window, textured furnishings, Mesa
+cabinet and resting guitar, PS3, and long-haired Skanky holding a controller.
+An original geometric homage to Lumines animates falling two-color blocks,
+matching squares and a sweeping timeline on the TV. No game screenshots, console
+assets, recordings or external fonts were imported. Original poster/monitor copy
+and the optional return path to the preview are preserved.
 New lobster claws, lotion drips, cigarette wisps, stink lines,
 the cartoon gunman and purple demon are also editable engine geometry. There
 are no AI-generated bitmaps, external character assets or imported recordings.

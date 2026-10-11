@@ -64,8 +64,10 @@ Mesa retains its existing paused choice and dream.
 
 Vic's Mesa offer supports Y/N and touch. Leaving keeps the parcel; stealing
 has a fresh 20% catch chance per attempt, so consecutive catches are possible.
-A successful theft shows Skanky's original bedroom dream
-and resumes this shift. The advertised one-in-five capture risk was unfinished
+A successful theft shows Skanky's upgraded bedroom dream: long hair, controller
+in hand, and Lumines animating on a TV above his PS3. The Mesa amp and guitar,
+original posters and computer remain in the room. The dream resumes this shift.
+The advertised one-in-five capture risk was unfinished
 in the original source; it is now implemented. See the source inventory and
 restoration evidence in [reference parity](docs/reference-parity.md).
 
