@@ -320,7 +320,7 @@ try {
     return { box: { x: r.ralphBox.x, y: r.ralphBox.y, visible: r.ralphBox.visible },
       truck: { x: r.ralphTruck.x, y: r.ralphTruck.y } };
   });
-  assert.deepEqual(bulkContact.box, { x: 480, y: 580, visible: true }, 'Ralph must lift from the same central bulk pile used for C deliveries');
+  assert.deepEqual(bulkContact.box, { x: 480, y: 610, visible: true }, 'Ralph must lift from the same central bulk pile used for C deliveries');
   assert.deepEqual(bulkContact.truck, { x: 840, y: 606 }, 'Ralph must park clear of Paytman and the loading lanes');
   for (let trip = 0; trip < 5; trip++) {
     await advance(93_600 + trip * 3000);

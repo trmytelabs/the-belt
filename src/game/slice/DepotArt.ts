@@ -32,10 +32,11 @@ function line(g: Phaser.GameObjects.Graphics, x1: number, y1: number, x2: number
 
 function pallet(g: Phaser.GameObjects.Graphics, x: number, y: number, w = 90, h = 62) {
   g.fillStyle(0x08151d, 0.45).fillRoundedRect(x - w / 2 + 4, y - h / 2 + 9, w, h, 5);
-  g.fillStyle(0x463d30).fillRect(x - w / 2, y + h / 2 - 5, w, 11);
-  for (let i = 0; i < 5; i++) {
-    const sy = y - h / 2 + i * (h / 5);
-    g.fillStyle(i % 2 === 0 ? 0x8a7757 : 0x78664d).fillRoundedRect(x - w / 2, sy, w, h / 5 - 3, 1);
+  g.fillStyle(0x463d30).fillRect(x - w / 2, y + h / 2 - 6, w, 6);
+  const slats = Math.max(5, Math.ceil(h / 10));
+  for (let i = 0; i < slats; i++) {
+    const sy = y - h / 2 + i * (h / slats);
+    g.fillStyle(i % 2 === 0 ? 0x8a7757 : 0x78664d).fillRoundedRect(x - w / 2, sy, w, h / slats - 3, 1);
     line(g, x - w / 2 + 3, sy + 1, x + w / 2 - 3, sy + 1, 0xb69a6d, 1, 0.45);
     for (const sx of [-w / 2 + 6, w / 2 - 6]) {
       g.fillStyle(0x443e35).fillCircle(x + sx, sy + 4, 1);
@@ -49,7 +50,7 @@ export class DepotArt {
   public readonly crewTruckPoints: Record<string, { x: number; y: number }> = {};
   public bulkStockCount = 0;
   private readonly scene: Phaser.Scene;
-  private readonly dockHighlights: { route: DepotRoute; side: DepotSide; x: number; y: number; art: Phaser.GameObjects.Graphics }[] = [];
+  private readonly dockHighlights: { route: DepotRoute; side: DepotSide; x: number; y: number; width: number; height: number; art: Phaser.GameObjects.Graphics }[] = [];
   private readonly drive: Phaser.GameObjects.Container;
   private readonly statusLight: Phaser.GameObjects.Arc;
   private readonly departureObjects: { object: Phaser.GameObjects.Container | Phaser.GameObjects.Text; x: number; direction: number }[] = [];
@@ -63,10 +64,10 @@ export class DepotArt {
     this.drawTruck('right');
     this.drawBulk();
     this.drawDepotPersonality();
-    this.drawDock('A', 'left', SHIFT_LAYOUT.dockA.x, SHIFT_LAYOUT.dockA.y);
-    this.drawDock('B', 'right', SHIFT_LAYOUT.dockB.x, SHIFT_LAYOUT.dockB.y);
-    this.drawDock('C', 'left', SHIFT_LAYOUT.bulkLeft.x, SHIFT_LAYOUT.bulkLeft.y);
-    this.drawDock('C', 'right', SHIFT_LAYOUT.bulkRight.x, SHIFT_LAYOUT.bulkRight.y);
+    this.drawDock('A', 'left');
+    this.drawDock('B', 'right');
+    this.drawDock('C', 'left');
+    this.drawDock('C', 'right');
 
     const top = SHIFT_LAYOUT.beltTop;
     const bottom = SHIFT_LAYOUT.beltBottom;
@@ -159,12 +160,9 @@ export class DepotArt {
   flashDock(route: DepotRoute, side: DepotSide) {
     const dock = this.dockHighlights.find((d) => d.route === route && d.side === side);
     if (!dock) return;
-    const spark = this.scene.add.graphics().setDepth(11);
-    const x = route === 'C' ? SHIFT_LAYOUT.bulkPile.x : dock.x;
-    const y = route === 'C' ? SHIFT_LAYOUT.bulkPile.y : dock.y;
-    const w = route === 'C' ? 122 : 54;
-    const h = route === 'C' ? 46 : 66;
-    spark.lineStyle(3, DEPOT_ROUTE_COLORS[route], 0.9).strokeRoundedRect(x - w / 2, y - h / 2, w, h, 6);
+    const spark = this.scene.add.graphics().setDepth(route === 'C' ? 2 : 11);
+    spark.lineStyle(3, DEPOT_ROUTE_COLORS[route], 0.9).strokeRoundedRect(
+      dock.x - dock.width / 2, dock.y - dock.height / 2, dock.width, dock.height, 6);
     this.scene.tweens.add({ targets: spark, alpha: 0, duration: 450, onComplete: () => spark.destroy() });
   }
 
@@ -226,8 +224,8 @@ export class DepotArt {
       g.fillStyle(0x0a202a, 0.4).fillRect(x + 6, top + 11, 9, 34);
     }
     for (let x = 35; x < 941; x += 12) line(g, x, bottom - 5, x + 4, bottom, 0x53676b, 1, 0.3);
-    label(scene, 355, 632, 'WEST WALK', 8, '#6e8a8b').setDepth(1);
-    label(scene, 605, 632, 'EAST WALK', 8, '#6e8a8b').setDepth(1);
+    label(scene, 355, bottom - 18, 'WEST WALK', 8, '#6e8a8b').setDepth(1);
+    label(scene, 605, bottom - 18, 'EAST WALK', 8, '#6e8a8b').setDepth(1);
   }
 
   private drawTruck(side: DepotSide) {
@@ -244,10 +242,11 @@ export class DepotArt {
   private drawBulk() {
     const { x, y } = SHIFT_LAYOUT.bulkPile;
     const g = this.scene.add.graphics().setDepth(3);
-    g.setData('bulkPile', { x, y });
-    g.fillStyle(0x173039).fillRoundedRect(x - 63, y - 23, 126, 49, 4);
-    g.lineStyle(1, 0xc2a771, 0.55).strokeRoundedRect(x - 63, y - 23, 126, 49, 4);
-    pallet(g, x, y, 116, 40);
+    const height = 96;
+    g.setData('bulkPile', { x, y, width: 116, height });
+    g.fillStyle(0x173039).fillRoundedRect(x - 63, y - height / 2 - 3, 126, height + 6, 4);
+    g.lineStyle(1, 0xc2a771, 0.55).strokeRoundedRect(x - 63, y - height / 2 - 3, 126, height + 6, 4);
+    pallet(g, x, y, 116, height);
     // One common stock pile at the actual end of the belt.
     const crate = (cx: number, cy: number, w: number, h: number) => {
       const g = this.scene.add.graphics().setDepth(3 + cy / 10000);
@@ -265,7 +264,7 @@ export class DepotArt {
     };
     for (const cy of [y + 6, y - 9]) for (const cx of [x, x - 30, x + 30]) crate(cx, cy, 26, 20);
     this.setBulkStock(0);
-    label(this.scene, x, y + 28, 'BULK / DISPATCH', 7, '#c5b384').setDepth(4);
+    label(this.scene, x, y + height / 2 + 10, 'BULK / DISPATCH', 7, '#c5b384').setDepth(4);
     const recovery = SHIFT_LAYOUT.recoveryPile;
     const tray = this.scene.add.graphics().setDepth(3).setData('recoveryPile', { ...recovery });
     tray.fillStyle(0x0a2028).fillRoundedRect(recovery.x - 59, recovery.y - 13, 118, 26, 4);
@@ -274,27 +273,28 @@ export class DepotArt {
     label(this.scene, recovery.x, recovery.y + 18, 'MISSED / RECOVER', 7, '#afaaa0').setDepth(4);
   }
 
-  private drawDock(route: DepotRoute, side: DepotSide, x: number, y: number) {
+  private drawDock(route: DepotRoute, side: DepotSide) {
     const scene = this.scene;
     const color = DEPOT_ROUTE_COLORS[route];
-    const compact = route === 'C';
-    const width = compact ? 36 : 54;
-    const height = compact ? 42 : 70;
-    const g = scene.add.graphics().setDepth(4);
-    g.fillStyle(0x152f37, 0.55).fillRoundedRect(x - width / 2, y - height / 2, width, height, 5);
-    g.lineStyle(2, color, 0.52).strokeRoundedRect(x - width / 2, y - height / 2, width, height, 5);
-    const arrow = (side === 'left' ? 1 : -1) * (compact ? -1 : 1);
-    for (const oy of compact ? [-14, 14] : [-25, 24]) {
-      line(g, x - 8 * arrow, y + oy - 4, x - 13 * arrow, y + oy, color, 2, 0.55);
-      line(g, x - 13 * arrow, y + oy, x - 8 * arrow, y + oy + 4, color, 2, 0.55);
+    const bulk = route === 'C';
+    const area = bulk ? SHIFT_LAYOUT.dropAreas[side === 'left' ? 'bulkLeft' : 'bulkRight'] : SHIFT_LAYOUT.dropAreas[route];
+    const { x, y, width, height } = area;
+    const depth = bulk ? 2 : 4;
+    // Floor paint uses the model's exact valid rectangle; C remains floor, not a second pallet.
+    const g = scene.add.graphics().setDepth(depth).setData('dropArea', { route, side, ...area });
+    g.fillStyle(color, 0.055).fillRoundedRect(x - width / 2, y - height / 2, width, height, 5);
+    g.lineStyle(2, color, 0.65).strokeRoundedRect(x - width / 2, y - height / 2, width, height, 5);
+    const arrow = (side === 'left' ? 1 : -1) * (bulk ? -1 : 1);
+    for (const oy of [-height / 2 + 13, height / 2 - 13]) {
+      line(g, x - 8 * arrow, y + oy - 4, x - 15 * arrow, y + oy, color, 2, 0.65);
+      line(g, x - 15 * arrow, y + oy, x - 8 * arrow, y + oy + 4, color, 2, 0.65);
     }
-    g.fillStyle(0x18313a).fillRoundedRect(x - (compact ? 12 : 15), y - (compact ? 11 : 16), compact ? 24 : 30, compact ? 22 : 32, 4);
-    label(scene, x, y - 1, route, compact ? 18 : 24, `#${color.toString(16).padStart(6, '0')}`).setDepth(5);
-    label(scene, x, y + (compact ? 31 : 48), compact ? 'BULK' : 'LOAD', 8, '#8baba5').setDepth(5);
-    const highlight = scene.add.graphics().setDepth(4).setAlpha(0);
+    label(scene, x, y - 7, route, 26, `#${color.toString(16).padStart(6, '0')}`).setDepth(depth + 0.5);
+    label(scene, x, y + 17, bulk ? 'TO BULK' : 'LOAD', 8, '#a9c0b4').setDepth(depth + 0.5);
+    const highlight = scene.add.graphics().setDepth(depth).setAlpha(0);
     highlight.fillStyle(color, 0.16).fillRoundedRect(x - width / 2 + 1, y - height / 2 + 1, width - 2, height - 2, 5);
     highlight.lineStyle(2, color, 0.95).strokeRoundedRect(x - width / 2, y - height / 2, width, height, 5);
-    this.dockHighlights.push({ route, side, x, y, art: highlight });
+    this.dockHighlights.push({ route, side, x, y, width, height, art: highlight });
   }
 
   private drawDepotPersonality() {

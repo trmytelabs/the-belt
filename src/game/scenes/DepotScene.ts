@@ -4,6 +4,7 @@ import { DepotArt, createParcelArt, createWorkerArt, updateParcelArt } from '../
 import { DepotLife } from '../slice/DepotLife';
 import { DepotMesaEncounter } from '../slice/DepotMesaEncounter';
 import { DepotCamera } from '../slice/DepotCamera';
+import { DepotReceiving } from '../slice/DepotReceiving';
 import { MESA } from '../slice/DepotReferences';
 import { ShiftModel, SHIFT_LAYOUT, type ShiftEvent, type Route } from '../slice/ShiftModel';
 import { audioSystem, type SoundEffect } from '../systems/AudioSystem';
@@ -21,6 +22,7 @@ export class DepotScene extends Phaser.Scene {
   public view!: DepotCamera;
   private pausedFrom: 'playing' | 'interlude' = 'playing';
   private depot!: DepotArt;
+  private receiving!: DepotReceiving;
   private life!: DepotLife;
   private mesa!: DepotMesaEncounter;
   private workers: ReturnType<typeof createWorkerArt>[] = [];
@@ -76,6 +78,8 @@ export class DepotScene extends Phaser.Scene {
     this.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     this.view = new DepotCamera(this, this.reducedMotion);
     this.depot = new DepotArt(this);
+    this.receiving = new DepotReceiving(this, this.model);
+    this.receiving.update();
     this.life = new DepotLife(this, this.model, this.depot);
     this.mesa = new DepotMesaEncounter(this, this.model, {
       begin: () => { this.state = 'mesa'; this.touchMove = { x: 0, y: 0 }; },
@@ -142,7 +146,10 @@ export class DepotScene extends Phaser.Scene {
     const movement = this.state === 'playing' ? this.movement() : { x: 0, y: 0 };
     this.model.update(delta, movement);
     for (const event of this.model.drainEvents()) this.handleEvent(event);
-    if (this.state === 'playing') this.life.update();
+    if (this.state === 'playing') {
+      this.life.update();
+      this.receiving.update();
+    }
     if (this.state !== 'paused') this.syncWorld(this.state === 'playing' ? delta : 0);
     this.view.update(delta, this.model.activeWorker,
       this.state === 'playing' || this.state === 'countdown' ? 'follow'
@@ -282,6 +289,7 @@ export class DepotScene extends Phaser.Scene {
         view = { container: createParcelArt(this, parcel.route, parcel.size === 'heavy', parcel.kind), state: parcel.state, transferUntil: 0 };
         view.container.setPosition(parcel.x, parcel.y);
         this.parcels.set(parcel.id, view);
+        if (this.state === 'playing') audioSystem.play('package-spawn');
       }
       if (view.state !== parcel.state) {
         if (parcel.state === 'held' && !this.reducedMotion) view.transferUntil = this.time.now + 120;
@@ -317,7 +325,7 @@ export class DepotScene extends Phaser.Scene {
       const routeSide = parcel.route === 'A' ? 'left' : parcel.route === 'B' ? 'right' : worker.side;
       const target = parcel.route === 'C'
         ? worker.side === 'left' ? SHIFT_LAYOUT.bulkLeft : SHIFT_LAYOUT.bulkRight
-        : parcel.route === 'A' ? SHIFT_LAYOUT.dockA : SHIFT_LAYOUT.dockB;
+        : parcel.route === 'A' ? SHIFT_LAYOUT.dropAreas.A : SHIFT_LAYOUT.dropAreas.B;
       const targetX = target.x;
       const targetY = target.y;
       if (routeSide === worker.side) {

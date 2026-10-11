@@ -26,6 +26,195 @@ function walkTo(model, target) {
   assert.fail(`worker could not walk to (${target.x}, ${target.y})`);
 }
 
+function heldFixture(side, route, position) {
+  const model = new ShiftModel();
+  model.packages[0].route = route;
+  if (side === 1) model.switchWorker();
+  Object.assign(model.activeWorker, { x: side === 0 ? 400 : 560, y: 200 });
+  model.action();
+  assert.equal(model.heldPackage?.id, 1);
+  Object.assign(model.activeWorker, position);
+  return model;
+}
+
+function clearAndAdvance(model, milliseconds) {
+  // Synthetic collection isolates intake scheduling from backlog failure.
+  for (let time = 0; time < milliseconds; time += 20) {
+    for (const parcel of model.packages) parcel.state = 'delivered';
+    model.update(Math.min(20, milliseconds - time));
+  }
+}
+
+function identity({ id, route, kind, label, size }) { return { id, route, kind, label, size }; }
+
+test('receiving preview hands the same real parcel continuously onto the belt at the scheduled time', () => {
+  const model = new ShiftModel();
+  assert.equal(model.packages[0].y, 172, 'the first teaching parcel still starts immediately');
+  assert.equal(model.intakePreview, null);
+  advance(model, 5_090);
+  assert.equal(model.intakePreview, null);
+  model.update(10);
+  const reserved = model.intakePreview;
+  assert.deepEqual(reserved, {
+    id: 2, route: 'B', kind: 'goji', label: 'GOJI BERRIES', size: 'normal',
+    progress: 0, x: 480, y: 127,
+  });
+  advance(model, 450);
+  assert.equal(model.intakePreview.progress, 0.5);
+  assert.equal(model.intakePreview.y, 149.5);
+  // Renderer-owned snapshots cannot rename the reserved real parcel.
+  const external = model.intakePreview;
+  external.kind = 'duck';
+  external.y = 0;
+  assert.deepEqual(identity(model.intakePreview), identity(reserved));
+  advance(model, 440);
+  const lastPoint = model.intakePreview;
+  model.update(10);
+  assert.equal(model.elapsedMs, 6_000);
+  assert.equal(model.intakePreview, null);
+  const parcel = model.packages[1];
+  assert.deepEqual(identity(parcel), identity(reserved));
+  assert.equal(parcel.x, lastPoint.x);
+  assert.equal(parcel.y - lastPoint.y, 0.5, 'the transfer finishes at the exact belt entry without a position jump');
+  const beforeTravel = model.beltTravel;
+  model.update(20);
+  assert.equal(parcel.y - 172, model.beltTravel - beforeTravel);
+});
+
+test('receiving transfer position and identity freeze with pause, brake and machinery stop', () => {
+  const model = new ShiftModel();
+  advance(model, 5_550);
+  const preview = model.intakePreview;
+  model.paused = true;
+  advance(model, 1_000);
+  assert.deepEqual(model.intakePreview, preview);
+  assert.equal(model.elapsedMs, 5_550);
+  model.paused = false;
+  model.brake();
+  advance(model, 2_000);
+  assert.deepEqual(model.intakePreview, preview);
+  model.eventStopped = true;
+  advance(model, 1_000);
+  assert.deepEqual(model.intakePreview, preview);
+  model.eventStopped = false;
+  advance(model, 450);
+  assert.equal(model.elapsedMs, 9_000);
+  assert.deepEqual(identity(model.packages[1]), identity(preview));
+});
+
+test('blocked intake holds the reserved parcel at the transfer endpoint and never emits cargo while braked', () => {
+  const model = new ShiftModel();
+  advance(model, 5_900);
+  const preview = model.intakePreview;
+  const blocker = model.packages[0];
+  Object.assign(model.activeWorker, { x: 400, y: blocker.y });
+  model.action();
+  model.activeWorker.y = 174;
+  model.action();
+  advance(model, 100);
+  assert.equal(model.packages.length, 1);
+  assert.equal(model.intakePreview.progress, 1);
+  assert.equal(model.intakePreview.y, 172);
+  advance(model, 1_200);
+  assert.equal(model.packages.length, 1);
+  assert.deepEqual(identity(model.intakePreview), identity(preview));
+  assert.equal(model.intakePreview.y, 172);
+  model.brake();
+  model.activeWorker.y = blocker.y;
+  model.action();
+  assert.equal(model.heldPackage?.id, blocker.id, 'clear the blocked exit through a normal pickup');
+  advance(model, 2_000);
+  assert.equal(model.packages.length, 1, 'clearing the exit must not bypass the stopped intake');
+  assert.equal(model.intakePreview.progress, 1);
+  model.update(20);
+  assert.equal(model.packages.length, 2);
+  assert.deepEqual(identity(model.packages[1]), identity(preview));
+  assert.ok(model.packages[1].y >= 172 && model.packages[1].y <= 173, 'the newly handed-off parcel stays within one frame of its entry point');
+  assert.equal(model.packages[1].y - model.beltTravel, model.packages[1].beltOffset);
+});
+
+test('Brian is forecast into an unloading reservation when its planned arrival reaches his announcement', () => {
+  const model = new ShiftModel();
+  model.eventStopped = true;
+  advance(model, 3_000);
+  model.eventStopped = false;
+  clearAndAdvance(model, 59_100);
+  assert.equal(model.elapsedMs, 62_100);
+  assert.equal(model.brianRemaining, 0);
+  const preview = model.intakePreview;
+  assert.equal(preview.kind, 'atv');
+  assert.equal(preview.route, 'C');
+  clearAndAdvance(model, 900);
+  assert.equal(model.elapsedMs, 63_000);
+  assert.deepEqual(identity(model.packages.at(-1)), identity(preview));
+  assert.equal(model.brianRemaining, 4);
+  assert.equal(model.drainEvents().filter(event => event.type === 'brian').length, 1);
+});
+
+test('an ordinary parcel reserved before Brian survives a brake delay and all five bulk parcels follow it', () => {
+  const model = new ShiftModel();
+  model.eventStopped = true;
+  advance(model, 2_000);
+  model.eventStopped = false;
+  clearAndAdvance(model, 59_200);
+  assert.equal(model.elapsedMs, 61_200);
+  const ordinary = model.intakePreview;
+  assert.equal(ordinary.kind, 'lobsters');
+  model.brake();
+  clearAndAdvance(model, 2_000);
+  assert.equal(model.elapsedMs, 63_200);
+  assert.equal(model.brianRemaining, 5);
+  assert.deepEqual(model.intakePreview, ordinary, 'the announcement must not morph a parcel already being unloaded');
+  clearAndAdvance(model, 800);
+  assert.equal(model.elapsedMs, 64_000);
+  assert.deepEqual(identity(model.packages.at(-1)), identity(ordinary));
+  assert.equal(model.brianRemaining, 5, 'the ordinary parcel must not consume a Brian slot');
+  const burst = [];
+  for (let index = 0; index < 5; index += 1) {
+    clearAndAdvance(model, 1_900);
+    burst.push({ time: model.elapsedMs, kind: model.packages.at(-1).kind, route: model.packages.at(-1).route });
+    assert.equal(model.brianRemaining, 4 - index);
+  }
+  assert.deepEqual(burst.map(parcel => parcel.kind), ['atv', 'lobsters', 'mesa', 'panchetters', 'mallwood']);
+  assert.deepEqual(burst.map(parcel => parcel.time), [65_900, 67_800, 69_700, 71_600, 73_500]);
+  assert.ok(burst.every(parcel => parcel.route === 'C'));
+  const count = model.packages.length;
+  clearAndAdvance(model, 3_980);
+  assert.equal(model.packages.length, count);
+  clearAndAdvance(model, 20);
+  assert.equal(model.packages.length, count + 1, 'ordinary four-second flow resumes after the five actual bulk arrivals');
+});
+
+test('intake closure discards its visible reservation without adding freight or delaying the shift result', () => {
+  const model = new ShiftModel();
+  advance(model, 5_550);
+  assert.ok(model.intakePreview);
+  model.packages[0].state = 'delivered';
+  model.elapsedMs = 179_990;
+  const before = { count: model.packages.length, score: model.score, sorted: model.sorted };
+  model.update(10);
+  assert.equal(model.intakePreview, null);
+  assert.equal(model.ended, true, 'a reservation is not unfinished player freight');
+  assert.deepEqual({ count: model.packages.length, score: model.score, sorted: model.sorted }, before);
+});
+
+test('workers can reach the receiving viewpoint while put-downs above the belt remain on the floor', () => {
+  assert.equal(SHIFT_LAYOUT.receivingTop, -240);
+  assert.equal(SHIFT_LAYOUT.worldTop, -240);
+  for (const side of [0, 1]) {
+    const model = heldFixture(side, side === 0 ? 'A' : 'B', { x: side === 0 ? 400 : 560, y: 200 });
+    walkTo(model, { x: model.activeWorker.x, y: -20 });
+    model.update(100, { x: 0, y: -1 });
+    assert.equal(model.activeWorker.y, -20);
+    assert.equal(model.activeWorker.moving, false);
+    model.action();
+    assert.equal(model.packages[0].state, 'floor');
+    assert.ok(model.packages[0].y < SHIFT_LAYOUT.beltTop, 'a put-down in receiving must not teleport to the main belt');
+    model.action();
+    assert.equal(model.heldPackage?.id, 1);
+  }
+});
+
 test('the opening A, B and C can be picked and delivered through public controls in the restored layout', () => {
   const model = new ShiftModel();
   assert.deepEqual(model.workers.map(({ x, y }) => ({ x, y })), [{ x: 382, y: 500 }, { x: 578, y: 500 }]);
@@ -92,13 +281,78 @@ test('truck and bulk hit areas stay separate and reject a wrong route at the cen
     assert.equal(model.heldPackage?.id, 1);
     assert.equal(model.sorted, 0);
     assert.match(model.drainEvents()[0].message, side === 0 ? /A.*left dock/ : /B.*right dock/);
-    for (const y of [553, 557, 561]) {
+    for (const y of [553, 575, 575.99]) {
       model.activeWorker.y = y;
-      assert.equal(model.currentDock(), null, 'the gap between truck and bulk areas must not submit freight');
+      assert.equal(model.currentDock(), side === 0 ? 'A' : 'B', 'the enlarged truck area reaches right up to the bulk boundary');
     }
+    model.activeWorker.y = 576;
+    assert.equal(model.currentDock(), 'C', 'the shared boundary belongs only to bulk');
     Object.assign(model.activeWorker, side === 0 ? SHIFT_LAYOUT.dockA : SHIFT_LAYOUT.dockB);
     model.action();
     assert.equal(model.sorted, 1);
+  }
+});
+
+test('enlarged truck zones accept explicit deliveries across their reachable upper and lower corners', () => {
+  for (const side of [0, 1]) {
+    const route = side === 0 ? 'A' : 'B';
+    for (const x of side === 0 ? [360, 400] : [560, 600]) {
+      for (const y of [488, 532, 575.999]) {
+        const model = heldFixture(side, route, { x, y });
+        assert.equal(model.currentDock(), route);
+        assert.equal(model.sorted, 0);
+        model.action();
+        assert.equal(model.sorted, 1, `route${route} should accept (${x},${y})`);
+        assert.deepEqual({ x: model.packages[0].x, y: model.packages[0].y }, side === 0 ? SHIFT_LAYOUT.dockA : SHIFT_LAYOUT.dockB);
+      }
+    }
+    const above = heldFixture(side, route, { x: side === 0 ? 400 : 560, y: 487.999 });
+    assert.equal(above.currentDock(), null);
+    above.action();
+    assert.equal(above.sorted, 0, 'being above the painted truck zone must not deliver cargo');
+  }
+});
+
+test('both larger bulk zones accept their full front-lane width through the inclusive lower edge', () => {
+  for (const side of [0, 1]) {
+    for (const x of side === 0 ? [360, 380, 400] : [560, 580, 600]) {
+      for (const y of [576, 624, 672]) {
+        const model = heldFixture(side, 'C', { x, y });
+        assert.equal(model.currentDock(), 'C');
+        model.action();
+        assert.equal(model.bulkSorted, 1, `bulk should accept (${x},${y})`);
+        const event = model.drainEvents().find(event => event.type === 'sort');
+        assert.deepEqual({ x: event.x, y: event.y }, SHIFT_LAYOUT.bulkPile);
+        assert.deepEqual({ x: model.packages[0].x, y: model.packages[0].y }, { x: 480, y: 610 });
+      }
+    }
+  }
+});
+
+test('adjoining delivery zones have one owner at576 and bulk does not consume the recovery area', () => {
+  for (const side of [0, 1]) {
+    const x = side === 0 ? 400 : 560;
+    const model = heldFixture(side, 'C', { x, y: 575.999 });
+    assert.equal(model.currentDock(), side === 0 ? 'A' : 'B');
+    model.action();
+    assert.equal(model.heldPackage?.route, 'C', 'a bulk parcel in the truck zone gets explanatory rejection');
+    assert.equal(model.sorted, 0);
+    model.activeWorker.y = 576;
+    model.action();
+    assert.equal(model.bulkSorted, 1);
+
+    const below = heldFixture(side, 'C', { x, y: 672.001 });
+    assert.equal(below.currentDock(), null);
+    below.action();
+    assert.equal(below.packages[0].state, 'floor');
+    assert.equal(below.sorted, 0);
+    below.activeWorker.y = SHIFT_LAYOUT.recoveryPile.y;
+    assert.equal(below.currentDock(), null, 'recovery is separate from successful bulk delivery');
+
+    const outside = heldFixture(side, 'C', { x: side === 0 ? 359.999 : 600.001, y: 624 });
+    assert.equal(outside.currentDock(), null);
+    outside.activeWorker.x = side === 0 ? 400.001 : 559.999;
+    assert.equal(outside.currentDock(), null, 'the painted zone does not override the worker lane');
   }
 });
 
@@ -109,7 +363,7 @@ test('misses enter a separate recovery pile and dropping below the belt stays on
   assert.equal(parcel.state, 'missed');
   assert.deepEqual({ x: parcel.x, y: parcel.y }, SHIFT_LAYOUT.recoveryPile);
   assert.notEqual(parcel.y, SHIFT_LAYOUT.bulkPile.y);
-  Object.assign(model.activeWorker, { x: 400, y: 620 });
+  walkTo(model, { x: 400, y: 690 });
   model.action();
   assert.equal(model.heldPackage?.id, parcel.id);
   model.action();
@@ -118,7 +372,7 @@ test('misses enter a separate recovery pile and dropping below the belt stays on
   assert.equal(model.pileup, 0);
   assert.equal(model.bulkSorted, 0);
   model.action();
-  Object.assign(model.activeWorker, SHIFT_LAYOUT.dockA);
+  walkTo(model, SHIFT_LAYOUT.dockA);
   model.action();
   assert.equal(model.score, 50);
 });
@@ -193,7 +447,7 @@ test('movement normalizes diagonals, respects lane bounds, and slows heavy carri
   const startY = heavy.activeWorker.y;
   heavy.update(100, { x: 0, y: 1 });
   assert.ok(Math.abs(heavy.activeWorker.y - startY - 9.4) < 1e-9);
-  advance(heavy, 7_000, { x: 1, y: 1 });
+  advance(heavy, 8_000, { x: 1, y: 1 });
   assert.equal(heavy.activeWorker.x, 400);
   assert.equal(heavy.activeWorker.y, SHIFT_LAYOUT.workerMaxY);
 });
@@ -386,9 +640,9 @@ test('missed freight remains recoverable and never counts a second miss for the 
   assert.equal(model.heldPackage.id, 1);
   assert.equal(model.pileup, 0);
   assert.equal(model.heldPackage.recovered, true);
-  model.activeWorker.y = 500;
+  model.activeWorker.y = 480;
   model.action();
-  advance(model, 1_000);
+  advance(model, 1_400);
   assert.equal(model.pileup, 1);
   assert.equal(model.missed, 1);
   model.activeWorker.y = SHIFT_LAYOUT.workerMaxY;
@@ -448,15 +702,15 @@ test('comic parcel identity survives pickup, handoff, pile recovery, and dispatc
   const parcel = model.packages[0];
   const originalIdentity = { kind: parcel.kind, label: parcel.label, route: parcel.route };
   reachFirst(model);
-  model.activeWorker.y = 550;
+  model.activeWorker.y = 480;
   model.action();
   model.switchWorker();
   model.activeWorker.x = 560;
-  model.activeWorker.y = 550;
+  model.activeWorker.y = 480;
   model.action();
   assert.equal(model.heldPackage.id, parcel.id);
   model.action();
-  advance(model, 1_300);
+  advance(model, 1_500);
   assert.equal(parcel.state, 'missed');
   model.switchWorker();
   model.activeWorker.y = SHIFT_LAYOUT.workerMaxY;

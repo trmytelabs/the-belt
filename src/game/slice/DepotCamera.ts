@@ -6,7 +6,7 @@ export class DepotCamera {
   public readonly world: Phaser.Cameras.Scene2D.Camera;
   public readonly hud: Phaser.Cameras.Scene2D.Camera;
   public overview = false;
-  private center = { x: 480, y: 370 };
+  private center = { x: 480, y: (SHIFT_LAYOUT.worldTop + SHIFT_LAYOUT.worldBottom) / 2 };
   private zoom = 1;
   private readonly reducedMotion: boolean;
 
@@ -52,11 +52,17 @@ export class DepotCamera {
   public update(delta: number, worker: Worker, mode: 'follow' | 'interlude' | 'overview' | 'hold'): void {
     if (mode === 'hold') return;
     const wide = mode === 'overview' || (mode === 'follow' && this.overview);
-    const targetZoom = mode === 'interlude' ? 2.45 : wide ? 494 / (SHIFT_LAYOUT.worldBottom - SHIFT_LAYOUT.worldTop) : 1.45;
+    // The wider receiving floor needs both semi doors in view. Ease into that
+    // framing along the approach, then return to the close sorting view below.
+    const receivingBlend = Phaser.Math.Clamp((146 - worker.y) / 126, 0, 1);
+    const followZoom = Phaser.Math.Linear(1.45, 1.08, receivingBlend);
+    const followX = Phaser.Math.Linear(worker.side === 'left' ? 344 : 616, 480, receivingBlend);
+    const targetZoom = mode === 'interlude' ? 2.45 : wide ? 494 / (SHIFT_LAYOUT.worldBottom - SHIFT_LAYOUT.worldTop) : followZoom;
     const halfWidth = 960 / targetZoom / 2;
     const halfHeight = 494 / targetZoom / 2;
     const target = mode === 'interlude' ? { x: 248, y: 355 }
-      : wide ? { x: 480, y: 370 } : { x: worker.side === 'left' ? 344 : 616, y: worker.y };
+      : wide ? { x: 480, y: (SHIFT_LAYOUT.worldTop + SHIFT_LAYOUT.worldBottom) / 2 }
+        : { x: followX, y: worker.y };
     target.x = halfWidth >= 480 ? 480 : Phaser.Math.Clamp(target.x, halfWidth, 960 - halfWidth);
     target.y = Phaser.Math.Clamp(target.y, SHIFT_LAYOUT.worldTop + halfHeight, SHIFT_LAYOUT.worldBottom - halfHeight);
     // Exponential smoothing has the same feel at different frame rates. Reduced

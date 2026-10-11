@@ -27,12 +27,17 @@ SORT!** countdown starts the shift.
 - Space or left-click grabs, delivers inside a dock, or puts a parcel down.
 - Route A goes to the left truck, B to the right truck, and heavy C freight to
   the shared bulk pile at the belt's end. Letters and colors identify every route.
+- Deliver anywhere inside the larger painted drop zones. The bulk zone extends
+  farther down, with the recovery tray and more walking room below it.
 - E brakes the belt for two seconds, with an eight-second cooldown.
 - Escape pauses; M toggles sound. Losing focus pauses the preview automatically.
 - The closer camera follows your worker up and down the belt and reframes when
   you switch workers. V, or the Overview button, shows the whole warehouse.
+- Walk up past the first truck row to see the receiving dock: two incoming
+  semis, unloaders and a smelly dockhand feeding the next real parcel onto the belt.
 - The original five truck rows and named bays are preserved. All trucks share
-  the same size, with the two player trucks in the bottom row.
+  the same size, with the two player trucks in the bottom row. The incoming
+  articulated semis occupy the new receiving area above those rows.
 - Pick up missed freight near the belt exit to recover it for half base points.
 
 Touch devices have a movement stick and Switch, Grab / Deliver, and Brake
@@ -46,7 +51,8 @@ named freight. Hussan collects and dances with THE SNAKES CELL. Vic stops the
 belt and Shan physically restarts it. Brian sends five real parcels to bulk;
 after five accumulate, Ralph loads them into his five-ton truck and heads back
 to his three sets of triplets. The crew has its own trucks and personal props,
-including Paytman's fish tank and Donna's Warcraft vignette. Drivers, keys,
+including Paytman's fish tank and Donna's Warcraft vignette. Brian's much larger
+curling green stink trails make his particular contribution unmistakable. Drivers, keys,
 exhaust, coughs, clock-out lines, departures and original grade quotes return.
 
 Ben's robbery, dodge-training, demon and Paula sequence gets a close-up: the
@@ -57,7 +63,8 @@ banter, the CELL dance, massage and loading routines continue during gameplay;
 Mesa retains its existing paused choice and dream.
 
 Vic's Mesa offer supports Y/N and touch. Leaving keeps the parcel; stealing
-risks ending the shift. A successful theft shows Skanky's original bedroom dream
+has a fresh 20% catch chance per attempt, so consecutive catches are possible.
+A successful theft shows Skanky's original bedroom dream
 and resumes this shift. The advertised one-in-five capture risk was unfinished
 in the original source; it is now implemented. See the source inventory and
 restoration evidence in [reference parity](docs/reference-parity.md).
@@ -98,7 +105,11 @@ Browser checks cover both the
 original game and the new section: organic A/B/C deliveries using real keys,
 keyboard/touch controls, belt rendering, pause, brake, handoff, recovery,
 results, restart, readable dialogue variants, scripted story stages, Mesa
-choices/dream, crew loading, Ralph's five pickups, and departures. They use a
+choices/dream, crew loading, Ralph's five pickups, and departures. Audio checks
+render every effect and music mode in Chromium, checking headroom, envelopes,
+mute/resume and scheduling after a stall. Receiving checks inspect the actual
+unloading handoff, parcel identity, contact, stops and restart cleanup.
+Browser checks use a
 loopback server, real opening inputs and isolated synthetic clock/cargo fixtures
 for later events and edge cases. TypeScript strict checking is enabled. Dependabot maintains
 compatible dependencies; major upgrades require a separate planned review.

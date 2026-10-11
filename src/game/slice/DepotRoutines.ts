@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { createParcelArt, type DepotArt } from './DepotArt';
 import { createDriverArt, createRalphTruckArt, setRalphTruckLoad } from './DepotProps';
-import type { ShiftModel } from './ShiftModel';
+import { SHIFT_LAYOUT, type ShiftModel } from './ShiftModel';
 import { audioSystem } from '../systems/AudioSystem';
 
 export type DepotColleague = {
@@ -167,10 +167,12 @@ export class DepotRoutines {
       setRalphTruckLoad(this.ralphTruck, loaded);
       ralph.setVisible(true);
       // The parcel is anchored to his right hand (+9,-4): at pickup that hand
-      // meets the single bulk pile (480,580), and at delivery the rear (760,606).
-      if (trip < 1300) ralph.setPosition(mix(751, 471, trip / 1300), mix(610, 584, trip / 1300));
-      else if (trip < 1600) ralph.setPosition(471, 584);
-      else ralph.setPosition(mix(471, 751, (trip - 1600) / 1400), mix(584, 610, (trip - 1600) / 1400));
+      // meets the shared pile, and at delivery the truck's rear (760,606).
+      const pickupX = SHIFT_LAYOUT.bulkPile.x - 9;
+      const pickupY = SHIFT_LAYOUT.bulkPile.y + 4;
+      if (trip < 1300) ralph.setPosition(mix(751, pickupX, trip / 1300), mix(610, pickupY, trip / 1300));
+      else if (trip < 1600) ralph.setPosition(pickupX, pickupY);
+      else ralph.setPosition(mix(pickupX, 751, (trip - 1600) / 1400), mix(pickupY, 610, (trip - 1600) / 1400));
       this.ralphBox.setVisible(trip >= 1600).setPosition(ralph.x + 9, ralph.y - 4);
     } else {
       this.ralphState = 'leaving'; this.ralphLoaded = 5; this.ralphLifted = 5;

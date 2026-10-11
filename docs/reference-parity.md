@@ -367,3 +367,33 @@ keyboard A/B/C dispatches, the central bulk destination, Ralph's pickup contact,
 separate recovery, stable truck collision and a winning full simulated shift.
 Fresh overview, normal bulk delivery and timed demon screenshots were inspected.
 The first two use normal controls; the late demon scene uses a clock fixture.
+
+## Receiving, larger drop zones and sound checkpoint
+
+The unloading annex adds two incoming articulated semis and loaders above the
+original parked rows. Its final handoff reserves and transfers the actual next
+parcel, preserving the original freight sequence and Brian's five-parcel burst.
+Brian's smell artwork is enlarged; dialogue and reference pools are unchanged.
+Truck and bulk drop markings now share their larger acceptance rectangles with
+the model, and Ralph still collects from the one central bulk pile.
+
+Validation on `index-DS90uO7W.js`: strict TypeScript/production build and all 48
+model/source checks passed. Local Edge Canvas checks passed for original-mode
+keyboard/touch play, preview sorting/recovery/restart, the complete rendered
+reference suite, camera controls/rotation and Mesa catch decisions. The receiving
+suite passed on WebGL and Canvas, checking exact identity and position through
+handoff, no duplicate parcel, machinery/story stops and cleanup on restart.
+Its receiving and Brian screenshots use isolated timing/camera fixtures and were
+visually inspected; framing and crate carry height were corrected after review.
+The original named freight, every dialogue-pool variant, snake/CELL dance,
+Ben/demon/Paula sequence, massage, Ralph loading and clock-out jokes remain checked.
+
+Mesa's production threshold remains a fresh `roll < 0.2` per accepted theft.
+Threshold boundaries, repeated keys/taps, restart and 1,000 evenly spaced inputs
+verify exactly 200 catches with no extra rolls; native random sampling is reported
+without a flaky assertion that every five attempts must contain one catch.
+
+All 24 sound effects and four music modes were rendered using actual browser Web
+Audio, with finite signal, headroom, quiet tails, mute/resume, overlap and stalled
+scheduler checks. A local audition WAV is available for listening; it is not a
+committed asset. Physical speaker and touch-device judgment remains manual.

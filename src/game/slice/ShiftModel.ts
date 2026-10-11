@@ -41,6 +41,16 @@ export interface Parcel {
   breakY: number | null;
 }
 
+type ParcelIdentity = Pick<Parcel, 'id' | 'route' | 'kind' | 'label' | 'size'>;
+type PendingIntake = ParcelIdentity & { brian: boolean };
+
+/** One reserved real parcel on its final receiving-to-belt transfer. */
+export interface IntakePreview extends ParcelIdentity {
+  progress: number;
+  x: number;
+  y: number;
+}
+
 export interface ShiftEvent {
   type: 'grab' | 'drop' | 'sort' | 'wrong' | 'miss' | 'recover' | 'brake' | 'switch' | 'phase' | 'brian' | 'spill' | 'end';
   message: string;
@@ -52,8 +62,9 @@ export interface ShiftEvent {
 }
 
 export const SHIFT_LAYOUT = {
-  worldTop: 90,
-  worldBottom: 650,
+  worldTop: -240,
+  receivingTop: -240,
+  worldBottom: 714,
   beltX: 480,
   beltTop: 146,
   beltBottom: 550,
@@ -61,12 +72,19 @@ export const SHIFT_LAYOUT = {
   parcelGap: 68,
   dockA: { x: 360, y: 532 },
   dockB: { x: 600, y: 532 },
-  bulkPile: { x: 480, y: 580 },
-  bulkLeft: { x: 400, y: 580 },
-  bulkRight: { x: 560, y: 580 },
-  recoveryPile: { x: 480, y: 626 },
-  workerMinY: 180,
-  workerMaxY: 620,
+  bulkPile: { x: 480, y: 610 },
+  bulkLeft: { x: 400, y: 624 },
+  bulkRight: { x: 560, y: 624 },
+  recoveryPile: { x: 480, y: 690 },
+  /** Centered rectangles shared by delivery rules, guidance and painted floor markings. */
+  dropAreas: {
+    A: { x: 381, y: 532, width: 78, height: 88 },
+    B: { x: 579, y: 532, width: 78, height: 88 },
+    bulkLeft: { x: 400, y: 624, width: 80, height: 96 },
+    bulkRight: { x: 560, y: 624, width: 80, height: 96 },
+  },
+  workerMinY: -20,
+  workerMaxY: 690,
   leftLane: { minX: 330, maxX: 400 },
   rightLane: { minX: 560, maxX: 630 },
 } as const;
@@ -122,6 +140,8 @@ const PARCEL_SEQUENCE: readonly { route: Route; kind: ParcelKind }[] = [
   { route: 'B', kind: 'longbox' },
 ];
 const BRIAN_BULK_SEQUENCE: readonly ParcelKind[] = ['atv', 'lobsters', 'mesa', 'panchetters', 'mallwood'];
+const INTAKE_TRANSFER_MS = 900;
+const INTAKE_START_Y = 127;
 /** Original Player carry weights, mapped to each freight's original form. */
 const CARRY_MULTIPLIER: Record<ParcelKind, number> = {
   envelope: 1, smallbox: 0.95, standard: 0.85, bigbox: 0.7, longbox: 0.7,
@@ -167,6 +187,7 @@ export class ShiftModel {
   private nextId = 1;
   private spawnElapsedMs = 0;
   private nextSpawnIntervalMs = 6_000;
+  private pendingIntake: PendingIntake | null = null;
   private brianSent = false;
   private wrongSortErrors = 0;
   private readonly countedMisses = new Set<number>();
@@ -218,6 +239,16 @@ export class ShiftModel {
 
   public get heldPackage(): Parcel | null {
     return this.packages.find((parcel) => parcel.id === this.activeWorker.heldId) ?? null;
+  }
+
+  public get intakePreview(): IntakePreview | null {
+    if (!this.pendingIntake || this.ended || this.elapsedMs >= this.durationMs) return null;
+    const { id, route, kind, label, size } = this.pendingIntake;
+    const progress = clamp((this.spawnElapsedMs - this.nextSpawnIntervalMs + INTAKE_TRANSFER_MS) / INTAKE_TRANSFER_MS, 0, 1);
+    return {
+      id, route, kind, label, size, progress, x: SHIFT_LAYOUT.beltX,
+      y: INTAKE_START_Y + (SHIFT_LAYOUT.beltTop + 26 - INTAKE_START_Y) * progress,
+    };
   }
 
   /** Long browser stalls cannot teleport a parcel past the player's reach. */
@@ -302,7 +333,7 @@ export class ShiftModel {
       return;
     }
 
-    if (Math.abs(worker.x - SHIFT_LAYOUT.beltX) <= SHIFT_LAYOUT.grabRadius && worker.y <= SHIFT_LAYOUT.beltBottom) {
+    if (Math.abs(worker.x - SHIFT_LAYOUT.beltX) <= SHIFT_LAYOUT.grabRadius && worker.y >= SHIFT_LAYOUT.beltTop && worker.y <= SHIFT_LAYOUT.beltBottom) {
       const dropY = clamp(worker.y, SHIFT_LAYOUT.beltTop + 28, SHIFT_LAYOUT.beltBottom - 42);
       if (this.packages.some((parcel) => parcel.id !== held.id && parcel.state === 'belt' && Math.abs(parcel.y - dropY) < SHIFT_LAYOUT.parcelGap)) {
         this.emit('wrong', 'Belt space occupied · move along the belt to place it', worker, held);
@@ -379,7 +410,11 @@ export class ShiftModel {
     }
     if (this.elapsedMs < this.durationMs) {
       this.spawnElapsedMs += movingMs;
-      if (this.spawnElapsedMs >= this.nextSpawnIntervalMs && this.spawnPackage()) {
+      if (movingMs > 0 && !this.pendingIntake && this.spawnElapsedMs >= this.nextSpawnIntervalMs - INTAKE_TRANSFER_MS) {
+        const plannedArrival = this.elapsedMs + Math.max(0, this.nextSpawnIntervalMs - this.spawnElapsedMs);
+        this.pendingIntake = this.nextParcelIdentity(plannedArrival);
+      }
+      if (movingMs > 0 && this.spawnElapsedMs >= this.nextSpawnIntervalMs && this.spawnPackage()) {
         this.spawnElapsedMs -= this.nextSpawnIntervalMs;
         // A phase change applies to the next interval, so it cannot produce
         // an unexpected short gap immediately after the previous parcel.
@@ -387,6 +422,8 @@ export class ShiftModel {
           : this.phase === 'lesson' ? 6_000 : this.phase === 'flow' ? 4_000 : 3_000;
       }
     } else {
+      // A parcel still in receiving is not on the shift's belt or score sheet.
+      this.pendingIntake = null;
       const unfinished = this.packages.some((parcel) => parcel.state !== 'delivered');
       if (!unfinished || this.elapsedMs >= this.durationMs + this.cleanupMs) {
         this.finish(this.sorted >= this.goal, this.sorted >= this.goal ? 'Shift complete · freight cleared' : `Shift complete · ${this.sorted}/${this.goal} delivered`);
@@ -442,10 +479,11 @@ export class ShiftModel {
   public currentDock(worker: Worker = this.activeWorker): Route | null {
     const lane = worker.side === 'left' ? SHIFT_LAYOUT.leftLane : SHIFT_LAYOUT.rightLane;
     if (worker.x < lane.minX || worker.x > lane.maxX) return null;
-    const dock = worker.side === 'left' ? SHIFT_LAYOUT.dockA : SHIFT_LAYOUT.dockB;
-    if (Math.abs(worker.x - dock.x) <= 32 && Math.abs(worker.y - dock.y) <= 20) return worker.side === 'left' ? 'A' : 'B';
-    const bulk = worker.side === 'left' ? SHIFT_LAYOUT.bulkLeft : SHIFT_LAYOUT.bulkRight;
-    if (Math.abs(worker.x - bulk.x) <= 26 && worker.y >= 562 && worker.y <= 606) return 'C';
+    const dock = worker.side === 'left' ? SHIFT_LAYOUT.dropAreas.A : SHIFT_LAYOUT.dropAreas.B;
+    // Truck areas exclude their lower edge; the adjoining bulk area owns it.
+    if (Math.abs(worker.x - dock.x) <= dock.width / 2 && worker.y >= dock.y - dock.height / 2 && worker.y < dock.y + dock.height / 2) return worker.side === 'left' ? 'A' : 'B';
+    const bulk = worker.side === 'left' ? SHIFT_LAYOUT.dropAreas.bulkLeft : SHIFT_LAYOUT.dropAreas.bulkRight;
+    if (Math.abs(worker.x - bulk.x) <= bulk.width / 2 && Math.abs(worker.y - bulk.y) <= bulk.height / 2) return 'C';
     return null;
   }
 
@@ -478,21 +516,34 @@ export class ShiftModel {
     this.emit('miss', `${this.pileup}/${this.capacity} in recovery · pick up near the belt end`, parcel, parcel);
   }
 
+  private nextParcelIdentity(plannedArrival: number): PendingIntake {
+    const brianSending = this.brianRemaining > 0 || (!this.brianSent && plannedArrival >= 63_000);
+    const brianIndex = this.brianRemaining > 0 ? BRIAN_BULK_SEQUENCE.length - this.brianRemaining : 0;
+    const { route, kind } = brianSending
+      ? { route: 'C' as const, kind: BRIAN_BULK_SEQUENCE[brianIndex] }
+      : PARCEL_SEQUENCE[(this.nextId - 1) % PARCEL_SEQUENCE.length];
+    return {
+      id: this.nextId, route, kind, label: PARCEL_LABELS[kind],
+      size: CARRY_MULTIPLIER[kind] <= 0.7 ? 'heavy' : 'normal', brian: brianSending,
+    };
+  }
+
   private spawnPackage(): boolean {
     const spawnY = SHIFT_LAYOUT.beltTop + 26;
     if (this.packages.some((parcel) => parcel.state === 'belt' && Math.abs(parcel.y - spawnY) < SHIFT_LAYOUT.parcelGap)) return false;
-    const brianSending = this.brianRemaining > 0;
-    const { route, kind } = brianSending
-      ? { route: 'C' as const, kind: BRIAN_BULK_SEQUENCE[BRIAN_BULK_SEQUENCE.length - this.brianRemaining] }
-      : PARCEL_SEQUENCE[(this.nextId - 1) % PARCEL_SEQUENCE.length];
-    const id = this.nextId++;
+    // Once the unloaders show a parcel, its identity must survive a brake or
+    // blocked intake. An ordinary reservation delayed past Brian's cue lands
+    // first; all five Brian parcels follow without consuming one of his slots.
+    const { id, route, kind, label, size, brian } = this.pendingIntake ?? this.nextParcelIdentity(this.elapsedMs);
+    this.nextId += 1;
     this.packages.push({
-      id, route, kind, label: PARCEL_LABELS[kind], size: CARRY_MULTIPLIER[kind] <= 0.7 ? 'heavy' : 'normal',
+      id, route, kind, label, size,
       x: SHIFT_LAYOUT.beltX, y: spawnY, state: 'belt', workerId: null,
       beltOffset: spawnY - this.beltTravel, recovered: false, missCounted: false,
       broken: false, breakY: kind === 'makeup' ? 220 + id * 73 % 301 : null,
     });
-    if (brianSending) this.brianRemaining -= 1;
+    this.pendingIntake = null;
+    if (brian) this.brianRemaining -= 1;
     return true;
   }
 
@@ -517,6 +568,7 @@ export class ShiftModel {
     this.won = won;
     this.phase = 'ended';
     this.beltSpeed = 0;
+    this.pendingIntake = null;
     for (const worker of this.workers) worker.moving = false;
     this.emit('end', message, { x: 480, y: 340 });
   }

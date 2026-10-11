@@ -59,6 +59,14 @@ try {
     'the crew must leave the two workers sorting lanes clear');
   assert.deepEqual(await read(() => window.fixtureGame.scene.getScene('DepotScene').life.history), [],
     'timed banter must wait for the shift to begin');
+  const paintedZones = await read(() => window.fixtureGame.scene.getScene('DepotScene').children.list
+    .map(object => object.getData('dropArea')).filter(Boolean));
+  assert.deepEqual(paintedZones.sort((a, b) => a.route.localeCompare(b.route) || a.x - b.x), [
+    { route: 'A', side: 'left', x: 381, y: 532, width: 78, height: 88 },
+    { route: 'B', side: 'right', x: 579, y: 532, width: 78, height: 88 },
+    { route: 'C', side: 'left', x: 400, y: 624, width: 80, height: 96 },
+    { route: 'C', side: 'right', x: 560, y: 624, width: 80, height: 96 },
+  ], 'the visible floor zones must represent the enlarged accepting areas');
   if (process.env.BELT_SCREENSHOT_DIR) await page.screenshot({ path: join(process.env.BELT_SCREENSHOT_DIR, 'after-title.png') });
   await press('Enter');
   await page.waitForFunction(() => window.fixtureGame.scene.getScene('DepotScene').state === 'playing');
@@ -132,9 +140,9 @@ try {
     }
   };
   for (const [route, index, dockX, dockY, kind, name] of [
-    ['A', 0, 360, 532, 'mallwood', 'MALLWOOD RD EAST'],
-    ['B', 1, 600, 532, 'goji', 'GOJI BERRIES'],
-    ['C', 1, 560, 580, 'lobsters', 'LIVE LOBSTERS'],
+    ['A', 0, 400, 496, 'mallwood', 'MALLWOOD RD EAST'],
+    ['B', 1, 560, 552, 'goji', 'GOJI BERRIES'],
+    ['C', 1, 580, 648, 'lobsters', 'LIVE LOBSTERS'],
   ]) {
     if (await read(() => window.fixtureGame.scene.getScene('DepotScene').model.activeIndex) !== index) await press('Tab');
     await walkTo(index === 0 ? 400 : 560, 300);
@@ -201,7 +209,7 @@ try {
         const delivered = scene.model.packages.find(parcel => parcel.route === 'C' && parcel.state === 'delivered');
         return { x: delivered.x, y: delivered.y, stock: scene.depot.bulkStockCount, action: scene.actionText.text };
       });
-      assert.deepEqual([bulk.x, bulk.y, bulk.stock], [480, 580, 1], 'C must reach the actual shared pile immediately beyond the belt');
+      assert.deepEqual([bulk.x, bulk.y, bulk.stock], [480, 610, 1], 'C delivered from the extended lower area must reach the actual shared pile');
       if (process.env.BELT_SCREENSHOT_DIR) await page.screenshot({ path: join(process.env.BELT_SCREENSHOT_DIR, 'after-layout-bulk.png') });
     }
   }
@@ -288,14 +296,14 @@ try {
     const model = window.fixtureGame.scene.getScene('DepotScene').model;
     const parcel = model.packages[0];
     parcel.y = 549; parcel.beltOffset = 549 - model.beltTravel;
-    model.activeWorker.y = 620;
+    model.activeWorker.y = 690;
   });
   await page.waitForFunction(() => window.fixtureGame.scene.getScene('DepotScene').model.pileup === 1);
   await press('Space');
   assert.equal(await read(() => window.fixtureGame.scene.getScene('DepotScene').model.pileup), 0);
   await read(() => {
     const worker = window.fixtureGame.scene.getScene('DepotScene').model.activeWorker;
-    worker.x = 400; worker.y = 580;
+    worker.x = 370; worker.y = 664;
   });
   await press('Space');
   assert.equal(await read(() => window.fixtureGame.scene.getScene('DepotScene').model.score), recovery.score + 60,

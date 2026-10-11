@@ -253,9 +253,28 @@ export function updateColleagueArt(container: Phaser.GameObjects.Container, time
       g.fillStyle(0xbdc9bc, 0.32 * (1 - phase)).fillCircle(22 + Math.sin(timeMs / 440 + i) * 3, -20 - phase * 17, 2 + phase * 3);
     }
   } else if (id === 'brian') {
-    for (let i = 0; i < 3; i++) {
-      const phase = (timeMs / 1500 + i / 3) % 1;
-      stroke(g, -12 + i * 11, -34 - phase * 8, -10 + i * 11, -39 - phase * 8, 0x9cad72, 2, 0.55 * (1 - phase));
+    container.setData('BrianSmell', { width: 76, height: 92, plumes: 5 });
+    g.setData('BrianSmell', true);
+    // Broad curling columns replace the original short ticks. They grow above
+    // the silhouette, leaving his face and the truck's name clear.
+    for (let i = 0; i < 5; i++) {
+      const sway = Math.sin(timeMs / 1100 + i * 1.7);
+      const x = -28 + i * 14;
+      const height = 65 + (i % 3) * 12;
+      g.fillStyle(0x90a66a, 0.09).fillEllipse(x + sway * 5, -48 - height * 0.43, 24, height);
+      g.lineStyle(2.8, i % 2 ? 0xbbca78 : 0x8fac60, 0.64).beginPath().moveTo(x, -29);
+      for (let step = 1; step <= 20; step++) {
+        const progress = step / 20;
+        g.lineTo(x + Math.sin(progress * Math.PI * 3 + timeMs / 1050 + i) * (5 + progress * 4), -29 - progress * height);
+      }
+      g.strokePath();
+      g.fillStyle(0xa8bb72, 0.12).fillEllipse(x + sway * 5, -29 - height, 20, 11);
+    }
+    for (let i = 0; i < 4; i++) {
+      const x = Math.sin(timeMs / 370 + i * 2) * 38;
+      const y = -42 - i * 14 + Math.cos(timeMs / 510 + i) * 5;
+      g.fillStyle(0xc1cec0, 0.55).fillEllipse(x - 2, y - 1, 3, 2).fillEllipse(x + 2, y - 1, 3, 2);
+      g.fillStyle(0x273829).fillCircle(x, y, 1.7);
     }
   } else if (id === 'shan' && container.getData('ranting')) {
     // ShanNpc's source head color, restricted to the face so his white shirt and red tie stay readable.

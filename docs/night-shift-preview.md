@@ -87,8 +87,9 @@ rather than reproducing the original random event ordering or sprite dimensions.
 
 ## Movement and rules
 
-The default camera is 1.45× closer and follows the selected worker vertically,
-with a horizontal reframe on worker switch. View bounds keep the camera inside
+The sorting camera is 1.45× closer and follows the selected worker vertically,
+with a horizontal reframe on worker switch. At receiving it eases to a centered
+1.08× view so both semi doors and the full final handoff fit. View bounds keep the camera inside
 the warehouse. V or the Overview button restores the whole-floor view. Ben's
 event uses a fixed 2.45× framing of the full gate, actors and Paula's truck, then
 eases back to the worker. Reduced-motion preference removes camera interpolation.
@@ -96,12 +97,29 @@ The HUD, speech panels, menus and their hit targets use a separate fixed camera.
 Text textures use higher resolution so authored labels stay sharp in close-ups.
 
 The floor plan follows the original game: four coworker truck rows on each side,
-followed by HERES UR SOVICE and PAYTMAN at the bottom. All eleven trucks, including
+followed by HERES UR SOVICE and PAYTMAN at the bottom. All eleven delivery trucks, including
 Ralph's arrival, use the same 148 × 84 footprint and shared artwork. The bulk pile
 is centered immediately beyond the conveyor, with a separate recovery tray below
 it. Either worker can deliver C freight from their side of this one pile; Ralph
-collects the same stock. The full-floor camera includes all five rows and the end
+collects the same stock. The full-floor camera includes receiving, all five rows and the end
 of the belt. Personal props and event choreography follow their original bays.
+
+The truck drop zones are now 78 × 88 and bulk receiving zones 80 × 96. Painted
+rectangles and acceptance use the same definitions: either truck accepts from
+the entire reachable front lane, and bulk extends farther down to y672. The
+longer central pallet sits at y610, with recovery at y690 and floor ending at
+y714. Camera follow and overview include the extra walking space.
+
+A receiving annex extends the top of the warehouse to y-240. Walking up to
+y-20 reveals two articulated semis, unloading workers and a ragged, very smelly
+dockhand at the feeder. The final 900 milliseconds of each incoming parcel are
+visible at y127 through y172, with its route, kind and ID reserved before the
+push begins. Spawn consumes that same identity at the contact point. Brakes,
+blocked intake, pause and story stops preserve the handoff. If a reserved normal
+parcel is delayed across Brian's announcement, it finishes first and all five
+Brian parcels follow. Receiving closes with normal intake at 180 seconds; it
+does not add free deliveries or alter the shift target. The first parcel still
+starts on the belt so there is no extra opening wait.
 
 `ShiftModel.ts` owns the deterministic simulation. Belt parcels store an offset
 from one absolute conveyor travel distance, which also drives the tread texture
@@ -114,7 +132,13 @@ Workers stay on their sides, normalize diagonal movement, and slow down under
 load. Drops reject occupied space. Parcels can be returned to the belt and handed
 to the other worker. Deliveries require an explicit action in a dock: a wrong
 destination keeps the parcel and explains where it belongs. Correct deliveries
-move into the bay with restrained animation and existing synthesized audio.
+move into the bay with restrained animation and layered synthesized foley.
+
+The sound pass replaces harsh bleeps with soft cardboard and metal impacts,
+warm confirmation bells and a quieter score. Reused procedural noise avoids
+per-cue buffer creation and does not consume gameplay randomness. Filtering,
+envelopes, event throttles and compression keep overlapping cues controlled;
+the music scheduler skips missed beats after a stalled tab.
 
 The first six parcels teach A, B, and C at six-second intervals. Flow increases
 after 36 seconds. Brian announces a rush at 63 seconds: five heavy bulk parcels
