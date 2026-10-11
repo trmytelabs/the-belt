@@ -207,20 +207,7 @@ export function createMesaBedroom(scene: Phaser.Scene): MesaBedroom {
   for (const [x, y] of [[699, 500], [820, 500], [699, 591], [820, 591]]) rect(amp, x, y, 12, 12, 0x89908a, 2);
   rect(amp, 712, 602, 12, 9, 0x111820, 2);
   rect(amp, 809, 602, 12, 9, 0x111820, 2);
-  line(amp, [[811, 532], [843, 545], [853, 611], [815, 635], [701, 632], [680, 613]], 0x0e171f, 3);
-  const guitar = scene.add.container(875, 554).setAngle(11);
-  const g = scene.add.graphics();
-  oval(g, 0, 13, 45, 59, 0x312726);
-  oval(g, 0, 11, 38, 53, 0xb17648);
-  oval(g, 0, -10, 32, 34, 0xbf8a58);
-  rect(g, -5, -102, 10, 97, 0x694939, 2);
-  rect(g, -8, -119, 16, 25, 0xc29261, 3);
-  rect(g, -10, 19, 20, 5, 0x38272b, 1);
-  oval(g, 0, 1, 17, 18, 0x392b2b);
-  for (let x = -3; x <= 3; x += 2) line(g, [[x, -113], [x, 22]], 0xe1c9a3, 0.7);
-  for (let y = -89; y < -12; y += 9) line(g, [[-5, y], [5, y]], 0xa99b83);
-  for (let y = -114; y < -98; y += 7) { oval(g, -10, y, 6, 3, 0xd3c8ad); oval(g, 10, y, 6, 3, 0xd3c8ad); }
-  guitar.add(g);
+  line(amp, [[811, 532], [843, 545], [853, 611], [815, 650], [321, 650], [285, 638], [271, 531]], 0x0e171f, 3);
 
   const chair = scene.add.graphics();
   oval(chair, 445, 608, 213, 44, 0x0c1821, 0.6);
@@ -234,25 +221,31 @@ export function createMesaBedroom(scene: Phaser.Scene): MesaBedroom {
   rect(chair, 472, 498, 31, 76, 0x585e4d, 13);
   line(chair, [[350, 515], [353, 554]], 0xb4af8a, 2, 0.4);
   for (const x of [362, 479]) rect(chair, x, 587, 10, 20, 0x262629, 2);
-  const skanky = scene.add.container(427, 463).setName('skanky-gaming');
-  const body = scene.add.graphics();
-  poly(body, [[-23, 58], [29, 59], [66, 93], [58, 125], [36, 126], [41, 99], [-1, 87]], 0x334b5b);
-  poly(body, [[-13, 62], [9, 76], [21, 111], [10, 139], [-12, 137], [-5, 109], [-31, 85]], 0x456174);
-  line(body, [[3, 89], [13, 111], [4, 132]], 0x809294, 2, 0.5);
-  poly(body, [[38, 117], [61, 119], [80, 132], [76, 143], [34, 140]], 0x161f28);
-  poly(body, [[-13, 128], [10, 133], [25, 147], [21, 155], [-22, 148]], 0x18232b);
-  line(body, [[34, 139], [75, 143]], 0xb7b3a1, 3);
-  line(body, [[-20, 147], [20, 155]], 0xb7b3a1, 3);
-  for (let i = 0; i < 3; i++) line(body, [[48 + i * 5, 126], [43 + i * 5, 130]], 0x989e97, 2);
-  poly(body, [[-26, -32], [14, -39], [38, -6], [37, 42], [45, 65], [9, 81], [-38, 65], [-36, 10]], 0x914f3c);
-  poly(body, [[-25, -20], [-10, -23], [-8, 47], [15, 70], [-31, 61]], 0xb06b4d);
-  poly(body, [[20, -29], [39, -5], [32, 40], [42, 63], [24, 67], [15, 19]], 0x633e35);
-  line(body, [[-29, 56], [-5, 64], [16, 61]], 0xe0a375, 2, 0.35);
-  poly(body, [[-18, 7], [-8, 6], [10, 33], [47, 21], [54, 34], [9, 49], [-2, 43]], 0xba875f);
-  poly(body, [[29, 0], [40, 1], [44, 18], [73, 14], [76, 26], [34, 34]], 0xd6a77a);
-  line(body, [[-11, 13], [12, 39], [43, 29]], 0xe4bb88, 3, 0.6);
-  skanky.add(body);
-  // Long loose hair reaches mid-back; the face looks toward the television.
+  const stool = scene.add.graphics();
+  oval(stool, 251, 625, 147, 28, 0x0c1821, 0.5);
+  rect(stool, 204, 540, 84, 17, 0x8c6a4f, 6);
+  for (const x of [211, 275]) rect(stool, x, 553, 9, 70, 0x3e3330, 2);
+  line(stool, [[214, 590], [279, 590]], 0x695342, 5);
+
+  const seatedBody = (shirt: readonly [number, number, number]) => {
+    const body = scene.add.graphics();
+    poly(body, [[-23, 58], [29, 59], [66, 93], [58, 125], [36, 126], [41, 99], [-1, 87]], 0x334b5b);
+    poly(body, [[-13, 62], [9, 76], [21, 111], [10, 139], [-12, 137], [-5, 109], [-31, 85]], 0x456174);
+    line(body, [[3, 89], [13, 111], [4, 132]], 0x809294, 2, 0.5);
+    poly(body, [[38, 117], [61, 119], [80, 132], [76, 143], [34, 140]], 0x161f28);
+    poly(body, [[-13, 128], [10, 133], [25, 147], [21, 155], [-22, 148]], 0x18232b);
+    line(body, [[34, 139], [75, 143]], 0xb7b3a1, 3);
+    line(body, [[-20, 147], [20, 155]], 0xb7b3a1, 3);
+    for (let i = 0; i < 3; i++) line(body, [[48 + i * 5, 126], [43 + i * 5, 130]], 0x989e97, 2);
+    poly(body, [[-26, -32], [14, -39], [38, -6], [37, 42], [45, 65], [9, 81], [-38, 65], [-36, 10]], shirt[0]);
+    poly(body, [[-25, -20], [-10, -23], [-8, 47], [15, 70], [-31, 61]], shirt[1]);
+    poly(body, [[20, -29], [39, -5], [32, 40], [42, 63], [24, 67], [15, 19]], shirt[2]);
+    line(body, [[-29, 56], [-5, 64], [16, 61]], 0xe0a375, 2, 0.35);
+    return body;
+  };
+  const skanky = scene.add.container(239, 480).setName('skanky-guitarist');
+  skanky.add(seatedBody([0x914f3c, 0xb06b4d, 0x633e35]));
+  // Skanky's long loose hair reaches mid-back as he plays beside Trmyte.
   const head = scene.add.container(0, 0).setName('skanky-long-hair');
   const hair = scene.add.graphics();
   poly(hair, [[-40, -60], [-31, -86], [-2, -93], [23, -77], [29, -49], [17, -14], [10, 19], [-6, 38], [-19, 31], [-24, 39], [-39, 27], [-45, -10]], 0x302b27);
@@ -270,7 +263,65 @@ export function createMesaBedroom(scene: Phaser.Scene): MesaBedroom {
   line(hair, [[7, -84], [23, -74], [27, -58]], 0xb4d1bb, 2, 0.5);
   head.add(hair);
   skanky.add(head);
-  const controller = scene.add.container(59, 27).setName('skanky-controller').setAngle(-8);
+
+  const guitar = scene.add.container(3, 25).setName('skanky-guitar').setAngle(-12);
+  const g = scene.add.graphics();
+  // A sunburst electric guitar with pickups, six strings and a fretted neck.
+  poly(g, [[-30, -15], [-18, -25], [-9, -17], [9, -18], [17, -28], [28, -20], [19, -1], [29, 18], [24, 37], [5, 45], [-23, 36], [-32, 16], [-24, 0]], 0x3e2528);
+  poly(g, [[-26, -13], [-17, -20], [-8, -12], [10, -13], [17, -21], [22, -18], [14, -1], [24, 18], [20, 33], [5, 39], [-19, 31], [-27, 16], [-19, 0]], 0xb1663e);
+  oval(g, -1, 13, 37, 46, 0xd29752);
+  rect(g, 8, -6, 108, 12, 0x644735, 2);
+  poly(g, [[114, -7], [139, -11], [144, -4], [139, 9], [114, 5]], 0xc89b66);
+  poly(g, [[-3, -10], [14, -9], [13, 17], [3, 28], [-10, 17]], 0xd5c9ac);
+  for (const x of [-13, 1, 14]) rect(g, x, -6, 5, 16, 0x263139, 1);
+  for (let x = 28; x < 114; x += 8) line(g, [[x, -5], [x, 5]], 0xabaa93);
+  for (let y = -3; y <= 3; y += 1.2) line(g, [[-14, y], [137, y]], 0xeee0b5, 0.65, 0.8);
+  for (let x = 120; x < 141; x += 7) { oval(g, x, -11, 4, 5, 0xcad1c3); oval(g, x, 10, 4, 5, 0xcad1c3); }
+  oval(g, 14, 25, 5, 5, 0xe5d6ae);
+  oval(g, 21, 18, 5, 5, 0xe5d6ae);
+  guitar.add(g);
+  skanky.add(guitar);
+  const fretArm = scene.add.graphics();
+  poly(fretArm, [[28, -3], [39, 0], [61, 14], [85, 3], [92, 13], [63, 28], [54, 26], [29, 12]], 0xd6a77a);
+  line(fretArm, [[38, 5], [62, 21], [83, 10]], 0xe9bc88, 3, 0.65);
+  oval(fretArm, 88, 8, 12, 15, 0xe0b184);
+  for (let y = 3; y < 13; y += 3) line(fretArm, [[84, y], [91, y + 1]], 0x90694f, 1);
+  skanky.add(fretArm);
+  const strumArm = scene.add.container(-25, 0).setName('skanky-strumming');
+  const picking = scene.add.graphics();
+  poly(picking, [[-5, -2], [7, -2], [12, 25], [35, 29], [34, 40], [5, 38], [0, 32]], 0xba875f);
+  line(picking, [[2, 4], [7, 29], [30, 34]], 0xe3b786, 3, 0.7);
+  oval(picking, 34, 34, 13, 12, 0xe3b487);
+  poly(picking, [[38, 30], [43, 34], [38, 37]], 0xf0dfba);
+  strumArm.add(picking);
+  skanky.add(strumArm);
+
+  // Trmyte keeps the playable character's blue shirt and yellow cap.
+  const trmyte = scene.add.container(427, 463).setName('trmyte-gaming');
+  trmyte.add(seatedBody([0x3b719a, 0x5995b6, 0x2c4d70]));
+  const gamingArms = scene.add.graphics();
+  poly(gamingArms, [[-18, 7], [-8, 6], [10, 33], [47, 21], [54, 34], [9, 49], [-2, 43]], 0xba875f);
+  poly(gamingArms, [[29, 0], [40, 1], [44, 18], [73, 14], [76, 26], [34, 34]], 0xd6a77a);
+  line(gamingArms, [[-11, 13], [12, 39], [43, 29]], 0xe4bb88, 3, 0.6);
+  trmyte.add(gamingArms);
+  const trmyteHead = scene.add.container(0, 0);
+  const face = scene.add.graphics();
+  rect(face, -4, -36, 22, 18, 0xbc8a63, 3);
+  poly(face, [[-20, -76], [17, -75], [24, -54], [35, -47], [27, -41], [26, -27], [14, -20], [-7, -25], [-23, -46]], 0xd3a077);
+  poly(face, [[19, -60], [24, -54], [35, -47], [26, -44], [26, -29], [14, -24], [8, -29]], 0xe8bc8c);
+  poly(face, [[-23, -68], [-5, -66], [-5, -45], [-13, -41], [-14, -30], [-22, -39]], 0x5a4230);
+  oval(face, -5, -45, 11, 15, 0xbb8660);
+  line(face, [[-4, -49], [-7, -44], [-3, -41]], 0x805c48, 1.5);
+  line(face, [[15, -55], [24, -53]], 0x59422c, 2);
+  oval(face, 23, -49, 3, 3, 0x20252b);
+  line(face, [[19, -33], [27, -35]], 0x79503b, 1.5);
+  poly(face, [[-29, -72], [-27, -87], [-13, -98], [9, -96], [22, -82], [24, -69]], 0xb49a4b);
+  poly(face, [[-19, -87], [-9, -95], [8, -92], [17, -79], [17, -73], [-20, -75]], 0xd7bb63);
+  line(face, [[-5, -94], [-1, -76]], 0xf2d88a, 1.5, 0.55);
+  poly(face, [[-29, -73], [24, -75], [44, -68], [38, -64], [-28, -67]], 0xdec576);
+  trmyteHead.add([face, text(-5, -85, 'T', 10, '#5c583d').setOrigin(0.5)]);
+  trmyte.add(trmyteHead);
+  const controller = scene.add.container(59, 27).setName('trmyte-controller').setAngle(-8);
   const pad = scene.add.graphics();
   poly(pad, [[-25, -8], [-14, -15], [16, -15], [27, -8], [33, 10], [27, 16], [15, 5], [-12, 5], [-23, 16], [-31, 10]], 0x111d27);
   line(pad, [[-22, -7], [-13, -11], [15, -11], [25, -5]], 0x536976, 2);
@@ -287,12 +338,12 @@ export function createMesaBedroom(scene: Phaser.Scene): MesaBedroom {
   const leftThumb = scene.add.ellipse(-16, -7, 11, 7, 0xe6b98a).setAngle(-18);
   const rightThumb = scene.add.ellipse(22, -6, 10, 7, 0xf0c596).setAngle(24);
   controller.add([leftThumb, rightThumb]);
-  skanky.add(controller);
+  trmyte.add(controller);
 
   const clutter = scene.add.graphics();
-  poly(clutter, [[200, 557], [247, 552], [267, 568], [219, 575]], 0xbc9770);
-  poly(clutter, [[219, 575], [267, 568], [264, 578], [219, 585]], 0x705341);
-  line(clutter, [[227, 561], [246, 566]], 0x965340, 3);
+  poly(clutter, [[130, 605], [177, 600], [197, 616], [149, 623]], 0xbc9770);
+  poly(clutter, [[149, 623], [197, 616], [194, 626], [149, 633]], 0x705341);
+  line(clutter, [[157, 609], [176, 614]], 0x965340, 3);
   poly(clutter, [[116, 540], [139, 532], [155, 543], [168, 541], [177, 558], [161, 563], [149, 555], [139, 569], [111, 560]], 0x4c5961);
   line(clutter, [[136, 538], [143, 548], [131, 560]], 0x8a9690, 2, 0.4);
   rect(clutter, 595, 554, 41, 6, 0xbcb694, 1);
@@ -335,6 +386,8 @@ export function createMesaBedroom(scene: Phaser.Scene): MesaBedroom {
       const points = String(24800 + Math.floor(elapsed / 2400) * 800 + (cycle > 600 ? 400 : 0) + (cycle > 1800 ? 400 : 0)).padStart(6, '0');
       score.setText(`${points.slice(0, 3)}\n${points.slice(3)}`);
       head.y = Math.sin(elapsed / 340) * 1.3;
+      strumArm.angle = Math.sin(elapsed / 90) * 9;
+      trmyteHead.y = Math.sin(elapsed / 410) * 0.8;
       controller.y = 27 + Math.sin(elapsed / 160) * 0.7;
       controller.angle = -8 + Math.sin(elapsed / 260) * 1.5;
       leftThumb.x = -16 + Math.sin(elapsed / 180) * 1.2;

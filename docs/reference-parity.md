@@ -245,7 +245,7 @@ open classic mode to reach these references.
 | Ralph's five-ton | Trigger requires five accumulated bulk dispatches. Truck enters, Ralph makes five separate carrying trips, each removes one stock item and adds one visible truck box, then the truck leaves. Browser checks all five lift/load transitions, counts and departure. |
 | Ben and Paula | Threat, training claim, distinct dodge motion, five comic impacts, X_X fall, demon appearance, body dragged toward the portal, disappearance and Paula's complaint/exit are staged in sequence. Browser checks motion and rendered states; the incident screenshot is explicitly a synthetic clock fixture. |
 | Drivers and exhaust | Ten drivers appear beside the restored trucks; exhaust remains after drivers disappear. Four original cough variants each receive a readable panel. Browser checks driver count, generated exhaust geometry and speech windows. |
-| Mesa | Real Y/N and touch choice, intact leave outcome, Skanky's thought and bedroom dream, original posters/monitor text, preserved shift progress on return, and announced capture consequence. The previously advertised but unfinished one-in-five capture risk is now implemented. Isolated rolls test safe/caught paths; they do not bypass any production choice code. Blur during the dream returns to a paused warehouse. The bedroom is redrawn with long-haired Skanky playing Lumines on a TV and PS3; the Mesa amp and resting guitar remain. |
+| Mesa | Real Y/N and touch choice, intact leave outcome, Skanky's thought and bedroom dream, original posters/monitor text, preserved shift progress on return, and announced capture consequence. The previously advertised but unfinished one-in-five capture risk is now implemented. Isolated rolls test safe/caught paths; they do not bypass any production choice code. Blur during the dream returns to a paused warehouse. The bedroom is redrawn with Trmyte playing Lumines on a TV and PS3 while long-haired Skanky plays guitar through the Mesa amp. |
 | Opening and ending | Original 3–2–1–SORT countdown is visible and keeps movement/grab/clock gated. Original player clock-out lines, all resident celebration variants, real named-truck departures, grade quotes and failure flavor are restored. Browser checks countdown, celebration panels and every truck's displacement before results. |
 
 Checks run on 2026-10-10:
@@ -400,17 +400,19 @@ committed asset. Physical speaker and touch-device judgment remains manual.
 
 ### Mesa bedroom redraw
 
-The shared dream now has an illustrated night-time room, long-haired Skanky
-holding and tapping a controller, a visible PS3, and an animated Lumines homage
-on the television. Falling two-color squares, timeline clears, settling blocks
-and a rising score make the game visible in motion. The Mesa cabinet, resting
-guitar, all three original posters and BUILT THE BELT monitor remain. The
+The shared dream now has an illustrated night-time room, Trmyte holding and
+tapping a controller, a visible PS3, and an animated Lumines homage on the
+television. Long-haired Skanky plays an electric guitar beside him, with animated
+strumming and a cable to the Mesa cabinet. Falling two-color squares, timeline
+clears, settling blocks and a rising score make the game visible in motion.
+All three original posters and the BUILT THE BELT monitor remain. The
 five-second dream, preview progress restoration and classic restart are unchanged.
 
 Validation used Node 24, `npm ci`, the TypeScript/production build, all 48
 model/reference checks and the complete Edge Canvas browser suite. Local dev
-fixtures additionally exercised the real keyboard/touch theft choices, animated
-rendered frames and same-shift return in desktop, landscape and portrait WebGL;
+fixtures additionally exercised the real keyboard/touch theft choices, Trmyte's
+controller and Skanky's guitar/long hair, visible strumming, animated rendered
+frames and same-shift return in desktop, landscape and portrait WebGL;
 the shared classic dream/restart and desktop Canvas path also passed. Synthetic
 room screenshots were visually inspected. No screenshots or generated output
 are committed. Physical phone use and speaker listening remain manual checks.

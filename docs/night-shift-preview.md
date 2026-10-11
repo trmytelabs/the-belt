@@ -75,10 +75,11 @@ demon dragging him through a portal, and Paula's response retain their sequence.
 The Mesa offer freezes freight and accepts keyboard or touch choices. Leaving
 keeps cargo and score. Stealing consumes the amp without awarding a delivery,
 shows MESA AT HOME and a redrawn bedroom with BULK RULES, PAYTMAN SUCKS,
-NO REPEATS and BUILT THE BELT. Long-haired Skanky plays Lumines on a TV connected
-to a visible PS3, with animated controller thumbs, falling blocks and a sweeping
-timeline. The Mesa amp and resting guitar remain. The dream returns to this shift
-instead of restarting it. The original source advertised a one-in-five Shan capture risk
+NO REPEATS and BUILT THE BELT. Trmyte plays Lumines on a TV connected to a visible
+PS3, with animated controller thumbs, falling blocks and a sweeping timeline.
+Long-haired Skanky strums an electric guitar connected to the Mesa amp beside him.
+The dream returns to this shift instead of restarting it. The original source
+advertised a one-in-five Shan capture risk
 but never called its capture path; the preview completes that unfinished risk.
 This is a deliberate behavior change, not a claim of restoring working logic.
 

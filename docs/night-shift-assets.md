@@ -28,7 +28,8 @@ are inherited game content, not newly invented replacements. It preserves the
 original names, intentional spellings and profanity. The original warehouse
 artwork remains available. The shared `MesaDreamScene.ts` uses the upgraded illustration
 in `src/game/art/MesaBedroomArt.ts`: moonlit window, textured furnishings, Mesa
-cabinet and resting guitar, PS3, and long-haired Skanky holding a controller.
+cabinet, PS3, capped Trmyte holding a controller, and long-haired Skanky strumming
+an electric guitar connected to the amp.
 An original geometric homage to Lumines animates falling two-color blocks,
 matching squares and a sweeping timeline on the TV. No game screenshots, console
 assets, recordings or external fonts were imported. Original poster/monitor copy
