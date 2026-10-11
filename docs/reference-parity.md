@@ -316,3 +316,29 @@ source checks, the complete Canvas reference browser suite, and WebGL keyboard,
 touch and rotation gameplay checks passed. The production bundle is
 `index-CAYoksaw.js`. Fresh Mallwood gameplay and timed gate/incident screenshots
 were visually inspected; the latter are explicitly synthetic clock fixtures.
+
+## Closer camera and selective story pause
+
+The closer follow camera keeps the selected worker in frame while scrolling
+along the belt; switching workers reframes their side. Overview remains available
+with V or a fixed HUD button, so all references can still be inspected together.
+Ben's complete gunman/demon/Paula sequence now pauses sorting and uses its own
+clock. It retains the same authored timings and words, but the shift clock,
+freight, held item, score, backlog, cooldowns and other crew stay frozen. The
+camera returns to the worker after Paula leaves; no elapsed time is caught up.
+Existing speech is suspended with its remaining duration and restored afterward.
+Mesa keeps its prior choice/dream pause. Other gags remain part of active play.
+
+The reference browser fixture now advances Ben's independent story clock through
+every existing stage and checks frozen cargo, input gating, Escape/blur pause,
+resume, and exact belt contact afterward. The camera browser test uses real
+keyboard and touch movement, verifies fixed HUD controls after zoom/scroll and
+rotation, checks overview and full gate framing, and verifies a smooth return.
+Late-event screenshots are controlled fixtures, not an unassisted playthrough.
+
+The closer-camera checkpoint builds as `index-1moAVXZP.js`. TypeScript and all
+32 model/source checks passed. Canvas camera checks include touch overview,
+fixed controls, rotation, event framing and text-density consistency; fresh
+desktop/mobile screenshots were inspected. The density assertion was added
+after screenshot review caught Phaser's text setter leaving Canvas texture
+resolution out of sync with its style. Both density values are now kept equal.

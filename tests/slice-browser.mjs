@@ -209,7 +209,13 @@ try {
     .includes('SHAN O MACK: WHO STOPPED THE #@%! BELT?!'), 'using the actual brake must provoke Shan');
   if (process.env.BELT_SCREENSHOT_DIR) {
     await page.waitForFunction(() => window.fixtureGame.scene.getScene('DepotScene').model.elapsedMs >= 25_100);
+    // Follow Termite to put the massage in frame; Skanky's close view faces the
+    // other bay. This is a normal worker switch, not a fabricated camera pose.
+    const switchForMassage = await read(() => window.fixtureGame.scene.getScene('DepotScene').model.activeIndex === 1);
+    if (switchForMassage) await press('Tab');
+    await page.waitForTimeout(600);
     await page.screenshot({ path: join(process.env.BELT_SCREENSHOT_DIR, 'after-massage.png') });
+    if (switchForMassage) await press('Tab');
   }
 
   // Use existing parcels, so fixtures do not depend on a second constructor or
@@ -288,10 +294,15 @@ try {
   // Full cast mechanics and reference variants are checked independently in
   // reference-browser.mjs. Preserve this suite's organic controls/restart scope.
   await read(() => {
-    const model = window.fixtureGame.scene.getScene('DepotScene').model;
+    const scene = window.fixtureGame.scene.getScene('DepotScene');
+    const model = scene.model;
     for (const parcel of model.packages) parcel.state = 'delivered';
     model.sorted = model.goal;
     model.elapsedMs = model.durationMs - 1;
+    // This fixture jumps past Ben's trigger. Resolve the real paused sequence
+    // in small steps so the results test does not wait through it a second time.
+    scene.update(scene.time.now, 0);
+    while (scene.state === 'interlude') scene.update(scene.time.now, 100);
   });
   await page.waitForFunction(() => window.fixtureGame.scene.getScene('DepotScene').state === 'celebrating');
   await press('Enter');
@@ -467,11 +478,14 @@ try {
     await touchPage.evaluate(() => window.fixtureGame.loop.wake());
   }
   await touchPage.evaluate(() => {
-    const model = window.fixtureGame.scene.getScene('DepotScene').model;
+    const scene = window.fixtureGame.scene.getScene('DepotScene');
+    const model = scene.model;
     for (const worker of model.workers) worker.heldId = null;
     for (const parcel of model.packages) parcel.state = 'delivered';
     model.sorted = model.goal;
     model.elapsedMs = model.durationMs - 1;
+    scene.update(scene.time.now, 0);
+    while (scene.state === 'interlude') scene.update(scene.time.now, 100);
   });
   await touchPage.waitForFunction(() => window.fixtureGame.scene.getScene('DepotScene').state === 'results');
   await touchPage.locator('.depot-touch').waitFor({ state: 'hidden' });

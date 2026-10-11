@@ -188,6 +188,8 @@ export class DepotRoutines {
     }
   }
 
+  public hideCrewFreight(id: string): void { this.crewFreight.get(id)?.setVisible(false); }
+
   public hideFreight(): void {
     for (const parcel of this.crewFreight.values()) parcel.setVisible(false);
     this.cell.setVisible(false); this.ralphTruck.setVisible(false); this.ralphBox.setVisible(false);

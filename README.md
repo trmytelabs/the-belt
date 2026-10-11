@@ -29,6 +29,8 @@ SORT!** countdown starts the shift.
   either lower bulk bay. Letters and colors identify every route.
 - E brakes the belt for two seconds, with an eight-second cooldown.
 - Escape pauses; M toggles sound. Losing focus pauses the preview automatically.
+- The closer camera follows your worker up and down the belt and reframes when
+  you switch workers. V, or the Overview button, shows the whole warehouse.
 - Pick up missed freight near the belt exit to recover it for half base points.
 
 Touch devices have a movement stick and Switch, Grab / Deliver, and Brake
@@ -44,6 +46,13 @@ after five accumulate, Ralph loads them into his five-ton truck and heads back
 to his three sets of triplets. The crew has its own trucks and personal props,
 including Paytman's fish tank and Donna's Warcraft vignette. Drivers, keys,
 exhaust, coughs, clock-out lines, departures and original grade quotes return.
+
+Ben's robbery, dodge-training, demon and Paula sequence gets a close-up: the
+belt, freight, workers, shift clock and other crew routines freeze until it
+finishes. Escape or losing focus pauses the story too. The camera then returns
+smoothly to your worker and sorting resumes from the same positions. Everyday
+banter, the CELL dance, massage and loading routines continue during gameplay;
+Mesa retains its existing paused choice and dream.
 
 Vic's Mesa offer supports Y/N and touch. Leaving keeps the parcel; stealing
 risks ending the shift. A successful theft shows Skanky's original bedroom dream

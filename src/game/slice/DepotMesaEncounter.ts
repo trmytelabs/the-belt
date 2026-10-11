@@ -144,6 +144,7 @@ export class DepotMesaEncounter {
       ...this.choiceButton(584, 451, 'LEAVE IT', 0xedba6d, () => this.chooseLeave()),
     );
     this.panel = this.scene.add.container(0, 0, children).setDepth(120);
+    this.scene.events.emit('depot-screen-object', this.panel);
   }
 
   private showCaught(): void {
@@ -154,6 +155,7 @@ export class DepotMesaEncounter {
       this.text(480, 414, 'GAME OVER', 18, '#edba6d').setOrigin(0.5),
     );
     this.panel = this.scene.add.container(0, 0, children).setDepth(120);
+    this.scene.events.emit('depot-screen-object', this.panel);
   }
 
   private panelBase(): Phaser.GameObjects.GameObject[] {
@@ -166,11 +168,13 @@ export class DepotMesaEncounter {
   }
 
   private text(x: number, y: number, copy: string, size: number, color: string): Phaser.GameObjects.Text {
-    return this.scene.add.text(x, y, copy, {
+    const text = this.scene.add.text(x, y, copy, {
       fontFamily: '"Trebuchet MS", Arial, sans-serif', fontSize: `${size}px`,
       fontStyle: 'bold', color, align: 'center', lineSpacing: 5,
       wordWrap: { width: 590, useAdvancedWrap: true },
     });
+    this.scene.events.emit('depot-screen-object', text);
+    return text;
   }
 
   private choiceButton(x: number, y: number, label: string, color: number, action: () => void): Phaser.GameObjects.GameObject[] {

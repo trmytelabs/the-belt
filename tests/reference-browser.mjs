@@ -73,6 +73,10 @@ try {
   const advance = async target => page.evaluate(target => {
     const scene = window.fixtureGame.scene.getScene('DepotScene');
     while (scene.model.elapsedMs < target) {
+      if (scene.state === 'interlude') {
+        scene.update(scene.time.now, 100);
+        continue;
+      }
       if (scene.state !== 'playing') throw new Error(`Fixture unexpectedly stopped at ${scene.model.elapsedMs}: ${scene.state}`);
       scene.toastUntil = 0;
       for (const parcel of scene.model.packages) {
@@ -94,6 +98,13 @@ try {
         if (last && last.copy === copy?.[1] && last.name === copy?.[0]) last.end = scene.model.elapsedMs;
         else if (copy) records.push({ name: copy[0], copy: copy[1], start: scene.model.elapsedMs, end: scene.model.elapsedMs });
       }
+    }
+  }, target);
+  const advanceInterlude = async target => page.evaluate(target => {
+    const scene = window.fixtureGame.scene.getScene('DepotScene');
+    while (scene.life.benInterludeTime < target) {
+      if (scene.state !== 'interlude') throw new Error(`Ben sequence stopped at ${scene.life.benInterludeTime}: ${scene.state}`);
+      scene.update(scene.time.now, Math.min(100, target - scene.life.benInterludeTime));
     }
   }, target);
   const snapshot = () => read(() => {
@@ -161,52 +172,113 @@ try {
   assert.equal((await snapshot()).cell.visible, false);
   assert.ok((await snapshot()).hussan.x < 240, 'Hussan must return from the intake after dancing');
 
-  await advance(68_500);
+  await advance(67_900);
+  // Preserve meaningful live cargo, a held parcel and recovery freight across
+  // the cinematic. This controlled fixture isolates freeze semantics.
+  await read(() => {
+    const s = window.fixtureGame.scene.getScene('DepotScene');
+    for (const parcel of s.model.packages) parcel.state = 'delivered';
+    const [belt, held, missed] = s.model.packages;
+    Object.assign(belt, { state: 'belt', x: 480, y: 595, beltOffset: 595 - s.model.beltTravel, workerId: null });
+    const worker = s.model.workers[0];
+    Object.assign(held, { state: 'held', x: worker.x + 18, y: worker.y - 17, workerId: worker.id });
+    worker.heldId = held.id;
+    Object.assign(missed, { state: 'missed', workerId: null, missCounted: true });
+    for (let attempts = 0; attempts < 5 && s.state === 'playing'; attempts++) s.update(s.time.now, 100);
+    for (const view of s.parcels.values()) view.transferUntil = 0;
+    s.syncWorld(0);
+  });
+  assert.equal(await read(() => window.fixtureGame.scene.getScene('DepotScene').state), 'interlude');
+  assert.equal(await page.locator('.depot-touch').isVisible(), false, 'touch sorting controls must be unavailable while the event owns the scene');
+  const frozenWarehouse = () => read(() => {
+    const s = window.fixtureGame.scene.getScene('DepotScene');
+    return {
+      elapsed: s.model.elapsedMs, travel: s.model.beltTravel, score: s.model.score,
+      sorted: s.model.sorted, missed: s.model.missed, backlog: s.model.pileup,
+      cooldown: s.model.brakeCooldownMs, brake: s.model.brakeRemainingMs,
+      packages: s.model.packages.map(parcel => ({ ...parcel })),
+      workers: s.model.workers.map(worker => ({ ...worker })), tread: s.depot.belt.tilePositionY,
+      colleagues: [...s.life.cast].filter(([id]) => !['ben', 'gunman', 'demon', 'paula'].includes(id))
+        .map(([id, { art }]) => ({ id, x: art.x, y: art.y, angle: art.rotation, visible: art.visible })),
+      crewLoads: [...s.life.routines.crewLoads],
+    };
+  });
+  const frozen = await frozenWarehouse();
+  await advanceInterlude(68_500);
   assert.equal((await snapshot()).gunman, true);
-  await advance(72_100);
+  await advanceInterlude(72_100);
   const benPanel = await read(() => window.fixtureGame.scene.getScene('DepotScene').life.speech.get('left').panel.list.filter(x => x.type === 'Text').map(x => x.text));
   assert.equal(benPanel[0], 'BEN');
   assert.ok(benPanel[1].includes('DODGE GUNS'));
-  await read(() => {
-    const s = window.fixtureGame.scene.getScene('DepotScene');
-    const p = s.model.packages.find(p => !p.missCounted);
-    Object.assign(p, { state: 'belt', x: 480, y: 610, beltOffset: 610 - s.model.beltTravel });
-    s.update(s.time.now, 20);
-  });
-  assert.deepEqual(await read(() => window.fixtureGame.scene.getScene('DepotScene').life.speech.get('left').panel.list.filter(x => x.type === 'Text').map(x => x.text)), benPanel,
-    'an actual belt miss must not replace Ben\'s setup');
+  await read(() => window.fixtureGame.loop.wake());
+  await page.keyboard.down('ArrowDown');
+  await press('Space');
+  await press('Tab');
+  await press('KeyE');
+  await page.keyboard.up('ArrowDown');
+  assert.deepEqual(await frozenWarehouse(), frozen, 'movement, actions, sorting, spawning and coworker routines must freeze during the joke');
+  await press('Escape');
+  assert.equal(await read(() => window.fixtureGame.scene.getScene('DepotScene').state), 'paused');
+  const pausedIncident = await read(() => window.fixtureGame.scene.getScene('DepotScene').life.benInterludeTime);
+  await page.waitForTimeout(200);
+  assert.equal(await read(() => window.fixtureGame.scene.getScene('DepotScene').life.benInterludeTime), pausedIncident,
+    'Escape must pause the interlude clock itself');
+  await press('Escape');
+  assert.equal(await read(() => window.fixtureGame.scene.getScene('DepotScene').state), 'interlude',
+    'resume must return to the joke, not restart sorting early');
+  await read(() => window.dispatchEvent(new Event('blur')));
+  await page.waitForFunction(() => window.fixtureGame.scene.getScene('DepotScene').state === 'paused');
+  const blurIncident = await read(() => window.fixtureGame.scene.getScene('DepotScene').life.benInterludeTime);
+  await page.waitForTimeout(150);
+  assert.equal(await read(() => window.fixtureGame.scene.getScene('DepotScene').life.benInterludeTime), blurIncident,
+    'losing focus must freeze the cinematic as well as freight');
+  await read(() => window.dispatchEvent(new Event('focus')));
+  await press('Escape');
+  await read(() => window.fixtureGame.loop.sleep());
+  assert.equal(await read(() => window.fixtureGame.scene.getScene('DepotScene').state), 'interlude');
   const shotWords = [];
-  await advance(77_300);
+  await advanceInterlude(77_300);
   const dodgeStart = await snapshot();
-  await advance(78_100);
+  await advanceInterlude(78_100);
   const dodgeNext = await snapshot();
   assert.ok(Math.abs(dodgeNext.benX - dodgeStart.benX) + Math.abs(dodgeNext.benY - dodgeStart.benY) > 10,
     'Ben must demonstrate the dodge training before the shots');
-  assert.equal(dodgeNext.johnVisible, true, 'John must still be present when his queued miss reaction finally renders');
-  assert.equal(await read(() => window.fixtureGame.scene.getScene('DepotScene').life.speech.get('left').id), 'john');
   for (const time of [78_520, 78_780, 79_200, 79_520, 80_040]) {
-    await advance(time); shotWords.push((await snapshot()).bang);
+    await advanceInterlude(time); shotWords.push((await snapshot()).bang);
   }
   assert.deepEqual(shotWords, [...SHOT_WORDS], 'five distinct cartoon impacts must render in the original sequence');
   assert.equal((await snapshot()).dead, true);
-  await advance(82_000);
+  await advanceInterlude(82_000);
   assert.equal((await snapshot()).demon, true);
   const emergingDemon = await snapshot();
-  await advance(82_700);
+  await advanceInterlude(82_700);
   await screenshot('after-gate-fixture.png');
-  await advance(83_300);
+  await advanceInterlude(83_300);
   assert.ok((await snapshot()).demonScale > emergingDemon.demonScale + 0.3,
     'the adult demon must visibly rise to full size before dragging Ben');
   const dragStart = await snapshot();
   await screenshot('after-incident.png');
-  await advance(84_600);
+  await advanceInterlude(84_600);
   assert.ok((await snapshot()).benX < dragStart.benX - 10, 'the demon must visibly drag Ben toward the portal before he disappears');
-  await advance(86_500);
+  await advanceInterlude(86_500);
   assert.equal((await snapshot()).ben, false);
   assert.equal((await snapshot()).paula, true);
   const paulaPanel = await read(() => window.fixtureGame.scene.getScene('DepotScene').life.speech.get('left').panel.list.filter(x => x.type === 'Text').map(x => x.text));
   assert.equal(paulaPanel[0], 'PAULA ABDUL');
   assert.equal(paulaPanel[1], 'GREAT\nNOW WHICH BITCH\nIS GOING TO LOAD\nMY FUCKING TRUCK');
+  assert.deepEqual(await frozenWarehouse(), frozen, 'the entire warehouse must remain intact through the demon and Paula payoff');
+  await advanceInterlude(92_500);
+  assert.equal(await read(() => window.fixtureGame.scene.getScene('DepotScene').state), 'playing');
+  assert.deepEqual(await frozenWarehouse(), frozen, 'the completion frame must not advance freight or consume held input');
+  await read(() => {
+    const s = window.fixtureGame.scene.getScene('DepotScene');
+    s.update(s.time.now, 100);
+  });
+  const resumed = await frozenWarehouse();
+  assert.ok(resumed.elapsed > frozen.elapsed && resumed.travel > frozen.travel, 'the next gameplay frame must resume normally');
+  assert.equal(resumed.workers[0].heldId, frozen.workers[0].heldId, 'the carried parcel must survive the entire cinematic');
+  assert.ok(Math.abs((resumed.packages[0].y - frozen.packages[0].y) - (resumed.travel - frozen.travel)) < 1e-8,
+    'resumed freight must keep exact belt contact, without a catch-up jump');
 
   await read(() => { window.fixtureGame.scene.getScene('DepotScene').model.bulkSorted = 5; });
   await advance(90_100);

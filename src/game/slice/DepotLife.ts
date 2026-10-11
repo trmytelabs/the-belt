@@ -7,6 +7,11 @@ import type { ShiftEvent, ShiftModel } from './ShiftModel';
 import { audioSystem } from '../systems/AudioSystem';
 
 type Speech = { panel: Phaser.GameObjects.Container; expires: number; priority: number; id: string; copy: string; duration: number };
+type PendingSpeech = Omit<Speech, 'panel' | 'expires'>;
+type SpeechSide = 'left' | 'right';
+const BEN_START = 68_000;
+const BEN_END = 92_500;
+const BEN_CAST = new Set(['ben', 'gunman', 'demon', 'paula']);
 
 /** The original warehouse's people and running jokes, staged outside the sort lanes. */
 export class DepotLife {
@@ -14,8 +19,13 @@ export class DepotLife {
   private readonly cast = new Map<string, DepotColleague>();
   public readonly routines: DepotRoutines;
   private readonly cues = new Set<string>();
-  private readonly speech = new Map<'left' | 'right', Speech>();
-  private readonly pendingSpeech: { id: string; copy: string; duration: number; priority: number }[] = [];
+  private readonly speech = new Map<SpeechSide, Speech>();
+  private readonly pendingSpeech: PendingSpeech[] = [];
+  private readonly suspendedSpeech = new Map<SpeechSide, { speech: Speech; remainingMs: number; visible: boolean }>();
+  private readonly suspendedPendingSpeech: PendingSpeech[] = [];
+  private benActive = false;
+  private benCompleted = false;
+  private benClock = BEN_START;
   private readonly scene: Phaser.Scene;
   private readonly model: ShiftModel;
   private johnUntil = 0;
@@ -85,18 +95,11 @@ export class DepotLife {
   }
 
   public update(): void {
+    // The interlude owns its own clock. Normal updates cannot advance the crew
+    // or consume a suspended speech window while the story is in progress.
+    if (this.benActive) return;
     const time = this.model.elapsedMs;
-    for (const [side, bubble] of this.speech) {
-      if (time >= bubble.expires) { bubble.panel.destroy(true); this.speech.delete(side); }
-    }
-    for (const side of ['left', 'right'] as const) {
-      if (this.speech.has(side)) continue;
-      const next = this.pendingSpeech.findIndex(item => this.speakerSide(item.id) === side);
-      if (next >= 0) {
-        const item = this.pendingSpeech.splice(next, 1)[0];
-        this.say(item.id, item.copy, item.duration, item.priority);
-      }
-    }
+    this.advanceSpeech(time);
     // A few purposeful idle gestures; the crew stays out of both workers' lanes.
     for (const id of ['hussan', 'brian', 'fruitloop', 'doris', 'ben', 'bannerman', 'donna']) {
       const colleague = this.cast.get(id)!;
@@ -151,7 +154,7 @@ export class DepotLife {
     this.once('paid-day-response-brian', 149100, () => this.say('brian', WORKER_SWEARS[0], 3300, 1));
     this.cast.get('shan')!.art.setVisible(time < this.shanUntil);
     this.once('brian-response', 64600, () => this.say(this.model.activeWorker.id, 'YOU ARE SERIOUSLY SENDING 5 DOWN TO BULK?', 4700, 1));
-    this.updateBenIncident(time);
+    if (this.benCompleted) this.cast.get('ben')!.art.setVisible(false);
     this.updateButtonIncident(time);
     const shan = this.cast.get('shan')!.art;
     shan.setData('ranting', time < this.shanUntil);
@@ -161,10 +164,85 @@ export class DepotLife {
       () => { this.say(index % 2 === 0 ? 'hussan' : 'doris', line, 2800, 1); audioSystem.play('npc-talk'); }));
     const reserved = new Set<string>();
     if (time >= 21000 && time < 33500) reserved.add('aj');
-    if (time >= 68000) reserved.add('ben');
+    if (this.benCompleted) reserved.add('ben');
     if (this.routines.isHussanBusy(time)) reserved.add('hussan');
     this.routines.update(time, reserved);
     this.depot.updateDetails(this.reducedMotion ? 0 : time);
+  }
+
+  public get benInterludeReady(): boolean {
+    return !this.benActive && !this.benCompleted && this.model.elapsedMs >= BEN_START;
+  }
+
+  public get benInterludeActive(): boolean { return this.benActive; }
+
+  /** Authored incident time, from 68000 through 92500; independent of the shift. */
+  public get benInterludeTime(): number { return this.benClock; }
+
+  public get benInterludeSpeaker(): { id: string; name: string; copy: string; remainingMs: number } | null {
+    if (!this.benActive) return null;
+    const speech = [...this.speech.values()].find(item => BEN_CAST.has(item.id) && item.expires > this.benClock);
+    if (!speech) return null;
+    return {
+      id: speech.id, name: this.cast.get(speech.id)!.name, copy: speech.copy,
+      remainingMs: speech.expires - this.benClock,
+    };
+  }
+
+  public beginBenInterlude(): void {
+    if (!this.benInterludeReady) return;
+    const clock = this.model.elapsedMs + this.celebrationMs;
+    for (const [side, speech] of this.speech) {
+      const remainingMs = Math.max(0, speech.expires - clock);
+      if (remainingMs === 0) { speech.panel.destroy(true); continue; }
+      this.suspendedSpeech.set(side, { speech, remainingMs, visible: speech.panel.visible });
+      speech.panel.setVisible(false);
+    }
+    this.speech.clear();
+    this.suspendedPendingSpeech.push(...this.pendingSpeech.splice(0));
+    this.benClock = BEN_START;
+    this.benActive = true;
+    this.routines.hideCrewFreight('ben');
+    this.updateBenIncident(this.benClock);
+  }
+
+  /** Root calls this only while the story is unpaused. No shift state is changed. */
+  public updateBenInterlude(delta: number): boolean {
+    if (!this.benActive) return this.benCompleted;
+    if (!Number.isFinite(delta) || delta <= 0) return false;
+    this.benClock = Math.min(BEN_END, this.benClock + Math.min(delta, 100));
+    this.advanceSpeech(this.benClock);
+    this.updateBenIncident(this.benClock);
+    if (this.benClock < BEN_END) return false;
+
+    this.benActive = false;
+    this.benCompleted = true;
+    for (const speech of this.speech.values()) speech.panel.destroy(true);
+    this.speech.clear();
+    this.pendingSpeech.length = 0;
+    const clock = this.model.elapsedMs + this.celebrationMs;
+    for (const [side, saved] of this.suspendedSpeech) {
+      saved.speech.expires = clock + saved.remainingMs;
+      saved.speech.panel.setVisible(saved.visible);
+      this.speech.set(side, saved.speech);
+    }
+    this.suspendedSpeech.clear();
+    this.pendingSpeech.push(...this.suspendedPendingSpeech.splice(0));
+    return true;
+  }
+
+  private advanceSpeech(clock: number): void {
+    for (const [side, bubble] of this.speech) {
+      if (clock >= bubble.expires) { bubble.panel.destroy(true); this.speech.delete(side); }
+    }
+    for (const side of ['left', 'right'] as const) {
+      if (this.speech.has(side)) continue;
+      const next = this.pendingSpeech.findIndex(item => this.speakerSide(item.id) === side);
+      if (next >= 0) {
+        const item = this.pendingSpeech.splice(next, 1)[0];
+        this.say(item.id, item.copy, item.duration, item.priority);
+      }
+    }
   }
 
   private updateButtonIncident(time: number): void {
@@ -234,8 +312,8 @@ export class DepotLife {
     gunman.y = time < 69500 ? Phaser.Math.Linear(650, 528, Phaser.Math.Clamp((time - 68000) / 1500, 0, 1))
       : time < 80500 ? 528 : Phaser.Math.Linear(528, 650, (time - 80500) / 1200);
     // Exact source wording and line breaks; the full boast precedes the dodge.
-    this.once('gunman', 69500, () => this.say('gunman', "I'M GOING TO\nROB THIS PLACE!", 2400, 2));
-    this.once('ben-training', 72000, () => this.say('ben', "DON'T WORRY GUYS\nI GOT THIS\nI TOOK TRAINING ON\nHOW TO DODGE GUNS", 5200, 2));
+    this.once('gunman', 69500, () => this.say('gunman', "I'M GOING TO\nROB THIS PLACE!", 2400, 2), time);
+    this.once('ben-training', 72000, () => this.say('ben', "DON'T WORRY GUYS\nI GOT THIS\nI TOOK TRAINING ON\nHOW TO DODGE GUNS", 5200, 2), time);
     const dodge = Phaser.Math.Clamp((time - 77200) / 1300, 0, 1);
     const fallenX = 122;
     const fallenY = 558;
@@ -248,7 +326,7 @@ export class DepotLife {
     } else if (time < 77200) ben.setPosition(48, 570);
     else ben.setPosition(fallenX, fallenY).setRotation(Math.PI / 2 * Phaser.Math.Clamp((time - 80020) / 280, 0, 1));
     for (const [index, at] of [78500, 78760, 79180, 79500, 80020].entries()) {
-      this.once(`shot-${index}`, at, () => { this.bang.setText(SHOT_WORDS[index]); audioSystem.play('gunshot'); });
+      this.once(`shot-${index}`, at, () => { this.bang.setText(SHOT_WORDS[index]); audioSystem.play('gunshot'); }, time);
     }
     // Comic impact lettering instead of full-screen flashes or screen shake.
     this.bang.setVisible(time >= 78500 && time < 80500);
@@ -283,7 +361,7 @@ export class DepotLife {
     paula.x = time < 86400 ? Phaser.Math.Linear(-25, 112, Phaser.Math.Clamp((time - 85600) / 800, 0, 1))
       : time < 91600 ? 112 : Phaser.Math.Linear(112, -25, (time - 91600) / 900);
     paula.rotation = this.reducedMotion || time < 86400 || time >= 91600 ? 0 : Math.sin(time / 130) * 0.025;
-    this.once('paula', 86400, () => this.say('paula', 'GREAT\nNOW WHICH BITCH\nIS GOING TO LOAD\nMY FUCKING TRUCK', 5200, 2));
+    this.once('paula', 86400, () => this.say('paula', 'GREAT\nNOW WHICH BITCH\nIS GOING TO LOAD\nMY FUCKING TRUCK', 5200, 2), time);
   }
 
   /** BenGunmanEvent's pointed red/black gate and concentric orange hellfire. */
@@ -372,13 +450,19 @@ export class DepotLife {
     return this.celebrationMs >= 13000;
   }
 
-  private once(key: string, at: number, action: () => void): void {
-    if (this.model.elapsedMs < at || this.cues.has(key)) return;
+  private once(key: string, at: number, action: () => void, clock = this.model.elapsedMs): void {
+    if (clock < at || this.cues.has(key)) return;
     this.cues.add(key);
     action();
   }
 
   public say(id: string, copy: string, duration: number, priority = 0): void {
+    if (this.benActive && !BEN_CAST.has(id)) {
+      if (!this.suspendedPendingSpeech.some(item => item.id === id && item.copy === copy)) {
+        this.suspendedPendingSpeech.push({ id, copy, duration, priority });
+      }
+      return;
+    }
     const worker = this.model.workers.find(worker => worker.id === id);
     const colleague = this.cast.get(id);
     const speaker = worker ? { name: worker.id.toUpperCase(), x: worker.x } : colleague;
@@ -386,7 +470,7 @@ export class DepotLife {
     const side = speaker.x < 480 ? 'left' : 'right';
     const current = this.speech.get(side);
     // A reactive aside must not cut off a set-up or punchline midway through.
-    const clock = this.model.elapsedMs + this.celebrationMs;
+    const clock = this.benActive ? this.benClock : this.model.elapsedMs + this.celebrationMs;
     if (current && current.expires > clock && current.priority >= priority && priority < 2) {
       if (!this.pendingSpeech.some(item => item.id === id && item.copy === copy)) {
         this.pendingSpeech.push({ id, copy, duration, priority });
@@ -423,6 +507,7 @@ export class DepotLife {
     bg.lineStyle(2, 0xb59b6b).strokeRoundedRect(x, y, 202, height, 7);
     bg.fillStyle(0xf0dfb3).fillTriangle(x + 38, y + height - 1, x + 54, y + height - 1, x + 47, y + height + 10);
     const panel = this.scene.add.container(0, 0, [bg, name, text]).setDepth(45);
+    this.scene.events.emit('depot-screen-object', panel);
     this.speech.set(side, { panel, expires: clock + duration, priority, id, copy, duration });
     this.history.push(`${speaker.name}: ${copy.replace(/\n/g, ' ')}`);
     audioSystem.play('npc-talk');

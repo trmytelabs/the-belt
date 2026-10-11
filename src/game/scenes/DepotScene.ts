@@ -3,6 +3,7 @@ import Phaser from 'phaser';
 import { DepotArt, createParcelArt, createWorkerArt, updateParcelArt } from '../slice/DepotArt';
 import { DepotLife } from '../slice/DepotLife';
 import { DepotMesaEncounter } from '../slice/DepotMesaEncounter';
+import { DepotCamera } from '../slice/DepotCamera';
 import { MESA } from '../slice/DepotReferences';
 import { ShiftModel, type ShiftEvent, type Route } from '../slice/ShiftModel';
 import { audioSystem, type SoundEffect } from '../systems/AudioSystem';
@@ -16,7 +17,9 @@ type ParcelView = { container: Phaser.GameObjects.Container; state: string; tran
 /** A bounded art/gameplay review slice. The original full shift remains accessible. */
 export class DepotScene extends Phaser.Scene {
   public model!: ShiftModel;
-  public state: 'briefing' | 'countdown' | 'playing' | 'paused' | 'mesa' | 'celebrating' | 'results' = 'briefing';
+  public state: 'briefing' | 'countdown' | 'playing' | 'interlude' | 'paused' | 'mesa' | 'celebrating' | 'results' = 'briefing';
+  public view!: DepotCamera;
+  private pausedFrom: 'playing' | 'interlude' = 'playing';
   private depot!: DepotArt;
   private life!: DepotLife;
   private mesa!: DepotMesaEncounter;
@@ -35,6 +38,7 @@ export class DepotScene extends Phaser.Scene {
   private brakeText!: Phaser.GameObjects.Text;
   private pauseText!: Phaser.GameObjects.Text;
   private soundText!: Phaser.GameObjects.Text;
+  private viewText!: Phaser.GameObjects.Text;
   private toast!: Phaser.GameObjects.Text;
   private overlay: Phaser.GameObjects.Container | null = null;
   private toastUntil = 0;
@@ -68,8 +72,9 @@ export class DepotScene extends Phaser.Scene {
     this.overlay = null;
     this.toastUntil = 0;
     this.lostFocus = false;
+    this.pausedFrom = 'playing';
     this.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    this.cameras.main.setBackgroundColor('#11252c');
+    this.view = new DepotCamera(this, this.reducedMotion);
     this.depot = new DepotArt(this);
     this.life = new DepotLife(this, this.model, this.depot);
     this.mesa = new DepotMesaEncounter(this, this.model, {
@@ -94,7 +99,7 @@ export class DepotScene extends Phaser.Scene {
     audioSystem.stopMusic();
     const blur = () => {
       this.lostFocus = true;
-      if (this.state === 'playing') this.togglePause();
+      if (this.state === 'playing' || this.state === 'interlude') this.togglePause();
     };
     const focus = () => { this.lostFocus = false; };
     this.game.events.on(Phaser.Core.Events.BLUR, blur);
@@ -115,7 +120,22 @@ export class DepotScene extends Phaser.Scene {
 
   update(_time: number, delta: number): void {
     if (this.state === 'celebrating') {
+      this.view.update(delta, this.model.activeWorker, 'overview');
       if (this.life.updateCelebration(delta)) this.showResults();
+      return;
+    }
+    if (this.state === 'playing' && this.life.benInterludeReady) this.beginBenInterlude();
+    if (this.state === 'interlude') {
+      this.view.update(delta, this.model.activeWorker, 'interlude');
+      if (this.life.updateBenInterlude(delta)) {
+        this.state = 'playing';
+        this.model.paused = false;
+        this.input.keyboard?.resetKeys();
+        this.tweens.resumeAll();
+        audioSystem.startMusic('game');
+        this.tell('BACK TO THE BELT', INK, 1800);
+      }
+      this.updateConsole();
       return;
     }
     if (this.state === 'playing') this.mesa.update();
@@ -123,7 +143,10 @@ export class DepotScene extends Phaser.Scene {
     this.model.update(delta, movement);
     for (const event of this.model.drainEvents()) this.handleEvent(event);
     if (this.state === 'playing') this.life.update();
-    this.syncWorld(this.state === 'playing' ? delta : 0);
+    if (this.state !== 'paused') this.syncWorld(this.state === 'playing' ? delta : 0);
+    this.view.update(delta, this.model.activeWorker,
+      this.state === 'playing' || this.state === 'countdown' ? 'follow'
+        : this.state === 'briefing' || this.state === 'results' ? 'overview' : 'hold');
     this.updateConsole();
     if (this.model.ended && this.state !== 'results') {
       if (this.model.won) {
@@ -136,6 +159,20 @@ export class DepotScene extends Phaser.Scene {
     if (this.toastUntil < this.time.now) this.toast.setVisible(false);
   }
 
+  private beginBenInterlude(): void {
+    this.state = 'interlude';
+    this.model.paused = true;
+    this.touchMove = { x: 0, y: 0 };
+    this.input.keyboard?.resetKeys();
+    this.guide.clear();
+    this.toast.setVisible(false);
+    this.depot.updateBelt(this.model.beltTravel, false);
+    this.life.beginBenInterlude();
+    this.tweens.pauseAll();
+    audioSystem.stopMusic();
+    this.updateConsole();
+  }
+
   public startShift(): void {
     if (this.state !== 'briefing') return;
     this.overlay?.destroy(true);
@@ -143,10 +180,10 @@ export class DepotScene extends Phaser.Scene {
     this.state = 'countdown';
     void audioSystem.unlock();
     audioSystem.play('ui-start');
-    const counter = this.add.text(480, 348, '3', {
+    const counter = this.view.screen(this.add.text(480, 348, '3', {
       fontFamily: 'Arial', fontSize: '76px', fontStyle: 'bold', color: '#f0dfb3',
       stroke: '#11252c', strokeThickness: 10,
-    }).setOrigin(0.5).setDepth(110);
+    }).setOrigin(0.5).setDepth(110));
     audioSystem.play('countdown');
     ['2', '1', 'SORT!'].forEach((copy, index) => this.time.delayedCall((index + 1) * 1000, () => {
       counter.setText(copy);
@@ -163,12 +200,14 @@ export class DepotScene extends Phaser.Scene {
   }
 
   public togglePause(): void {
-    if (this.state === 'playing') {
+    if (this.state === 'playing' || this.state === 'interlude') {
+      this.pausedFrom = this.state;
       this.state = 'paused';
       this.model.paused = true;
       this.touchMove = { x: 0, y: 0 };
+      this.tweens.pauseAll();
       audioSystem.stopMusic();
-      this.showPanel('TAKE A BREATHER', 'SHIFT PAUSED', [
+      this.showPanel('TAKE A BREATHER', this.pausedFrom === 'interlude' ? 'STORY PAUSED' : 'SHIFT PAUSED', [
         'Your parcels and shift clock are waiting.',
         'Move: WASD / arrows     Switch: TAB     Grab / deliver: SPACE',
         'Brake: E     Pause: ESC     Sound: M',
@@ -176,9 +215,9 @@ export class DepotScene extends Phaser.Scene {
     } else if (this.state === 'paused') {
       this.overlay?.destroy(true);
       this.overlay = null;
-      this.state = 'playing';
-      this.model.paused = false;
-      audioSystem.startMusic('game');
+      this.state = this.pausedFrom;
+      this.model.paused = this.state === 'interlude';
+      if (this.state === 'playing') { this.tweens.resumeAll(); audioSystem.startMusic('game'); }
     }
   }
 
@@ -204,7 +243,8 @@ export class DepotScene extends Phaser.Scene {
       }
       if (event.code === 'KeyO' && this.state === 'briefing') { this.scene.start('TitleScene'); return; }
       if (this.state !== 'playing') return;
-      if (event.code === 'Tab') this.model.switchWorker();
+      if (event.code === 'KeyV') this.view.toggleOverview();
+      else if (event.code === 'Tab') this.model.switchWorker();
       else if (event.code === 'Space') this.model.action();
       else if (event.code === 'KeyE') this.model.brake();
     });
@@ -298,7 +338,7 @@ export class DepotScene extends Phaser.Scene {
   }
 
   private drawConsole(): void {
-    const g = this.add.graphics().setDepth(60);
+    const g = this.view.screen(this.add.graphics().setDepth(60));
     g.fillStyle(0x10232a).fillRect(0, 0, 960, 126);
     g.fillStyle(0x27424a).fillRect(0, 125, 960, 2);
     g.fillStyle(0xedba6d).fillRect(28, 27, 5, 43);
@@ -313,9 +353,12 @@ export class DepotScene extends Phaser.Scene {
     this.pauseText = this.textButton(817, 31, 'Ⅱ PAUSE', () => this.togglePause(), 12);
     this.soundText = this.textButton(817, 61, this.muted ? '♪ SOUND OFF' : '♪ SOUND ON', () => this.toggleSound(), 11);
     this.statusText = this.label(28, 98, '01   /   FIND YOUR RHYTHM', 12, '#76cbd1', true);
+    this.viewText = this.textButton(244, 98, '[ V ] OVERVIEW', () => {
+      if (this.state === 'playing') this.view.toggleOverview();
+    }, 10);
     this.comboText = this.label(400, 98, '', 12, '#edba6d', true);
     this.label(703, 98, 'BACKLOG', 10, MUTED, true).setLetterSpacing(1);
-    this.consoleGraphics = this.add.graphics().setDepth(62);
+    this.consoleGraphics = this.view.screen(this.add.graphics().setDepth(62));
 
     g.fillStyle(0x10232a).fillRect(0, 620, 960, 100);
     g.fillStyle(0x39515a).fillRect(0, 620, 960, 2);
@@ -358,6 +401,14 @@ export class DepotScene extends Phaser.Scene {
     this.brakeText.setText(m.eventStopped ? '■  VIC STOPPED THE BELT' : m.brakeRemainingMs > 0 ? '■  BELT BRAKED'
       : m.brakeCooldownMs > 0 ? `[ E ]  RECHARGE ${Math.ceil(m.brakeCooldownMs / 1000)}s` : '[ E ]  BRAKE READY');
     this.pauseText.setText(this.state === 'paused' ? '▶ RESUME' : 'Ⅱ PAUSE');
+    this.viewText.setText(this.view.overview ? '[ V ] CLOSE VIEW' : '[ V ] OVERVIEW');
+    if (this.state === 'interlude' || (this.state === 'paused' && this.pausedFrom === 'interlude')) {
+      this.statusText.setText('BEN / DODGE TRAINING');
+      this.comboText.setText('SHIFT & BELT PAUSED');
+      this.operatorText.setText('◆ BEN’S BIG MOMENT');
+      this.actionText.setText('Belt held · your freight is safe');
+      this.brakeText.setText('■  BELT HELD');
+    }
     this.consoleGraphics.clear();
     for (let i = 0; i < m.capacity; i++) {
       this.consoleGraphics.fillStyle(i < m.pileup ? 0xf3987c : 0x2b424b);
@@ -409,7 +460,7 @@ export class DepotScene extends Phaser.Scene {
   }
 
   private floatText(x: number, y: number, copy: string, color: string): void {
-    const text = this.label(x, y, copy, 12, color, true).setOrigin(0.5).setDepth(72).setPadding(7, 5).setBackgroundColor('#10232a');
+    const text = this.view.worldObject(this.label(x, y, copy, 12, color, true).setOrigin(0.5).setDepth(72).setPadding(7, 5).setBackgroundColor('#10232a'));
     this.tweens.add({ targets: text, y: y - (this.reducedMotion ? 0 : 25), alpha: 0, delay: 350, duration: 600, onComplete: () => text.destroy() });
   }
 
@@ -424,7 +475,7 @@ export class DepotScene extends Phaser.Scene {
       'A goes left. B goes right. C goes to either bulk bay.',
       'Move with WASD / arrows. TAB switches your worker.',
       'SPACE grabs, delivers at a dock, or puts a parcel down.',
-      'E brakes the belt. Recover misses at the bottom before 5 pile up.',
+      'E brakes. V shows the whole belt. Recover misses before 5 pile up.',
     ], 'START SHIFT  ↵', () => this.startShift());
     const original = this.textButton(480, 543, 'O  /  PLAY THE ORIGINAL FULL SHIFT', () => this.scene.start('TitleScene'), 11).setOrigin(0.5);
     this.overlay?.add(original);
@@ -473,11 +524,11 @@ export class DepotScene extends Phaser.Scene {
     start.on('pointerout', () => start.setFillStyle(0xedba6d));
     start.on('pointerdown', action);
     items.push(start, this.label(480, 495, button, 15, '#142932', true).setOrigin(0.5));
-    this.overlay = this.add.container(0, 0, items).setDepth(100);
+    this.overlay = this.view.screen(this.add.container(0, 0, items).setDepth(100));
   }
 
   private label(x: number, y: number, copy: string, size: number, color: string, bold = false): Phaser.GameObjects.Text {
-    return this.add.text(x, y, copy, { fontFamily: '"Trebuchet MS", Arial, sans-serif', fontSize: `${size}px`, color, fontStyle: bold ? 'bold' : 'normal' }).setDepth(64);
+    return this.view.screen(this.add.text(x, y, copy, { fontFamily: '"Trebuchet MS", Arial, sans-serif', fontSize: `${size}px`, color, fontStyle: bold ? 'bold' : 'normal' }).setDepth(64));
   }
 
   private textButton(x: number, y: number, copy: string, action: () => void, size = 12): Phaser.GameObjects.Text {

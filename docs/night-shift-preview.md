@@ -40,7 +40,11 @@ Kylie wants her TIMMY HORTANS, Vic gets a tune-up, John objects to stacked boxes
 Shan announces the United Way prize and complains when the belt stops, and Ralph
 has three sets of triplets to get back to. The original profanity and spellings
 are preserved. Ben's robbery / dodge-training / demon / Paula incident plays as
-a short sequence in the outer loading bay.
+a close-up sequence in the outer loading bay. Sorting pauses for that complete
+robbery, boast, dodge, demon and Paula payoff; it no longer competes with freight
+for attention. An independent story clock preserves the shift timer, belt,
+parcels, held items, cooldowns and other crew routines. Interrupted banter resumes
+with its remaining reading time afterward.
 
 The freight sequence guarantees MALLWOOD RD EAST, GOJI BERRIES, LIVE LOBSTERS,
 LE DUCK, MAKEUP LOTION, MESA BOOGIE, PANCHETTERS and SMALL ATV
@@ -51,12 +55,13 @@ boxes and long boxes also have distinct shapes. The nearby-parcel hint
 shows their full names while the route letter remains readable on each object.
 Brian's "SENDING 5 DOWN" is an actual five-parcel bulk burst, not just dialogue.
 
-`DepotLife.ts` and `DepotRoutines.ts` stage scenes against simulation time. The
+`DepotLife.ts` and `DepotRoutines.ts` stage everyday scenes against simulation time. The
 three-minute duration gives the jokes breathing room. Dialogue waits its turn
 on each side of the warehouse instead of dropping or truncating a line. All
 original coffee, rant, swear, cough, shot and clock-out variants remain reachable.
-Pause freezes the cast, speech and set pieces with the belt. Comic action stays
-in the outer bays and does not block worker movement.
+Pause freezes the cast, speech and set pieces with the belt. Everyday comic
+action stays in the outer bays; only Ben's major sequence and the existing Mesa
+choice/dream interrupt sorting. Escape and blur also pause Ben's story clock.
 
 THE SNAKES CELL is a separate belt prop: Hussan approaches, takes it, dances
 with CELL and returns. Ralph waits for five actual bulk deliveries, then makes
@@ -81,6 +86,14 @@ reference identity, spelling, context and payoff are the acceptance criteria,
 rather than reproducing the original random event ordering or sprite dimensions.
 
 ## Movement and rules
+
+The default camera is 1.45× closer and follows the selected worker vertically,
+with a horizontal reframe on worker switch. View bounds keep the camera inside
+the warehouse. V or the Overview button restores the whole-floor view. Ben's
+event uses a fixed 2.45× framing of the full gate, actors and Paula's truck, then
+eases back to the worker. Reduced-motion preference removes camera interpolation.
+The HUD, speech panels, menus and their hit targets use a separate fixed camera.
+Text textures use higher resolution so authored labels stay sharp in close-ups.
 
 `ShiftModel.ts` owns the deterministic simulation. Belt parcels store an offset
 from one absolute conveyor travel distance, which also drives the tread texture
