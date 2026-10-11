@@ -127,22 +127,23 @@ try {
     // Follow the clear belt aisle vertically, then approach the loading door.
     // Cutting across first would walk into the restored truck's corner.
     for (const [axis, target, lowKey, highKey] of [['y', y, 'ArrowUp', 'ArrowDown'], ['x', x, 'ArrowLeft', 'ArrowRight']]) {
-      const current = await page.evaluate(axis => window.fixtureGame.scene.getScene('DepotScene').model.activeWorker[axis], axis);
-      if (Math.abs(current - target) < 4) continue;
-      const direction = current < target ? 1 : -1;
-      const key = direction > 0 ? highKey : lowKey;
-      await page.keyboard.down(key);
-      await page.waitForFunction(({ axis, target, direction }) => {
-        const position = window.fixtureGame.scene.getScene('DepotScene').model.activeWorker[axis];
-        return direction > 0 ? position >= target - 2 : position <= target + 2;
-      }, { axis, target, direction });
-      await page.keyboard.up(key);
+      // A hosted browser can deliver a release late even with a steady game
+      // frame rate. Use bounded real presses and observe their result, including
+      // correcting overshoot, rather than depending on one exact release frame.
+      for (let attempt = 0; attempt < 30; attempt++) {
+        const current = await page.evaluate(axis => window.fixtureGame.scene.getScene('DepotScene').model.activeWorker[axis], axis);
+        const distance = target - current;
+        if (Math.abs(distance) <= 10) break;
+        const key = distance > 0 ? highKey : lowKey;
+        await page.keyboard.press(key, { delay: Math.min(180, Math.max(35, Math.abs(distance) * 3)) });
+        if (attempt === 29) assert.fail(`keyboard travel did not settle near ${axis}=${target}`);
+      }
     }
   };
   for (const [route, index, dockX, dockY, kind, name] of [
-    ['A', 0, 400, 496, 'mallwood', 'MALLWOOD RD EAST'],
-    ['B', 1, 560, 552, 'goji', 'GOJI BERRIES'],
-    ['C', 1, 580, 648, 'lobsters', 'LIVE LOBSTERS'],
+    ['A', 0, 400, 532, 'mallwood', 'MALLWOOD RD EAST'],
+    ['B', 1, 560, 532, 'goji', 'GOJI BERRIES'],
+    ['C', 1, 580, 640, 'lobsters', 'LIVE LOBSTERS'],
   ]) {
     if (await read(() => window.fixtureGame.scene.getScene('DepotScene').model.activeIndex) !== index) await press('Tab');
     await walkTo(index === 0 ? 400 : 560, 300);
