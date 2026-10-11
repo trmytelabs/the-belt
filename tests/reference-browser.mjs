@@ -420,10 +420,12 @@ try {
     window.referenceWindows = { left: [], right: [] };
   });
   await advance(3000);
-  await read(() => window.fixtureGame.loop.wake());
+  // DOM key presses still reach Phaser while its frame loop sleeps (the
+  // between-frame input check also verifies this). Keep this fixture's clock
+  // controlled: live frames between samples can consume a short rant before
+  // its readable window is recorded on a slower runner.
   await press('KeyE');
   await page.waitForFunction(() => window.fixtureGame.scene.getScene('DepotScene').model.brakeRemainingMs > 0);
-  await read(() => window.fixtureGame.loop.sleep());
   await advance(14_200);
   assert.equal(await read(() => window.fixtureGame.scene.getScene('DepotScene').life.speech.get('right').id), 'shan');
   assert.equal(await read(() => window.fixtureGame.scene.getScene('DepotScene').life.cast.get('shan').art.visible), true,
@@ -435,10 +437,8 @@ try {
       return model.elapsedMs + model.brakeCooldownMs + 100;
     });
     await advance(ready);
-    await read(() => window.fixtureGame.loop.wake());
     await press('KeyE');
     await page.waitForFunction(() => window.fixtureGame.scene.getScene('DepotScene').model.brakeRemainingMs > 0, undefined, { timeout: 5000 });
-    await read(() => window.fixtureGame.loop.sleep());
     await advance(await read(() => window.fixtureGame.scene.getScene('DepotScene').model.elapsedMs + 4100));
   }
   const rants = await read(() => Object.values(window.referenceWindows).flat().filter(record => record.name === 'SHAN O MACK'));
