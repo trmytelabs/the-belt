@@ -72,7 +72,7 @@ try {
     const timer = setInterval(() => {
       const app = window.fixtureApp;
       overviewSince = app.overview ? overviewSince ?? performance.now() : null;
-      const bubble = app.overlay.activeSpeech().find((item) => item.speaker === 'KYLIE' && item.text === 'WHO TOOK MY\nTIMMY HORTANS');
+      const bubble = app.overlay.activeSpeech().find((item) => item.speaker === 'KYLIE');
       if (!bubble || overviewSince === null || performance.now() - overviewSince < 900) return;
       const actor = app.crew.actors.get('kylie');
       const head = actor.root.position.clone();
@@ -97,6 +97,9 @@ try {
       clearInterval(timer);
       window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Space', key: ' ' }));
       window.dispatchEvent(new KeyboardEvent('keyup', { code: 'Space', key: ' ' }));
+      // V opens the overview while Kylie is still searching for her coffee.
+      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyV', key: 'v' }));
+      window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyV', key: 'v' }));
       resolve();
     }, 5);
   }));
@@ -108,7 +111,6 @@ try {
   assert.deepEqual(await read(() => ({ sorted: window.fixtureApp.model.sorted, score: window.fixtureApp.model.score })), { sorted: 1, score: 100 });
 
   // Kylie's three original coffee lines arrive in order with her name.
-  await page.keyboard.press('KeyV');
   await page.waitForFunction(() => window.fixtureApp.overlay.history.filter((line) => line.startsWith('KYLIE: ')).length === 3, null, { timeout: 120_000 });
   assert.deepEqual(await read(() => window.fixtureApp.overlay.history.filter((line) => line.startsWith('KYLIE: '))),
     ['KYLIE: WHERE IS MY TIMMY HORTANS', 'KYLIE: MY TIMMY HORTANS?!', 'KYLIE: WHO TOOK MY TIMMY HORTANS']);
@@ -133,7 +135,7 @@ try {
     const timer = setInterval(() => {
       const m = window.fixtureApp.model;
       window.brakeSamples.push({ held: m.brakeRemainingMs > 0, speed: m.beltSpeed });
-      if (window.brakeSamples.length >= 300) clearInterval(timer);
+      if (window.brakeSamples.length >= 2000) clearInterval(timer);
     }, 10);
   });
   await page.keyboard.press('KeyE');
