@@ -144,8 +144,13 @@ Still to do:
 
 ## Checks
 
-`tests/three-browser.mjs` runs in `npm run test:browser`. It launches its own
-SwiftShader WebGL, so it also runs on CI's GPU-free runners. It checks:
+`tests/three-browser.mjs` runs in `npm run test:browser` (or on its own with
+`npm run test:browser:3d`). It launches its own SwiftShader WebGL, so it runs
+in CI's GPU-free Linux job. The Windows job runs the 2D suites only
+(`test:browser:2d`): on that runner, software WebGL delays input and page
+round trips by seconds at unpredictable times. Real Windows PCs with a GPU
+are unaffected, and the game itself is identical on every platform. It
+checks:
 
 - The WebGL fallback.
 - That Phaser is not loaded in 3D mode.
