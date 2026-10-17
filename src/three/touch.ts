@@ -26,6 +26,15 @@ const CSS = `
 .b3d.touch .b3d-worker { min-width: 0; font-size: 12px; }
 .b3d.touch .b3d-bottom .b3d-brake, .b3d.touch .b3d-keys { display: none; }
 .b3d.touch .b3d-hint { flex: 0 1 auto; background: #0b171cc8; padding: 5px 10px; border-radius: 6px; font-size: 12px; }
+/* Narrow portrait phones (320-380px): smaller controls keep the stick and
+   the action buttons apart. */
+@media (orientation: portrait) and (max-width: 380px) {
+  .b3d-stick { width: 96px; height: 96px; left: max(12px, env(safe-area-inset-left)); }
+  .b3d-knob { width: 44px; height: 44px; margin: -22px 0 0 -22px; }
+  .b3d-actions { right: max(12px, env(safe-area-inset-right)); gap: 8px; }
+  .b3d-actions .grab { width: 84px; height: 84px; font-size: 11px; }
+  .b3d-actions .switch, .b3d-actions .brake { width: 66px; height: 38px; font-size: 11px; }
+}
 @media (orientation: landscape) and (max-height: 520px) {
   .b3d-stick { width: 104px; height: 104px; }
   .b3d-actions .grab { width: 88px; height: 88px; }
@@ -79,11 +88,25 @@ export class TouchControls {
       grab: handlers.action, switch: handlers.switchWorker, brake: handlers.brake, view: handlers.overview, pause: handlers.pause,
     };
     for (const button of this.root.querySelectorAll<HTMLButtonElement>('button')) {
+      // Pointer presses act at once, for responsive play. A click with no
+      // preceding press (screen readers, switch control, keyboard) acts too,
+      // but the click that follows an ordinary press does not act twice.
+      let pressedAt = -Infinity;
+      let clickPending = false;
       button.addEventListener('pointerdown', (event) => {
         event.preventDefault();
         event.stopPropagation();
+        pressedAt = performance.now();
+        clickPending = true;
         button.classList.add('down');
         actions[button.dataset.touch!]?.();
+      });
+      button.addEventListener('click', (event) => {
+        event.stopPropagation();
+        // Only the click that completes this press is skipped.
+        const fromPress = clickPending && performance.now() - pressedAt < 1000;
+        clickPending = false;
+        if (!fromPress) actions[button.dataset.touch!]?.();
       });
       const release = (): void => button.classList.remove('down');
       button.addEventListener('pointerup', release);

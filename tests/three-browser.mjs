@@ -431,6 +431,10 @@ try {
   await page.close();
   const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   const touchPage = await phone.newPage();
+  const touchSession = await phone.newCDPSession(touchPage);
+  if (process.env.BELT_BROWSER_CPU_RATE) {
+    await touchSession.send('Emulation.setCPUThrottlingRate', { rate: Number(process.env.BELT_BROWSER_CPU_RATE) });
+  }
   const touchErrors = [];
   touchPage.on('pageerror', (error) => touchErrors.push(error.message));
   const touchConsole = [];
@@ -453,11 +457,13 @@ console: ${touchConsole.slice(-10).join(' | ')}`); });
   // Pushing the stick up moves Termite up his lane.
   const startY = await readTouch(() => window.fixtureApp.model.activeWorker.y);
   const stick = await touchPage.locator('.b3d-stick').boundingBox();
-  await touchPage.mouse.move(stick.x + stick.width / 2, stick.y + stick.height / 2);
-  await touchPage.mouse.down();
-  await touchPage.mouse.move(stick.x + stick.width / 2, stick.y + 4, { steps: 4 });
+  // Real touch points, not a mouse: press, drag up, release.
+  const centre = { x: stick.x + stick.width / 2, y: stick.y + stick.height / 2 };
+  await touchSession.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [centre] });
+  await touchSession.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: centre.x, y: stick.y + 4 }] });
+  await waitTouch(() => window.fixtureApp.touch.move.y < -0.5);
   await waitTouch((y) => window.fixtureApp.model.activeWorker.y < y - 40, startY, { timeout: 30_000 });
-  await touchPage.mouse.up();
+  await touchSession.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   await waitTouch(() => window.fixtureApp.touch.move.x === 0 && window.fixtureApp.touch.move.y === 0);
   // GRAB / DELIVER: Termite walks back to the dock edge and takes the first parcel as it arrives.
   await readTouch(() => { const w = window.fixtureApp.model.activeWorker; w.x = 400; w.y = 500; });
@@ -486,10 +492,27 @@ console: ${touchConsole.slice(-10).join(' | ')}`); });
   await touchPage.locator('.b3d-touch').waitFor({ state: 'hidden' });
   await touchPage.getByRole('button', { name: /RESUME/ }).tap();
   await waitTouch(() => window.fixtureApp.state === 'playing');
+  // Assistive activation: a plain click (no pointer press) still works, once.
+  await readTouch(() => document.querySelector('[data-touch="view"]').click());
+  await waitTouch(() => window.fixtureApp.overview === false);
   if (process.env.BELT_SCREENSHOT_DIR) await touchPage.screenshot({ path: join(process.env.BELT_SCREENSHOT_DIR, 'after-3d-touch.png') });
   assert.deepEqual(touchErrors, []);
   await phone.close();
-  console.log('PASS 3D touch: touch briefing, stick movement, GRAB/DELIVER, SWITCH, BRAKE, VIEW, PAUSE/RESUME on a phone-sized touch screen; no script errors');
+
+  // The narrowest common phone keeps the stick and the action buttons apart.
+  const small = await browser.newContext({ viewport: { width: 320, height: 640 }, isMobile: true, hasTouch: true });
+  const smallPage = await small.newPage();
+  await smallPage.addInitScript(() => window.addEventListener('belt3d:ready', (event) => { window.fixtureApp = event.detail; }));
+  await smallPage.goto(url);
+  await smallPage.waitForFunction(() => window.fixtureApp?.state === 'briefing', null, { polling: 10, timeout: 60_000 });
+  await smallPage.getByRole('button', { name: /START SHIFT/ }).tap();
+  await smallPage.locator('.b3d-stick').waitFor({ timeout: 90_000 });
+  const smallStick = await smallPage.locator('.b3d-stick').boundingBox();
+  const smallActions = await smallPage.locator('.b3d-actions').boundingBox();
+  assert.ok(smallStick.x + smallStick.width + 8 <= smallActions.x,
+    `stick and buttons must not overlap at 320px (${JSON.stringify({ smallStick, smallActions })})`);
+  await small.close();
+  console.log('PASS 3D touch: touch briefing, real touch stick drag/release, GRAB/DELIVER, SWITCH, BRAKE, VIEW, PAUSE/RESUME, assistive click activation and 320px layout; no script errors');
 } finally {
   await Promise.all(browsers.map((browser) => browser.close()));
   await server.close();
