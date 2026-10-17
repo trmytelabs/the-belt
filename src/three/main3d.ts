@@ -160,7 +160,18 @@ export class Belt3d {
     window.addEventListener('resize', () => this.resize());
     this.snapCamera();
     this.showBriefing();
-    this.renderer.setAnimationLoop(() => this.frame());
+    if (this.quality === 'high') {
+      this.renderer.setAnimationLoop(() => {
+        this.tick();
+        this.draw();
+      });
+    } else {
+      // Software renderers deliver animation frames slowly. The shift runs on
+      // its own fixed timer so game time, input and speech stay in real time;
+      // animation frames only draw.
+      window.setInterval(() => this.tick(), 16);
+      this.renderer.setAnimationLoop(() => this.draw());
+    }
   }
 
   private resize(): void {
@@ -318,7 +329,7 @@ export class Belt3d {
     this.showBriefing();
   }
 
-  private frame(): void {
+  private tick(): void {
     const now = performance.now();
     const dt = Math.min(0.1, (now - this.lastFrame) / 1000);
     this.lastFrame = now;
@@ -393,9 +404,14 @@ export class Belt3d {
     });
     const size = this.renderer.getSize(new THREE.Vector2());
     const speechClock = running || this.state === 'interlude' || this.state === 'mesa' || this.state === 'dream';
+    // Bubbles project with the camera as it is now, whether or not a draw follows.
+    this.camera.updateMatrixWorld();
     this.overlay.update(dt * 1000, speechClock, this.camera, size.x, size.y);
-    // A software renderer can take longer than a frame to draw. Its draws are
-    // spaced out so the shift clock, input and overlay keep their full rate.
+  }
+
+  private draw(): void {
+    const now = performance.now();
+    // A software renderer can take longer than a frame to draw; space its draws out.
     if (this.quality === 'low' && now - this.lastRender < Math.max(100, this.renderCost * 2)) return;
     this.lastRender = now;
     if (this.state === 'dream') this.renderer.render(this.dream.scene, this.dream.camera);

@@ -106,16 +106,15 @@ try {
   await page.waitForFunction(() => window.fixtureApp.crew.actors.get('john').pose === 'crouch', null, { timeout: 60_000 });
 
   // A brake brings Shan out for his first original rant. Belt state is sampled
-  // every frame from the press, since a slow runner's round trips can outlast
+  // every 10 ms from the press, since a slow runner's round trips can outlast
   // the two-second hold.
   await read(() => {
     window.brakeSamples = [];
-    const sample = () => {
+    const timer = setInterval(() => {
       const m = window.fixtureApp.model;
       window.brakeSamples.push({ held: m.brakeRemainingMs > 0, speed: m.beltSpeed });
-      if (window.brakeSamples.length < 120) requestAnimationFrame(sample);
-    };
-    requestAnimationFrame(sample);
+      if (window.brakeSamples.length >= 300) clearInterval(timer);
+    }, 10);
   });
   await page.keyboard.press('KeyE');
   await page.waitForFunction(() => window.fixtureApp.overlay.activeSpeech().some((item) => item.speaker === 'SHAN O MACK'));
@@ -200,17 +199,16 @@ try {
   await jump(67_950);
   await page.waitForFunction(() => window.fixtureApp.state === 'interlude', null, { timeout: 60_000 });
   const frozen = await read(() => ({ t: window.fixtureApp.model.elapsedMs, travel: window.fixtureApp.model.beltTravel }));
-  // Every frame of the story is recorded, so brief stages cannot be missed.
+  // The story is sampled every 10 ms, so brief stages cannot be missed.
   await read(() => {
     window.storySeen = { stages: [], marker: false, gateAndDemon: false };
-    const record = () => {
+    const timer = setInterval(() => {
       const pieces = window.fixtureApp.setPieces;
       if (window.storySeen.stages.at(-1) !== pieces.benStage) window.storySeen.stages.push(pieces.benStage);
       window.storySeen.marker ||= pieces.deadMarker.visible;
       window.storySeen.gateAndDemon ||= pieces.gate.visible && pieces.demon.visible;
-      if (window.fixtureApp.state === 'interlude' || window.fixtureApp.state === 'paused') requestAnimationFrame(record);
-    };
-    requestAnimationFrame(record);
+      if (window.fixtureApp.state !== 'interlude' && window.fixtureApp.state !== 'paused') clearInterval(timer);
+    }, 10);
   });
   const story = (clock) => read((c) => { window.fixtureApp.benClock = c; }, clock);
   await spoken("GUNMAN: I'M GOING TO ROB THIS PLACE!");
