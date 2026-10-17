@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 
+import { mergeStatic } from './merge';
 import { shadowed, standard, textSprite } from './space';
 
 export type HairStyle = 'short' | 'long' | 'curly' | 'bun' | 'bald' | 'mullet' | 'slick';
@@ -21,6 +22,8 @@ export interface CharacterSpec {
   moustache?: boolean;
   beard?: boolean;
   tie?: number;
+  /** Keeps the skin as a live material (Shan reddens while ranting). */
+  dynamicSkin?: boolean;
   necklace?: boolean;
   overalls?: number;
   vest?: number;
@@ -175,6 +178,9 @@ export function createCharacter(spec: CharacterSpec): Character {
   nameTag.position.y = 2.05;
   root.add(nameTag);
 
+  if (spec.dynamicSkin) body.traverse((child) => {
+    if ((child as THREE.Mesh).material === skinMaterial) child.userData.keepMaterial = true;
+  });
   const scale = spec.scale ?? 1;
   root.scale.setScalar(scale);
   shadowed(body, true, false);
@@ -222,6 +228,14 @@ function addHair(head: THREE.Group, spec: CharacterSpec, hair: THREE.Material): 
     quiff.position.set(0, 0.49, 0.1);
     head.add(quiff);
   }
+}
+
+/** Merges each rigid part once props are attached; pivots stay animatable. */
+export function mergeCharacter(character: Character): void {
+  const pivots = new Set<THREE.Object3D>([character.head, character.leftArm, character.rightArm, character.leftLeg, character.rightLeg]);
+  const keep = (object: THREE.Object3D): boolean => pivots.has(object) || object.userData.keep === true;
+  mergeStatic(character.body, keep);
+  for (const pivot of pivots) mergeStatic(pivot, (object) => object.userData.keep === true);
 }
 
 /** Walk cycle plus carrying/idle arm poses. Call every frame. */

@@ -5,16 +5,16 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 
-import { KYLIE_QUOTES, SHAN_RANTS } from '../game/slice/DepotReferences';
 import { SHIFT_LAYOUT, ShiftModel, type Parcel, type ShiftEvent } from '../game/slice/ShiftModel';
 import { audioSystem, type SoundEffect } from '../game/systems/AudioSystem';
-import { animateCharacter, createCharacter, type Character } from './characters';
+import { animateCharacter, createCharacter, mergeCharacter, type Character } from './characters';
+import { CrewLife } from './crew';
 import { Overlay } from './overlay';
 import { createParcelView, type ParcelView } from './parcels';
 import { BELT_HEIGHT, ROUTE_COLORS, setFromModel, textSprite, toWorld, toWorldX, toWorldZ } from './space';
-import { DepotWorld, VISITORS } from './world';
+import { DepotWorld } from './world';
 
-type AppState = 'briefing' | 'countdown' | 'playing' | 'paused' | 'ended';
+type AppState = 'briefing' | 'countdown' | 'playing' | 'paused' | 'celebrating' | 'ended';
 
 const PHASE_LABELS: Record<string, string> = {
   lesson: '01  /  FIND YOUR RHYTHM', flow: '02  /  KEEP IT MOVING', rush: '03  /  LAST DISPATCH',
@@ -54,7 +54,7 @@ export class Belt3d {
   private readonly camera = new THREE.PerspectiveCamera(38, 1, 0.1, 120);
   private readonly cameraTarget = new THREE.Vector3();
   private readonly workers: Record<'termite' | 'skanky', Character>;
-  private readonly visitors: Record<'kylie' | 'shan', Character>;
+  public readonly crew: CrewLife;
   private readonly parcels = new Map<number, ParcelView>();
   private readonly departing: { view: ParcelView; from: THREE.Vector3; to: THREE.Vector3; t: number; bulk: boolean }[] = [];
   private readonly activeRing: THREE.Mesh;
@@ -70,8 +70,6 @@ export class Belt3d {
   private lastRender = 0;
   private renderCost = 0;
   private banter = new Set<string>();
-  private shanUntil = -1;
-  private rantIndex = 0;
   private bulkVisible = 0;
   private fumeTimer = 0;
 
@@ -111,19 +109,11 @@ export class Belt3d {
       termite: createCharacter({ name: 'TERMITE', skin: 0xe2b088, shirt: 0x2f5f8f, pants: 0x2a3f5c, overalls: 0x2a3f5c, hair: 0x5a3a20, hairStyle: 'short', headwear: 'termiteHat', beard: true }),
       skanky: createCharacter({ name: 'SKANKY', skin: 0xe8b98f, shirt: 0x8f3f34, pants: 0x34404c, hair: 0x5b3a22, hairStyle: 'long', beard: true }),
     };
-    for (const worker of Object.values(this.workers)) this.world.scene.add(worker.root);
-    this.visitors = {
-      kylie: createCharacter(VISITORS.kylie),
-      shan: createCharacter(VISITORS.shan),
-    };
-    for (const visitor of Object.values(this.visitors)) {
-      visitor.root.visible = false;
-      this.world.scene.add(visitor.root);
+    for (const worker of Object.values(this.workers)) {
+      mergeCharacter(worker);
+      this.world.scene.add(worker.root);
     }
-    // Kylie carries an (empty) coffee cup on her search.
-    const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.045, 0.16, 12), new THREE.MeshStandardMaterial({ color: 0xc23a2e, roughness: 0.6 }));
-    cup.position.set(0, -0.62, 0.06);
-    this.visitors.kylie.rightArm.add(cup);
+    this.crew = new CrewLife(this.world, (id, copy, ms) => this.say(id, copy, ms));
 
     this.activeRing = new THREE.Mesh(new THREE.RingGeometry(0.42, 0.5, 40), new THREE.MeshBasicMaterial({ color: 0xf3e6c6, transparent: true, opacity: 0.85 }));
     this.activeRing.rotation.x = -Math.PI / 2;
@@ -235,7 +225,7 @@ export class Belt3d {
     this.bulkVisible = 0;
     this.model = new ShiftModel();
     this.banter.clear();
-    this.shanUntil = -1;
+    this.crew.reset();
     this.overlay.clearSpeech();
     this.hint = 'Approach the belt · match letter to dock';
     this.state = 'briefing';
@@ -274,14 +264,24 @@ export class Belt3d {
       m.update(dt * 1000, move);
       for (const event of m.drainEvents()) this.handleEvent(event);
       this.updateBanter();
-      if (m.ended) this.showResults();
+      this.crew.update(dt, m, this.time);
+      if (m.ended && m.won) {
+        this.state = 'celebrating';
+        audioSystem.play('truck');
+        this.overlay.showToast('SHIFT COMPLETE', 13000);
+        this.crew.beginCelebration(this.time);
+      } else if (m.ended) {
+        this.showResults();
+      }
+    } else if (this.state === 'celebrating') {
+      if (this.crew.updateCelebration(dt, this.time)) this.showResults();
     }
 
-    const running = this.state === 'playing' || this.state === 'ended';
+    const running = this.state === 'playing' || this.state === 'celebrating' || this.state === 'ended';
+    if (this.state === 'playing') this.crew.updateReceiving(m, dt, this.time);
     this.world.update(running ? dt : 0, this.time, m.beltTravel, this.reducedMotion);
     this.syncWorkers(running ? dt : 0);
     this.syncParcels(running ? dt : 0);
-    this.syncVisitors(running ? dt : 0);
     this.updateCamera(dt);
     this.overlay.updateHud({
       sorted: m.sorted, goal: m.goal, score: m.score, timeLeftMs: m.timeLeftMs, backlog: m.pileup, capacity: m.capacity,
@@ -302,7 +302,6 @@ export class Belt3d {
   private handleEvent(event: ShiftEvent): void {
     const sound = EVENT_SOUNDS[event.type];
     if (sound) audioSystem.play(sound);
-    const parcel = this.model.packages.find((item) => item.id === event.packageId);
     if (event.type === 'sort' && event.score) {
       this.overlay.pop(`+${event.score}`, ROUTE_COLORS[event.route ?? 'A'], toWorld(event, 1.8));
     }
@@ -313,17 +312,7 @@ export class Belt3d {
     }
     if (event.type === 'phase' || event.type === 'miss') this.overlay.showToast(event.message);
 
-    // Phase-one reference sample. The 2D scene still carries every event.
-    if (event.type === 'brake') {
-      this.shanUntil = this.model.elapsedMs + 4200;
-      this.say('shan', SHAN_RANTS[this.rantIndex % SHAN_RANTS.length], 3900);
-      this.rantIndex += 1;
-    } else if (event.type === 'grab' && parcel?.kind === 'lobsters') {
-      this.say('fruitloop', 'LIVE LOBSTERS?!', 3300);
-    } else if (event.type === 'brian') {
-      this.say('brian', 'SENDING 5 DOWN', 4200);
-      this.banter.delete('brian-response');
-    }
+    this.crew.onEvent(event, this.model);
   }
 
   private updateBanter(): void {
@@ -331,24 +320,20 @@ export class Belt3d {
     const once = (key: string, at: number, action: () => void): void => {
       if (t >= at && !this.banter.has(key)) { this.banter.add(key); action(); }
     };
-    KYLIE_QUOTES.forEach((quote, index) => once(`coffee-${index}`, 2800 + index * 3700, () => this.say('kylie', quote, 3500)));
     once('brian-response', 64600, () => this.say(this.model.activeWorker.id, 'YOU ARE SERIOUSLY SENDING 5 DOWN TO BULK?', 4700));
   }
 
   private speakerAnchor(id: string): () => THREE.Vector3 {
     return () => {
-      const character = id === 'termite' || id === 'skanky' ? this.workers[id]
-        : id === 'kylie' || id === 'shan' ? this.visitors[id] : this.world.residents.get(id)?.character;
+      const character = id === 'termite' || id === 'skanky' ? this.workers[id] : this.crew.characterFor(id);
       if (!character) return new THREE.Vector3();
       return character.root.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, character.headHeight + 0.35, 0));
     };
   }
 
   private say(id: string, copy: string, durationMs: number): void {
-    const names: Record<string, string> = {
-      termite: 'TERMITE', skanky: 'SKANKY', kylie: 'KYLIE', shan: 'SHAN O MACK', fruitloop: 'FRUIT LOOP', brian: 'BRIAN',
-    };
-    this.overlay.say(id, names[id] ?? id.toUpperCase(), copy, durationMs, this.speakerAnchor(id));
+    const name = id === 'termite' || id === 'skanky' ? id.toUpperCase() : this.crew.characterFor(id)?.root.name ?? id.toUpperCase();
+    this.overlay.say(id, name, copy, durationMs, this.speakerAnchor(id));
     audioSystem.play('npc-talk');
   }
 
@@ -362,6 +347,13 @@ export class Belt3d {
       delta = Math.atan2(Math.sin(delta), Math.cos(delta));
       character.root.rotation.y += delta * Math.min(1, dt * 12);
       animateCharacter(character, dt, { moving: worker.moving, carrying: worker.heldId !== null, time: this.time, reducedMotion: this.reducedMotion });
+      if (this.state === 'celebrating' && !this.reducedMotion) {
+        // Termite and Skanky celebrate with the crew.
+        const beat = this.time * 9 + (worker.id === 'skanky' ? 1.3 : 0);
+        character.body.position.y = Math.abs(Math.sin(beat)) * 0.12;
+        character.leftArm.rotation.set(-2.8 + Math.sin(beat) * 0.35, 0, 0.25);
+        character.rightArm.rotation.set(-2.8 - Math.sin(beat) * 0.35, 0, -0.25);
+      }
     }
     const active = this.workers[m.activeWorker.id];
     this.activeRing.position.set(active.root.position.x, 0.02, active.root.position.z);
@@ -492,35 +484,6 @@ export class Belt3d {
     }
   }
 
-  private syncVisitors(dt: number): void {
-    const t = this.model.elapsedMs;
-    // Kylie's coffee search crosses the east side, as in the 2D depot.
-    const kylie = this.visitors.kylie;
-    kylie.root.visible = t > 1800 && t < 15500;
-    const kx = t < 4500 ? THREE.MathUtils.lerp(986, 863, THREE.MathUtils.clamp((t - 1800) / 2700, 0, 1))
-      : t < 12300 ? 863 + Math.sin(t / 900) * 20 : THREE.MathUtils.lerp(863, 985, (t - 12300) / 3200);
-    const ky = t < 12300 ? 400 + Math.cos(t / 1300) * 26 : THREE.MathUtils.lerp(400, 361, THREE.MathUtils.clamp((t - 12300) / 850, 0, 1));
-    const previous = kylie.root.position.clone();
-    setFromModel(kylie.root.position, { x: kx, y: ky }, 0);
-    const step = kylie.root.position.clone().sub(previous);
-    if (step.lengthSq() > 1e-6) kylie.root.rotation.y = Math.atan2(step.x, step.z);
-    animateCharacter(kylie, dt, { moving: step.lengthSq() > 1e-6, time: this.time, reducedMotion: this.reducedMotion });
-    kylie.rightArm.rotation.x = -0.9;
-
-    // Shan appears to rant whenever the belt is braked; he reddens as he goes.
-    const shan = this.visitors.shan;
-    const ranting = t < this.shanUntil;
-    shan.root.visible = ranting;
-    if (ranting) {
-      setFromModel(shan.root.position, VISITORS.shan, 0);
-      shan.root.rotation.y = -Math.PI / 2 + Math.sin(this.time * 6) * 0.15;
-      const anger = 1 - (this.shanUntil - t) / 4200;
-      shan.skinMaterial.color.setHex(0xe8b98f).lerp(new THREE.Color(0xd8453a), Math.min(1, anger * 1.4));
-      shan.leftArm.rotation.x = -2.6 + Math.sin(this.time * 12) * 0.3;
-      shan.rightArm.rotation.x = -2.4 + Math.cos(this.time * 11) * 0.3;
-    }
-  }
-
   private snapCamera(): void {
     this.updateCamera(1, true);
   }
@@ -529,7 +492,7 @@ export class Belt3d {
     const portrait = this.camera.aspect < 1;
     let position: THREE.Vector3;
     let look: THREE.Vector3;
-    if (this.overview || this.state === 'briefing') {
+    if (this.overview || this.state === 'briefing' || this.state === 'celebrating') {
       look = new THREE.Vector3(0, 0, toWorldZ(352));
       position = look.clone().add(portrait ? new THREE.Vector3(0, 48, 24) : new THREE.Vector3(0, 33, 17));
     } else {
@@ -549,10 +512,6 @@ export class Belt3d {
     this.state = 'ended';
     const m = this.model;
     audioSystem.startMusic('results');
-    if (m.won) {
-      this.say('termite', 'SHIFT DONE!', 2500);
-      this.say('skanky', 'CLOCKED OUT!', 2500);
-    }
     const overflow = m.pileup >= m.capacity;
     const rate = m.packages.length === 0 ? 0 : Math.round(m.sorted / m.packages.length * 100);
     this.overlay.showPanel(`
