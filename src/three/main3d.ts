@@ -7,7 +7,7 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 
 import { SHIFT_LAYOUT, ShiftModel, type Parcel, type ShiftEvent } from '../game/slice/ShiftModel';
 import { audioSystem, type SoundEffect } from '../game/systems/AudioSystem';
-import { animateCharacter, createCharacter, type Character } from './characters';
+import { animateCharacter, createCharacter, mergeCharacter, type Character } from './characters';
 import { CrewLife } from './crew';
 import { Overlay } from './overlay';
 import { createParcelView, type ParcelView } from './parcels';
@@ -109,7 +109,10 @@ export class Belt3d {
       termite: createCharacter({ name: 'TERMITE', skin: 0xe2b088, shirt: 0x2f5f8f, pants: 0x2a3f5c, overalls: 0x2a3f5c, hair: 0x5a3a20, hairStyle: 'short', headwear: 'termiteHat', beard: true }),
       skanky: createCharacter({ name: 'SKANKY', skin: 0xe8b98f, shirt: 0x8f3f34, pants: 0x34404c, hair: 0x5b3a22, hairStyle: 'long', beard: true }),
     };
-    for (const worker of Object.values(this.workers)) this.world.scene.add(worker.root);
+    for (const worker of Object.values(this.workers)) {
+      mergeCharacter(worker);
+      this.world.scene.add(worker.root);
+    }
     this.crew = new CrewLife(this.world, (id, copy, ms) => this.say(id, copy, ms));
 
     this.activeRing = new THREE.Mesh(new THREE.RingGeometry(0.42, 0.5, 40), new THREE.MeshBasicMaterial({ color: 0xf3e6c6, transparent: true, opacity: 0.85 }));

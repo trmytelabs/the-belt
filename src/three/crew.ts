@@ -5,7 +5,7 @@ import {
 } from '../game/slice/DepotReferences';
 import type { Parcel, ShiftEvent, ShiftModel } from '../game/slice/ShiftModel';
 import { audioSystem } from '../game/systems/AudioSystem';
-import { animateCharacter, createCharacter, type Character } from './characters';
+import { animateCharacter, createCharacter, mergeCharacter, type Character } from './characters';
 import { createParcelView, type ParcelView } from './parcels';
 import { BELT_HEIGHT, setFromModel, standard, textSprite, toWorld } from './space';
 import { SKIN, VISITORS, type DepotWorld } from './world';
@@ -234,6 +234,8 @@ export class CrewLife {
       dockhand.body.add(patch);
     }
     world.scene.add(dockhand.root);
+    for (const character of [dockhand, ...this.unloaders.map((actor) => actor.character), ...this.drivers.map((actor) => actor.character),
+      ...(['kylie', 'shan', 'john', 'vic'] as const).map((id) => this.actor(id).character)]) mergeCharacter(character);
     this.dockhand = new Actor(dockhand);
     this.dockhand.pose = 'push';
     for (let i = 0; i < 5; i += 1) {

@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 
 import { SHIFT_LAYOUT } from '../game/slice/ShiftModel';
-import { createCharacter, type Character, type CharacterSpec } from './characters';
+import { createCharacter, mergeCharacter, type Character, type CharacterSpec } from './characters';
+import { mergeStatic } from './merge';
 import { PuffField } from './fx';
 import {
   BELT_HEIGHT, BELT_WIDTH, PALETTE, ROUTE_COLORS, WORLD_SCALE, shadowed, standard, textPlane, textTexture, toWorld, toWorldX, toWorldZ,
@@ -35,7 +36,7 @@ export const VISITORS: Record<string, CharacterSpec & { x: number; y: number }> 
   kylie: { name: 'KYLIE', x: 850, y: 400, skin: SKIN.pale, shirt: 0xb24a6a, pants: 0x2b2f3a, hair: 0x83569a, hairStyle: 'bun' },
   john: { name: 'JOHN RUSHTON', x: 77, y: 397, skin: 0xbf9672, shirt: 0x2f4f64, pants: 0x2b3038, hair: 0x3a2a19, hairStyle: 'short', scale: 0.92 },
   vic: { name: 'VIC', x: 132, y: 286, skin: 0xc29c7a, shirt: 0x727f83, pants: 0x34383d, hair: 0xb4b4a1, hairStyle: 'short', moustache: true },
-  shan: { name: 'SHAN O MACK', x: 880, y: 395, skin: SKIN.light, shirt: 0xe9e4d6, pants: 0x30343c, hair: 0x8b8b88, hairStyle: 'bald', tie: 0x8a2630 },
+  shan: { name: 'SHAN O MACK', dynamicSkin: true, x: 880, y: 395, skin: SKIN.light, shirt: 0xe9e4d6, pants: 0x30343c, hair: 0x8b8b88, hairStyle: 'bald', tie: 0x8a2630 },
 };
 
 export class DepotWorld {
@@ -47,7 +48,7 @@ export class DepotWorld {
   public readonly intakeAnchor = new THREE.Group();
   public readonly trucks: {
     name: string; group: THREE.Group; homeX: number; direction: number; stack: THREE.Object3D;
-    wheels: THREE.Object3D[]; cabDoor: { x: number; y: number };
+    cabDoor: { x: number; y: number };
   }[] = [];
   /** Emitters that need per-frame particles: cigarette, stink. */
   private readonly emitters: { anchor: THREE.Object3D; kind: 'smoke' | 'stink'; timer: number }[] = [];
@@ -73,6 +74,19 @@ export class DepotWorld {
     this.warcraft = this.addDonnaHusband();
     this.addPaytmanTank();
     scene.add(this.bulkStack, this.intakeAnchor);
+    this.mergeStaticGeometry();
+  }
+
+  /** Collapses ~1,300 separate meshes into a few hundred draw calls. */
+  private mergeStaticGeometry(): void {
+    // Wheels join the body: they only turn during the brief clock-out drive.
+    for (const truck of this.trucks) mergeStatic(truck.group, (object) => object.name === 'stack-top');
+    for (const resident of this.residents.values()) mergeCharacter(resident.character);
+    const dynamic = new Set<THREE.Object3D>([
+      ...[...this.residents.values()].map((resident) => resident.character.root),
+      ...this.trucks.map((truck) => truck.group), ...this.fish, ...this.beltRollers, this.bulkStack, this.intakeAnchor,
+    ]);
+    mergeStatic(this.scene, (object) => dynamic.has(object) || (object as THREE.Light).isLight === true);
   }
 
   private addLights(quality: 'high' | 'low'): void {
@@ -477,7 +491,7 @@ export class DepotWorld {
       this.scene.add(truck);
       this.trucks.push({
         name, group: truck, homeX: truck.position.x, direction: side === 'left' ? -1 : 1,
-        stack: truck.getObjectByName('stack-top')!, wheels: truck.children.filter((child) => child.name === 'wheel'),
+        stack: truck.getObjectByName('stack-top')!,
         cabDoor: { x: x + (side === 'left' ? -88 : 88), y },
       });
     }
@@ -489,7 +503,6 @@ export class DepotWorld {
     for (const truck of this.trucks) {
       const distance = eased * 16;
       truck.group.position.x = truck.homeX + truck.direction * distance;
-      for (const wheel of truck.wheels) wheel.rotation.y = distance / 0.38;
     }
   }
 
@@ -572,6 +585,7 @@ export class DepotWorld {
       cigarette.position.set(0.06, 0.15, 0.24);
       const ember = new THREE.Mesh(new THREE.SphereGeometry(0.016, 6, 4), new THREE.MeshStandardMaterial({ color: 0xff6a20, emissive: 0xff5010, emissiveIntensity: 4 }));
       ember.position.set(0.06, 0.15, 0.3);
+      ember.userData.keep = true;
       character.head.add(cigarette, ember);
       this.emitters.push({ anchor: ember, kind: 'smoke', timer: 0 });
     } else if (id === 'brian') {
@@ -751,9 +765,7 @@ function createTruck(name: string, color: number, cabColor: number, side: 'left'
   const hub = standard(0x9aa2a6, 0.3, 0.8);
   for (const along of [-facing * (length / 2 - 0.55), facing * (length / 2 - 0.7), facing * (length / 2 - 1.5)]) {
     for (const sz of [-1, 1]) {
-      // Each wheel spins about its axle as the truck departs.
       const wheel = new THREE.Group();
-      wheel.name = 'wheel';
       wheel.rotation.x = Math.PI / 2;
       wheel.position.set(along, 0.38, sz * (depth / 2 - 0.08));
       const tyreMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.38, 0.3, 18), tyre);

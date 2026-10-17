@@ -144,6 +144,8 @@ try {
   await page.waitForFunction(() => window.fixtureApp.crew.snakeState === 'dancing', null, { timeout: 90_000 });
   assert.deepEqual(await crew(() => ({ held: window.fixtureApp.crew.cellCaption.visible, belt: window.fixtureApp.crew.cell.tag.visible })),
     { held: true, belt: false }, 'the belt label THE SNAKES CELL becomes the held CELL label');
+  // Step through the 3.2 s dance rather than waiting it out on a slow renderer.
+  await read(() => { window.fixtureApp.model.elapsedMs += 3150; });
   await page.waitForFunction(() => window.fixtureApp.crew.snakeState === 'done', null, { timeout: 90_000 });
 
   await jump(114_100);
@@ -182,13 +184,15 @@ try {
   await page.waitForFunction(() => window.fixtureApp.state === 'celebrating', null, { timeout: 30_000 });
   await spoken('TERMITE: SHIFT DONE!');
   await spoken('SKANKY: CLOCKED OUT!');
-  if (process.env.BELT_SCREENSHOT_DIR) await page.waitForTimeout(1500);
-  for (const line of ['WE MADE IT!', 'GO HOME!', 'CLOCK OUT!', 'SHIFT DONE!', 'TRUCKS OUT!', "BELT'S DEAD!", 'WE SURVIVED!', 'LAST TRUCK OUT!']) {
+  // The celebration clock is stepped to each pair of resident lines.
+  for (const [index, line] of ['WE MADE IT!', 'GO HOME!', 'CLOCK OUT!', 'SHIFT DONE!', 'TRUCKS OUT!', "BELT'S DEAD!", 'WE SURVIVED!', 'LAST TRUCK OUT!'].entries()) {
+    if (index % 2 === 0) await read((at) => { window.fixtureApp.crew.celebrationMs = Math.max(window.fixtureApp.crew.celebrationMs, at); }, 2650 + index / 2 * 2500);
     await page.waitForFunction((copy) => window.fixtureApp.overlay.history.some((entry) => entry.endsWith(`: ${copy}`) && !entry.startsWith('TERMITE') && !entry.startsWith('SKANKY')), line, { timeout: 120_000 });
   }
   if (process.env.BELT_SCREENSHOT_DIR) await page.screenshot({ path: join(process.env.BELT_SCREENSHOT_DIR, 'after-3d-clockout.png') });
   const truckEnd = await crew(() => window.fixtureApp.world.trucks.map((truck) => truck.group.position.x));
   truckEnd.forEach((x, index) => assert.ok(Math.abs(x - truckStart[index]) > 4, `truck ${index} must drive out`));
+  await read(() => { window.fixtureApp.crew.celebrationMs = Math.max(window.fixtureApp.crew.celebrationMs, 12_950); });
   await page.waitForFunction(() => window.fixtureApp.state === 'ended', null, { timeout: 120_000 });
   assert.match(await page.locator('.b3d-panel').innerText(), /SHIFT COMPLETE \/ GRADE/);
   assert.deepEqual(errors, []);

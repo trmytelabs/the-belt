@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 
 import type { Parcel, ParcelKind, Route } from '../game/slice/ShiftModel';
+import { mergeStatic } from './merge';
 import { PALETTE, ROUTE_COLORS, shadowed, standard, textPlane, textSprite } from './space';
 
 const PARCEL_SCALE = 1.3;
@@ -222,6 +223,8 @@ export function createParcelView(parcel: Parcel): ParcelView {
   badge.position.set(parcel.kind === 'longbox' ? 0 : -0.08, top + 0.012, parcel.kind === 'longbox' ? 0.3 : 0.06);
   if (parcel.kind === 'mesa' || parcel.kind === 'atv') badge.position.set(0.24, top + 0.012, -0.1);
   group.add(badge);
+  const animated = new Set(Object.values(parts));
+  mergeStatic(group, (object) => animated.has(object));
   // Freight reads at the 2D depot's scale relative to the workers.
   group.scale.setScalar(PARCEL_SCALE);
   root.add(group);
