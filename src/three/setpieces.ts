@@ -202,7 +202,9 @@ export class SetPieces {
   public update(dt: number, model: ShiftModel, wallTime: number): void {
     this.updateButtons(model);
     this.updateRalph(model);
-    this.crew.animateActors(dt, wallTime, new Set(['ralph']));
+    // Vic and Shan are animated here, after their button poses are set.
+    const staged = [...this.crew.staged].filter((id) => id !== 'ben');
+    this.crew.animateActors(dt, wallTime, new Set(['ralph', ...staged]));
   }
 
   private updateButtons(model: ShiftModel): void {
@@ -318,7 +320,11 @@ export class SetPieces {
     const ben = this.crew.actor('ben');
     const gunman = this.gunman;
     const paula = this.paula;
-    this.crew.staged.add('ben');
+    if (!this.crew.staged.has('ben')) {
+      // His routine parcel would otherwise float where he left it.
+      this.crew.hideCrewFreight('ben');
+      this.crew.staged.add('ben');
+    }
     ben.carrying = false;
 
     // The gunman comes in along the outer wall and threatens the floor.

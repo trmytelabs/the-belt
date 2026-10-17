@@ -282,6 +282,7 @@ export class CrewLife {
     this.staged.clear();
     this.benGone = false;
     this.actor('ben').root.visible = true;
+    this.actor('ben').character.nameTag.visible = true;
     this.actor('ben').root.rotation.set(0, 0, 0);
     this.actor('ben').root.scale.setScalar(1);
     this.crewEpoch.clear();
@@ -646,14 +647,22 @@ export class CrewLife {
     });
   }
 
+  /** Staged actors are animated by their set piece, after it poses them. */
   private animate(dt: number, wallTime: number): void {
-    this.animateActors(dt, wallTime);
+    this.animateActors(dt, wallTime, undefined, this.staged);
+  }
+
+  /** Hides a resident's in-hand freight when a story takes them over. */
+  public hideCrewFreight(id: string): void {
+    const view = this.crewFreight.get(id);
+    if (view) view.root.visible = false;
+    this.actor(id).carrying = false;
   }
 
   /** Animates visible actors (all, or only `ids` while a story holds the shift). */
-  public animateActors(dt: number, wallTime: number, ids?: ReadonlySet<string>): void {
+  public animateActors(dt: number, wallTime: number, ids?: ReadonlySet<string>, exclude?: ReadonlySet<string>): void {
     for (const [id, actor] of this.actors) {
-      if (actor.root.visible && (!ids || ids.has(id))) actor.animate(dt, wallTime, this.reducedMotion);
+      if (actor.root.visible && (!ids || ids.has(id)) && !exclude?.has(id)) actor.animate(dt, wallTime, this.reducedMotion);
     }
   }
 

@@ -220,6 +220,7 @@ try {
   // Ben's robbery: a separate story clock while the shift, belt and freight stay frozen.
   await jump(67_950);
   await page.waitForFunction(() => window.fixtureApp.state === 'interlude', null, { timeout: 60_000 });
+  assert.equal(await read(() => window.fixtureApp.crew.crewFreight.get('ben').root.visible), false, "Ben's routine parcel does not float during the story");
   const frozen = await read(() => ({ t: window.fixtureApp.model.elapsedMs, travel: window.fixtureApp.model.beltTravel }));
   // The story is sampled every 10 ms, so brief stages cannot be missed.
   await read(() => {
@@ -284,8 +285,18 @@ try {
   }));
   assert.ok(stoppedFor.elapsed > 0 && (stoppedFor.moved === 0 || !stoppedFor.stopped), `the belt is stopped while the shift runs (${JSON.stringify(stoppedFor)})`);
   const shanLines = await read(() => window.fixtureApp.overlay.history.filter((line) => line.startsWith('SHAN O MACK: ')).length);
-  await jump(101_750);
+  // Shan's press must reach the rendered arm, not just the pose name.
+  await read(() => {
+    window.shanPress = false;
+    const timer = setInterval(() => {
+      const shan = window.fixtureApp.crew.actors.get('shan');
+      if (shan.pose === 'press' && Math.abs(shan.character.rightArm.rotation.x + 1.2) < 0.25) window.shanPress = true;
+      if (window.shanPress || window.fixtureApp.model.elapsedMs > 104_000) clearInterval(timer);
+    }, 10);
+  });
+  await jump(101_550);
   await page.waitForFunction(() => window.fixtureApp.setPieces.buttonStage === 'running');
+  await page.waitForFunction(() => window.shanPress, null, { timeout: 30_000 });
   await spoken('SHAN O MACK: BELT RUNNING');
   assert.equal(await read(() => window.fixtureApp.model.eventStopped), false);
   assert.ok(await read((n) => window.fixtureApp.overlay.history.filter((line) => line.startsWith('SHAN O MACK: ')).length >= n + 2, shanLines), 'Shan rants before restarting');
@@ -398,6 +409,7 @@ try {
 
   // Mesa steal (keyboard Y), caught roll: BUSTED BY SHAN O MAC ends the run.
   await read(() => window.fixtureApp.restart());
+  assert.equal(await read(() => window.fixtureApp.crew.actors.get('ben').character.nameTag.visible), true, "a restart restores Ben's name tag");
   await begin();
   await clearFreight();
   await placeMesa(0.1);
