@@ -22,7 +22,7 @@ export class PreloadScene extends Phaser.Scene {
       .setOrigin(0.5);
 
     this.time.delayedCall(500, () => {
-      this.scene.start('TitleScene');
+      this.scene.start(new URLSearchParams(window.location.search).get('mode') === 'classic' ? 'TitleScene' : 'DepotScene');
     });
   }
 }

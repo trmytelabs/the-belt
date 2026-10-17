@@ -45,7 +45,7 @@ try {
         }
       });
     });
-    await page.goto(server.resolvedUrls.local[0]);
+    await page.goto(`${server.resolvedUrls.local[0]}?mode=classic`);
     const active = scene => page.waitForFunction(key => window.fixtureGame?.scene.isActive(key), scene);
     await active('TitleScene');
     if (process.env.BELT_BROWSER_RENDERER === 'canvas') {

@@ -59,6 +59,96 @@
         display: none;
       }
 
+      .depot-touch {
+        position: fixed;
+        inset: 0;
+        z-index: 15;
+        pointer-events: none;
+        color: #edf0de;
+      }
+
+      /* Phaser supplies centering margins; flex centering would apply twice. */
+      body.depot-mode #app { display: block; }
+
+      .depot-stick {
+        position: absolute;
+        bottom: max(24px, env(safe-area-inset-bottom));
+        left: 22px;
+        width: 94px;
+        height: 94px;
+        border: 2px solid #577781;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        background: #152d36ed;
+        pointer-events: auto;
+        touch-action: none;
+      }
+
+      .depot-stick span {
+        display: grid;
+        place-items: center;
+        width: 45px;
+        height: 45px;
+        border-radius: 50%;
+        color: #142932;
+        background: #a6cc9a;
+        font-size: 26px;
+      }
+
+      .depot-actions {
+        position: absolute;
+        right: 18px;
+        bottom: max(24px, env(safe-area-inset-bottom));
+        display: flex;
+        gap: 7px;
+      }
+
+      .depot-actions button {
+        width: 78px;
+        min-height: 58px;
+        padding: 8px;
+        border: 1px solid #759394;
+        border-radius: 8px;
+        color: #edf0de;
+        background: #19373fee;
+        font: bold 11px Arial, sans-serif;
+        pointer-events: auto;
+        touch-action: none;
+      }
+
+      .depot-actions button:nth-child(2) { background: #a6cc9a; color: #10232a; }
+      .depot-actions button:active { background: #edba6d; color: #10232a; }
+
+      @media (pointer: coarse) and (orientation: landscape) {
+        .depot-stick { width: 74px; height: 74px; left: 10px; bottom: 10px; }
+        .depot-actions { right: 10px; bottom: 10px; gap: 5px; flex-direction: column; }
+        .depot-actions button { width: 65px; min-height: 44px; font-size: 10px; }
+      }
+
+      @media (pointer: coarse) and (orientation: portrait) {
+        body.depot-mode #app {
+          height: calc(100dvh - 150px);
+          display: block;
+          padding: 0;
+          background: #0b1b23;
+        }
+        body.depot-mode { background: #0b1b23; }
+        body.depot-mode::before {
+          content: "ROTATE FOR A CLOSER VIEW";
+          position: fixed;
+          z-index: 20;
+          top: max(24px, env(safe-area-inset-top));
+          left: 0;
+          right: 0;
+          color: #a6cc9a;
+          text-align: center;
+          font: bold 11px Arial, sans-serif;
+          letter-spacing: 2px;
+          pointer-events: none;
+        }
+      }
+
       @media (pointer: coarse) {
         .mobile-control-layer {
           position: fixed;
