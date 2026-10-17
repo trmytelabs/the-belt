@@ -1,19 +1,9 @@
-import Phaser from 'phaser';
+// The 3D preview is a separate renderer for the same deterministic shift
+// rules. Each mode loads only its own engine.
+const mode = new URLSearchParams(window.location.search).get('mode');
 
-import { gameConfig } from './game/config/gameConfig';
-import { audioSystem } from './game/systems/AudioSystem';
-
-const app = document.querySelector<HTMLDivElement>('#app');
-
-if (!app) {
-  throw new Error('Expected #app container to exist.');
-}
-
-const game = new Phaser.Game(gameConfig);
-audioSystem.installUnlockListeners();
-
-if (import.meta.hot) {
-  import.meta.hot.dispose(() => {
-    game.destroy(true);
-  });
+if (mode === '3d') {
+  void import('./three/main3d').then(({ startBelt3d }) => startBelt3d());
+} else {
+  void import('./phaserMain');
 }
