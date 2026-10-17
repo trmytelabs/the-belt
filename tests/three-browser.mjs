@@ -58,8 +58,18 @@ try {
   await page.waitForFunction(() => window.fixtureApp.state === 'playing', null, { timeout: 90_000 });
   assert.deepEqual(await read(() => window.fixtureCountdown), ['3', '2', '1', 'SORT!'], 'the original countdown is shown in order');
 
-  // Real keys: Termite waits at dock A for the first parcel, grabs and delivers it.
-  await page.waitForFunction(() => window.fixtureApp.model.nearestPackage(), null, { timeout: 90_000 });
+  // Real keys: Termite steps to the belt edge inside dock A, waits for the
+  // first parcel, grabs it while it is still approaching and delivers it.
+  // From the lane edge the parcel stays in reach for over two seconds, so a
+  // slow CI runner's key round trip cannot miss it.
+  await page.keyboard.down('KeyD');
+  await page.waitForFunction(() => window.fixtureApp.model.activeWorker.x >= 399, null, { timeout: 30_000 });
+  await page.keyboard.up('KeyD');
+  await page.waitForFunction(() => {
+    const m = window.fixtureApp.model;
+    const parcel = m.nearestPackage();
+    return parcel?.state === 'belt' && parcel.y > m.activeWorker.y - 45 && parcel.y < m.activeWorker.y;
+  }, null, { timeout: 90_000 });
   await page.keyboard.press('Space');
   const held = await read(() => window.fixtureApp.model.heldPackage && { label: window.fixtureApp.model.heldPackage.label, route: window.fixtureApp.model.heldPackage.route });
   assert.deepEqual(held, { label: 'MALLWOOD RD EAST', route: 'A' });
