@@ -8,17 +8,19 @@ import { preview } from 'vite';
 // the Canvas-fallback flag the Phaser suites use. A second browser with WebGL
 // disabled checks the explanatory fallback.
 const server = await preview({ preview: { host: '127.0.0.1', port: 0 }, logLevel: 'silent' });
-const url = `${server.resolvedUrls.local[0]}?mode=3d`;
+// The plain address is the 3D depot.
+const url = server.resolvedUrls.local[0];
 const executable = process.env.BELT_BROWSER_EXECUTABLE ? { executablePath: process.env.BELT_BROWSER_EXECUTABLE } : { channel: 'chromium' };
 const browsers = [];
 try {
   const blocked = await chromium.launch({ headless: true, args: ['--disable-webgl', '--disable-webgl2'], ...executable });
   browsers.push(blocked);
   const fallbackPage = await blocked.newPage();
-  await fallbackPage.goto(url);
-  await fallbackPage.getByText('This preview needs WebGL').waitFor();
-  assert.equal(await fallbackPage.getByRole('link', { name: 'Play the full 2D night shift instead' }).count(), 1);
-  console.log('PASS 3D preview explains a missing WebGL renderer and links to the 2D shift');
+  // The plain address is now the 3D game; without WebGL it points to the 2D depot.
+  await fallbackPage.goto(server.resolvedUrls.local[0]);
+  await fallbackPage.getByText('The 3D night shift needs WebGL').waitFor();
+  assert.equal(await fallbackPage.getByRole('link', { name: 'Play the 2D night shift instead' }).getAttribute('href'), '/?mode=2d');
+  console.log('PASS default 3D entry explains a missing WebGL renderer and links to ?mode=2d');
 
   const browser = await chromium.launch({
     headless: true, ...executable,
@@ -423,6 +425,63 @@ try {
   assert.match(caught, /GAME OVER/);
   assert.deepEqual(errors, []);
   console.log('PASS 3D Mesa: keyboard leave, click steal into the bedroom dream and same-shift return, keyboard steal caught by Shan; no script errors');
+
+  // Touch: a phone-sized touch browser plays with the on-screen controls only.
+  const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const touchPage = await phone.newPage();
+  const touchErrors = [];
+  touchPage.on('pageerror', (error) => touchErrors.push(error.message));
+  const touchWait = touchPage.waitForFunction.bind(touchPage);
+  const waitTouch = (fn, arg, options = {}) => touchWait(fn, arg, { polling: 10, ...options });
+  const readTouch = (fn, arg) => touchPage.evaluate(fn, arg);
+  await touchPage.addInitScript(() => window.addEventListener('belt3d:ready', (event) => { window.fixtureApp = event.detail; }));
+  await touchPage.goto(url);
+  await waitTouch(() => window.fixtureApp?.state === 'briefing');
+  assert.match(await touchPage.locator('.b3d-panel').innerText(), /The stick moves\. SWITCH changes worker\./, 'touch players get touch instructions');
+  assert.equal(await touchPage.locator('.b3d-touch').isVisible(), false, 'controls wait for the shift to start');
+  await touchPage.getByRole('button', { name: /START SHIFT/ }).tap();
+  await waitTouch(() => window.fixtureApp.state === 'playing', null, { timeout: 90_000 });
+  await touchPage.locator('.b3d-stick').waitFor();
+  // Pushing the stick up moves Termite up his lane.
+  const startY = await readTouch(() => window.fixtureApp.model.activeWorker.y);
+  const stick = await touchPage.locator('.b3d-stick').boundingBox();
+  await touchPage.mouse.move(stick.x + stick.width / 2, stick.y + stick.height / 2);
+  await touchPage.mouse.down();
+  await touchPage.mouse.move(stick.x + stick.width / 2, stick.y + 4, { steps: 4 });
+  await waitTouch((y) => window.fixtureApp.model.activeWorker.y < y - 40, startY, { timeout: 30_000 });
+  await touchPage.mouse.up();
+  await waitTouch(() => window.fixtureApp.touch.move.x === 0 && window.fixtureApp.touch.move.y === 0);
+  // GRAB / DELIVER: Termite walks back to the dock edge and takes the first parcel as it arrives.
+  await readTouch(() => { const w = window.fixtureApp.model.activeWorker; w.x = 400; w.y = 500; });
+  await readTouch(() => new Promise((resolve) => {
+    const timer = setInterval(() => {
+      const m = window.fixtureApp.model;
+      const parcel = m.nearestPackage();
+      if (!(parcel?.state === 'belt' && parcel.y > m.activeWorker.y - 45 && parcel.y < m.activeWorker.y)) return;
+      clearInterval(timer);
+      document.querySelector('[data-touch="grab"]').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'touch' }));
+      resolve();
+    }, 5);
+  }));
+  assert.equal(await readTouch(() => window.fixtureApp.model.heldPackage?.label), 'MALLWOOD RD EAST', 'GRAB picks up the parcel');
+  await touchPage.locator('[data-touch="grab"]').tap();
+  await waitTouch(() => window.fixtureApp.model.sorted === 1);
+  await touchPage.locator('[data-touch="switch"]').tap();
+  await waitTouch(() => window.fixtureApp.model.activeWorker.id === 'skanky');
+  await touchPage.locator('[data-touch="brake"]').tap();
+  await waitTouch(() => window.fixtureApp.model.brakeCooldownMs > 0);
+  await waitTouch(() => window.fixtureApp.overlay.activeSpeech().some((item) => item.speaker === 'SHAN O MACK'));
+  await touchPage.locator('[data-touch="view"]').tap();
+  await waitTouch(() => window.fixtureApp.overview === true);
+  await touchPage.locator('[data-touch="pause"]').tap();
+  await waitTouch(() => window.fixtureApp.state === 'paused');
+  await touchPage.locator('.b3d-touch').waitFor({ state: 'hidden' });
+  await touchPage.getByRole('button', { name: /RESUME/ }).tap();
+  await waitTouch(() => window.fixtureApp.state === 'playing');
+  if (process.env.BELT_SCREENSHOT_DIR) await touchPage.screenshot({ path: join(process.env.BELT_SCREENSHOT_DIR, 'after-3d-touch.png') });
+  assert.deepEqual(touchErrors, []);
+  await phone.close();
+  console.log('PASS 3D touch: touch briefing, stick movement, GRAB/DELIVER, SWITCH, BRAKE, VIEW, PAUSE/RESUME on a phone-sized touch screen; no script errors');
 } finally {
   await Promise.all(browsers.map((browser) => browser.close()));
   await server.close();

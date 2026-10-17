@@ -13,6 +13,7 @@ import { CrewLife } from './crew';
 import { MesaDream } from './dream';
 import { MesaEncounter } from './mesa';
 import { BEN_CAST, BEN_END, BEN_START, SetPieces } from './setpieces';
+import { TouchControls } from './touch';
 import { Overlay } from './overlay';
 import { createParcelView, type ParcelView } from './parcels';
 import { BELT_HEIGHT, ROUTE_COLORS, setFromModel, textSprite, toWorld, toWorldX, toWorldZ } from './space';
@@ -42,9 +43,9 @@ function webglAvailable(): boolean {
 
 function showWebglFallback(host: HTMLElement): void {
   host.innerHTML = `<div class="b3d-fallback" style="position:fixed;inset:0;display:grid;place-items:center;background:#0b171c;color:#edf0de;font:16px 'Segoe UI',Arial,sans-serif;text-align:center;padding:24px">
-    <div><h1 style="font-size:28px;margin:0 0 12px">THE BELT · 3D PREVIEW</h1>
-    <p>This preview needs WebGL, which this browser has turned off.</p>
-    <p><a style="color:#edb765" href="${window.location.pathname}">Play the full 2D night shift instead</a></p></div></div>`;
+    <div><h1 style="font-size:28px;margin:0 0 12px">THE BELT</h1>
+    <p>The 3D night shift needs WebGL, which this browser has turned off.</p>
+    <p><a style="color:#edb765" href="${window.location.pathname}?mode=2d">Play the 2D night shift instead</a></p></div></div>`;
 }
 
 export class Belt3d {
@@ -62,6 +63,7 @@ export class Belt3d {
   public readonly setPieces: SetPieces;
   public readonly mesa: MesaEncounter;
   public readonly dream: MesaDream;
+  public readonly touch: TouchControls;
   /** Ben's story clock, independent of the frozen shift. */
   public benClock = BEN_START;
   private benStarted = false;
@@ -145,6 +147,13 @@ export class Belt3d {
       this.stolen.add(parcel.id);
     };
     this.dream = new MesaDream(this.overlay.root);
+    this.touch = new TouchControls(this.overlay.root, {
+      action: () => { if (this.state === 'playing') this.model.action(); },
+      switchWorker: () => { if (this.state === 'playing') this.model.switchWorker(); },
+      brake: () => { if (this.state === 'playing') this.model.brake(); },
+      overview: () => { this.overview = !this.overview; },
+      pause: () => { if (this.state === 'playing' || this.state === 'interlude') this.pause(); },
+    });
 
     this.activeRing = new THREE.Mesh(new THREE.RingGeometry(0.42, 0.5, 40), new THREE.MeshBasicMaterial({ color: 0xf3e6c6, transparent: true, opacity: 0.85 }));
     this.activeRing.rotation.x = -Math.PI / 2;
@@ -220,7 +229,8 @@ export class Belt3d {
     canvas.addEventListener('contextmenu', (event) => event.preventDefault());
     canvas.addEventListener('pointerdown', (event) => {
       void audioSystem.unlock();
-      if (this.state !== 'playing') return;
+      // On touch screens the on-screen buttons act; a tap on the scene does not.
+      if (this.state !== 'playing' || event.pointerType === 'touch') return;
       if (event.button === 0) this.model.action();
       else if (event.button === 2) this.model.switchWorker();
     });
@@ -228,15 +238,20 @@ export class Belt3d {
 
   private showBriefing(): void {
     this.overlay.showPanel(`
-      <div class="kicker">TERMITE &amp; SKANKY  /  3D PREVIEW</div>
+      <div class="kicker">TERMITE &amp; SKANKY  /  THE WHOLE CREW IS HERE</div>
       <h1>ANOTHER NIGHT ON THE BELT.</h1>
       <p><b>Dispatch 24 parcels in a three-minute night shift.</b></p>
       <p>A and B go to your trucks. C goes to BULK at the belt end.</p>
+      ${this.touch.enabled ? `
+      <p>The stick moves. SWITCH changes worker.</p>
+      <p>GRAB / DELIVER picks up, delivers at a dock, or puts a parcel down.</p>
+      <p>BRAKE holds the belt. VIEW shows the whole warehouse. Recover misses before 5 pile up.</p>` : `
       <p>WASD / arrows move. TAB or right-click switches your worker.</p>
       <p>SPACE or click grabs, delivers at a dock, or puts a parcel down.</p>
-      <p>E brakes. V shows the whole warehouse. Recover misses before 5 pile up.</p>
+      <p>E brakes. V shows the whole warehouse. Recover misses before 5 pile up.</p>`}
       <button type="button">START SHIFT  ↵</button>
-      <a href="${window.location.pathname}">PLAY THE FULL 2D SHIFT WITH EVERY CREW EVENT</a>`, () => this.startCountdown());
+      <a href="${window.location.pathname}?mode=2d">PLAY THE 2D DEPOT</a>
+      <a href="${window.location.pathname}?mode=classic">PLAY THE ORIGINAL FULL SHIFT</a>`, () => this.startCountdown());
   }
 
   private startCountdown(): void {
@@ -357,9 +372,11 @@ export class Belt3d {
       else if (this.mesa.check(m)) this.state = 'mesa';
     }
     if (this.state === 'playing') {
+      const keyX = (this.keys.has('KeyD') || this.keys.has('ArrowRight') ? 1 : 0) - (this.keys.has('KeyA') || this.keys.has('ArrowLeft') ? 1 : 0);
+      const keyY = (this.keys.has('KeyS') || this.keys.has('ArrowDown') ? 1 : 0) - (this.keys.has('KeyW') || this.keys.has('ArrowUp') ? 1 : 0);
       const move = {
-        x: (this.keys.has('KeyD') || this.keys.has('ArrowRight') ? 1 : 0) - (this.keys.has('KeyA') || this.keys.has('ArrowLeft') ? 1 : 0),
-        y: (this.keys.has('KeyS') || this.keys.has('ArrowDown') ? 1 : 0) - (this.keys.has('KeyW') || this.keys.has('ArrowUp') ? 1 : 0),
+        x: Math.max(-1, Math.min(1, keyX + this.touch.move.x)),
+        y: Math.max(-1, Math.min(1, keyY + this.touch.move.y)),
       };
       m.update(dt * 1000, move);
       for (const event of m.drainEvents()) this.handleEvent(event);
@@ -402,6 +419,9 @@ export class Belt3d {
       hint: this.state === 'interlude' ? 'Belt held · your freight is safe' : this.state === 'mesa' ? 'Y steals the Mesa · N leaves it' : this.hint, overview: this.overview,
       brake: m.brakeRemainingMs > 0 ? '■ BELT HELD' : m.brakeCooldownMs > 0 ? `[E] RECHARGE ${Math.ceil(m.brakeCooldownMs / 1000)}s` : '[E] BRAKE READY',
     });
+    this.touch.setLive(this.state === 'playing' || this.state === 'interlude',
+      m.brakeRemainingMs > 0 ? 'HELD' : m.brakeCooldownMs > 0 ? `${Math.ceil(m.brakeCooldownMs / 1000)}s` : 'BRAKE',
+      this.state === 'playing' && m.brakeCooldownMs <= 0);
     const size = this.renderer.getSize(new THREE.Vector2());
     const speechClock = running || this.state === 'interlude' || this.state === 'mesa' || this.state === 'dream';
     // Bubbles project with the camera as it is now, whether or not a draw follows.
@@ -639,14 +659,14 @@ export class Belt3d {
       <p><b>${m.sorted} DISPATCHED · ${String(m.score).padStart(5, '0')} POINTS · ${m.bestCombo} BEST STREAK</b></p>
       <p>${rate}% of freight dispatched · ${m.missed} parcels reached the belt end</p>
       <button type="button">ANOTHER SHIFT  ↵</button>
-      <a href="${window.location.pathname}">PLAY THE FULL 2D SHIFT WITH EVERY CREW EVENT</a>`, () => this.restart());
+      <a href="${window.location.pathname}?mode=2d">PLAY THE 2D DEPOT</a>`, () => this.restart());
   }
 }
 
 export function startBelt3d(): void {
   const host = document.querySelector<HTMLDivElement>('#app');
   if (!host) throw new Error('Expected #app container to exist.');
-  document.title = 'THE BELT · 3D';
+  document.title = 'THE BELT';
   audioSystem.installUnlockListeners();
   if (!webglAvailable()) {
     showWebglFallback(host);
