@@ -427,16 +427,24 @@ try {
   console.log('PASS 3D Mesa: keyboard leave, click steal into the bedroom dream and same-shift return, keyboard steal caught by Shan; no script errors');
 
   // Touch: a phone-sized touch browser plays with the on-screen controls only.
+  // The desktop page is closed first so its WebGL resources are released.
+  await page.close();
   const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   const touchPage = await phone.newPage();
   const touchErrors = [];
   touchPage.on('pageerror', (error) => touchErrors.push(error.message));
+  const touchConsole = [];
+  touchPage.on('console', (message) => touchConsole.push(`${message.type()}: ${message.text()}`));
   const touchWait = touchPage.waitForFunction.bind(touchPage);
   const waitTouch = (fn, arg, options = {}) => touchWait(fn, arg, { polling: 10, ...options });
   const readTouch = (fn, arg) => touchPage.evaluate(fn, arg);
   await touchPage.addInitScript(() => window.addEventListener('belt3d:ready', (event) => { window.fixtureApp = event.detail; }));
   await touchPage.goto(url);
-  await waitTouch(() => window.fixtureApp?.state === 'briefing');
+  await waitTouch(() => window.fixtureApp?.state === 'briefing' || document.querySelector('.b3d-fallback'), null, { timeout: 60_000 })
+    .catch((error) => { throw new Error(`touch page did not start: ${error.message}
+errors: ${touchErrors.join(' | ')}
+console: ${touchConsole.slice(-10).join(' | ')}`); });
+  assert.equal(await touchPage.locator('.b3d-fallback').count(), 0, `touch page fell back to 2D; console: ${touchConsole.slice(-10).join(' | ')}`);
   assert.match(await touchPage.locator('.b3d-panel').innerText(), /The stick moves\. SWITCH changes worker\./, 'touch players get touch instructions');
   assert.equal(await touchPage.locator('.b3d-touch').isVisible(), false, 'controls wait for the shift to start');
   await touchPage.getByRole('button', { name: /START SHIFT/ }).tap();
