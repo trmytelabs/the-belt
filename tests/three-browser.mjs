@@ -26,6 +26,11 @@ try {
   });
   browsers.push(browser);
   const page = await browser.newPage({ viewport: { width: 960, height: 600 } });
+  // Software renderers deliver animation frames about once a second on CI, while
+  // the shift runs on its own timer. Conditions are polled every 10 ms rather
+  // than per frame so brief windows (a parcel in reach) are not missed.
+  const waitForFunction = page.waitForFunction.bind(page);
+  page.waitForFunction = (fn, arg, options = {}) => waitForFunction(fn, arg, { polling: 10, ...options });
   if (process.env.BELT_BROWSER_CPU_RATE) {
     const diagnostics = await page.context().newCDPSession(page);
     await diagnostics.send('Emulation.setCPUThrottlingRate', { rate: Number(process.env.BELT_BROWSER_CPU_RATE) });
