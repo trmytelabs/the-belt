@@ -5,16 +5,20 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 
+import { MESA } from '../game/slice/DepotReferences';
 import { SHIFT_LAYOUT, ShiftModel, type Parcel, type ShiftEvent } from '../game/slice/ShiftModel';
 import { audioSystem, type SoundEffect } from '../game/systems/AudioSystem';
 import { animateCharacter, createCharacter, mergeCharacter, type Character } from './characters';
 import { CrewLife } from './crew';
+import { MesaDream } from './dream';
+import { MesaEncounter } from './mesa';
+import { BEN_CAST, BEN_END, BEN_START, SetPieces } from './setpieces';
 import { Overlay } from './overlay';
 import { createParcelView, type ParcelView } from './parcels';
 import { BELT_HEIGHT, ROUTE_COLORS, setFromModel, textSprite, toWorld, toWorldX, toWorldZ } from './space';
 import { DepotWorld } from './world';
 
-type AppState = 'briefing' | 'countdown' | 'playing' | 'paused' | 'celebrating' | 'ended';
+type AppState = 'briefing' | 'countdown' | 'playing' | 'interlude' | 'mesa' | 'dream' | 'paused' | 'celebrating' | 'ended';
 
 const PHASE_LABELS: Record<string, string> = {
   lesson: '01  /  FIND YOUR RHYTHM', flow: '02  /  KEEP IT MOVING', rush: '03  /  LAST DISPATCH',
@@ -55,6 +59,14 @@ export class Belt3d {
   private readonly cameraTarget = new THREE.Vector3();
   private readonly workers: Record<'termite' | 'skanky', Character>;
   public readonly crew: CrewLife;
+  public readonly setPieces: SetPieces;
+  public readonly mesa: MesaEncounter;
+  public readonly dream: MesaDream;
+  /** Ben's story clock, independent of the frozen shift. */
+  public benClock = BEN_START;
+  private benStarted = false;
+  private pausedFrom: 'playing' | 'interlude' = 'playing';
+  private readonly stolen = new Set<number>();
   private readonly parcels = new Map<number, ParcelView>();
   private readonly departing: { view: ParcelView; from: THREE.Vector3; to: THREE.Vector3; t: number; bulk: boolean }[] = [];
   private readonly activeRing: THREE.Mesh;
@@ -114,6 +126,25 @@ export class Belt3d {
       this.world.scene.add(worker.root);
     }
     this.crew = new CrewLife(this.world, (id, copy, ms) => this.say(id, copy, ms));
+    this.setPieces = new SetPieces(this.world, this.crew, (id, copy, ms) => this.say(id, copy, ms));
+    this.mesa = new MesaEncounter(this.overlay, this.crew, {
+      say: (id, copy, ms) => this.say(id, copy, ms),
+      thought: () => this.overlay.say('skanky-thought', 'SKANKY', MESA.thought, 850, this.speakerAnchor('skanky'), true),
+      dream: () => this.beginDream(),
+      caught: () => this.showMesaCaught(),
+      resume: () => {
+        this.state = 'playing';
+        this.model.paused = false;
+        this.keys.clear();
+      },
+    });
+    this.mesa.stolen = (parcel) => {
+      for (const worker of this.model.workers) if (worker.heldId === parcel.id) worker.heldId = null;
+      parcel.state = 'delivered';
+      parcel.workerId = null;
+      this.stolen.add(parcel.id);
+    };
+    this.dream = new MesaDream(this.overlay.root);
 
     this.activeRing = new THREE.Mesh(new THREE.RingGeometry(0.42, 0.5, 40), new THREE.MeshBasicMaterial({ color: 0xf3e6c6, transparent: true, opacity: 0.85 }));
     this.activeRing.rotation.x = -Math.PI / 2;
@@ -129,7 +160,18 @@ export class Belt3d {
     window.addEventListener('resize', () => this.resize());
     this.snapCamera();
     this.showBriefing();
-    this.renderer.setAnimationLoop(() => this.frame());
+    if (this.quality === 'high') {
+      this.renderer.setAnimationLoop(() => {
+        this.tick();
+        this.draw();
+      });
+    } else {
+      // Software renderers deliver animation frames slowly. The shift runs on
+      // its own fixed timer so game time, input and speech stay in real time;
+      // animation frames only draw.
+      window.setInterval(() => this.tick(), 16);
+      this.renderer.setAnimationLoop(() => this.draw());
+    }
   }
 
   private resize(): void {
@@ -141,6 +183,7 @@ export class Belt3d {
     // Narrow portrait screens need a wider lens to keep both lanes in view.
     this.camera.fov = width < height ? 58 : 38;
     this.camera.updateProjectionMatrix();
+    this.dream?.resize(width / height);
   }
 
   private bindInput(): void {
@@ -150,6 +193,10 @@ export class Belt3d {
       this.keys.add(event.code);
       if (event.repeat) return;
       void audioSystem.unlock();
+      if (this.state === 'mesa' && this.mesa.key(event.code)) {
+        event.preventDefault();
+        return;
+      }
       if (event.code === 'Enter') {
         if (this.state === 'briefing') this.startCountdown();
         else if (this.state === 'ended') this.restart();
@@ -159,7 +206,7 @@ export class Belt3d {
       } else if (event.code === 'KeyM') {
         audioSystem.toggleMuted();
       } else if (event.code === 'Escape') {
-        if (this.state === 'playing') this.pause();
+        if (this.state === 'playing' || this.state === 'interlude') this.pause();
         else if (this.state === 'paused') this.resume();
       } else if (this.state === 'playing') {
         if (event.code === 'Space') this.model.action();
@@ -168,7 +215,7 @@ export class Belt3d {
       }
     });
     window.addEventListener('keyup', (event) => this.keys.delete(event.code));
-    window.addEventListener('blur', () => { this.keys.clear(); if (this.state === 'playing') this.pause(); });
+    window.addEventListener('blur', () => { this.keys.clear(); if (this.state === 'playing' || this.state === 'interlude') this.pause(); });
     const canvas = this.renderer.domElement;
     canvas.addEventListener('contextmenu', (event) => event.preventDefault());
     canvas.addEventListener('pointerdown', (event) => {
@@ -181,7 +228,7 @@ export class Belt3d {
 
   private showBriefing(): void {
     this.overlay.showPanel(`
-      <div class="kicker">TERMITE &amp; SKANKY  /  3D PREVIEW · PHASE 1</div>
+      <div class="kicker">TERMITE &amp; SKANKY  /  3D PREVIEW</div>
       <h1>ANOTHER NIGHT ON THE BELT.</h1>
       <p><b>Dispatch 24 parcels in a three-minute night shift.</b></p>
       <p>A and B go to your trucks. C goes to BULK at the belt end.</p>
@@ -203,17 +250,59 @@ export class Belt3d {
   }
 
   private pause(): void {
+    this.pausedFrom = this.state === 'interlude' ? 'interlude' : 'playing';
     this.state = 'paused';
     this.model.paused = true;
     audioSystem.stopMusic();
-    this.overlay.showPanel('<div class="kicker">PAUSED</div><h1>BELT ON HOLD.</h1><p>Your freight stays exactly where it is.</p><button type="button">RESUME  ↵</button>', () => this.resume());
+    this.overlay.showPanel(`<div class="kicker">${this.pausedFrom === 'interlude' ? 'STORY PAUSED' : 'SHIFT PAUSED'}</div><h1>BELT ON HOLD.</h1><p>Your freight stays exactly where it is.</p><button type="button">RESUME  ↵</button>`, () => this.resume());
   }
 
   private resume(): void {
+    this.state = this.pausedFrom;
+    this.model.paused = this.state === 'interlude';
+    this.overlay.clearCenter();
+    if (this.state === 'playing') audioSystem.startMusic('game');
+  }
+
+  /** Ben's robbery freezes the shift, belt, freight and crew until Paula leaves. */
+  private beginInterlude(): void {
+    this.benStarted = true;
+    this.state = 'interlude';
+    this.model.paused = true;
+    this.benClock = BEN_START;
+    this.keys.clear();
+    this.overlay.hold = (key) => BEN_CAST.has(key);
+    this.overlay.showToast("BEN'S BIG MOMENT · belt held, your freight is safe", 3000);
+    audioSystem.stopMusic();
+  }
+
+  private endInterlude(): void {
     this.state = 'playing';
     this.model.paused = false;
-    this.overlay.clearCenter();
+    this.overlay.dropSpeech((key) => BEN_CAST.has(key));
+    this.overlay.hold = null;
+    this.overlay.showToast('BACK TO THE BELT', 1800);
     audioSystem.startMusic('game');
+  }
+
+  private beginDream(): void {
+    this.state = 'dream';
+    this.overlay.root.classList.add('dreaming');
+    this.dream.start();
+    audioSystem.startMusic('results');
+  }
+
+  private showMesaCaught(): void {
+    this.state = 'ended';
+    this.model.paused = true;
+    audioSystem.play('wrong');
+    this.overlay.showPanel(`
+      <div class="kicker">SHIFT TERMINATED</div>
+      <h1 class="caught">${MESA.caught}</h1>
+      <p>${MESA.caughtDetail}</p>
+      <p><b>GAME OVER</b></p>
+      <p>Vic offered a one-in-five risk. This time Shan caught you both.</p>
+      <button type="button">ANOTHER SHIFT  ↵</button>`, () => this.restart());
   }
 
   private restart(): void {
@@ -221,8 +310,15 @@ export class Belt3d {
     for (const item of this.departing) this.world.scene.remove(item.view.root);
     this.parcels.clear();
     this.departing.length = 0;
-    this.world.bulkStack.clear();
     this.bulkVisible = 0;
+    this.stolen.clear();
+    this.benStarted = false;
+    this.benClock = BEN_START;
+    this.overlay.hold = null;
+    this.setPieces.reset();
+    this.mesa.reset();
+    this.dream.stop();
+    this.overlay.root.classList.remove('dreaming');
     this.model = new ShiftModel();
     this.banter.clear();
     this.crew.reset();
@@ -233,7 +329,7 @@ export class Belt3d {
     this.showBriefing();
   }
 
-  private frame(): void {
+  private tick(): void {
     const now = performance.now();
     const dt = Math.min(0.1, (now - this.lastFrame) / 1000);
     this.lastFrame = now;
@@ -257,6 +353,10 @@ export class Belt3d {
       }
     }
     if (this.state === 'playing') {
+      if (!this.benStarted && m.elapsedMs >= BEN_START && !m.ended) this.beginInterlude();
+      else if (this.mesa.check(m)) this.state = 'mesa';
+    }
+    if (this.state === 'playing') {
       const move = {
         x: (this.keys.has('KeyD') || this.keys.has('ArrowRight') ? 1 : 0) - (this.keys.has('KeyA') || this.keys.has('ArrowLeft') ? 1 : 0),
         y: (this.keys.has('KeyS') || this.keys.has('ArrowDown') ? 1 : 0) - (this.keys.has('KeyW') || this.keys.has('ArrowUp') ? 1 : 0),
@@ -265,6 +365,7 @@ export class Belt3d {
       for (const event of m.drainEvents()) this.handleEvent(event);
       this.updateBanter();
       this.crew.update(dt, m, this.time);
+      this.setPieces.update(dt, m, this.time);
       if (m.ended && m.won) {
         this.state = 'celebrating';
         audioSystem.play('truck');
@@ -275,7 +376,19 @@ export class Belt3d {
       }
     } else if (this.state === 'celebrating') {
       if (this.crew.updateCelebration(dt, this.time)) this.showResults();
+    } else if (this.state === 'interlude') {
+      this.benClock = Math.min(BEN_END, this.benClock + Math.min(dt * 1000, 100));
+      this.setPieces.updateBen(this.benClock, dt, this.time);
+      if (this.benClock >= BEN_END) this.endInterlude();
+    } else if (this.state === 'dream') {
+      if (this.dream.update(dt, this.reducedMotion)) {
+        this.dream.stop();
+        this.overlay.root.classList.remove('dreaming');
+        audioSystem.startMusic('game');
+        this.mesa.dreamFinished();
+      }
     }
+    this.mesa.update(dt * 1000, this.time);
 
     const running = this.state === 'playing' || this.state === 'celebrating' || this.state === 'ended';
     if (this.state === 'playing') this.crew.updateReceiving(m, dt, this.time);
@@ -285,16 +398,24 @@ export class Belt3d {
     this.updateCamera(dt);
     this.overlay.updateHud({
       sorted: m.sorted, goal: m.goal, score: m.score, timeLeftMs: m.timeLeftMs, backlog: m.pileup, capacity: m.capacity,
-      phase: PHASE_LABELS[m.phase] ?? '', combo: m.combo, worker: m.activeWorker.id, hint: this.hint, overview: this.overview,
+      phase: this.state === 'interlude' ? 'BEN  /  DODGE TRAINING' : PHASE_LABELS[m.phase] ?? '', combo: m.combo, worker: m.activeWorker.id,
+      hint: this.state === 'interlude' ? 'Belt held · your freight is safe' : this.state === 'mesa' ? 'Y steals the Mesa · N leaves it' : this.hint, overview: this.overview,
       brake: m.brakeRemainingMs > 0 ? '■ BELT HELD' : m.brakeCooldownMs > 0 ? `[E] RECHARGE ${Math.ceil(m.brakeCooldownMs / 1000)}s` : '[E] BRAKE READY',
     });
     const size = this.renderer.getSize(new THREE.Vector2());
-    this.overlay.update(dt * 1000, running, this.camera, size.x, size.y);
-    // A software renderer can take longer than a frame to draw. Its draws are
-    // spaced out so the shift clock, input and overlay keep their full rate.
+    const speechClock = running || this.state === 'interlude' || this.state === 'mesa' || this.state === 'dream';
+    // Bubbles project with the camera as it is now, whether or not a draw follows.
+    this.camera.updateMatrixWorld();
+    this.overlay.update(dt * 1000, speechClock, this.camera, size.x, size.y);
+  }
+
+  private draw(): void {
+    const now = performance.now();
+    // A software renderer can take longer than a frame to draw; space its draws out.
     if (this.quality === 'low' && now - this.lastRender < Math.max(100, this.renderCost * 2)) return;
     this.lastRender = now;
-    if (this.composer) this.composer.render();
+    if (this.state === 'dream') this.renderer.render(this.dream.scene, this.dream.camera);
+    else if (this.composer) this.composer.render();
     else this.renderer.render(this.world.scene, this.camera);
     this.renderCost = performance.now() - now;
   }
@@ -406,7 +527,10 @@ export class Belt3d {
     for (const parcel of m.packages) {
       if (parcel.state === 'delivered') {
         const view = this.parcels.get(parcel.id);
-        if (view) {
+        if (view && this.stolen.has(parcel.id)) {
+          this.parcels.delete(parcel.id);
+          this.world.scene.remove(view.root);
+        } else if (view) {
           this.parcels.delete(parcel.id);
           const to = parcel.route === 'C'
             ? this.world.bulkStack.position.clone().add(new THREE.Vector3(0, 0.3, 0))
@@ -439,6 +563,8 @@ export class Belt3d {
         this.parcels.delete(id);
       }
     }
+    // Ralph's pickups come off the visible shared stock one at a time.
+    this.world.setBulkCount(Math.max(0, this.bulkVisible - this.setPieces.ralphLifted));
     for (let i = this.departing.length - 1; i >= 0; i -= 1) {
       const item = this.departing[i];
       item.t += dt / 0.45;
@@ -448,21 +574,9 @@ export class Belt3d {
       if (t >= 1) {
         this.world.scene.remove(item.view.root);
         this.departing.splice(i, 1);
-        if (item.bulk) this.addBulkCrate();
+        if (item.bulk) this.bulkVisible += 1;
       }
     }
-  }
-
-  private addBulkCrate(): void {
-    // The shared bulk stock visibly grows; Ralph collects it in phase 2.
-    const index = this.bulkVisible;
-    this.bulkVisible += 1;
-    if (index >= 12) return;
-    const crate = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.42, 0.5), new THREE.MeshStandardMaterial({ color: index % 2 ? 0xb8875a : 0xa47650, roughness: 0.9 }));
-    crate.castShadow = crate.receiveShadow = true;
-    crate.position.set(-0.6 + (index % 3) * 0.6, 0.21 + Math.floor(index / 6) * 0.43, -0.3 + (Math.floor(index / 3) % 2) * 0.6);
-    crate.rotation.y = (index * 0.37) % 0.3 - 0.15;
-    this.world.bulkStack.add(crate);
   }
 
   private animateParcel(view: ParcelView, parcel: Parcel, dt: number): void {
@@ -492,7 +606,11 @@ export class Belt3d {
     const portrait = this.camera.aspect < 1;
     let position: THREE.Vector3;
     let look: THREE.Vector3;
-    if (this.overview || this.state === 'briefing' || this.state === 'celebrating') {
+    if (this.state === 'interlude' || (this.state === 'paused' && this.pausedFrom === 'interlude')) {
+      // Frame the whole outer bay: gunman, Ben, the gate and the demon.
+      look = new THREE.Vector3(toWorldX(95), 1.0, toWorldZ(400));
+      position = look.clone().add(portrait ? new THREE.Vector3(2, 11, 9) : new THREE.Vector3(3.2, 6.6, 7.6));
+    } else if (this.overview || this.state === 'briefing' || this.state === 'celebrating') {
       look = new THREE.Vector3(0, 0, toWorldZ(352));
       position = look.clone().add(portrait ? new THREE.Vector3(0, 48, 24) : new THREE.Vector3(0, 33, 17));
     } else {

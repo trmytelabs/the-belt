@@ -49,7 +49,9 @@ jobs:
           cache-dependency-path: package-lock.json
       - run: npm ci
       - run: npm run build
-      - run: npm run test:browser
+      # The 3D preview's check runs in the Linux job. This GPU-free Windows
+      # runner's software WebGL delays input by seconds, unlike real PCs.
+      - run: npm run test:browser:2d
         env:
           BELT_BROWSER_EXECUTABLE: C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe
           BELT_BROWSER_RENDERER: canvas
