@@ -1,18 +1,18 @@
 import Phaser from 'phaser';
 
-import { DepotArt, createParcelArt, createWorkerArt, updateParcelArt } from '../slice/DepotArt';
+import { DEPOT_ROUTE_COLORS, DepotArt, createParcelArt, createWorkerArt, updateParcelArt } from '../slice/DepotArt';
 import { DepotLife } from '../slice/DepotLife';
 import { DepotMesaEncounter } from '../slice/DepotMesaEncounter';
 import { DepotCamera } from '../slice/DepotCamera';
 import { DepotReceiving } from '../slice/DepotReceiving';
 import { MESA } from '../slice/DepotReferences';
-import { ShiftModel, SHIFT_LAYOUT, type ShiftEvent, type Route } from '../slice/ShiftModel';
+import { ROUTE_INFO, ShiftModel, SHIFT_LAYOUT, type ShiftEvent, type Route } from '../slice/ShiftModel';
 import { audioSystem, type SoundEffect } from '../systems/AudioSystem';
 
 const INK = '#edf0de';
 const MUTED = '#8da7ac';
-const ROUTE: Record<Route, number> = { A: 0x76cbd1, B: 0xa6cc9a, C: 0xedba6d };
-const ROUTE_NAME: Record<Route, string> = { A: 'A · HERES UR SOVICE', B: 'B · PAYTMAN', C: 'C · BULK' };
+const ROUTE: Record<Route, number> = DEPOT_ROUTE_COLORS;
+const ROUTE_NAME = Object.fromEntries(Object.values(ROUTE_INFO).map((info) => [info.route, `${info.route} · ${info.name}`])) as Record<Route, string>;
 type ParcelView = { container: Phaser.GameObjects.Container; state: string; transferUntil: number };
 
 /** A bounded art/gameplay review slice. The original full shift remains accessible. */

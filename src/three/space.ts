@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-import { SHIFT_LAYOUT } from '../game/slice/ShiftModel';
+import { ROUTE_INFO, SHIFT_LAYOUT, type Route } from '../game/slice/ShiftModel';
 
 /**
  * ShiftModel works in the 2D depot's pixel space. The 3D world keeps those
@@ -20,7 +20,8 @@ export const setFromModel = (target: THREE.Vector3, point: { x: number; y: numbe
 export const BELT_HEIGHT = 0.78;
 export const BELT_WIDTH = 64 * WORLD_SCALE;
 
-export const ROUTE_COLORS = { A: '#62c8d6', B: '#8fd18a', C: '#f0a64a' } as const;
+/** Every destination's colour; letters and names always accompany it. */
+export const ROUTE_COLORS = Object.fromEntries(Object.values(ROUTE_INFO).map((info) => [info.route, info.color])) as Record<Route, string>;
 
 export const PALETTE = {
   floor: 0x3a4a4e,

@@ -1,15 +1,19 @@
 import Phaser from 'phaser';
-import { SHIFT_LAYOUT, type ParcelKind } from './ShiftModel';
+import { SHIFT_LAYOUT, type ParcelKind, type Route } from './ShiftModel';
 import { createCrewTruckArt, createDepotTruckArt, createPaytmanTankArt } from './DepotProps';
 
 /** Editable, resolution-independent artwork for the night shift vertical slice. */
-export type DepotRoute = 'A' | 'B' | 'C';
+export type DepotRoute = Route;
 export type DepotSide = 'left' | 'right';
 
 export const DEPOT_ROUTE_COLORS: Record<DepotRoute, number> = {
   A: 0x76cbd1,
   B: 0xa6cc9a,
   C: 0xedba6d,
+  D: 0x86a8f0,
+  E: 0xd6d877,
+  T: 0xc6a3ee,
+  S: 0xee9cb9,
 };
 
 const INK = 0x10222a;
