@@ -104,6 +104,7 @@ try {
   const held = await read(() => window.fixtureApp.model.heldPackage && { label: window.fixtureApp.model.heldPackage.label, route: window.fixtureApp.model.heldPackage.route });
   assert.deepEqual(held, { label: 'MALLWOOD RD EAST', route: 'A' });
   await page.keyboard.press('Space');
+  await page.waitForFunction(() => window.fixtureApp.model.sorted === 1);
   assert.deepEqual(await read(() => ({ sorted: window.fixtureApp.model.sorted, score: window.fixtureApp.model.score })), { sorted: 1, score: 100 });
 
   // Kylie's three original coffee lines arrive in order with her name.
@@ -144,14 +145,14 @@ try {
 
   // Pause freezes the shift; Enter resumes. Tab hands off to Skanky.
   await page.keyboard.press('Escape');
-  assert.equal(await read(() => window.fixtureApp.state), 'paused');
+  await page.waitForFunction(() => window.fixtureApp.state === 'paused');
   const pausedAt = await read(() => window.fixtureApp.model.elapsedMs);
   await page.waitForTimeout(500);
   assert.equal(await read(() => window.fixtureApp.model.elapsedMs), pausedAt);
   await page.keyboard.press('Enter');
-  assert.equal(await read(() => window.fixtureApp.state), 'playing');
+  await page.waitForFunction(() => window.fixtureApp.state === 'playing');
   await page.keyboard.press('Tab');
-  assert.equal(await read(() => window.fixtureApp.model.activeWorker.id), 'skanky');
+  await page.waitForFunction(() => window.fixtureApp.model.activeWorker.id === 'skanky');
   if (process.env.BELT_SCREENSHOT_DIR) await page.screenshot({ path: join(process.env.BELT_SCREENSHOT_DIR, 'after-3d-follow.png') });
   assert.deepEqual(errors, []);
   console.log('PASS 3D preview countdown, real-key grab/deliver, anchored Kylie lines, Shan brake rant, pause/resume and handoff; no script errors');
@@ -236,12 +237,12 @@ try {
   const onlyStoryCast = await read(() => window.fixtureApp.overlay.activeSpeech().every((item) => ['GUNMAN', 'BEN', 'PAULA ABDUL'].includes(item.speaker)));
   assert.ok(onlyStoryCast, 'other speech waits during the story');
   await page.keyboard.press('Escape');
-  assert.equal(await read(() => window.fixtureApp.state), 'paused');
+  await page.waitForFunction(() => window.fixtureApp.state === 'paused');
   const pausedStory = await read(() => window.fixtureApp.benClock);
   await page.waitForTimeout(400);
   assert.equal(await read(() => window.fixtureApp.benClock), pausedStory, 'pause freezes the story clock');
   await page.keyboard.press('Enter');
-  assert.equal(await read(() => window.fixtureApp.state), 'interlude');
+  await page.waitForFunction(() => window.fixtureApp.state === 'interlude');
   await story(77_300);
   await page.waitForFunction(() => window.storySeen.stages.includes('dodge'));
   await story(80_050);
