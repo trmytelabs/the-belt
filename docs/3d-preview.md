@@ -1,10 +1,10 @@
-# 3D preview
+# 3D depot
 
-Open the local URL with `?mode=3d`. The default entry remains the 2D Night
-Shift depot, which still carries every reference in
-[reference parity](reference-parity.md). The 3D preview is being built in
-phases. It replaces the 2D depot only once it shows every one of those
-references.
+The 3D depot is the default entry. It shows every reference in
+[reference parity](reference-parity.md), as the 2D depot does. The 2D depot is
+kept at `?mode=2d`, the original full shift at `?mode=classic`, and `?mode=3d`
+still opens the 3D depot. It was built in four phases: core loop, crew
+routines, set pieces, then touch controls and the default switch.
 
 ## How it works
 
@@ -136,11 +136,15 @@ Present in 3D:
       Rectifier.
     - The `MESA AT HOME` / `ONE MORE GAME.` titles.
 
-Still to do:
-
-- **Phase 4:**
-  - Touch controls.
-  - Making the 3D depot the default.
+- **Phase 4 touch and default:**
+  - On touch screens (`touch.ts`), a movement stick and GRAB / DELIVER,
+    SWITCH and BRAKE buttons sit at the bottom, with VIEW and PAUSE at the
+    top left. They appear only while the shift is playable, and the BRAKE
+    button shows its cooldown. Mesa choices and panels are tapped. A tap on
+    the scene itself does nothing, so stray touches cannot grab.
+  - The briefing gives touch instructions.
+  - On phones the HUD collapses to one row in both orientations.
+  - The plain address opens the 3D depot.
 
 ## Checks
 
@@ -169,6 +173,10 @@ checks:
   pose and the towel, the label change from `THE SNAKES CELL` to `CELL`, all
   ten drivers, the United Way reaction without Ben, the dockhand's position,
   the eight clock-out lines, every truck's departure, and the results.
+- Touch, in a 390×844 touch browser: the touch briefing, stick movement,
+  GRAB / DELIVER, SWITCH, BRAKE, VIEW, and PAUSE / RESUME.
+- That the plain address opens the 3D depot; without WebGL it links to
+  `?mode=2d`.
 - Every phase-3 set piece:
   - Ben: each story stage, the five shots, `X_X`, the gate and demon,
     Paula's line, the frozen shift clock and belt, Escape pausing the story,
@@ -185,5 +193,6 @@ checks:
 slow CI runners.
 
 Set `BELT_3D_GPU=1` to use a hardware GPU instead. Visual quality on hardware
-WebGL was checked with local Edge screenshots. Physical devices and touch are
-not covered yet.
+WebGL was checked with local Edge screenshots, including 390×844 portrait and
+844×390 landscape touch layouts. Physical phones and tablets still need a hands-on
+check.

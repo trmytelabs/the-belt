@@ -29,7 +29,7 @@ try {
       value.Game.prototype.boot = function (...args) { window.fixtureGame = this; return boot.apply(this, args); };
     } });
   });
-  await page.goto(server.resolvedUrls.local[0]);
+  await page.goto(`${server.resolvedUrls.local[0]}?mode=2d`);
   await page.waitForFunction(() => window.fixtureGame?.scene.isActive('DepotScene'));
   const read = fn => page.evaluate(fn);
   const press = key => page.keyboard.press(key, { delay: 40 });

@@ -40,7 +40,7 @@ try {
       },
     });
   });
-  await page.goto(server.resolvedUrls.local[0]);
+  await page.goto(`${server.resolvedUrls.local[0]}?mode=2d`);
   await page.waitForFunction(() => window.fixtureGame?.scene.isActive('DepotScene'));
   const read = fn => page.evaluate(fn);
   const press = key => page.keyboard.press(key, { delay: 40 });
@@ -397,7 +397,7 @@ try {
       },
     });
   });
-  await touchPage.goto(server.resolvedUrls.local[0]);
+  await touchPage.goto(`${server.resolvedUrls.local[0]}?mode=2d`);
   await touchPage.waitForFunction(() => window.fixtureGame?.scene.isActive('DepotScene'));
   const waitForCanvasFit = async () => {
     try {

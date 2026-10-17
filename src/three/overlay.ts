@@ -61,10 +61,25 @@ const CSS = `
 .b3d-count { font: 900 120px "Segoe UI", Arial, sans-serif; color: #f0dfb3; text-shadow: 0 8px 30px #000; }
 .b3d-toast { position: absolute; top: 92px; left: 50%; transform: translateX(-50%); background: #10232ae6; border: 1px solid #3b5a62;
   padding: 8px 16px; border-radius: 6px; font-weight: 700; font-size: 14px; transition: opacity .3s; }
+/* Phones: one compact row of stats; the brand gives way to the numbers. */
+@media (max-width: 720px), (max-height: 520px) {
+  .b3d-top { gap: 14px; padding: 8px 12px; flex-wrap: nowrap; }
+  .b3d-brand small, .b3d-phase, .b3d-keys { display: none; }
+  .b3d-brand b { font-size: 17px; }
+  .b3d-stat { min-width: 0; }
+  .b3d-stat small { font-size: 9px; letter-spacing: 1.2px; }
+  .b3d-stat b { font-size: 17px; }
+  .b3d-pips i { width: 12px; height: 7px; }
+  .b3d-toast { top: 96px; font-size: 12px; }
+}
+@media (max-width: 480px) {
+  .b3d-brand { display: none; }
+}
 @media (max-width: 720px) {
-  .b3d-top { gap: 12px; padding: 8px 10px; flex-wrap: wrap; }
-  .b3d-brand b { font-size: 18px; } .b3d-stat b { font-size: 18px; } .b3d-stat { min-width: 64px; }
-  .b3d-keys, .b3d-phase { display: none; }
+  .b3d-bubble { font-size: 12px; max-width: 190px; padding: 6px 10px 7px; }
+  .b3d-panel { padding: 20px 22px; }
+  .b3d-panel h1 { font-size: 26px; }
+  .b3d-panel p { font-size: 14px; }
 }
 `;
 
@@ -108,7 +123,7 @@ export class Overlay {
     this.hud = this.div('b3d-hud', this.root);
     this.hud.innerHTML = `
       <div class="b3d-top">
-        <div class="b3d-brand"><b>THE BELT</b><small>NIGHT SORT SIMULATOR · 3D PREVIEW</small></div>
+        <div class="b3d-brand"><b>THE BELT</b><small>NIGHT SORT SIMULATOR</small></div>
         <div class="b3d-stat"><small>DISPATCHED</small><b data-f="sorted">00 / 24</b><div class="b3d-progress"><i data-f="bar"></i></div></div>
         <div class="b3d-stat"><small>SHIFT SCORE</small><b data-f="score">00000</b></div>
         <div class="b3d-stat time"><small>TIME LEFT</small><b data-f="time">03:00</b></div>

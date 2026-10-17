@@ -1,8 +1,8 @@
 # The Belt
 
-The Belt is a browser game built with Phaser, TypeScript and Vite. Players switch
-between workers, pick up packages and sort them to the appropriate dock. The game
-includes keyboard, mouse and touch controls.
+The Belt is a browser game built with Three.js, Phaser, TypeScript and Vite.
+Players switch between workers, pick up packages and sort them to the appropriate
+dock. The game includes keyboard, mouse and touch controls.
 
 This private repository contains the current development snapshot (`0.0.0`). It
 has a working production build and a browser smoke suite, with no published
@@ -17,9 +17,16 @@ npm ci
 npm run dev
 ```
 
-Open the local URL printed by Vite. The default entry is the **Night Shift / Depot
-07** playable preview: one polished three-minute warehouse section, followed by up to ten
-seconds to clear remaining freight. Press Enter or tap **Start Shift**. Dispatch
+Open the local URL printed by Vite. The default entry is the **3D depot**: the
+night shift in a lit Three.js warehouse, with every original reference event and
+speech bubbles anchored to whoever is speaking. On touch screens it shows a
+movement stick and GRAB / DELIVER, SWITCH, BRAKE, VIEW and PAUSE buttons. It needs
+WebGL; without it the page links to the 2D depot. See
+[the 3D depot](docs/3d-preview.md).
+
+The **2D Night Shift / Depot 07** is at `?mode=2d`, and the description below
+applies to both. It is one polished three-minute warehouse section, followed by
+up to ten seconds to clear remaining freight. Press Enter or tap **Start Shift**. Dispatch
 24 parcels and keep the recovery backlog below five. The original **3, 2, 1,
 SORT!** countdown starts the shift.
 
@@ -72,20 +79,12 @@ in the original source; it is now implemented. See the source inventory and
 restoration evidence in [reference parity](docs/reference-parity.md).
 
 The **original full shift**, including its NPCs, special freight and timed
-events, is retained. Choose **Play the original full shift** in the preview
-briefing (keyboard O), or open the local URL with `?mode=classic`. Its controls
+events, is retained. Choose **Play the original full shift** in either depot's
+briefing (keyboard O in the 2D depot), or open the local URL with `?mode=classic`. Its controls
 remain unchanged; it starts with Enter or a title-screen tap.
 
-A **3D preview** of the depot is in progress: open the local URL with
-`?mode=3d`. It runs the same shift rules with a Three.js renderer, lighting and
-speech bubbles that are anchored to whoever is speaking. It has the core
-sorting loop, the full cast, trucks and named freight, and the crew's everyday
-routines: John, the massage, the CELL dance, United Way, the exhaust and coughs,
-the dockhand, freight trips and the clock-out with departing trucks. It also
-has the set pieces: Vic and Shan's belt stop, Ralph's five-ton, Ben's robbery,
-dodge, demon and Paula, and the Mesa choice, capture risk and 3D bedroom dream.
-Touch controls and making 3D the default come next. The 2D depot remains the default and keeps every reference until
-the 3D version shows them all. See [the 3D preview plan](docs/3d-preview.md).
+The 3D and 2D depots run the same shift rules and the same reference events.
+`?mode=3d` also opens the 3D depot.
 
 Node 24 is recorded in `.node-version` and used by CI. The locked Vite dependency
 requires Node `^20.19.0 || >=22.12.0`; use the documented Node version so local and
