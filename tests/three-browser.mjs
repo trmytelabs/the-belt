@@ -26,11 +26,23 @@ try {
   });
   browsers.push(browser);
   const page = await browser.newPage({ viewport: { width: 960, height: 600 } });
+  if (process.env.BELT_BROWSER_CPU_RATE) {
+    const diagnostics = await page.context().newCDPSession(page);
+    await diagnostics.send('Emulation.setCPUThrottlingRate', { rate: Number(process.env.BELT_BROWSER_CPU_RATE) });
+  }
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await page.route('https://fonts.googleapis.com/**', (route) => route.fulfill({ body: '' }));
   await page.route('https://fonts.gstatic.com/**', (route) => route.fulfill({ body: '' }));
-  await page.addInitScript(() => window.addEventListener('belt3d:ready', (event) => { window.fixtureApp = event.detail; }));
+  await page.addInitScript(() => {
+    window.addEventListener('belt3d:ready', (event) => { window.fixtureApp = event.detail; });
+    // Each countdown step is recorded as it is drawn; SORT! is on screen for only 350 ms.
+    window.fixtureCountdown = [];
+    new MutationObserver(() => {
+      const copy = document.querySelector('.b3d-count')?.textContent;
+      if (copy && window.fixtureCountdown.at(-1) !== copy) window.fixtureCountdown.push(copy);
+    }).observe(document, { childList: true, subtree: true, characterData: true });
+  });
   await page.goto(url);
   await page.waitForFunction(() => window.fixtureApp?.state === 'briefing');
   const read = (fn, arg) => page.evaluate(fn, arg);
@@ -43,8 +55,8 @@ try {
   await page.keyboard.press('Enter');
   await page.locator('.b3d-count', { hasText: '3' }).waitFor();
   assert.equal(await read(() => window.fixtureApp.model.elapsedMs), 0, 'the shift clock waits for 3, 2, 1, SORT!');
-  await page.locator('.b3d-count', { hasText: 'SORT!' }).waitFor({ timeout: 30_000 });
-  await page.waitForFunction(() => window.fixtureApp.state === 'playing', null, { timeout: 30_000 });
+  await page.waitForFunction(() => window.fixtureApp.state === 'playing', null, { timeout: 90_000 });
+  assert.deepEqual(await read(() => window.fixtureCountdown), ['3', '2', '1', 'SORT!'], 'the original countdown is shown in order');
 
   // Real keys: Termite waits at dock A for the first parcel, grabs and delivers it.
   await page.waitForFunction(() => window.fixtureApp.model.nearestPackage(), null, { timeout: 90_000 });

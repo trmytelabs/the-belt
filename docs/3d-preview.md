@@ -28,7 +28,9 @@ layout.
 Rendering uses ACES tone mapping, soft shadows, a room environment for
 reflections and a bloom pass that only catches real light sources. On a
 software WebGL renderer (SwiftShader/llvmpipe), the preview switches to low
-quality: no shadow maps or bloom, and fewer lights. Without WebGL it explains
+quality: no shadow maps or bloom, fewer lights and a reduced render resolution.
+It also spaces out its draws, so the shift clock, input and bubbles keep running
+at full rate even when a single draw takes longer than a frame. Without WebGL it explains
 the requirement and links to the 2D game.
 
 ## Reference coverage in phase 1

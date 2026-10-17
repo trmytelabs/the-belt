@@ -67,6 +67,8 @@ export class Belt3d {
   private countdownMs = 0;
   private time = 0;
   private lastFrame = performance.now();
+  private lastRender = 0;
+  private renderCost = 0;
   private banter = new Set<string>();
   private shanUntil = -1;
   private rantIndex = 0;
@@ -83,7 +85,7 @@ export class Belt3d {
     const debug = gl.getExtension('WEBGL_debug_renderer_info');
     const rendererName = debug ? String(gl.getParameter(debug.UNMASKED_RENDERER_WEBGL)) : '';
     this.quality = /swiftshader|llvmpipe|software|basic render/i.test(rendererName) ? 'low' : 'high';
-    this.renderer.setPixelRatio(this.quality === 'high' ? Math.min(window.devicePixelRatio, 2) : 1);
+    this.renderer.setPixelRatio(this.quality === 'high' ? Math.min(window.devicePixelRatio, 2) : 0.6);
     this.renderer.shadowMap.enabled = this.quality === 'high';
     this.renderer.shadowMap.type = this.quality === 'high' ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -288,8 +290,13 @@ export class Belt3d {
     });
     const size = this.renderer.getSize(new THREE.Vector2());
     this.overlay.update(dt * 1000, running, this.camera, size.x, size.y);
+    // A software renderer can take longer than a frame to draw. Its draws are
+    // spaced out so the shift clock, input and overlay keep their full rate.
+    if (this.quality === 'low' && now - this.lastRender < Math.max(100, this.renderCost * 2)) return;
+    this.lastRender = now;
     if (this.composer) this.composer.render();
     else this.renderer.render(this.world.scene, this.camera);
+    this.renderCost = performance.now() - now;
   }
 
   private handleEvent(event: ShiftEvent): void {
