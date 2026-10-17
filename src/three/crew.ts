@@ -16,7 +16,7 @@ import { SKIN, VISITORS, type DepotWorld } from './world';
  * Times are shift milliseconds unless named otherwise.
  */
 export type Say = (id: string, copy: string, durationMs: number) => void;
-type Pose = 'none' | 'shout' | 'crouch' | 'massage' | 'dance' | 'swear' | 'cough' | 'cheer' | 'announce' | 'push' | 'phone' | 'keys';
+export type Pose = 'none' | 'shout' | 'crouch' | 'massage' | 'dance' | 'swear' | 'cough' | 'cheer' | 'announce' | 'push' | 'phone' | 'keys' | 'aim' | 'carry' | 'press';
 
 const RESIDENT_IDS = ['hussan', 'aj', 'ben', 'bannerman', 'fruitloop', 'doris', 'brian', 'donna'] as const;
 const TRUCK_DOORS: Record<string, { x: number; y: number }> = {
@@ -24,10 +24,10 @@ const TRUCK_DOORS: Record<string, { x: number; y: number }> = {
   fruitloop: { x: 636, y: 148 }, doris: { x: 636, y: 244 }, brian: { x: 636, y: 340 }, donna: { x: 636, y: 436 },
 };
 const MASSAGE_TABLE = { x: 100, y: 300 };
-const mix = (a: number, b: number, t: number): number => a + (b - a) * THREE.MathUtils.clamp(t, 0, 1);
+export const mix = (a: number, b: number, t: number): number => a + (b - a) * THREE.MathUtils.clamp(t, 0, 1);
 
 /** A character placed in model space, facing the way it last moved. */
-class Actor {
+export class Actor {
   public readonly character: Character;
   public pose: Pose = 'none';
   public poseStart = 0;
@@ -122,6 +122,17 @@ function applyPose(c: Character, pose: Pose, t: number, still: boolean): void {
       c.rightArm.rotation.set(-2.4, 0, -0.25);
       c.leftArm.rotation.set(-0.9 + wave(2.4, 0.35), 0, 0.4 + wave(1.7, 0.2));
       break;
+    case 'aim':
+      c.rightArm.rotation.set(-1.55, 0, -0.05);
+      c.leftArm.rotation.set(-1.4, 0, 0.35);
+      break;
+    case 'press':
+      c.rightArm.rotation.set(-1.2 + wave(6, 0.15), 0, -0.2);
+      break;
+    case 'carry':
+      c.leftArm.rotation.set(-1.25, 0, -0.18);
+      c.rightArm.rotation.set(-1.25, 0, 0.18);
+      break;
     case 'keys':
       c.rightArm.rotation.set(-1.5 + wave(8, 0.08), 0, -0.1);
       break;
@@ -137,6 +148,10 @@ export class CrewLife {
   public massageStage: 'waiting' | 'arriving' | 'lying' | 'leaving' | 'done' = 'waiting';
   public celebrationMs = -1;
   public readonly ensemble = new Set<string>();
+  /** Actors whose placement a set piece currently controls. */
+  public readonly staged = new Set<string>();
+  /** Ben never returns after the demon takes him. */
+  public benGone = false;
   private readonly world: DepotWorld;
   private readonly say: Say;
   private readonly reducedMotion: boolean;
@@ -264,6 +279,11 @@ export class CrewLife {
     this.massageStage = 'waiting';
     this.celebrationMs = -1;
     this.ensemble.clear();
+    this.staged.clear();
+    this.benGone = false;
+    this.actor('ben').root.visible = true;
+    this.actor('ben').root.rotation.set(0, 0, 0);
+    this.actor('ben').root.scale.setScalar(1);
     this.crewEpoch.clear();
     this.cell.root.visible = false;
     this.cellCaption.visible = false;
@@ -287,10 +307,7 @@ export class CrewLife {
   public onEvent(event: ShiftEvent, model: ShiftModel): void {
     const parcel = model.packages.find((item) => item.id === event.packageId);
     if (event.type === 'brake') {
-      this.shanMode = 'rant';
-      this.shanUntil = model.elapsedMs + 4200;
-      this.say('shan', SHAN_RANTS[this.rantIndex % SHAN_RANTS.length], 3900);
-      this.rantIndex += 1;
+      this.rant(model.elapsedMs);
     } else if (event.type === 'miss') {
       this.john(model.elapsedMs);
     } else if (event.type === 'grab' && parcel?.kind === 'lobsters') {
@@ -298,6 +315,14 @@ export class CrewLife {
     } else if (event.type === 'brian') {
       this.say('brian', 'SENDING 5 DOWN', 4200);
     }
+  }
+
+  /** Shan's next rant from the original pool, in order. */
+  public rant(time: number): void {
+    this.shanMode = 'rant';
+    this.shanUntil = time + 4200;
+    this.say('shan', SHAN_RANTS[this.rantIndex % SHAN_RANTS.length], 3900);
+    this.rantIndex += 1;
   }
 
   private john(time: number): void {
@@ -353,14 +378,17 @@ export class CrewLife {
     // Shan only appears for his rant or the United Way announcement.
     const shan = this.actor('shan');
     const shanVisible = t < this.shanUntil;
-    shan.root.visible = shanVisible;
-    if (shanVisible) {
-      shan.place(VISITORS.shan.x, VISITORS.shan.y);
-      shan.faceAngle = -Math.PI / 2;
+    if (!this.staged.has('shan')) shan.root.visible = shanVisible;
+    if (shanVisible || this.staged.has('shan')) {
+      if (!this.staged.has('shan')) {
+        shan.place(VISITORS.shan.x, VISITORS.shan.y);
+        shan.faceAngle = -Math.PI / 2;
+      }
       const ranting = this.shanMode === 'rant';
       shan.pose = ranting ? 'shout' : 'announce';
       const anger = ranting ? 1 - (this.shanUntil - t) / 4200 : 0;
       shan.character.skinMaterial.color.setHex(0xe8b98f).lerp(new THREE.Color(0xd8453a), Math.min(1, anger * 1.4));
+      if (!shanVisible) shan.pose = 'none';
     }
     this.animate(dt, wallTime);
   }
@@ -418,12 +446,12 @@ export class CrewLife {
     const aj = this.actor('aj');
     const active = t >= 21000 && t < 33500;
     const lying = t > 24700 && t < 30800;
-    vic.root.visible = active;
+    if (!this.staged.has('vic')) vic.root.visible = active;
     this.towel.visible = active && lying;
     vic.character.nameTag.visible = !lying;
     this.massageStage = t < 21000 ? 'waiting' : t < 24700 ? 'arriving' : t < 30800 ? 'lying' : t < 33500 ? 'leaving' : 'done';
     if (!active) {
-      vic.root.rotation.x = 0;
+      if (!this.staged.has('vic')) vic.root.rotation.x = 0;
       return;
     }
     reserved.add('aj');
@@ -518,6 +546,7 @@ export class CrewLife {
     });
     // The whole floor reacts, 1.4 s in, with 110 ms offsets.
     RESIDENT_IDS.forEach((id, index) => {
+      if (id === 'ben' && this.benGone) return;
       const start = 135400 + index * 110;
       const actor = this.actor(id);
       if (t >= start && t < start + 3300 && !this.ensemble.has(id)) {
@@ -582,7 +611,7 @@ export class CrewLife {
     RESIDENT_IDS.forEach((id, index) => {
       const actor = this.actor(id);
       const view = this.crewFreight.get(id)!;
-      if (reserved.has(id)) {
+      if (reserved.has(id) || this.staged.has(id) || (id === 'ben' && this.benGone)) {
         view.root.visible = false;
         this.crewEpoch.set(id, t + 1000);
         return;
@@ -618,9 +647,24 @@ export class CrewLife {
   }
 
   private animate(dt: number, wallTime: number): void {
-    for (const actor of this.actors.values()) {
-      if (actor.root.visible) actor.animate(dt, wallTime, this.reducedMotion);
+    this.animateActors(dt, wallTime);
+  }
+
+  /** Animates visible actors (all, or only `ids` while a story holds the shift). */
+  public animateActors(dt: number, wallTime: number, ids?: ReadonlySet<string>): void {
+    for (const [id, actor] of this.actors) {
+      if (actor.root.visible && (!ids || ids.has(id))) actor.animate(dt, wallTime, this.reducedMotion);
     }
+  }
+
+  /** Adds a set-piece character to the cast so it can speak and animate. */
+  public addActor(id: string, character: Character): Actor {
+    mergeCharacter(character);
+    character.root.visible = false;
+    this.world.scene.add(character.root);
+    const actor = new Actor(character);
+    this.actors.set(id, actor);
+    return actor;
   }
 
   /** Winning clock-out: lines, a crew dance and every truck driving out. */
@@ -633,6 +677,7 @@ export class CrewLife {
     this.towel.visible = false;
     for (const id of RESIDENT_IDS) {
       const actor = this.actor(id);
+      if (id === 'ben' && this.benGone) continue;
       actor.carrying = false;
       actor.pose = 'cheer';
       actor.poseStart = wallTime + Math.random();

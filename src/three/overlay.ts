@@ -36,6 +36,16 @@ const CSS = `
 .b3d-bubble small { display: block; white-space: nowrap; font-size: 10px; letter-spacing: 1.4px; color: #8a5a2a; margin-bottom: 2px; }
 .b3d-bubble::after { content: ""; position: absolute; left: 50%; bottom: -10px; margin-left: -8px; border: 8px solid transparent; border-top-color: #c9a868; border-bottom: 0; }
 .b3d-bubble.edge { border-style: dashed; }
+.b3d-bubble.thought { border-radius: 40px; padding: 12px 22px; font-size: 18px; }
+.b3d-bubble.thought::after { width: 12px; height: 12px; border: 2px solid #c9a868; border-radius: 50%; background: #f3e6c6; bottom: -20px; margin-left: -14px; }
+.b3d-bubble.held { display: none; }
+.b3d.dreaming .b3d-hud, .b3d.dreaming .b3d-bubbles, .b3d.dreaming .b3d-pops, .b3d.dreaming .b3d-toast { display: none; }
+.b3d-notice { position: absolute; top: 120px; left: 50%; transform: translateX(-50%); background: #10232a; color: #edba6d; padding: 8px 16px; border-radius: 4px; font: 800 15px 'Segoe UI', Arial, sans-serif; letter-spacing: 1px; }
+.b3d-choices { display: flex; gap: 14px; margin-top: 18px; }
+.b3d-choices button { margin-top: 0; }
+.b3d-choices button.leave { background: #edba6d; }
+.b3d-choices button.steal { background: #a6cc9a; }
+.b3d-panel .caught { color: #f3987c; }
 .b3d-bubble.edge::after { display: none; }
 .b3d-pop { position: absolute; transform: translate(-50%, -50%); font: 900 18px "Segoe UI", Arial, sans-serif; text-shadow: 0 2px 6px #000c; white-space: nowrap; }
 .b3d-center { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
@@ -80,6 +90,9 @@ export class Overlay {
   private readonly speech = new Map<string, Bubble>();
   private readonly popups: { element: HTMLDivElement; world: THREE.Vector3; age: number }[] = [];
   private toastMs = 0;
+  private serial = 0;
+  /** While set, only matching bubbles are shown and count down (story holds). */
+  public hold: ((key: string) => boolean) | null = null;
   /** Every displayed line, for the reference checks. */
   public readonly history: string[] = [];
 
@@ -140,9 +153,16 @@ export class Overlay {
   }
 
   /** A speech bubble anchored to a point in the world, above its speaker. */
-  public say(key: string, name: string, copy: string, durationMs: number, anchor: () => THREE.Vector3): void {
-    this.speech.get(key)?.element.remove();
-    const element = this.div('b3d-bubble', this.bubbles);
+  public say(key: string, name: string, copy: string, durationMs: number, anchor: () => THREE.Vector3, thought = false): void {
+    // A speaker's unfinished line is kept (stacked above) rather than cut off.
+    const existing = this.speech.get(key);
+    if (existing && existing.remainingMs > 800) {
+      this.serial += 1;
+      this.speech.set(`${key}:${this.serial}`, existing);
+    } else {
+      existing?.element.remove();
+    }
+    const element = this.div(thought ? 'b3d-bubble thought' : 'b3d-bubble', this.bubbles);
     element.dataset.speaker = name;
     const label = document.createElement('small');
     label.textContent = name;
@@ -170,6 +190,9 @@ export class Overlay {
     const placed: { x: number; y: number; w: number; h: number }[] = [];
     const entries = [...this.speech.entries()].sort((a, b) => a[1].anchor().z - b[1].anchor().z);
     for (const [key, bubble] of entries) {
+      const held = this.hold !== null && !this.hold(key.split(':')[0]);
+      bubble.element.classList.toggle('held', held);
+      if (held) continue;
       if (clockRunning) bubble.remainingMs -= dtMs;
       if (bubble.remainingMs <= 0) {
         bubble.element.remove();
@@ -225,21 +248,40 @@ export class Overlay {
     }
   }
 
+  public dropSpeech(predicate: (key: string) => boolean): void {
+    for (const [key, bubble] of this.speech) {
+      if (predicate(key.split(':')[0])) { bubble.element.remove(); this.speech.delete(key); }
+    }
+  }
+
   public clearSpeech(): void {
     for (const bubble of this.speech.values()) bubble.element.remove();
     this.speech.clear();
   }
 
   public activeSpeech(): { speaker: string; text: string; x: number; y: number; edge: boolean }[] {
-    return [...this.speech.values()].map(({ element }) => ({
+    return [...this.speech.values()].filter(({ element }) => !element.classList.contains('held')).map(({ element }) => ({
       speaker: element.dataset.speaker ?? '', text: element.lastChild?.textContent ?? '',
       x: parseFloat(element.style.left), y: parseFloat(element.style.top), edge: element.classList.contains('edge'),
     }));
   }
 
-  public showPanel(html: string, onButton?: () => void): void {
+  /** A centred panel; one handler for its button, or handlers by data-action. */
+  public showPanel(html: string, onButton?: (() => void) | Record<string, () => void>): void {
     this.center.innerHTML = `<div class="b3d-panel">${html}</div>`;
-    this.center.querySelector('button')?.addEventListener('click', (event) => { event.stopPropagation(); onButton?.(); });
+    for (const button of this.center.querySelectorAll<HTMLButtonElement>('button')) {
+      const handler = typeof onButton === 'function' ? onButton : onButton?.[button.dataset.action ?? ''];
+      button.addEventListener('pointerdown', (event) => event.stopPropagation());
+      button.addEventListener('click', (event) => { event.stopPropagation(); handler?.(); });
+    }
+  }
+
+  public showNotice(text: string | null, color = '#edba6d'): void {
+    this.root.querySelector('.b3d-notice')?.remove();
+    if (!text) return;
+    const notice = this.div('b3d-notice', this.root);
+    notice.style.color = color;
+    notice.textContent = text;
   }
 
   public showCount(text: string): void {

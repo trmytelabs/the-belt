@@ -46,6 +46,10 @@ export class DepotWorld {
   public readonly puffs: PuffField;
   public readonly bulkStack = new THREE.Group();
   public readonly intakeAnchor = new THREE.Group();
+  public readonly ralphTruck = new THREE.Group();
+  private readonly ralphLoad: THREE.Mesh[] = [];
+  private stopCap!: THREE.Mesh;
+  private startCap!: THREE.Mesh;
   public readonly trucks: {
     name: string; group: THREE.Group; homeX: number; direction: number; stack: THREE.Object3D;
     cabDoor: { x: number; y: number };
@@ -74,6 +78,8 @@ export class DepotWorld {
     this.warcraft = this.addDonnaHusband();
     this.addPaytmanTank();
     scene.add(this.bulkStack, this.intakeAnchor);
+    this.addBulkCrates();
+    this.addRalphTruck();
     this.mergeStaticGeometry();
   }
 
@@ -81,12 +87,13 @@ export class DepotWorld {
   private mergeStaticGeometry(): void {
     // Wheels join the body: they only turn during the brief clock-out drive.
     for (const truck of this.trucks) mergeStatic(truck.group, (object) => object.name === 'stack-top');
+    mergeStatic(this.ralphTruck, (object) => object.userData.keep === true);
     for (const resident of this.residents.values()) mergeCharacter(resident.character);
     const dynamic = new Set<THREE.Object3D>([
       ...[...this.residents.values()].map((resident) => resident.character.root),
-      ...this.trucks.map((truck) => truck.group), ...this.fish, ...this.beltRollers, this.bulkStack, this.intakeAnchor,
+      ...this.trucks.map((truck) => truck.group), ...this.fish, ...this.beltRollers, this.bulkStack, this.intakeAnchor, this.ralphTruck,
     ]);
-    mergeStatic(this.scene, (object) => dynamic.has(object) || (object as THREE.Light).isLight === true);
+    mergeStatic(this.scene, (object) => dynamic.has(object) || object.userData.keep === true || (object as THREE.Light).isLight === true);
   }
 
   private addLights(quality: 'high' | 'low'): void {
@@ -180,7 +187,7 @@ export class DepotWorld {
     // Each truck row faces an open dock bay, so the fleet can drive out at
     // clock-out. Solid corrugated wall covers receiving and the far end.
     const bayTop = toWorldZ(100);
-    const bayBottom = toWorldZ(580);
+    const bayBottom = toWorldZ(700);
     const pillar = standard(0x2c3c43, 0.6, 0.3);
     const outside = new THREE.Mesh(new THREE.PlaneGeometry(30, 40), standard(0x101619, 0.95));
     outside.rotation.x = -Math.PI / 2;
@@ -204,14 +211,14 @@ export class DepotWorld {
       const lintel = new THREE.Mesh(new THREE.BoxGeometry(0.4, 3.4, bayBottom - bayTop), wall);
       lintel.position.set(side * 15.4, 5.3, (bayTop + bayBottom) / 2);
       scene.add(lintel);
-      for (const y of [100, 196, 292, 388, 484, 580]) {
+      for (const y of [100, 196, 292, 388, 484, 580, 700]) {
         const post = rounded(0.36, 3.6, 0.3, pillar, 0.04);
         post.position.set(side * 15.4, 1.8, toWorldZ(y));
         const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.38, 1.0, 0.32), standard(PALETTE.safety, 0.6));
         stripe.position.set(side * 15.4, 0.5, toWorldZ(y));
         scene.add(shadowed(post), stripe);
       }
-      for (const y of [148, 244, 340, 436, 532]) {
+      for (const y of [148, 244, 340, 436, 532, 640]) {
         // Rolled-up shutter drums above each open bay.
         const drum = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 2.7, 14), standard(0x56656b, 0.5, 0.5));
         drum.rotation.x = Math.PI / 2;
@@ -317,22 +324,110 @@ export class DepotWorld {
     scene.add(shadowed(motor), plate);
 
     // Stop and start pedestals beside the conveyor.
-    this.addButton({ x: 436, y: 360 }, 'STOP', 0xc2443b);
-    this.addButton({ x: 524, y: 360 }, 'START', 0x4aa25a);
+    this.stopCap = this.addButton({ x: 436, y: 360 }, 'STOP', 0xc2443b);
+    this.startCap = this.addButton({ x: 524, y: 360 }, 'START', 0x4aa25a);
     return tread;
   }
 
-  private addButton(point: { x: number; y: number }, label: string, color: number): void {
+  private addButton(point: { x: number; y: number }, label: string, color: number): THREE.Mesh {
     const group = new THREE.Group();
     const post = rounded(0.32, 1.0, 0.32, standard(0x3f4d53, 0.5, 0.4), 0.05);
     post.position.y = 0.5;
     const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.15, 0.08, 20), new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.6, roughness: 0.3 }));
     cap.position.y = 1.04;
+    cap.userData.keep = true;
     const tag = textPlane([label], 0.34, 0.12, { width: 90, height: 30, background: '#e8e2cf', color: '#20262a', radius: 4 });
     tag.position.set(0, 0.78, 0.165);
     group.add(post, cap, tag);
     group.position.copy(toWorld(point));
     this.scene.add(shadowed(group));
+    return cap;
+  }
+
+  /** Lights a belt button: pressed (amber), ready (its own colour) or dim. */
+  public setButton(which: 'stop' | 'start', state: 'ready' | 'pressed' | 'lit'): void {
+    const cap = which === 'stop' ? this.stopCap : this.startCap;
+    const material = cap.material as THREE.MeshStandardMaterial;
+    const color = state === 'pressed' ? 0xefb574 : which === 'stop' ? 0xc2443b : state === 'lit' ? 0x7ee08a : 0x4aa25a;
+    material.color.setHex(color);
+    material.emissive.setHex(color);
+    material.emissiveIntensity = state === 'ready' ? 0.6 : 1.8;
+    cap.position.y = state === 'pressed' ? 1.0 : 1.04;
+  }
+
+  /** The shared bulk stock shows exactly the crates not yet collected by Ralph. */
+  public setBulkCount(count: number): void {
+    this.bulkStack.children.forEach((crate, index) => { crate.visible = index < count; });
+  }
+
+  private addBulkCrates(): void {
+    for (let index = 0; index < 12; index += 1) {
+      const crate = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.42, 0.5), standard(index % 2 ? 0xb8875a : 0xa47650, 0.9));
+      crate.castShadow = crate.receiveShadow = true;
+      crate.position.set(-0.6 + (index % 3) * 0.6, 0.21 + Math.floor(index / 6) * 0.43, -0.3 + (Math.floor(index / 3) % 2) * 0.6);
+      crate.rotation.y = (index * 0.37) % 0.3 - 0.15;
+      crate.visible = false;
+      this.bulkStack.add(crate);
+    }
+  }
+
+  /** RALPH 5 TON: a grey/yellow flatbed with five visible cargo slots. */
+  private addRalphTruck(): void {
+    const truck = this.ralphTruck;
+    const length = 148 * WORLD_SCALE;
+    const depth = 84 * WORLD_SCALE;
+    const body = standard(0x69777b, 0.5, 0.3);
+    const trim = standard(0xa2b0a7, 0.5, 0.3);
+    const accent = standard(0xc6ad62, 0.45, 0.2);
+    const cab = rounded(1.2, 1.8, depth - 0.1, body, 0.18);
+    cab.position.set(length / 2 - 0.6, 1.25, 0);
+    const windshield = new THREE.Mesh(new THREE.PlaneGeometry(depth - 0.4, 0.62), standard(0x9cc8dc, 0.05, 0.6));
+    windshield.position.set(length / 2 + 0.003, 1.6, 0);
+    windshield.rotation.y = Math.PI / 2;
+    const stripe = new THREE.Mesh(new THREE.BoxGeometry(1.22, 0.16, depth - 0.06), accent);
+    stripe.position.set(length / 2 - 0.6, 0.9, 0);
+    const bed = rounded(length - 1.3, 0.25, depth, trim, 0.05);
+    bed.position.set(-0.65, 0.85, 0);
+    truck.add(cab, windshield, stripe, bed);
+    for (const sz of [-1, 1]) {
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(length - 1.3, 0.3, 0.08), accent);
+      rail.position.set(-0.65, 1.12, sz * (depth / 2 - 0.04));
+      truck.add(rail);
+      for (const along of [length / 2 - 0.6, -length / 2 + 0.7, -length / 2 + 1.6]) {
+        const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.38, 0.3, 18), standard(0x161819, 0.9));
+        wheel.rotation.x = Math.PI / 2;
+        wheel.position.set(along, 0.38, sz * (depth / 2 - 0.08));
+        truck.add(wheel);
+      }
+    }
+    // Five painted slots, each filled by one crate Ralph carries from bulk.
+    for (let slot = 0; slot < 5; slot += 1) {
+      const x = -length / 2 + 0.55 + slot * 0.66;
+      const mark = new THREE.Mesh(new THREE.PlaneGeometry(0.56, depth - 0.5), new THREE.MeshStandardMaterial({ color: 0xc6ad62, transparent: true, opacity: 0.35 }));
+      mark.rotation.x = -Math.PI / 2;
+      mark.position.set(x, 0.985, 0);
+      const crate = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.42, 0.5), standard(slot % 2 ? 0xb8875a : 0xa47650, 0.9));
+      crate.position.set(x, 1.2, 0);
+      crate.castShadow = true;
+      crate.visible = false;
+      crate.userData.keep = true;
+      truck.add(mark, crate);
+      this.ralphLoad.push(crate);
+    }
+    const plate = textPlane(['RALPH 5 TON'], 1.1, 0.3, { width: 160, height: 40, background: '#c6ad62', color: '#1d2328' });
+    plate.position.set(length / 2 - 0.6, 1.55, depth / 2 - 0.04);
+    const roofPlate = textPlane(['RALPH', '5 TON'], 1.0, 0.7, { width: 140, height: 100, background: '#1d2328', color: '#e7d39a' });
+    roofPlate.rotation.x = -Math.PI / 2;
+    roofPlate.position.set(length / 2 - 0.6, 2.16, 0);
+    truck.add(plate, roofPlate);
+    shadowed(truck);
+    truck.position.copy(toWorld({ x: 1040, y: 650 }));
+    truck.visible = false;
+    this.scene.add(truck);
+  }
+
+  public setRalphLoad(count: number): void {
+    this.ralphLoad.forEach((crate, index) => { crate.visible = index < count; });
   }
 
   private addReceiving(): void {
@@ -625,7 +720,7 @@ export class DepotWorld {
     const chair = rounded(0.5, 0.08, 0.5, standard(0x2c2f34, 0.6), 0.03);
     chair.position.set(0, 0.42, 0.68);
     desk.add(chair, husband.root);
-    desk.position.copy(toWorld({ x: 880, y: 560 }));
+    desk.position.copy(toWorld({ x: 905, y: 520 }));
     desk.rotation.y = -0.5;
     this.scene.add(shadowed(desk));
     return screenTexture;
@@ -675,7 +770,8 @@ export class DepotWorld {
       tank.add(fish);
       this.fish.push(fish);
     }
-    tank.position.copy(toWorld({ x: 760, y: 610 }));
+    // Beside Paytman's truck, clear of Ralph's bay.
+    tank.position.copy(toWorld({ x: 850, y: 592 }));
     this.scene.add(shadowed(tank));
   }
 

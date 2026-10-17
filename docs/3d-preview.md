@@ -19,6 +19,10 @@ layout.
   tread, receiving feeders and trailers, the ten named trucks, A/B/C drop areas,
   the bulk cage, the recovery tray, the resident crew and their props.
 - `characters.ts` builds low-poly people with walking and carrying poses.
+- `setpieces.ts` stages Vic and Shan's belt buttons, Ralph's five-ton and
+  Ben's robbery. `mesa.ts` runs the Mesa choice, and `dream.ts` is Skanky's
+  bedroom.
+- `merge.ts` merges rigid meshes into a few vertex-coloured draw calls.
 - `crew.ts` runs the crew's routines and gags on the 2D depot's authored
   schedule and lines (`DepotLife`, `DepotRoutines`, `DepotReceiving`), with
   poses for yelling, crouching, massage, dancing, swearing, coughing and
@@ -37,7 +41,7 @@ It also spaces out its draws, so the shift clock, input and bubbles keep running
 at full rate even when a single draw takes longer than a frame. Without WebGL it explains
 the requirement and links to the 2D game.
 
-## Reference coverage after phase 2
+## Reference coverage after phase 3
 
 Present in 3D:
 
@@ -80,7 +84,7 @@ Present in 3D:
     Exhaust stacks then smoke for the rest of the shift.
   - Coughs: Hussan and Doris cough all four original lines.
   - United Way: Shan's announcement, then the whole floor's swearing reaction
-    (8 residents, staggered 110 ms apart), all six swear lines and Brian's
+    (every resident except Ben, who is gone by then, staggered 110 ms apart), all six swear lines and Brian's
     late `WHAT THE FUCK`.
   - The smelly receiving dockhand, with flies and a green haze, pushing each
     real parcel onto the belt. Two unloaders carry crates from the trailers
@@ -91,14 +95,49 @@ Present in 3D:
   - The winning clock-out: Termite and Skanky's lines, all eight resident
     lines, the crew cheering, and every named truck driving out through its
     dock bay.
+- **Phase 3 set pieces:**
+  - Vic and Shan's buttons: Vic walks down the west lane and presses STOP at
+    96 s (`BELT STOPPED`), which really stops the belt. Shan comes down the
+    east lane, rants, and presses START at 101.8 s (`BELT RUNNING`). The
+    buttons light amber and green.
+  - RALPH 5 TON: once five bulk parcels are in and the clock passes 90 s, the
+    grey and yellow flatbed backs in through its dock bay. Ralph says `I NEED
+    TO HURRY UP AND GET BACK TO MY 3 SETS OF TRIPLETS!`, then makes five
+    3-second trips. Each trip lifts one real crate off the visible bulk stock
+    into one of five truck slots, and the truck then drives away.
+  - Ben's robbery, from 68 to 92.5 s on its own story clock. The shift, belt,
+    freight and other crew freeze, and other speech waits. In order:
+    - The gunman says `I'M GOING TO ROB THIS PLACE!`.
+    - Ben gives his full dodge-training boast.
+    - Ben dodges five comic shots (BANG!, BANG!, POW!, BANG BANG!, BANG!)
+      with muzzle flashes, then falls with `X_X`.
+    - The pointed red hell gate rises with its fire.
+    - The winged demon emerges, drags Ben in by the ankles and sinks with
+      him.
+    - Paula arrives with her complaint.
 
-Still 2D-only, scheduled for later phases:
+    The camera frames the outer bay, and pause or losing focus freezes the
+    story. Ben never returns.
+  - Mesa: the first unheld Mesa after 34 s pauses the shift with `VIC
+    SPOTTED THE MESA`. Vic makes his offer and the `VIC WANTS THE MESA`
+    choice appears with the one-in-five risk. Y/N or a click chooses:
+    - Leave: the parcel stays and the shift resumes.
+    - Steal: Skanky's `MESA AT HOME` thought, then a fresh 20% roll.
+      - Caught: `BUSTED BY SHAN O MAC` ends the run with the original detail
+        and `GAME OVER`.
+      - Safe: the 5-second 3D bedroom dream, then the same shift resumes.
+        The stolen Mesa is not a dispatch.
+  - The bedroom keeps everything from the 2D dream:
+    - The `BULK RULES`, `PAYTMAN SUCKS` and `NO REPEATS` posters and the
+      `BUILT THE BELT` monitor.
+    - The night window.
+    - Trmyte in his T hat playing an animated Lumines on a TV and PS3.
+    - Long-haired Skanky strumming a guitar cabled to the `MESA BOOGIE` Dual
+      Rectifier.
+    - The `MESA AT HOME` / `ONE MORE GAME.` titles.
 
-- **Phase 3 (set pieces):**
-  - Vic and Shan's stop/start buttons.
-  - Ralph's five-ton truck and five loads.
-  - Ben, the gunman, the demon and Paula.
-  - The Mesa choice, the capture risk and the bedroom dream.
+Still to do:
+
 - **Phase 4:**
   - Touch controls.
   - Making the 3D depot the default.
@@ -123,10 +162,21 @@ SwiftShader WebGL, so it also runs on CI's GPU-free runners. It checks:
   reference suite does. Belt freight is cleared between jumps so a slow
   renderer cannot fail the shift. The check covers each line, AJ's massage
   pose and the towel, the label change from `THE SNAKES CELL` to `CELL`, all
-  ten drivers, the eight-person United Way reaction, the dockhand's position,
+  ten drivers, the United Way reaction without Ben, the dockhand's position,
   the eight clock-out lines, every truck's departure, and the results.
+- Every phase-3 set piece:
+  - Ben: each story stage, the five shots, `X_X`, the gate and demon,
+    Paula's line, the frozen shift clock and belt, Escape pausing the story,
+    and Ben's absence afterwards.
+  - Ralph: each of the five trips removing one crate from the pile, a full
+    truck, and the departure.
+  - Buttons: Vic's STOP really stopping the belt, and Shan's rant and
+    restart.
+  - Mesa: leave by keyboard; a click steal into the dream and back to the
+    same shift, with no dispatch credited; and a keyboard steal caught by
+    Shan, which ends the run.
 
-`BELT_BROWSER_CPU_RATE=4` throttles the page like the 2D suites, to rehearse
+`BELT_BROWSER_CPU_RATE=6` throttles the page like the 2D suites, to rehearse
 slow CI runners.
 
 Set `BELT_3D_GPU=1` to use a hardware GPU instead. Visual quality on hardware

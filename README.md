@@ -81,8 +81,10 @@ A **3D preview** of the depot is in progress: open the local URL with
 speech bubbles that are anchored to whoever is speaking. It has the core
 sorting loop, the full cast, trucks and named freight, and the crew's everyday
 routines: John, the massage, the CELL dance, United Way, the exhaust and coughs,
-the dockhand, freight trips and the clock-out with departing trucks. Vic and
-Shan's belt stop, Ralph, Ben's incident and Mesa are next. The 2D depot remains the default and keeps every reference until
+the dockhand, freight trips and the clock-out with departing trucks. It also
+has the set pieces: Vic and Shan's belt stop, Ralph's five-ton, Ben's robbery,
+dodge, demon and Paula, and the Mesa choice, capture risk and 3D bedroom dream.
+Touch controls and making 3D the default come next. The 2D depot remains the default and keeps every reference until
 the 3D version shows them all. See [the 3D preview plan](docs/3d-preview.md).
 
 Node 24 is recorded in `.node-version` and used by CI. The locked Vite dependency
