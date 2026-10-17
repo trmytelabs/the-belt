@@ -105,12 +105,24 @@ try {
   await page.waitForFunction(() => window.fixtureApp.crew.actors.get('john').pose === 'shout');
   await page.waitForFunction(() => window.fixtureApp.crew.actors.get('john').pose === 'crouch', null, { timeout: 60_000 });
 
-  // A brake brings Shan out for his first original rant.
+  // A brake brings Shan out for his first original rant. Belt state is sampled
+  // every frame from the press, since a slow runner's round trips can outlast
+  // the two-second hold.
+  await read(() => {
+    window.brakeSamples = [];
+    const sample = () => {
+      const m = window.fixtureApp.model;
+      window.brakeSamples.push({ held: m.brakeRemainingMs > 0, speed: m.beltSpeed });
+      if (window.brakeSamples.length < 120) requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+  });
   await page.keyboard.press('KeyE');
   await page.waitForFunction(() => window.fixtureApp.overlay.activeSpeech().some((item) => item.speaker === 'SHAN O MACK'));
   assert.equal(await read(() => window.fixtureApp.overlay.activeSpeech().find((item) => item.speaker === 'SHAN O MACK').text), '!@#%!');
   assert.equal(await read(() => window.fixtureApp.crew.actors.get('shan').root.visible), true);
-  assert.equal(await read(() => window.fixtureApp.model.beltSpeed), 0, 'the brake must stop the belt');
+  const brakeHeld = await read(() => window.brakeSamples.filter((sample) => sample.held));
+  assert.ok(brakeHeld.length > 0 && brakeHeld.every((sample) => sample.speed === 0), 'the brake must stop the belt while it holds');
 
   // Pause freezes the shift; Enter resumes. Tab hands off to Skanky.
   await page.keyboard.press('Escape');
@@ -162,14 +174,14 @@ try {
   // Mesa: keyboard N leaves it on the belt and the shift resumes.
   await clearFreight();
   const mesaId = await placeMesa(0.9);
-  await page.locator('.b3d-notice', { hasText: 'VIC SPOTTED THE MESA' }).waitFor();
+  await page.waitForFunction(() => window.fixtureApp.overlay.notices.includes('VIC SPOTTED THE MESA'), null, { timeout: 60_000 });
   assert.equal(await read(() => window.fixtureApp.state), 'mesa');
   await page.locator('.b3d-panel h1', { hasText: 'VIC WANTS THE MESA' }).waitFor({ timeout: 60_000 });
   assert.match(await page.locator('.b3d-panel').innerText(), /1 IN 5 SHAN O MAC CATCHES YOU BOTH\./);
   assert.ok((await read(() => window.fixtureApp.overlay.history)).includes("VIC: STEAL IT? I'LL TOSS IT IN THE SUV."));
   const mesaFrozen = await read(() => window.fixtureApp.model.elapsedMs);
   await page.keyboard.press('KeyN');
-  await page.locator('.b3d-notice', { hasText: 'MESA STAYS ON THE BELT' }).waitFor();
+  await page.waitForFunction(() => window.fixtureApp.overlay.notices.includes('MESA STAYS ON THE BELT'));
   assert.equal(await read(() => window.fixtureApp.state), 'playing');
   assert.equal(await read((id) => window.fixtureApp.model.packages.find((item) => item.id === id).state, mesaId), 'belt', 'leaving keeps the Mesa');
   assert.equal(await read(() => window.fixtureApp.mesa.rolls), 0, 'leaving never rolls');
@@ -188,6 +200,18 @@ try {
   await jump(67_950);
   await page.waitForFunction(() => window.fixtureApp.state === 'interlude', null, { timeout: 60_000 });
   const frozen = await read(() => ({ t: window.fixtureApp.model.elapsedMs, travel: window.fixtureApp.model.beltTravel }));
+  // Every frame of the story is recorded, so brief stages cannot be missed.
+  await read(() => {
+    window.storySeen = { stages: [], marker: false, gateAndDemon: false };
+    const record = () => {
+      const pieces = window.fixtureApp.setPieces;
+      if (window.storySeen.stages.at(-1) !== pieces.benStage) window.storySeen.stages.push(pieces.benStage);
+      window.storySeen.marker ||= pieces.deadMarker.visible;
+      window.storySeen.gateAndDemon ||= pieces.gate.visible && pieces.demon.visible;
+      if (window.fixtureApp.state === 'interlude' || window.fixtureApp.state === 'paused') requestAnimationFrame(record);
+    };
+    requestAnimationFrame(record);
+  });
   const story = (clock) => read((c) => { window.fixtureApp.benClock = c; }, clock);
   await spoken("GUNMAN: I'M GOING TO ROB THIS PLACE!");
   await story(71_950);
@@ -201,16 +225,17 @@ try {
   assert.equal(await read(() => window.fixtureApp.benClock), pausedStory, 'pause freezes the story clock');
   await page.keyboard.press('Enter');
   assert.equal(await read(() => window.fixtureApp.state), 'interlude');
+  await story(77_300);
+  await page.waitForFunction(() => window.storySeen.stages.includes('dodge'));
   await story(80_050);
   await page.waitForFunction(() => window.fixtureApp.setPieces.shotsFired === 5);
-  assert.equal(await read(() => window.fixtureApp.setPieces.deadMarker.visible), true, 'Ben falls with X_X');
+  await page.waitForFunction(() => window.storySeen.marker);
   await story(81_750);
-  await page.waitForFunction(() => window.fixtureApp.setPieces.benStage === 'demon');
-  assert.equal(await read(() => window.fixtureApp.setPieces.gate.visible && window.fixtureApp.setPieces.demon.visible), true, 'the gate opens and the demon rises');
+  await page.waitForFunction(() => window.storySeen.stages.includes('demon'));
   await story(83_350);
-  await page.waitForFunction(() => window.fixtureApp.setPieces.benStage === 'drag');
+  await page.waitForFunction(() => window.storySeen.stages.includes('drag'));
   await story(85_050);
-  await page.waitForFunction(() => window.fixtureApp.setPieces.benStage === 'sink');
+  await page.waitForFunction(() => window.storySeen.stages.includes('sink'));
   await story(86_350);
   await spoken('PAULA ABDUL: GREAT NOW WHICH BITCH IS GOING TO LOAD MY FUCKING TRUCK');
   assert.equal(await read(() => window.fixtureApp.crew.actors.get('ben').root.visible), false, 'Ben has been taken');
@@ -218,6 +243,12 @@ try {
     'shift clock and belt stay frozen through the story');
   await story(92_450);
   await page.waitForFunction(() => window.fixtureApp.state === 'playing');
+  const seen = await read(() => window.storySeen);
+  assert.ok(seen.marker, 'Ben falls with X_X');
+  assert.ok(seen.gateAndDemon, 'the gate opens and the demon rises');
+  const order = ['threat', 'boast', 'dodge', 'demon', 'drag', 'sink', 'paula'];
+  assert.deepEqual(seen.stages.filter((stage) => order.includes(stage)).filter((stage, index, list) => list.indexOf(stage) === index), order,
+    'the story stages play in their original order');
   assert.equal(await read(() => window.fixtureApp.crew.benGone && window.fixtureApp.overlay.hold === null), true);
   if (process.env.BELT_SCREENSHOT_DIR) await page.screenshot({ path: join(process.env.BELT_SCREENSHOT_DIR, 'after-3d-ben-return.png') });
 
@@ -243,11 +274,12 @@ try {
   const ralphAt = (offset) => read((t) => { window.fixtureApp.model.elapsedMs = t; }, ralphStart + offset);
   await ralphAt(1850);
   await spoken('RALPH: I NEED TO HURRY UP AND GET BACK TO MY 3 SETS OF TRIPLETS!');
-  const stock = () => read(() => window.fixtureApp.world.bulkStack.children.filter((crate) => crate.visible).length);
   for (let trip = 0; trip < 5; trip += 1) {
     await ralphAt(1800 + trip * 3000 + 1700);
-    await page.waitForFunction((n) => window.fixtureApp.setPieces.ralphLifted === n, trip + 1);
-    assert.equal(await stock(), 6 - (trip + 1), `trip ${trip + 1} removes one crate from the pile`);
+    await page.waitForFunction((n) => window.fixtureApp.setPieces.ralphLifted >= n, trip + 1);
+    // Read the lifted count and the pile together so a later trip cannot interleave.
+    const pile = await read(() => ({ lifted: window.fixtureApp.setPieces.ralphLifted, stock: window.fixtureApp.world.bulkStack.children.filter((crate) => crate.visible).length }));
+    assert.equal(pile.stock, 6 - pile.lifted, `each of Ralph's trips removes exactly one crate (${JSON.stringify(pile)})`);
   }
   await ralphAt(1800 + 15_000 - 50);
   await page.waitForFunction(() => window.fixtureApp.world.ralphLoad.filter((crate) => crate.visible).length === 5);

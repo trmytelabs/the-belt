@@ -93,6 +93,8 @@ export class Overlay {
   private serial = 0;
   /** While set, only matching bubbles are shown and count down (story holds). */
   public hold: ((key: string) => boolean) | null = null;
+  /** Every centre notice shown, for the reference checks. */
+  public readonly notices: string[] = [];
   /** Every displayed line, for the reference checks. */
   public readonly history: string[] = [];
 
@@ -279,6 +281,7 @@ export class Overlay {
   public showNotice(text: string | null, color = '#edba6d'): void {
     this.root.querySelector('.b3d-notice')?.remove();
     if (!text) return;
+    this.notices.push(text);
     const notice = this.div('b3d-notice', this.root);
     notice.style.color = color;
     notice.textContent = text;
