@@ -205,6 +205,7 @@ function buildBody(parcel: Parcel, parts: Record<string, THREE.Object3D>): { gro
       case_.position.y = 0.16;
       const label = textPlane(['THE SNAKES CELL'], 0.6, 0.1, { width: 220, height: 36, background: '#e9e3c8', color: '#1d3a22' });
       label.position.set(0, 0.17, 0.182);
+      parts.label = label;
       group.add(case_, label);
       return { group, height: 0.32, top: 0.32 };
     }

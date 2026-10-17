@@ -17,12 +17,12 @@ export interface Resident {
   home: THREE.Vector3;
 }
 
-const SKIN = { light: 0xe8b98f, tan: 0xc98d62, brown: 0x8d5a3b, pale: 0xf0c9a5, olive: 0xb88356 };
+export const SKIN = { light: 0xe8b98f, tan: 0xc98d62, brown: 0x8d5a3b, pale: 0xf0c9a5, olive: 0xb88356 };
 
 /** Original cast identities: see docs/reference-parity.md, cast table. */
 const RESIDENTS: [string, number, number, CharacterSpec][] = [
   ['hussan', 150, 198, { name: 'HUSSAN', skin: SKIN.olive, shirt: 0x3f78a8, pants: 0x2d3440, hair: 0x1b1612, hairStyle: 'short', beard: true }],
-  ['aj', 150, 294, { name: 'AJ', skin: SKIN.light, shirt: 0xd8d2c0, pants: 0x4b5a66, hair: 0x6b4a2c, hairStyle: 'short', barefoot: true }],
+  ['aj', 150, 294, { name: 'AJ', skin: SKIN.tan, shirt: SKIN.tan, pants: 0x4b5a66, hair: 0x6b4a2c, hairStyle: 'short', barefoot: true }],
   ['ben', 150, 390, { name: 'BEN', skin: SKIN.pale, shirt: 0x5a6b48, pants: 0x34383d, hair: 0x5a3a22, hairStyle: 'slick' }],
   ['bannerman', 150, 486, { name: 'BANNERMAN', skin: SKIN.light, shirt: 0x8a6a3a, pants: 0x2f3b45, hair: 0x6e4c2e, hairStyle: 'short', glasses: true, moustache: true }],
   ['fruitloop', 810, 198, { name: 'FRUIT LOOP', skin: SKIN.light, shirt: 0x5fae4e, pants: 0x354052, hair: 0x2f2318, hairStyle: 'curly', scale: 0.78 }],
@@ -32,7 +32,9 @@ const RESIDENTS: [string, number, number, CharacterSpec][] = [
 ];
 
 export const VISITORS: Record<string, CharacterSpec & { x: number; y: number }> = {
-  kylie: { name: 'KYLIE', x: 850, y: 400, skin: SKIN.pale, shirt: 0xb24a6a, pants: 0x2b2f3a, hair: 0xc68a3a, hairStyle: 'bun' },
+  kylie: { name: 'KYLIE', x: 850, y: 400, skin: SKIN.pale, shirt: 0xb24a6a, pants: 0x2b2f3a, hair: 0x83569a, hairStyle: 'bun' },
+  john: { name: 'JOHN RUSHTON', x: 77, y: 397, skin: 0xbf9672, shirt: 0x2f4f64, pants: 0x2b3038, hair: 0x3a2a19, hairStyle: 'short', scale: 0.92 },
+  vic: { name: 'VIC', x: 132, y: 286, skin: 0xc29c7a, shirt: 0x727f83, pants: 0x34383d, hair: 0xb4b4a1, hairStyle: 'short', moustache: true },
   shan: { name: 'SHAN O MACK', x: 880, y: 395, skin: SKIN.light, shirt: 0xe9e4d6, pants: 0x30343c, hair: 0x8b8b88, hairStyle: 'bald', tie: 0x8a2630 },
 };
 
@@ -43,6 +45,10 @@ export class DepotWorld {
   public readonly puffs: PuffField;
   public readonly bulkStack = new THREE.Group();
   public readonly intakeAnchor = new THREE.Group();
+  public readonly trucks: {
+    name: string; group: THREE.Group; homeX: number; direction: number; stack: THREE.Object3D;
+    wheels: THREE.Object3D[]; cabDoor: { x: number; y: number };
+  }[] = [];
   /** Emitters that need per-frame particles: cigarette, stink. */
   private readonly emitters: { anchor: THREE.Object3D; kind: 'smoke' | 'stink'; timer: number }[] = [];
   private readonly lamps: THREE.Mesh[] = [];
@@ -90,7 +96,7 @@ export class DepotWorld {
       [244, 260, 0xffb26a, 40], [716, 260, 0xffb26a, 40], [480, -120, 0x8fc4ff, 55],
       [150, 420, 0xffb26a, 26], [810, 420, 0xffb26a, 26],
     ];
-    const fixtureMaterial = new THREE.MeshStandardMaterial({ color: 0x222222, emissive: 0xffe2b0, emissiveIntensity: 6 });
+    const fixtureMaterial = new THREE.MeshStandardMaterial({ color: 0x222222, emissive: 0xffe2b0, emissiveIntensity: 4 });
     // Software renderers get the three central pools only.
     for (const [x, y, color, power] of quality === 'high' ? pools : pools.slice(0, 3)) {
       const light = new THREE.PointLight(color, power, 16, 1.7);
@@ -99,9 +105,9 @@ export class DepotWorld {
     }
     // Wall-mounted fixtures stay out of the follow camera's line of sight.
     for (let y = -200; y <= 700; y += 150) {
-      for (const x of [40, 920]) {
+      for (const x of [-4, 964]) {
         const lamp = rounded(0.3, 0.16, 1.4, fixtureMaterial, 0.05);
-        lamp.position.copy(toWorld({ x, y }, 4.6));
+        lamp.position.copy(toWorld({ x, y }, 6.2));
         scene.add(lamp);
         this.lamps.push(lamp);
       }
@@ -157,20 +163,53 @@ export class DepotWorld {
     back.position.set(0, 3.5, toWorldZ(SHIFT_LAYOUT.worldTop) - 0.4);
     back.receiveShadow = true;
     scene.add(back);
+    // Each truck row faces an open dock bay, so the fleet can drive out at
+    // clock-out. Solid corrugated wall covers receiving and the far end.
+    const bayTop = toWorldZ(100);
+    const bayBottom = toWorldZ(580);
+    const pillar = standard(0x2c3c43, 0.6, 0.3);
+    const outside = new THREE.Mesh(new THREE.PlaneGeometry(30, 40), standard(0x101619, 0.95));
+    outside.rotation.x = -Math.PI / 2;
     for (const side of [-1, 1]) {
-      const sideWall = new THREE.Mesh(new THREE.BoxGeometry(0.4, 7, 40), wall);
-      sideWall.position.set(side * 15.4, 3.5, -3);
-      sideWall.receiveShadow = true;
-      scene.add(sideWall);
-      // Corrugated wall panels and a painted dado catch the light.
-      for (let z = -21; z < 16; z += 1.2) {
-        const rib = new THREE.Mesh(new THREE.BoxGeometry(0.08, 6.4, 0.12), standard(0x24343b, 0.8));
-        rib.position.set(side * 15.18, 3.3, z);
-        scene.add(rib);
+      const segments: [number, number][] = [[-22, bayTop], [bayBottom, 17]];
+      for (const [from, to] of segments) {
+        const sideWall = new THREE.Mesh(new THREE.BoxGeometry(0.4, 7, to - from), wall);
+        sideWall.position.set(side * 15.4, 3.5, (from + to) / 2);
+        sideWall.receiveShadow = true;
+        scene.add(sideWall);
+        // Corrugated wall panels and a painted dado catch the light.
+        for (let z = from + 0.6; z < to; z += 1.2) {
+          const rib = new THREE.Mesh(new THREE.BoxGeometry(0.08, 6.4, 0.12), standard(0x24343b, 0.8));
+          rib.position.set(side * 15.18, 3.3, z);
+          scene.add(rib);
+        }
+        const dado = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.1, to - from), standard(0x33505a, 0.7));
+        dado.position.set(side * 15.16, 0.55, (from + to) / 2);
+        scene.add(dado);
       }
-      const dado = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.1, 40), standard(0x33505a, 0.7));
-      dado.position.set(side * 15.16, 0.55, -3);
-      scene.add(dado);
+      const lintel = new THREE.Mesh(new THREE.BoxGeometry(0.4, 3.4, bayBottom - bayTop), wall);
+      lintel.position.set(side * 15.4, 5.3, (bayTop + bayBottom) / 2);
+      scene.add(lintel);
+      for (const y of [100, 196, 292, 388, 484, 580]) {
+        const post = rounded(0.36, 3.6, 0.3, pillar, 0.04);
+        post.position.set(side * 15.4, 1.8, toWorldZ(y));
+        const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.38, 1.0, 0.32), standard(PALETTE.safety, 0.6));
+        stripe.position.set(side * 15.4, 0.5, toWorldZ(y));
+        scene.add(shadowed(post), stripe);
+      }
+      for (const y of [148, 244, 340, 436, 532]) {
+        // Rolled-up shutter drums above each open bay.
+        const drum = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 2.7, 14), standard(0x56656b, 0.5, 0.5));
+        drum.rotation.x = Math.PI / 2;
+        drum.position.set(side * 15.1, 3.75, toWorldZ(y));
+        scene.add(drum);
+      }
+      const yard = outside.clone();
+      yard.position.set(side * 30.6, -0.01, -3);
+      scene.add(yard);
+      const yardLight = new THREE.PointLight(0xffa64d, 22, 18, 1.6);
+      yardLight.position.set(side * 21, 5, 1);
+      scene.add(yardLight);
     }
 
     // Painted walkway lines bound the two worker lanes.
@@ -350,18 +389,6 @@ export class DepotWorld {
     receivingTag.position.set(0, 5.2, backZ - 0.18);
     scene.add(receivingTag);
 
-    const unloaders: [number, number, number][] = [[318, -110, 0x3b6e8f], [642, -110, 0x8f5b3b]];
-    for (const [x, y, shirt] of unloaders) {
-      const worker = createCharacter({ name: 'UNLOADER', skin: SKIN.tan, shirt, pants: 0x2c3138, hair: 0x2a1d14, hairStyle: 'short', headwear: 'beanie', vest: 0xe8d23a });
-      worker.nameTag.visible = false;
-      worker.root.position.copy(toWorld({ x, y }));
-      worker.root.rotation.y = x < 480 ? 1.2 : -1.2;
-      worker.leftArm.rotation.x = worker.rightArm.rotation.x = -1.1;
-      const box = rounded(0.5, 0.4, 0.4, standard(PALETTE.cardboard, 0.9), 0.03);
-      box.position.set(0, 1.0, 0.45);
-      worker.body.add(box);
-      this.scene.add(worker.root);
-    }
   }
 
   private addDocks(): void {
@@ -448,6 +475,21 @@ export class DepotWorld {
       const truck = createTruck(name, color, cabColor ?? 0xd4cbb4, side);
       truck.position.copy(toWorld({ x, y }));
       this.scene.add(truck);
+      this.trucks.push({
+        name, group: truck, homeX: truck.position.x, direction: side === 'left' ? -1 : 1,
+        stack: truck.getObjectByName('stack-top')!, wheels: truck.children.filter((child) => child.name === 'wheel'),
+        cabDoor: { x: x + (side === 'left' ? -88 : 88), y },
+      });
+    }
+  }
+
+  /** Clock-out: every named truck drives forward out through its dock bay. */
+  public departTrucks(progress: number): void {
+    const eased = progress * progress;
+    for (const truck of this.trucks) {
+      const distance = eased * 16;
+      truck.group.position.x = truck.homeX + truck.direction * distance;
+      for (const wheel of truck.wheels) wheel.rotation.y = distance / 0.38;
     }
   }
 
@@ -694,6 +736,14 @@ function createTruck(name: string, color: number, cabColor: number, side: 'left'
     headlight.rotation.y = -facing * Math.PI / 2;
     truck.add(headlight);
   }
+  // Chrome exhaust stack behind the cab; the drivers' gag fills it with smoke.
+  const chrome = standard(0xc8ced2, 0.2, 0.9);
+  const stack = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 1.5, 10), chrome);
+  stack.position.set(-facing * (length / 2 - cabLength - 0.02), 2.0, -(depth / 2 - 0.25));
+  const stackTop = new THREE.Object3D();
+  stackTop.name = 'stack-top';
+  stackTop.position.set(stack.position.x, 2.8, stack.position.z);
+  truck.add(stack, stackTop);
   const bumper = rounded(0.18, 0.2, depth, standard(0x30363a, 0.5, 0.5), 0.05);
   bumper.position.set(-facing * (length / 2 + 0.02), 0.45, 0);
   truck.add(bumper);
@@ -701,13 +751,16 @@ function createTruck(name: string, color: number, cabColor: number, side: 'left'
   const hub = standard(0x9aa2a6, 0.3, 0.8);
   for (const along of [-facing * (length / 2 - 0.55), facing * (length / 2 - 0.7), facing * (length / 2 - 1.5)]) {
     for (const sz of [-1, 1]) {
-      const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.38, 0.3, 18), tyre);
+      // Each wheel spins about its axle as the truck departs.
+      const wheel = new THREE.Group();
+      wheel.name = 'wheel';
       wheel.rotation.x = Math.PI / 2;
       wheel.position.set(along, 0.38, sz * (depth / 2 - 0.08));
+      const tyreMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.38, 0.3, 18), tyre);
       const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.32, 12), hub);
-      cap.rotation.x = Math.PI / 2;
-      cap.position.copy(wheel.position);
-      truck.add(wheel, cap);
+      const lug = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.34, 0.24), hub);
+      wheel.add(tyreMesh, cap, lug);
+      truck.add(wheel);
     }
   }
   // Nameplates on the roof (overview) and the south side (follow camera).

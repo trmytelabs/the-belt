@@ -76,9 +76,9 @@ try {
   const anchoring = await read(() => {
     const app = window.fixtureApp;
     const bubble = app.overlay.activeSpeech().find((item) => item.speaker === 'KYLIE');
-    const kylie = app.visitors.kylie.root;
+    const kylie = app.crew.actors.get('kylie').root;
     const head = kylie.position.clone();
-    head.y += app.visitors.kylie.headHeight + 0.35;
+    head.y += app.crew.actors.get('kylie').character.headHeight + 0.35;
     head.project(app.camera);
     const width = app.renderer.domElement.clientWidth;
     const height = app.renderer.domElement.clientHeight;
@@ -90,11 +90,16 @@ try {
   if (process.env.BELT_SCREENSHOT_DIR) await page.screenshot({ path: join(process.env.BELT_SCREENSHOT_DIR, 'after-3d-overview.png') });
   await page.keyboard.press('KeyV');
 
+  // John Rushton's scheduled visit follows on the ordinary clock: he yells, then crouches.
+  await page.waitForFunction(() => window.fixtureApp.overlay.history.includes("JOHN RUSHTON: DON'T STACK BOXES ON BOXES!"), null, { timeout: 120_000 });
+  await page.waitForFunction(() => window.fixtureApp.crew.actors.get('john').pose === 'shout');
+  await page.waitForFunction(() => window.fixtureApp.crew.actors.get('john').pose === 'crouch', null, { timeout: 60_000 });
+
   // A brake brings Shan out for his first original rant.
   await page.keyboard.press('KeyE');
   await page.waitForFunction(() => window.fixtureApp.overlay.activeSpeech().some((item) => item.speaker === 'SHAN O MACK'));
   assert.equal(await read(() => window.fixtureApp.overlay.activeSpeech().find((item) => item.speaker === 'SHAN O MACK').text), '!@#%!');
-  assert.equal(await read(() => window.fixtureApp.visitors.shan.root.visible), true);
+  assert.equal(await read(() => window.fixtureApp.crew.actors.get('shan').root.visible), true);
   assert.equal(await read(() => window.fixtureApp.model.beltSpeed), 0, 'the brake must stop the belt');
 
   // Pause freezes the shift; Enter resumes. Tab hands off to Skanky.
@@ -110,6 +115,84 @@ try {
   if (process.env.BELT_SCREENSHOT_DIR) await page.screenshot({ path: join(process.env.BELT_SCREENSHOT_DIR, 'after-3d-follow.png') });
   assert.deepEqual(errors, []);
   console.log('PASS 3D preview countdown, real-key grab/deliver, anchored Kylie lines, Shan brake rant, pause/resume and handoff; no script errors');
+
+  // Crew routines. Later cues use a synthetic shift clock, as the 2D reference
+  // suite does; belt freight is cleared so a slow software renderer cannot
+  // fail the shift while it waits. The routines themselves run unmodified.
+  const clearFreight = () => read(() => {
+    for (const parcel of window.fixtureApp.model.packages) {
+      if (parcel.state === 'belt' || parcel.state === 'missed') parcel.state = 'delivered';
+    }
+  });
+  const jump = async (ms) => { await clearFreight(); await read((t) => { window.fixtureApp.model.elapsedMs = t; }, ms); };
+  const spoken = (copy) => page.waitForFunction((line) => window.fixtureApp.overlay.history.includes(line), copy, { timeout: 60_000 });
+  const crew = (fn, arg) => read(fn, arg);
+
+  // Doris's freight trip: she carries a parcel from the belt side to her truck.
+  await jump(15_700);
+  await page.waitForFunction(() => window.fixtureApp.crew.actors.get('doris').carrying, null, { timeout: 60_000 });
+
+  await jump(23_400);
+  await spoken('VIC: I NEED A QUICK TUNE UP');
+  await jump(25_200);
+  await page.waitForFunction(() => window.fixtureApp.crew.massageStage === 'lying');
+  assert.equal(await crew(() => window.fixtureApp.crew.actors.get('aj').pose), 'massage', 'AJ massages Vic');
+  assert.equal(await crew(() => window.fixtureApp.crew.towel.visible), true, 'Vic lies under a towel');
+
+  await jump(39_900);
+  await spoken('HUSSAN: THE SNAKES CELL!');
+  await page.waitForFunction(() => window.fixtureApp.crew.snakeState === 'dancing', null, { timeout: 90_000 });
+  assert.deepEqual(await crew(() => ({ held: window.fixtureApp.crew.cellCaption.visible, belt: window.fixtureApp.crew.cell.tag.visible })),
+    { held: true, belt: false }, 'the belt label THE SNAKES CELL becomes the held CELL label');
+  await page.waitForFunction(() => window.fixtureApp.crew.snakeState === 'done', null, { timeout: 90_000 });
+
+  await jump(114_100);
+  await page.waitForFunction(() => window.fixtureApp.crew.drivers.filter((driver) => driver.root.visible).length === 10);
+  for (const [index, line] of ['COUGH!', 'HACK!', 'COUGH COUGH!', 'UGH, EXHAUST!'].entries()) {
+    await jump(116_000 + index * 3000 - 50);
+    await spoken(`${index % 2 === 0 ? 'HUSSAN' : 'DORIS'}: ${line}`);
+  }
+  assert.equal(await crew(() => window.fixtureApp.crew.drivers.some((driver) => driver.root.visible)), false, 'drivers board their trucks');
+
+  await jump(133_900);
+  await spoken('SHAN O MACK: TERMITE AND SKANKY HAVE BOTH WON A FREE PAID DAY OFF FROM UNITED WAY');
+  await jump(135_900);
+  await page.waitForFunction(() => window.fixtureApp.crew.ensemble.size === 8);
+  const swears = [['HUSSAN', 'WHAT THE FUCK'], ['FRUIT LOOP', 'BULLSHIT'], ['AJ', 'YOU GOTTA BE FUCKING KIDDING'],
+    ['DORIS', 'FUCK THIS'], ['BANNERMAN', 'ARE YOU FUCKING SERIOUS'], ['DONNA', 'SON OF A BITCH']];
+  for (const [index, [who, line]] of swears.entries()) {
+    if (index % 2 === 0) await jump(138_600 + index / 2 * 3500 - 50);
+    await spoken(`${who}: ${line}`);
+  }
+  await jump(149_050);
+  await spoken('BRIAN: WHAT THE FUCK');
+
+  // Receiving: the dockhand stands at the intake while unloaders feed the line.
+  const dockhand = await crew(() => window.fixtureApp.crew.dockhand.root.position.x);
+  assert.ok(Math.abs(dockhand - (430 - 480) / 32) < 0.01, 'the dockhand stands beside the intake');
+
+  // A winning clock-out: lines, celebration and every truck departing.
+  const truckStart = await crew(() => window.fixtureApp.world.trucks.map((truck) => truck.group.position.x));
+  await read(() => {
+    const m = window.fixtureApp.model;
+    for (const parcel of m.packages) if (parcel.state !== 'delivered') parcel.state = 'delivered';
+    m.sorted = m.goal;
+    m.elapsedMs = m.durationMs - 20;
+  });
+  await page.waitForFunction(() => window.fixtureApp.state === 'celebrating', null, { timeout: 30_000 });
+  await spoken('TERMITE: SHIFT DONE!');
+  await spoken('SKANKY: CLOCKED OUT!');
+  if (process.env.BELT_SCREENSHOT_DIR) await page.waitForTimeout(1500);
+  for (const line of ['WE MADE IT!', 'GO HOME!', 'CLOCK OUT!', 'SHIFT DONE!', 'TRUCKS OUT!', "BELT'S DEAD!", 'WE SURVIVED!', 'LAST TRUCK OUT!']) {
+    await page.waitForFunction((copy) => window.fixtureApp.overlay.history.some((entry) => entry.endsWith(`: ${copy}`) && !entry.startsWith('TERMITE') && !entry.startsWith('SKANKY')), line, { timeout: 120_000 });
+  }
+  if (process.env.BELT_SCREENSHOT_DIR) await page.screenshot({ path: join(process.env.BELT_SCREENSHOT_DIR, 'after-3d-clockout.png') });
+  const truckEnd = await crew(() => window.fixtureApp.world.trucks.map((truck) => truck.group.position.x));
+  truckEnd.forEach((x, index) => assert.ok(Math.abs(x - truckStart[index]) > 4, `truck ${index} must drive out`));
+  await page.waitForFunction(() => window.fixtureApp.state === 'ended', null, { timeout: 120_000 });
+  assert.match(await page.locator('.b3d-panel').innerText(), /SHIFT COMPLETE \/ GRADE/);
+  assert.deepEqual(errors, []);
+  console.log('PASS 3D crew routines: John, freight trip, massage/towel, CELL dance, drivers/exhaust/coughs, United Way ensemble and swears, dockhand, clock-out lines and departures; no script errors');
 } finally {
   await Promise.all(browsers.map((browser) => browser.close()));
   await server.close();
