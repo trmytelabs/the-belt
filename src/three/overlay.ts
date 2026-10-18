@@ -199,6 +199,11 @@ export class Overlay {
     this.root.classList.toggle('story', mode === 'story');
     this.root.classList.toggle('chapter', mode === 'chapter');
     if (mode !== 'story') this.subtitle(null);
+    // A shift toast must not hang over a cutscene or carry into the next chapter.
+    if (mode !== 'shift') {
+      this.toastMs = 0;
+      this.toast.style.opacity = '0';
+    }
   }
 
   public onStoryButton(handler: (action: 'next' | 'skip') => void): void {

@@ -1223,12 +1223,15 @@ export interface DepotCast {
   workers: Record<'termite' | 'skanky', Character>;
 }
 
+// The huddle fills the clear west lane beside the head of the belt, below the
+// receiving feeders, with Shan at its top end facing everyone.
 const SCRUM_SPOTS: Record<string, [number, number]> = {
-  termite: [452, 18], skanky: [508, 18],
-  hussan: [372, 40], aj: [398, 2], ben: [420, 50], bannerman: [560, 4],
-  fruitloop: [584, 44], doris: [540, 50], brian: [612, 14], donna: [348, 6],
+  termite: [366, 214], skanky: [418, 214],
+  hussan: [342, 252], aj: [386, 256], ben: [428, 250],
+  donna: [336, 292], doris: [368, 296], brian: [402, 292], bannerman: [434, 288],
+  fruitloop: [384, 330],
 };
-const SHAN_SPOT: [number, number] = [480, 98];
+const SHAN_SPOT: [number, number] = [392, 166];
 
 export function directDepot(cast: DepotCast, cutscene: Cutscene, dt: number, time: number, reducedMotion: boolean): { position: THREE.Vector3; look: THREE.Vector3 } {
   const { crew, workers } = cast;
@@ -1249,7 +1252,7 @@ export function directDepot(cast: DepotCast, cutscene: Cutscene, dt: number, tim
     const turns = cueProgress(cutscene, 'everyone-turns') > 0;
     const furious = cueProgress(cutscene, 'crew-furious') > 0;
     const look = cueProgress(cutscene, 'pair-look') > 0 && cueProgress(cutscene, 'shan-over') <= 0;
-    const pair: [number, number] = [480, 18];
+    const pair: [number, number] = [392, 214];
     for (const [id, spot] of Object.entries(SCRUM_SPOTS)) {
       const x = spot[0];
       const y = spot[1] - 40 * (1 - gather);
@@ -1270,14 +1273,14 @@ export function directDepot(cast: DepotCast, cutscene: Cutscene, dt: number, tim
       actor.setPoseAt(pose, time);
     }
     shan.place(SHAN_SPOT[0], SHAN_SPOT[1]);
-    shan.faceAngle = Math.PI;
+    shan.faceAngle = face(SHAN_SPOT, [392, 260]);
     const speaking = cutscene.beat.speaker === 'shan';
     shan.setPoseAt(speaking ? 'announce' : 'none', time);
     shan.character.skinMaterial.color.setHex(0xe8b98f);
     crew.animateActors(dt, time, new Set([...Object.keys(SCRUM_SPOTS), 'shan']));
     return {
-      position: toWorld({ x: 720, y: -70 }, 5.6),
-      look: toWorld({ x: 470, y: 58 }, 1.5),
+      position: toWorld({ x: 640, y: 330 }, 6.4),
+      look: toWorld({ x: 392, y: 236 }, 1.6),
     };
   }
   // Clock-out: Shan catches Skanky at the belt end; Termite heads down the stairs.
