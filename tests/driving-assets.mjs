@@ -9,7 +9,7 @@ const manifest = JSON.parse(readFileSync(resolve(root, 'manifest.json'), 'utf8')
 
 test('driving models retain their recorded sources, licence and original file hashes', () => {
   assert.equal(manifest.license, 'CC0-1.0');
-  assert.equal(Object.keys(manifest.files).filter(p => p.endsWith('.glb')).length, 7);
+  assert.equal(Object.keys(manifest.files).filter(p => p.endsWith('.glb')).length, 8);
   for (const kit of ['city', 'roads', 'cars']) {
     assert.match(manifest.sources[kit], /^https:\/\/kenney.nl\/assets\//);
     assert.match(readFileSync(resolve(root, kit, 'LICENSE.txt'), 'utf8'), /Creative Commons Zero, CC0/);

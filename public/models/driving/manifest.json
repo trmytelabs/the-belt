@@ -46,6 +46,10 @@
     "cars/Textures/colormap.png": {
       "bytes": 12371,
       "sha256": "f3622a03a20c6696065cae9cbe391351be873508af190c2ebd1d420c055787a5"
+    },
+    "city/building-e.glb": {
+      "bytes": 128208,
+      "sha256": "edbe5b49858a3c83e72d3cf496129c06082ef3a3d6005769f8883138e275b456"
     }
   }
 }

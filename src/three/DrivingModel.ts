@@ -1,76 +1,43 @@
-/** Arcade road rules owned by the 3D night. No warehouse or legacy model state. */
+import { CITY, CITY_BUILDINGS, CITY_SIGNALS, DESTINATIONS, SPAWNS, angleDelta, cityRoute, nearestRoad, separation, signalColor, trafficPose,
+  type CityAxis, type CityPoint, type CityPose, type CitySignal } from './drivingCity.ts';
+
 export type DriveDestination = 'mall' | 'ups';
 export interface DriveInput { steer: number; throttle: number; brake: number }
-export interface RoadPoint { x: number; z: number; tx: number; tz: number; heading: number }
-export interface RoadObstacle { id: string; kind: 'car' | 'cone'; distance: number; offset: number; speed: number; hit: boolean }
-export type DriveEvent = { type: 'collision'; kind: 'car' | 'cone'; points: number } | { type: 'red-light'; points: number } | { type: 'parked' };
-export interface RoadSignal { id: string; distance: number; offset: number; crossed: boolean }
-
+export interface RoadObstacle extends CityPoint { id: string; kind: 'car' | 'cone'; heading: number; speed: number; travel: number; route: number; hit: boolean }
+export type DriveEvent = { type: 'collision'; kind: 'car' | 'cone' | 'building'; points: number } | { type: 'red-light'; points: number } | { type: 'parked' };
 const clamp = (n: number, a: number, b: number): number => Math.max(a, Math.min(b, n));
 export const DRIVING = {
-  maxSpeed: 13.5, acceleration: 7, braking: 17, coast: 1.9,
-  roadHalfWidth: 6, shoulderLimit: 5.1, lane: 2.6,
+  maxSpeed: 18, acceleration: 9, braking: 20, coast: 2, reverseSpeed: 4,
   collisionPoints: 5, collisionCooldown: 1.5, slowdownSeconds: 0.8,
-  parkingApproach: 26, parkingDistance: 4, parkingSpeed: 1.8,
-  turnRate: 1.4, turnAssist: 0.35, signalCycle: 18, redSeconds: 5,
+  parkingApproach: 24, parkingDistance: 6, parkingSpeed: 1.8, turnRate: 1.65,
 } as const;
 
-export const angleDelta = (angle: number): number => Math.atan2(Math.sin(angle), Math.cos(angle));
-// Four rounded street corners: right, left, left, right on the outbound trip.
-const vertices = [{ x: 0, z: 0 }, { x: 0, z: -55 }, { x: 50, z: -55 },
-  { x: 50, z: -150 }, { x: 0, z: -150 }, { x: 0, z: -200 }];
-const samples: { x: number; z: number; distance: number }[] = [];
-const pushLine = (a: typeof vertices[number], b: typeof vertices[number]): void => {
-  const steps = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) * 3));
-  for (let i = 0; i < steps; i++) samples.push({ x: a.x + (b.x - a.x) * i / steps, z: a.z + (b.z - a.z) * i / steps, distance: 0 });
-};
-let previous = vertices[0];
-export const ROAD_TURNS: { distance: number; direction: 'left' | 'right' }[] = [];
-for (let i = 1; i < vertices.length - 1; i++) {
-  const a = vertices[i - 1], b = vertices[i], c = vertices[i + 1], radius = 12;
-  const before = Math.hypot(b.x - a.x, b.z - a.z), after = Math.hypot(c.x - b.x, c.z - b.z);
-  const entry = { x: b.x + (a.x - b.x) / before * radius, z: b.z + (a.z - b.z) / before * radius };
-  const exit = { x: b.x + (c.x - b.x) / after * radius, z: b.z + (c.z - b.z) / after * radius };
-  pushLine(previous, entry);
-  // Quadratic corners are broad and continuous; the table is measured below.
-  const startIndex = samples.length;
-  for (let j = 0; j < 65; j++) {
-    const t = j / 65, u = 1 - t;
-    samples.push({ x: u * u * entry.x + 2 * u * t * b.x + t * t * exit.x,
-      z: u * u * entry.z + 2 * u * t * b.z + t * t * exit.z, distance: 0 });
+interface Box extends CityPoint { heading: number; length: number; width: number }
+/** SAT on actual oriented bodies avoids invisible rectangular corner blockers. */
+function penetration(a: Box, b: Box): CityPoint | null {
+  const axes = [a.heading, a.heading + Math.PI / 2, b.heading, b.heading + Math.PI / 2];
+  let smallest = Infinity, push: CityPoint | null = null;
+  for (const angle of axes) {
+    const x = Math.cos(angle), z = -Math.sin(angle);
+    const radius = (box: Box): number => Math.abs(Math.cos(box.heading) * x - Math.sin(box.heading) * z) * box.length / 2
+      + Math.abs(Math.sin(box.heading) * x + Math.cos(box.heading) * z) * box.width / 2;
+    const signed = (a.x - b.x) * x + (a.z - b.z) * z;
+    const overlap = radius(a) + radius(b) - Math.abs(signed) - 0.12;
+    if (overlap <= 0) return null;
+    if (overlap < smallest) { smallest = overlap; push = { x: x * Math.sign(signed || 1) * (overlap + 0.02), z: z * Math.sign(signed || 1) * (overlap + 0.02) }; }
   }
-  ROAD_TURNS.push({ distance: startIndex, direction: [1, 4].includes(i) ? 'right' : 'left' });
-  previous = exit;
-}
-pushLine(previous, vertices.at(-1)!);
-samples.push({ ...vertices.at(-1)!, distance: 0 });
-for (let i = 1; i < samples.length; i++) {
-  samples[i].distance = samples[i - 1].distance + Math.hypot(samples[i].x - samples[i - 1].x, samples[i].z - samples[i - 1].z);
-}
-export const ROAD_LENGTH = samples.at(-1)!.distance;
-for (const turn of ROAD_TURNS) turn.distance = samples[turn.distance].distance;
-
-/** Local +X is the existing truck/car nose; positive offset is the driver's right. */
-export function roadPoint(distance: number, offset = 0, destination: DriveDestination = 'mall'): RoadPoint {
-  const forward = destination === 'mall' ? 1 : -1;
-  const d = clamp(destination === 'mall' ? distance : ROAD_LENGTH - distance, 0, ROAD_LENGTH);
-  let i = 1;
-  while (i < samples.length - 1 && samples[i].distance < d) i++;
-  const a = samples[i - 1], b = samples[i];
-  const span = b.distance - a.distance, t = (d - a.distance) / span;
-  const tx = (b.x - a.x) / span * forward, tz = (b.z - a.z) / span * forward;
-  return { x: a.x + (b.x - a.x) * t - tz * offset, z: a.z + (b.z - a.z) * t + tx * offset,
-    tx, tz, heading: Math.atan2(-tz, tx) };
+  return push;
 }
 
+/** Free Cartesian driving. Roads are scenery and guidance, never a player rail. */
 export class DrivingModel {
   public readonly destination: DriveDestination;
+  public x: number;
+  public z: number;
+  public heading: number;
   public distance = 0;
-  public offset = DRIVING.lane as number;
   public speed = 0;
   public steer = 0;
-  /** Positive yaw points to the driver's right relative to the road. */
-  public headingError = 0;
   public braking = false;
   public elapsed = 0;
   public paused = false;
@@ -81,134 +48,127 @@ export class DrivingModel {
   public slowdown = 0;
   public cooldown = 0;
   public readonly obstacles: RoadObstacle[];
-  public readonly signals: RoadSignal[];
+  public readonly signals = CITY_SIGNALS;
+  private brakeHold = 0;
+  private readonly enteredSignals = new Set<string>();
+  private readonly hitBuildings = new Set<number>();
   private readonly events: DriveEvent[] = [];
 
   constructor(destination: DriveDestination) {
     this.destination = destination;
+    const spawn = SPAWNS[destination]; this.x = spawn.x; this.z = spawn.z; this.heading = spawn.heading;
     this.obstacles = [
-      ...[106, 112, 118, 173, 179, 185].map((distance, i): RoadObstacle => ({
-        id: `cone-${i}`, kind: 'cone', distance, offset: i < 3 ? 5.4 : -5.4, speed: 0, hit: false,
-      })),
-      ...[62, 113, 165, 218, 275, 330].map((distance, i): RoadObstacle => ({
-        id: `car-${i}`, kind: 'car', distance, offset: -2.7, speed: -7 - i % 3, hit: false,
-      })),
-      { id: 'car-6', kind: 'car', distance: 46, offset: 2.7, speed: 12.8, hit: false },
-      { id: 'car-7', kind: 'car', distance: 96, offset: 2.7, speed: 12.8, hit: false },
-      { id: 'car-8', kind: 'car', distance: 164, offset: 7.8, speed: 0, hit: false },
-      { id: 'car-9', kind: 'car', distance: 126, offset: -8, speed: 0, hit: false },
+      ...[30, 36, 42, 48, 54, 60].map((x, i): RoadObstacle => ({ id: `cone-${i}`, kind: 'cone', x, z: -45.7,
+        heading: 0, speed: 0, travel: 0, route: 0, hit: false })),
+      ...Array.from({ length: 16 }, (_, i): RoadObstacle => {
+        const route = i % 3, speed = (i % 2 ? -1 : 1) * (7 + i % 3), travel = i === 10 ? 642 : i === 4 ? 310 : i === 12 ? 700 : 42 + i * 47;
+        const pose = trafficPose(route, travel, speed < 0);
+        return { id: `car-${i}`, kind: 'car', ...pose, speed, travel, route, hit: false };
+      }),
     ];
-    const turns = this.routeTurns;
-    this.signals = [{ id: 'signal-0', distance: turns[0].distance - 9, offset: 0, crossed: false },
-      { id: 'signal-1', distance: turns.at(-1)!.distance - 9, offset: 9, crossed: false }];
   }
 
-  public get remaining(): number { return Math.max(0, ROAD_LENGTH - this.distance); }
-  public get pose(): RoadPoint { return roadPoint(this.distance, this.offset, this.destination); }
-  public get canPark(): boolean { return !this.parked && this.remaining <= DRIVING.parkingDistance && this.speed <= DRIVING.parkingSpeed; }
-  public signalColor(signal: RoadSignal): 'red' | 'amber' | 'green' {
-    const phase = (this.elapsed + signal.offset) % DRIVING.signalCycle;
-    return phase < DRIVING.redSeconds ? 'red' : phase > DRIVING.signalCycle - 1.2 ? 'amber' : 'green';
+  public get goal(): CityPoint { return DESTINATIONS[this.destination]; }
+  public get remaining(): number { return separation(this, this.goal); }
+  public get pose(): CityPose { return { x: this.x, z: this.z, heading: this.heading, tx: Math.cos(this.heading), tz: -Math.sin(this.heading) }; }
+  public get offRoad(): boolean { return nearestRoad(this).distance > CITY.roadHalfWidth + 3; }
+  public get canPark(): boolean { return !this.parked && this.remaining <= DRIVING.parkingDistance && Math.abs(this.speed) <= DRIVING.parkingSpeed; }
+  private get axis(): CityAxis { return Math.abs(Math.cos(this.heading)) < Math.abs(Math.sin(this.heading)) ? 'ns' : 'ew'; }
+  public signalColor(signal: CitySignal, axis = this.axis): 'red' | 'amber' | 'green' { return signalColor(signal, this.elapsed, axis); }
+  public signalDistance(signal: CitySignal): number {
+    const p = this.pose; return (signal.x - this.x) * p.tx + (signal.z - this.z) * p.tz - 11;
   }
-  public get nextSignal(): RoadSignal | undefined { return this.signals.find(signal => !signal.crossed && signal.distance >= this.distance - 2); }
-  private get routeTurns(): typeof ROAD_TURNS {
-    return this.destination === 'mall' ? ROAD_TURNS : [...ROAD_TURNS].reverse().map(turn => ({
-      distance: ROAD_LENGTH - turn.distance - 19.5, direction: turn.direction === 'left' ? 'right' as const : 'left' as const,
-    }));
+  public get nextSignal(): CitySignal | undefined {
+    const p = this.pose;
+    return this.signals.filter(signal => {
+      const dx = signal.x - this.x, dz = signal.z - this.z, along = dx * p.tx + dz * p.tz;
+      return along > 10 && along < 50 && Math.abs(dx * -p.tz + dz * p.tx) < 6;
+    }).sort((a, b) => this.signalDistance(a) - this.signalDistance(b))[0];
   }
-  public get nextTurn(): { distance: number; direction: 'left' | 'right' } | undefined {
-    return this.routeTurns.find(turn => turn.distance + 19.5 > this.distance);
+  public get navigation(): { angle: number; target: CityPoint; route: CityPoint[]; instruction: string } {
+    const route = cityRoute(this, this.goal, this.heading);
+    const target = this.remaining < 16 ? this.goal : route.slice(1).find(p => separation(p, this) > 9) ?? this.goal;
+    const angle = angleDelta(this.heading - Math.atan2(-(target.z - this.z), target.x - this.x));
+    const instruction = this.canPark ? 'PARK IN THE LIT BAY' : Math.abs(angle) > 2.3 ? 'TURN AROUND' : angle < -0.35 ? 'LEFT AT THE NEXT STREET' : angle > 0.35 ? 'RIGHT AT THE NEXT STREET' : 'STRAIGHT TO THE NEXT TURN';
+    return { angle, target, route, instruction };
   }
   public get objective(): string {
     if (this.canPark) return 'SPACE to park · cargo safe';
-    if (this.remaining < DRIVING.parkingApproach) return 'Loading bay ahead · S / ↓ brake, then SPACE to park';
+    if (this.remaining < DRIVING.parkingApproach) return 'Loading bay nearby · S / ↓ brake, then SPACE to park';
     if (this.slowdown > 0) return 'Easy does it · cargo safe · keep driving';
     const signal = this.nextSignal;
-    if (signal && signal.distance - this.distance < 27 && this.signalColor(signal) !== 'green') return `${this.signalColor(signal).toUpperCase()} LIGHT · S / ↓ brake before the line`;
-    const turn = this.nextTurn;
-    if (turn && turn.distance - this.distance < 28) return `${turn.direction === 'left' ? '← LEFT' : 'RIGHT →'} at the corner · A / D to steer`;
-    return this.elapsed < 3 ? 'W / ↑ gas · A D / ← → steer · S / ↓ brake' : 'Stay in the right lane · follow the turn signs';
+    if (signal && this.signalDistance(signal) < 22 && this.signalColor(signal) !== 'green') return `${this.signalColor(signal).toUpperCase()} LIGHT · S / ↓ brake before the line`;
+    return this.speed < -0.1 ? 'REVERSING · W / ↑ to drive forward' : this.offRoad ? 'Soft verge · follow the arrow back to a street' : 'Take any street · follow the yellow arrow to the bay';
   }
-
   public park(): boolean {
     if (this.paused || !this.canPark) return false;
-    this.parked = true;
-    this.speed = 0;
-    this.events.push({ type: 'parked' });
-    return true;
+    this.parked = true; this.speed = 0; this.events.push({ type: 'parked' }); return true;
   }
-
   public update(seconds: number, input: DriveInput): void {
     if (this.paused || this.parked || !Number.isFinite(seconds)) return;
-    // Substeps prevent missed collisions after a slow draw or a long frame.
     let left = clamp(seconds, 0, 0.25);
-    while (left > 1e-6) {
-      const dt = Math.min(left, 1 / 60);
-      left -= dt;
-      this.step(dt, input);
-    }
+    while (left > 1e-6) { const dt = Math.min(left, 1 / 60); left -= dt; this.step(dt, input); }
   }
-
+  private bump(kind: 'car' | 'cone' | 'building'): void {
+    if (this.cooldown > 0 || Math.abs(this.speed) < 0.5) return;
+    this.collisions++; this.penalty += DRIVING.collisionPoints; this.speed *= 0.4;
+    this.slowdown = DRIVING.slowdownSeconds; this.cooldown = DRIVING.collisionCooldown;
+    this.events.push({ type: 'collision', kind, points: DRIVING.collisionPoints });
+  }
   private step(dt: number, input: DriveInput): void {
-    this.elapsed += dt;
-    this.cooldown = Math.max(0, this.cooldown - dt);
-    this.slowdown = Math.max(0, this.slowdown - dt);
+    this.elapsed += dt; this.cooldown = Math.max(0, this.cooldown - dt); this.slowdown = Math.max(0, this.slowdown - dt);
     const throttle = clamp(input.throttle, 0, 1), brake = clamp(input.brake, 0, 1);
     this.braking = brake > 0.1 && this.speed > 0.4;
-    this.speed = clamp(this.speed + (throttle * DRIVING.acceleration - brake * DRIVING.braking - (throttle ? 0 : DRIVING.coast)) * dt,
-      0, this.slowdown > 0 ? 5.5 : DRIVING.maxSpeed);
-    // A soft approach cap and wide bay let even a held accelerator reach parking.
-    if (this.remaining < DRIVING.parkingApproach) this.speed = Math.min(this.speed, Math.sqrt(this.remaining * 8));
-    const targetSteer = clamp(input.steer, -1, 1);
-    this.steer += (targetSteer - this.steer) * Math.min(1, dt * 9);
-    const oldHeading = this.pose.heading;
-    const oldDistance = this.distance;
-    this.headingError += this.steer * DRIVING.turnRate * Math.min(this.speed / 7, 1) * dt;
-    this.headingError *= Math.exp(-dt * 0.7);
-    this.headingError = clamp(this.headingError, -1.05, 1.05);
-    this.offset += this.speed * Math.sin(this.headingError) * dt;
-    this.distance = Math.min(ROAD_LENGTH, this.distance + this.speed * Math.max(0.55, Math.cos(this.headingError)) * dt);
-    this.headingError += angleDelta(this.pose.heading - oldHeading) * (1 - DRIVING.turnAssist);
-    if (Math.abs(this.offset) > 4.5) {
-      // A shoulder nudges the nose inwards. No solid edges, wedging or reversing.
-      this.headingError += (-Math.sign(this.offset) * 0.18 - this.headingError) * Math.min(1, dt * 5);
-      this.speed = Math.min(this.speed, 10);
+    if (brake > 0.5 && throttle < 0.1) {
+      if (this.speed > 0) this.speed = Math.max(0, this.speed - DRIVING.braking * dt);
+      if (this.speed <= 0) { this.brakeHold += dt; if (this.brakeHold > 0.45) this.speed = Math.max(-DRIVING.reverseSpeed, this.speed - 5 * dt); }
+    } else {
+      this.brakeHold = 0;
+      if (this.speed < 0) this.speed = Math.min(0, this.speed + (throttle ? 18 : 3) * dt);
+      else this.speed = Math.max(0, this.speed + (throttle * DRIVING.acceleration - brake * DRIVING.braking - (throttle ? 0 : DRIVING.coast)) * dt);
     }
-    this.offset = clamp(this.offset, -DRIVING.shoulderLimit, DRIVING.shoulderLimit);
-    if (this.remaining < 16) {
-      this.offset += (DRIVING.lane - this.offset) * Math.min(1, dt * 2.5);
-      this.headingError *= Math.exp(-dt * 4);
+    const cap = this.slowdown > 0 ? 5.5 : this.offRoad ? 7.5 : DRIVING.maxSpeed;
+    this.speed = clamp(this.speed, -DRIVING.reverseSpeed, cap);
+    if (this.speed > 0 && this.remaining < DRIVING.parkingApproach) this.speed = Math.min(this.speed, Math.max(0.7, (this.remaining - 1.5) * 0.85));
+    this.steer += (clamp(input.steer, -1, 1) - this.steer) * Math.min(1, dt * 9);
+    this.heading = angleDelta(this.heading - this.steer * DRIVING.turnRate * clamp(this.speed / 7, -1, 1) * dt);
+    const p = this.pose, before = { x: this.x, z: this.z };
+    this.x += p.tx * this.speed * dt; this.z += p.tz * this.speed * dt;
+    if (this.x < CITY.minX + 3 || this.x > CITY.maxX - 3) { this.x = clamp(this.x, CITY.minX + 3, CITY.maxX - 3); this.heading = angleDelta(Math.PI - this.heading); this.speed *= 0.6; }
+    if (this.z < CITY.minZ + 3 || this.z > CITY.maxZ - 3) { this.z = clamp(this.z, CITY.minZ + 3, CITY.maxZ - 3); this.heading = -this.heading; this.speed *= 0.6; }
+    const solids = [...CITY_BUILDINGS, { x: 0, z: 49, width: 34, depth: 10 }, { x: 120, z: -249, width: 34, depth: 10 }];
+    for (const [index, building] of solids.entries()) {
+      const push = penetration({ ...this, length: 6, width: 2.4 }, { ...building, heading: 0, length: building.width, width: building.depth });
+      if (!push) continue;
+      if (!this.hitBuildings.has(index)) { this.bump('building'); this.hitBuildings.add(index); }
+      this.x += push.x; this.z += push.z;
     }
-    if (this.remaining < 0.08) { this.distance = ROAD_LENGTH; this.speed = 0; }
+    this.distance += separation(before, this);
     for (const signal of this.signals) {
-      if (signal.crossed || this.distance < signal.distance) continue;
-      signal.crossed = true;
-      if (oldDistance < signal.distance && this.signalColor(signal) === 'red') {
-        this.redLights++; this.penalty += DRIVING.collisionPoints;
-        this.events.push({ type: 'red-light', points: DRIVING.collisionPoints });
-      }
+      const inside = Math.abs(this.x - signal.x) < 7 && Math.abs(this.z - signal.z) < 7;
+      if (inside && !this.enteredSignals.has(signal.id)) {
+        this.enteredSignals.add(signal.id);
+        if (this.speed > 0.5 && this.signalColor(signal) === 'red') {
+          this.redLights++; this.penalty += DRIVING.collisionPoints; this.events.push({ type: 'red-light', points: DRIVING.collisionPoints });
+        }
+      } else if (separation(this, signal) > 24) this.enteredSignals.delete(signal.id);
     }
     for (const obstacle of this.obstacles) {
-      let next = obstacle.distance + obstacle.speed * dt;
-      if (obstacle.kind === 'car') for (const signal of this.signals) {
-        if (this.signalColor(signal) === 'green') continue;
-        const line = signal.distance + (obstacle.speed < 0 ? 8 : -3);
-        if (obstacle.speed < 0 && obstacle.distance >= line) next = Math.max(line, next);
-        if (obstacle.speed > 0 && obstacle.distance <= line) next = Math.min(line, next);
+      if (obstacle.kind === 'car') {
+        const old = trafficPose(obstacle.route, obstacle.travel, obstacle.speed < 0);
+        let move = Math.abs(obstacle.speed) * dt;
+        for (const signal of this.signals) {
+          if (signalColor(signal, this.elapsed, Math.abs(old.tx) < Math.abs(old.tz) ? 'ns' : 'ew') === 'green') continue;
+          const dx = signal.x - old.x, dz = signal.z - old.z, along = dx * old.tx + dz * old.tz;
+          if (Math.abs(dx * -old.tz + dz * old.tx) < 6 && along >= 11 && along - move < 11) move = Math.max(0, along - 11);
+        }
+        obstacle.travel += Math.sign(obstacle.speed) * move;
+        Object.assign(obstacle, trafficPose(obstacle.route, obstacle.travel, obstacle.speed < 0));
       }
-      obstacle.distance = next;
-      const reach = obstacle.kind === 'car' ? 3.8 : 2.5;
-      const width = obstacle.kind === 'car' ? 1.9 : 1.3;
-      if (obstacle.hit || this.cooldown > 0 || this.speed < 0.5 || Math.abs(this.distance - obstacle.distance) > reach || Math.abs(this.offset - obstacle.offset) > width) continue;
-      obstacle.hit = true;
-      this.collisions++;
-      this.penalty += DRIVING.collisionPoints;
-      this.speed *= 0.45;
-      this.slowdown = DRIVING.slowdownSeconds;
-      this.cooldown = DRIVING.collisionCooldown;
-      this.events.push({ type: 'collision', kind: obstacle.kind, points: DRIVING.collisionPoints });
+      if (obstacle.hit || this.cooldown > 0 || Math.abs(this.speed) < 0.5) continue;
+      const contact = penetration({ ...this, length: 6, width: 2.4 }, { ...obstacle, length: obstacle.kind === 'car' ? 4.2 : 0.5, width: obstacle.kind === 'car' ? 1.8 : 0.5 });
+      if (contact) { obstacle.hit = true; this.bump(obstacle.kind); }
     }
   }
-
   public drainEvents(): DriveEvent[] { return this.events.splice(0); }
 }

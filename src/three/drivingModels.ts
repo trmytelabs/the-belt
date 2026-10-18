@@ -4,7 +4,7 @@ import { mergeStatic } from './merge';
 
 export const DRIVING_ASSETS = {
   shop: 'city/building-a', apartments: 'city/building-d', offices: 'city/building-g',
-  tower: 'city/building-skyscraper-a', lamp: 'roads/light-curved',
+  tower: 'city/building-skyscraper-a', lowShop: 'city/building-e', lamp: 'roads/light-curved',
   signal: 'roads/traffic-light', truck: 'cars/delivery',
 } as const;
 type Asset = keyof typeof DRIVING_ASSETS;

@@ -1,10 +1,16 @@
 import assert from 'node:assert/strict';
-import { ROAD_LENGTH, roadPoint } from '../src/three/DrivingModel.ts';
-import { drivingInput } from './driving-input.mjs';
+import { makeDriver } from './driving-input.mjs';
 
-/** Read the road, steer with keys and stop at red signals. Never moves game state. */
-export async function driveToBay(page) {
-  const keys = new Set(), used = new Set();
+const readDrive = page => page.evaluate(() => {
+  const m = window.fixtureApp.driving, s = m.nextSignal;
+  return { x: m.x, z: m.z, heading: m.heading, speed: m.speed, goal: m.goal, canPark: m.canPark,
+    signal: s ? { color: m.signalColor(s), remaining: m.signalDistance(s) } : null };
+});
+
+/** Read connected streets, use held keys and stop at red lights. Never moves game state. */
+export async function driveToBay(page, via) {
+  const keys = new Set(), used = new Set(), initial = await readDrive(page);
+  const driver = makeDriver(initial, initial.goal, via);
   const set = async (key, held) => {
     if (held === keys.has(key)) return;
     if (held) { await page.keyboard.down(key); keys.add(key); used.add(key); }
@@ -13,29 +19,57 @@ export async function driveToBay(page) {
   const deadline = Date.now() + 150_000;
   try {
     while (Date.now() < deadline) {
-      const d = await page.evaluate(() => {
-        const m = window.fixtureApp.driving, s = m.nextSignal;
-        return { destination: m.destination, distance: m.distance, offset: m.offset, speed: m.speed,
-          headingError: m.headingError, canPark: m.canPark, signal: s ? { color: m.signalColor(s), remaining: s.distance - m.distance } : null };
-      });
+      const d = await readDrive(page);
       if (d.canPark) return used;
-      const input = drivingInput(d, roadPoint(Math.min(ROAD_LENGTH, d.distance + 2), 0, d.destination).heading, roadPoint(d.distance, 0, d.destination).heading);
-      await set('ArrowLeft', input.steer < -0.07);
-      await set('ArrowRight', input.steer > 0.07);
+      const input = driver(d);
+      await set('ArrowLeft', input.steer < -0.08);
+      await set('ArrowRight', input.steer > 0.08);
       await set('ArrowUp', input.throttle > 0);
       await set('ArrowDown', input.brake > 0);
       await page.waitForTimeout(55);
     }
-    throw new Error('The real-input driver did not reach the bay');
+    throw new Error(`The real-input driver did not reach the bay: ${JSON.stringify(await readDrive(page))}`);
   } finally { for (const key of keys) await page.keyboard.up(key); }
 }
 
-/** Drive the whole road with actual held keys, then explicitly park. */
+/** Real simultaneous touch contacts: keep GAS held, steer, and add/remove BRAKE. */
+export async function touchDriveToBay(page, cdp) {
+  const initial = await readDrive(page), driver = makeDriver(initial, initial.goal);
+  const gas = await page.getByRole('button', { name: 'Accelerate truck', exact: true }).boundingBox();
+  const brake = await page.getByRole('button', { name: 'Brake truck', exact: true }).boundingBox();
+  const stick = await page.getByLabel('Steer truck', { exact: true }).boundingBox();
+  const gasPoint = { x: gas.x + gas.width / 2, y: gas.y + gas.height / 2, id: 11 };
+  const brakePoint = { x: brake.x + brake.width / 2, y: brake.y + brake.height / 2, id: 13 };
+  const steerPoint = { x: stick.x + stick.width / 2, y: stick.y + stick.height / 2, id: 12 };
+  let braking = false;
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [gasPoint, steerPoint] });
+  const deadline = Date.now() + 150_000;
+  try {
+    while (Date.now() < deadline) {
+      const d = await readDrive(page);
+      if (d.canPark) return;
+      // With both pedals held, net deceleration is gentler than BRAKE alone.
+      if (d.signal) d.signal.remaining -= Math.max(0, d.speed * d.speed * (1 / 22 - 1 / 32)) + 0.8;
+      const input = driver(d), stop = input.throttle === 0;
+      steerPoint.x = stick.x + stick.width / 2 + input.steer * (stick.width / 2 - 16);
+      if (stop !== braking) {
+        await cdp.send('Input.dispatchTouchEvent', { type: stop ? 'touchStart' : 'touchEnd',
+          touchPoints: stop ? [gasPoint, steerPoint, brakePoint] : [brakePoint] });
+        braking = stop;
+      }
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [gasPoint, steerPoint, ...(braking ? [brakePoint] : [])] });
+      await page.waitForTimeout(55);
+    }
+    throw new Error(`The touch driver did not reach the bay: ${JSON.stringify(await readDrive(page))}`);
+  } finally { await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); }
+}
+
+/** Drive a direct street route with actual keys, then explicitly park. */
 export async function driveJourney(page, destination) {
   await page.waitForFunction(() => window.fixtureApp.state === 'driving', null, { polling: 10, timeout: 90_000 });
   assert.equal(await page.evaluate(() => window.fixtureApp.driving.destination), destination);
   const keys = await driveToBay(page);
-  assert.ok(keys.has('ArrowLeft') && keys.has('ArrowRight') && keys.has('ArrowDown'), 'both turns and red-light braking used real input');
+  assert.ok((keys.has('ArrowLeft') || keys.has('ArrowRight')) && keys.has('ArrowDown'), 'real steering and braking reach the destination');
   const elapsed = await page.evaluate(() => window.fixtureApp.driving.elapsed);
   assert.ok(elapsed >= 20 && elapsed <= 30, `drive to ${destination}: ${elapsed.toFixed(2)} simulation seconds`);
   await page.keyboard.press('Space');

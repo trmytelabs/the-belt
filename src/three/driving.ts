@@ -1,24 +1,28 @@
 import * as THREE from 'three';
-import { DrivingModel, ROAD_LENGTH, ROAD_TURNS, roadPoint, type DriveDestination } from './DrivingModel';
+import { DrivingModel, type DriveDestination } from './DrivingModel';
+import { CITY, CITY_BUILDINGS, CITY_SIGNALS, DESTINATIONS, signalColor, type CityAxis, type CityPoint, type CitySignal } from './drivingCity';
 import { createTruck } from './world';
 import { createCar } from './story';
 import { standard, textPlane } from './space';
 import { mergeStatic } from './merge';
 import { disposeObject3D } from './resources';
 import { DrivingModels } from './drivingModels';
+import { DrivingNavigation } from './drivingNavigation';
 
-/** One reusable stretch of night road, travelled in opposite directions. */
+/** A reusable city with real connected intersections and free player movement. */
 export class DrivingView {
   public readonly scene = new THREE.Scene();
   public readonly camera = new THREE.PerspectiveCamera(54, 1, 0.1, 180);
   public readonly truck = createTruck('5 TON', 0x5a4632, 0x4a3a2a, 'right');
   public readonly ready: Promise<void>;
   public buildingCount = 0;
+  public readonly navigation: DrivingNavigation;
   private readonly models: DrivingModels;
-  private readonly signalProps: { root: THREE.Group; bulbs: THREE.Mesh<THREE.SphereGeometry, THREE.MeshStandardMaterial>[] }[] = [];
+  private readonly signalProps: { signal: CitySignal; axis: CityAxis; root: THREE.Group; bulbs: THREE.Mesh<THREE.SphereGeometry, THREE.MeshStandardMaterial>[] }[] = [];
   private readonly traffic = new Map<string, THREE.Group>();
   private readonly cones = new Map<string, THREE.Group>();
   private readonly tailMaterial = new THREE.MeshStandardMaterial({ color: 0xa52216, emissive: 0xff3422, emissiveIntensity: 0.6 });
+  private readonly goalBeacons = new Map<DriveDestination, THREE.Group>();
   private readonly look = new THREE.Vector3();
   private readonly headlight: THREE.SpotLight;
   private readonly pool: THREE.PointLight;
@@ -27,6 +31,8 @@ export class DrivingView {
 
   constructor(quality: 'high' | 'low') {
     const scene = this.scene;
+    this.camera.userData.keep = true; scene.add(this.camera);
+    this.navigation = new DrivingNavigation(this.camera);
     this.models = new DrivingModels(scene);
     const loads: Promise<boolean>[] = [];
     scene.background = new THREE.Color(0x101c2b);
@@ -35,91 +41,90 @@ export class DrivingView {
     const moon = new THREE.DirectionalLight(0xc7d9ff, 1.6);
     moon.position.set(-30, 50, -20);
     scene.add(moon);
-    const ground = new THREE.Mesh(new THREE.PlaneGeometry(300, 420), standard(0x24352f, 1));
-    ground.rotation.x = -Math.PI / 2; ground.position.set(25, -0.04, -100);
-    scene.add(ground);
-    this.ribbon(-6.8, 6.8, standard(0x5a5b53, 1), -0.01);
-    this.ribbon(-9, -6.8, standard(0x747674, 0.95), -0.015);
-    this.ribbon(6.8, 9, standard(0x747674, 0.95), -0.015);
-    this.ribbon(-6, 6, standard(0x343e47, 0.95), 0);
-    for (const side of [-1, 1]) this.ribbon(side * 5.8 - 0.06, side * 5.8 + 0.06, standard(0xd6d9ce, 0.8), 0.015);
-    const yellow = standard(0xe9bd64, 0.8);
-    for (let s = 8; s < ROAD_LENGTH - 8; s += 10) this.ribbon(-0.06, 0.06, yellow, 0.02, s, s + 4);
-
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(CITY.groundWidth, CITY.groundDepth), standard(0x24352f, 1));
+    ground.rotation.x = -Math.PI / 2; ground.position.set(30, -0.04, -100); scene.add(ground);
+    const asphalt = standard(0x343e47, 0.95), sidewalk = standard(0x737974, 1), stripe = standard(0xe9e5ce, 0.9), yellow = standard(0xe9bd64, 0.9);
+    for (const x of CITY.streetsX) {
+      this.pavement(x, -100, 18, CITY.maxZ - CITY.minZ, sidewalk, -0.01);
+      this.pavement(x, -100, 14, CITY.maxZ - CITY.minZ, asphalt, 0.005);
+      for (let z = CITY.minZ + 3; z < CITY.maxZ; z += 8) {
+        if (CITY.streetsZ.some(crossing => Math.abs(z - crossing) < 11)) continue;
+        this.pavement(x, z, 0.12, 3.5, yellow, 0.025);
+        for (const side of [-1, 1]) this.pavement(x + side * 6.7, z, 0.1, 7.8, stripe, 0.025);
+      }
+    }
+    for (const z of CITY.streetsZ) {
+      this.pavement(30, z, CITY.maxX - CITY.minX, 18, sidewalk, -0.01);
+      this.pavement(30, z, CITY.maxX - CITY.minX, 14, asphalt, 0.008);
+      for (let x = CITY.minX + 3; x < CITY.maxX; x += 8) {
+        if (CITY.streetsX.some(crossing => Math.abs(x - crossing) < 11)) continue;
+        this.pavement(x, z, 3.5, 0.12, yellow, 0.028);
+        for (const side of [-1, 1]) this.pavement(x, z + side * 6.7, 7.8, 0.1, stripe, 0.028);
+      }
+    }
     const metal = standard(0x64757c, 0.55, 0.4);
     const lampMaterial = new THREE.MeshStandardMaterial({ color: 0xffd4a0, emissive: 0xffc17b, emissiveIntensity: 2.4 });
-    for (let s = 8; s <= ROAD_LENGTH; s += 18) {
-      const side = (Math.floor(s / 18) % 2 ? -1 : 1);
-      const p = roadPoint(s, side * 8);
+    const lamp = (x: number, z: number, heading: number): void => {
       const slot = new THREE.Group(); slot.name = 'streetlight'; slot.userData.keep = true;
-      slot.position.set(p.x, 0, p.z); slot.rotation.y = p.heading + (side < 0 ? Math.PI : 0);
-      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.12, 7, 7), metal);
-      pole.position.set(0, 3.5, 0);
-      const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.16, 0.6), lampMaterial);
-      lamp.position.set(0, 7, 0); slot.add(pole, lamp); scene.add(slot);
-      loads.push(this.models.place(slot, 'lamp', { y: 7.5 }, [pole, lamp]));
-      const lens = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.08, 0.45), lampMaterial);
-      lens.position.set(0, 7.32, -1.03); slot.add(lens);
-      // Small emissive pools keep software graphics readable without many lights.
-      const pool = new THREE.Mesh(new THREE.CircleGeometry(7, 24), new THREE.MeshBasicMaterial({ color: 0xffce8a, transparent: true, opacity: 0.035, depthWrite: false }));
-      pool.rotation.x = -Math.PI / 2; pool.position.set(p.x - side * 4, 0.025, p.z);
-      scene.add(pool);
+      slot.position.set(x, 0, z); slot.rotation.y = heading;
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.12, 7, 7), metal); pole.position.y = 3.5; slot.add(pole); scene.add(slot);
+      loads.push(this.models.place(slot, 'lamp', { y: 7.5 }, [pole]));
+      const lens = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.08, 0.45), lampMaterial); lens.position.set(0, 7.32, -1.03); slot.add(lens);
+      const pool = new THREE.Mesh(new THREE.CircleGeometry(7, 18), new THREE.MeshBasicMaterial({ color: 0xffce8a, transparent: true, opacity: 0.035, depthWrite: false }));
+      pool.rotation.x = -Math.PI / 2; pool.position.set(x - Math.sin(heading) * 3, 0.03, z - Math.cos(heading) * 3); scene.add(pool);
+    };
+    for (const x of CITY.streetsX) for (let z = -235; z < 45; z += 30) {
+      if (CITY.streetsZ.some(row => Math.abs(z - row) < 12)) continue;
+      const side = Math.floor(z / 30) % 2 ? -1 : 1;
+      lamp(x + side * 8.5, z, side * Math.PI / 2);
     }
-    const centreline = Array.from({ length: Math.ceil(ROAD_LENGTH) }, (_, s) => roadPoint(s));
-    for (const x of [-48, -24, 25, 74, 98]) for (let z = 8; z > -225; z -= 24) {
-      if (centreline.some(p => Math.hypot(p.x - x, p.z - z) < 17)) continue;
-      const index = this.buildingCount++, height = [12, 14, 18, 25][index % 4];
-      const slot = new THREE.Group(); slot.name = 'city-building'; slot.userData.keep = true;
-      slot.position.set(x, 0, z); slot.rotation.y = index % 4 * Math.PI / 2;
-      const fallback = new THREE.Mesh(new THREE.BoxGeometry(15, height, 15), standard(index % 2 ? 0x47515c : 0x5e605e, 0.9));
+    for (const z of CITY.streetsZ) for (let x = -75; x < 145; x += 30) {
+      if (CITY.streetsX.some(col => Math.abs(x - col) < 12)) continue;
+      const side = Math.floor(x / 30) % 2 ? -1 : 1;
+      lamp(x, z + side * 8.5, side > 0 ? 0 : Math.PI);
+    }
+    for (const building of CITY_BUILDINGS) {
+      const { x, z, width, depth, height, variant } = building, index = this.buildingCount++;
+      const slot = new THREE.Group(); slot.name = 'city-building'; slot.userData.keep = true; slot.position.set(x, 0, z);
+      const fallback = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), standard(index % 2 ? 0x47515c : 0x5e605e, 0.9));
       fallback.position.y = height / 2; slot.add(fallback); scene.add(slot);
-      const fallbackParts: THREE.Object3D[] = [fallback];
-      loads.push(this.models.place(slot, (['shop', 'apartments', 'offices', 'tower'] as const)[index % 4], { x: 15, y: height, z: 15 }, fallbackParts));
-      for (const side of [-1, 1]) for (let row = 0; row < Math.min(4, height / 4); row++) {
-        const windows = new THREE.Mesh(new THREE.PlaneGeometry(10, 0.55), new THREE.MeshStandardMaterial({ color: 0xf6ca84, emissive: 0xffca85, emissiveIntensity: 0.6 }));
-        windows.position.set(0, 2.8 + row * 3, side * 7.52); windows.rotation.y = side < 0 ? Math.PI : 0; slot.add(windows); fallbackParts.push(windows);
+      loads.push(this.models.place(slot, (['shop', 'apartments', 'offices', 'tower', 'lowShop'] as const)[variant], { x: width, y: height, z: depth }, [fallback]));
+      const landmark = ({ 0: 'NIGHT COFFEE', 12: 'CORNER SHOP', 32: 'MARKET HALL', 44: 'CAR WASH' } as Record<number, string>)[index];
+      if (landmark) {
+        const sign = textPlane([landmark], 10, 1.1, { width: 520, height: 64, background: '#263d40', color: '#f3d292' });
+        sign.position.set(0, 3, depth / 2 + 0.025); slot.add(sign);
+      }
+      if (variant === 1) {
+        const sign = textPlane(['APARTMENTS'], Math.min(11, width - 2), 1.2, { width: 512, height: 64, background: '#344950', color: '#e7dbb7' });
+        sign.position.set(0, 3.3, depth / 2 + 0.03); slot.add(sign);
       }
     }
-    for (const turn of ROAD_TURNS) {
-      const p = roadPoint(turn.distance + 9.7), crossing = new THREE.Group();
-      crossing.position.set(p.x, 0, p.z); crossing.rotation.y = p.heading - Math.PI / 2;
-      const street = new THREE.Mesh(new THREE.BoxGeometry(45, 0.025, 11), standard(0x343e47, 0.95));
-      street.position.y = -0.025; crossing.add(street); scene.add(crossing);
-    }
-    this.terminal(0, 'UPS', 'DEPOT 07', 0x443b32);
-    this.terminal(ROAD_LENGTH, 'MALLWOOD CENTRE', 'LOADING DOCK', 0x4d5354);
+    this.terminal({ x: 0, z: 20 }, 'UPS', 'DEPOT 07', 0x443b32, 1);
+    this.terminal({ x: 120, z: -220 }, 'SOUTHGATE MALL', 'LOADING DOCK', 0x4d5354, -1);
     for (const destination of ['mall', 'ups'] as const) {
-      this.sign(38, destination, destination === 'mall' ? ['MALLWOOD →', '111 STREET'] : ['UPS DEPOT →', '111 STREET']);
-      this.sign(ROAD_LENGTH - 36, destination, ['LOADING BAY', 'SLOW · PARK AHEAD']);
-      for (const turn of ROAD_TURNS) {
-        const distance = destination === 'mall' ? turn.distance : ROAD_LENGTH - turn.distance - 19.5;
-        const direction = destination === 'mall' ? turn.direction : turn.direction === 'left' ? 'right' : 'left';
-        this.sign(Math.max(8, distance - 18), destination, [direction === 'left' ? '← TURN LEFT' : 'TURN RIGHT →', destination === 'mall' ? 'MALLWOOD' : 'UPS DEPOT']);
-      }
-      const p = roadPoint(ROAD_LENGTH - 3, 2.6, destination);
-      const bay = new THREE.Mesh(new THREE.PlaneGeometry(6, 11), new THREE.MeshStandardMaterial({ color: 0x829b6d, emissive: 0x496d4f, emissiveIntensity: 0.35, roughness: 0.9 }));
-      bay.rotation.x = -Math.PI / 2; bay.rotation.z = p.heading - Math.PI / 2;
-      bay.position.set(p.x, 0.03, p.z);
-      scene.add(bay);
+      const p = DESTINATIONS[destination];
+      this.pavement(p.x, p.z, 7, 12, new THREE.MeshStandardMaterial({ color: 0x829b6d, emissive: 0x496d4f, emissiveIntensity: 0.35 }), 0.035);
       const label = textPlane(['P', destination === 'mall' ? 'MALL' : 'UPS'], 3.3, 3, { width: 180, height: 160, background: '#526c51', color: '#f3ebc7' });
-      label.rotation.x = -Math.PI / 2; label.rotation.z = p.heading - Math.PI / 2;
-      label.position.set(p.x, 0.04, p.z);
-      scene.add(label);
+      label.rotation.x = -Math.PI / 2; label.position.set(p.x, 0.045, p.z); scene.add(label);
+      const beacon = new THREE.Group(); beacon.userData.keep = true; beacon.position.set(p.x, 0, p.z);
+      const ring = new THREE.Mesh(new THREE.RingGeometry(5.5, 5.9, 40), new THREE.MeshBasicMaterial({ color: 0xffd77b, transparent: true, opacity: 0.85, side: THREE.DoubleSide }));
+      ring.rotation.x = -Math.PI / 2; ring.position.y = 0.055; beacon.add(ring);
+      const glow = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 10, 10), new THREE.MeshBasicMaterial({ color: 0xffdc82, transparent: true, opacity: 0.18, depthWrite: false }));
+      glow.position.y = 5; beacon.add(glow); scene.add(beacon); this.goalBeacons.set(destination, beacon);
     }
-
-    for (let i = 0; i < 2; i++) {
+    for (const signal of CITY_SIGNALS) for (const heading of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
+      const axis: CityAxis = Math.abs(Math.cos(heading)) < 0.5 ? 'ns' : 'ew', tx = Math.cos(heading), tz = -Math.sin(heading);
       const root = new THREE.Group(); root.name = 'traffic-signal'; root.userData.keep = true;
+      root.position.set(signal.x - tx * 7 - tz * 8.4, 0, signal.z - tz * 7 + tx * 8.4); root.rotation.y = heading - Math.PI / 2;
       const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 4.6, 8), metal); pole.position.y = 2.3; root.add(pole);
       loads.push(this.models.place(root, 'signal', { y: 5.2 }, [pole]));
-      const housing = new THREE.Mesh(new THREE.BoxGeometry(0.72, 1.8, 0.42), standard(0x172329, 0.8));
-      housing.position.set(-0.34, 4.45, 0.22); root.add(housing);
+      const housing = new THREE.Mesh(new THREE.BoxGeometry(0.72, 1.8, 0.42), standard(0x172329, 0.8)); housing.position.set(-0.34, 4.45, 0.22); root.add(housing);
       const bulbs = [0xff3326, 0xffbd36, 0x55f295].map((color, n) => {
         const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.05 }));
-        bulb.position.set(-0.34, 4.98 - n * 0.53, 0.46); root.add(bulb); return bulb;
+        bulb.userData.keep = true; bulb.position.set(-0.34, 4.98 - n * 0.53, 0.46); root.add(bulb); return bulb;
       });
-      const line = new THREE.Mesh(new THREE.PlaneGeometry(5.5, 0.4), standard(0xe9e8d8, 0.9));
-      line.rotation.x = -Math.PI / 2; line.position.set(-4.9, 0.045, 3); root.add(line);
-      this.signalProps.push({ root, bulbs }); scene.add(root);
+      const line = new THREE.Mesh(new THREE.PlaneGeometry(5.5, 0.4), stripe); line.rotation.x = -Math.PI / 2; line.position.set(-5.8, 0.045, 4); root.add(line);
+      this.signalProps.push({ signal, axis, root, bulbs }); scene.add(root);
     }
 
     // Close the existing five-ton's rear door for road travel; mall cargo remains model-owned.
@@ -157,26 +162,17 @@ export class DrivingView {
     mergeStatic(scene, object => objects.has(object) || object.userData.keep === true || (object as THREE.Light).isLight === true);
     this.ready = Promise.all(loads).then(() => {
       if (this.disposed) return;
-      for (const slot of scene.children) if (['city-building', 'streetlight'].includes(slot.name)) slot.userData.keep = false;
+      for (const slot of scene.children) if (['city-building', 'streetlight', 'traffic-signal'].includes(slot.name)) slot.userData.keep = false;
       mergeStatic(scene, object => objects.has(object) || object.userData.keep === true || (object as THREE.Light).isLight === true);
     });
   }
 
-  private ribbon(left: number, right: number, material: THREE.Material, y: number, start = 0, end = ROAD_LENGTH): void {
-    const vertices: number[] = [];
-    for (let s = start; s < end; s += 2) {
-      const a = roadPoint(s, left), b = roadPoint(s, right), c = roadPoint(Math.min(s + 2, end), left), d = roadPoint(Math.min(s + 2, end), right);
-      for (const p of [a, b, c, b, d, c]) vertices.push(p.x, y, p.z);
-    }
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-    geometry.computeVertexNormals();
-    const mesh = new THREE.Mesh(geometry, material); mesh.receiveShadow = true;
-    this.scene.add(mesh);
+  private pavement(x: number, z: number, width: number, depth: number, material: THREE.Material, height: number): void {
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(width, depth), material);
+    mesh.rotation.x = -Math.PI / 2; mesh.position.set(x, height, z); this.scene.add(mesh);
   }
 
-  private terminal(s: number, name: string, subtitle: string, color: number): void {
-    const p = roadPoint(s), end = s > 0 ? -1 : 1;
+  private terminal(p: CityPoint, name: string, subtitle: string, color: number, end: 1 | -1): void {
     const apron = new THREE.Mesh(new THREE.PlaneGeometry(42, 26), standard(0x454d50, 0.95));
     apron.rotation.x = -Math.PI / 2; apron.position.set(p.x, -0.02, p.z + end * 12);
     this.scene.add(apron);
@@ -184,20 +180,13 @@ export class DrivingView {
     building.position.set(p.x, 4, p.z + end * 29);
     const sign = textPlane([name, subtitle], 17, 3, { width: 720, height: 128, background: '#26333b', color: '#f3d292' });
     sign.position.set(p.x, 5.5, building.position.z - end * 5.01);
-    sign.rotation.y = s > 0 ? 0 : Math.PI;
+    sign.rotation.y = end < 0 ? 0 : Math.PI;
     this.scene.add(building, sign);
     for (const x of [-11, -5, 5, 11]) {
       const door = new THREE.Mesh(new THREE.BoxGeometry(4, 3.4, 0.1), standard(0x16242b, 0.8));
       door.position.set(p.x + x, 1.7, sign.position.z);
       this.scene.add(door);
     }
-  }
-
-  private sign(s: number, destination: DriveDestination, copy: string[]): void {
-    const p = roadPoint(s, 8, destination);
-    const sign = textPlane(copy, 5.4, 1.8, { width: 360, height: 120, background: '#234a45', color: '#f1e9c9', border: '#c2caaa' });
-    sign.position.set(p.x, 3.7, p.z); sign.rotation.y = p.heading - Math.PI / 2;
-    this.scene.add(sign);
   }
 
   public begin(model: DrivingModel): void {
@@ -220,40 +209,37 @@ export class DrivingView {
         this.cones.set(obstacle.id, cone); this.scene.add(cone);
       }
     }
+    for (const [destination, beacon] of this.goalBeacons) beacon.visible = destination === model.destination;
     this.snapped = false;
     this.update(model, 0);
   }
 
-  public resize(aspect: number): void {
+  public resize(aspect: number, height = window.innerHeight): void {
     this.camera.aspect = aspect; this.camera.fov = aspect < 1 ? 68 : 54;
     this.camera.updateProjectionMatrix(); this.snapped = false;
+    this.navigation.resize(this.camera, height);
   }
 
   public update(model: DrivingModel, dt: number): void {
     const p = model.pose;
-    this.truck.position.set(p.x, 0, p.z);
-    this.truck.rotation.y = p.heading - model.headingError;
+    this.truck.position.set(p.x, 0, p.z); this.truck.rotation.y = p.heading;
     this.tailMaterial.emissiveIntensity = model.braking || model.canPark ? 3 : 0.6;
-    this.pool.position.set(p.x, 7, p.z - 3);
-    for (const [index, signal] of model.signals.entries()) {
-      const { root, bulbs } = this.signalProps[index], at = roadPoint(signal.distance + 3, 7.5, model.destination);
-      root.position.set(at.x, 0, at.z); root.rotation.y = at.heading - Math.PI / 2;
-      const color = model.signalColor(signal);
+    this.pool.position.set(p.x, 7, p.z);
+    for (const { signal, axis, bulbs } of this.signalProps) {
+      const color = signalColor(signal, model.elapsed, axis);
       bulbs.forEach((bulb, i) => { bulb.material.emissiveIntensity = i === ['red', 'amber', 'green'].indexOf(color) ? 4 : 0.04; });
     }
     for (const obstacle of model.obstacles) {
       const object = this.traffic.get(obstacle.id) ?? this.cones.get(obstacle.id)!;
-      const at = roadPoint(obstacle.distance, obstacle.offset, model.destination);
-      object.visible = obstacle.distance >= 0 && obstacle.distance <= ROAD_LENGTH;
-      object.position.set(at.x, obstacle.kind === 'cone' && obstacle.hit ? 0.15 : 0, at.z);
-      object.rotation.set(0, at.heading + (obstacle.speed < 0 ? Math.PI : 0), obstacle.kind === 'cone' && obstacle.hit ? Math.PI / 2 : 0);
+      object.visible = true; object.position.set(obstacle.x, obstacle.kind === 'cone' && obstacle.hit ? 0.15 : 0, obstacle.z);
+      object.rotation.set(0, obstacle.heading, obstacle.kind === 'cone' && obstacle.hit ? Math.PI / 2 : 0);
     }
-    const chase = new THREE.Vector3(p.x - p.tx * 13, 8.5, p.z - p.tz * 13);
-    const ahead = roadPoint(Math.min(ROAD_LENGTH, model.distance + 12), model.offset * 0.5, model.destination);
-    const target = new THREE.Vector3(ahead.x, 1.3, ahead.z);
-    const follow = !this.snapped ? 1 : 1 - Math.exp(-dt * 7);
+    const chase = new THREE.Vector3(p.x - p.tx * 15, 9.5, p.z - p.tz * 15);
+    const target = new THREE.Vector3(p.x + p.tx * 12, 1.3, p.z + p.tz * 12);
+    const follow = !this.snapped ? 1 : 1 - Math.exp(-dt * 5);
     this.camera.position.lerp(chase, follow); this.look.lerp(target, follow);
     this.camera.lookAt(this.look); this.snapped = true;
+    this.navigation.update(model, this.camera);
   }
 
   public dispose(): void { this.disposed = true; this.models.dispose(); disposeObject3D(this.scene); this.traffic.clear(); this.cones.clear(); }

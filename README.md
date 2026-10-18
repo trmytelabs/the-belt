@@ -115,10 +115,12 @@ SORT!** countdown starts the shift.
   of 6–10 cartons; the cart carries two stops per trip. Taking freight highlights
   an available bundle for the current run and skips empty truck slots. Delivering
   a stop removes that stop's bundle while the other one stays on the cart.
-- In 3D, drive the five-ton from UPS to the mall and back, about 26 seconds each
+- In 3D, drive the five-ton from UPS to Southgate Mall and back, about 25 seconds each
   way. W / up accelerates, A/D / left/right steers and S / down brakes. Touch has
-  a steering stick plus held GAS and BRAKE pedals. Follow left/right turn signs
-  through the modelled city and brake at working traffic lights. Stop in the lit loading bay
+  a steering stick plus held GAS and BRAKE pedals. Hold BRAKE after stopping to reverse.
+  Explore a city twice the previous size, with 20 connected intersections, small
+  shops, apartments, tall towers and more traffic. A solid 3D yellow arrow guides
+  you through whichever streets you choose. Brake at working traffic lights and stop in the lit loading bay
   and press Space / PARK to continue. Bumps cost five points and briefly slow the
   truck; crossing a red light costs five points, and cargo stays safe.
   Escape / PAUSE and M / MUTE work on the road too. Try just the driving at

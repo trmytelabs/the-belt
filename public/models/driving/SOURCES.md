@@ -7,7 +7,7 @@ authored in code. Each kit's original licence is included beside its models.
 
 | Kit | Official source | Selected models |
 | --- | --- | --- |
-| City Kit Commercial 2.1 | [Kenney](https://kenney.nl/assets/city-kit-commercial) | `city/building-a.glb`, `building-d.glb`, `building-g.glb`, `building-skyscraper-a.glb` |
+| City Kit Commercial 2.1 | [Kenney](https://kenney.nl/assets/city-kit-commercial) | `city/building-a.glb`, `building-d.glb`, `building-e.glb`, `building-g.glb`, `building-skyscraper-a.glb` |
 | City Kit Roads 2.2 | [Kenney](https://kenney.nl/assets/city-kit-roads) | `roads/light-curved.glb`, `traffic-light.glb` |
 | Car Kit 3.1 | [Kenney](https://kenney.nl/assets/car-kit) | `cars/delivery.glb` (closed box truck) |
 

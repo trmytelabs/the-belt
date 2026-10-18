@@ -408,9 +408,9 @@ export class Belt3d {
       this.overlay.setMode('chapter');
       this.overlay.storyTitle('TRY THE FIVE-TON', 'DRIVING PRACTICE', '~25 SECONDS');
       this.overlay.showPanel(`<div class="kicker">THE BELT · 3D DRIVING PRACTICE</div><h1>TAKE THE FIVE-TON FOR A SPIN.</h1>
-        <p>Two short roads between UPS and the mall. No warehouse shift required.</p>
+        <p>Explore the city or drive straight to the mall. Real intersections, alternate routes and no time limit. The direct trip is about 25 seconds.</p>
         <p>${this.touch.enabled ? 'The stick steers. Hold GAS to accelerate and BRAKE to slow. Tap PARK in the lit bay.' : 'W / ↑ accelerates. A D / ← → steers. S / ↓ brakes. SPACE parks in the lit bay.'}</p>
-        <p>Follow the left/right signs, steer around the corners and brake at red lights. Gentle assistance and soft shoulders keep it relaxed. ESC / PAUSE holds the road; M / MUTE controls sound.</p>
+        <p>The yellow arrow guides you to your destination and updates when you take another turn. Brake at red lights. Hold BRAKE / S to reverse. ESC / PAUSE holds the road; M / MUTE controls sound.</p>
         <button type="button">START DRIVE  ↵</button><a href="${window.location.pathname}?mode=3d">PLAY THE FULL NIGHT</a>`, () => this.startNight());
       return;
     }
@@ -452,6 +452,7 @@ export class Belt3d {
   }
 
   private playScene(scene: StoryScene): void {
+    scene = { ...scene, title: scene.title.replace('MALLWOOD CENTRE', 'SOUTHGATE MALL') };
     // The 3D road now has a playable journey after the departure and original quip.
     // Keep shared cutscenes intact for both legacy versions.
     if (scene.id === 'drive-to-mall' || scene.id === 'drive-to-ups') scene = { ...scene, beats: scene.beats.slice(0, 2) };
@@ -553,7 +554,7 @@ export class Belt3d {
     this.stage.beginMall();
     this.state = 'mall';
     this.overlay.setMode('chapter');
-    this.overlay.storyTitle('MALLWOOD CENTRE', 'SKANKY · THE MALL RUN', '5:20 AM');
+    this.overlay.storyTitle('SOUTHGATE MALL', 'SKANKY · THE MALL RUN', '5:20 AM');
     this.chapterHint = 'Take a store bundle from the truck';
     audioSystem.startMusic('game');
   }
@@ -568,9 +569,9 @@ export class Belt3d {
     this.keys.clear(); this.touch.reset();
     this.overlay.clearCenter(); this.overlay.clearSpeech();
     this.overlay.setMode('chapter');
-    this.overlay.storyTitle(destination === 'mall' ? 'UPS → MALLWOOD CENTRE' : 'MALLWOOD CENTRE → UPS',
-      'SKANKY · FIVE-TON · ~25 SECONDS', destination === 'mall' ? '5:05 AM' : '6:10 AM');
-    this.overlay.showToast(this.touch.enabled ? 'Stick steers · hold GAS · BRAKE to slow · PARK in the lit bay' : 'W / ↑ GAS · A D / ← → STEER · S / ↓ BRAKE · SPACE PARK', 4500);
+    this.overlay.storyTitle(destination === 'mall' ? 'UPS → SOUTHGATE MALL' : 'SOUTHGATE MALL → UPS',
+      'SKANKY · FIVE-TON · FREE DRIVE', destination === 'mall' ? '5:05 AM' : '6:10 AM');
+    this.overlay.showToast(this.touch.enabled ? 'Take any street · follow the yellow arrow · hold GAS · BRAKE / reverse' : 'Take any street · W / ↑ GAS · A D / ← → STEER · S / ↓ BRAKE / reverse', 4500);
     audioSystem.startMusic('game');
   }
 
@@ -582,7 +583,7 @@ export class Belt3d {
       const drive = this.driving;
       this.practiceDestination = destination === 'mall' ? 'ups' : 'mall';
       this.state = 'ended';
-      this.overlay.showPanel(`<div class="kicker">DRIVING PRACTICE · PARKED AT ${destination === 'mall' ? 'THE MALL' : 'UPS'}</div>
+      this.overlay.showPanel(`<div class="kicker">DRIVING PRACTICE · PARKED AT ${destination === 'mall' ? 'SOUTHGATE MALL' : 'UPS'}</div>
         <h1>TRUCK PARKED. NICE.</h1><p>${drive.elapsed.toFixed(1)} seconds · ${drive.collisions} bumps · ${drive.redLights} red lights · −${drive.penalty} points · cargo safe.</p>
         <p>Try the road in the other direction, or take the same drive again.</p>
         <button type="button">DRIVE BACK  ↵</button>
@@ -892,13 +893,16 @@ export class Belt3d {
       overview: this.overview, routes: this.routeLegend(), scanner,
       brake: m.brakeRemainingMs > 0 ? '■ BELT HELD' : m.brakeCooldownMs > 0 ? `[E] RECHARGE ${Math.ceil(m.brakeCooldownMs / 1000)}s` : '[E] BRAKE READY',
     });
+    this.overlay.drivingNavigation(this.state === 'driving' && this.driving ? {
+      destination: this.driving.destination === 'mall' ? 'SOUTHGATE MALL' : 'UPS DEPOT', distance: this.driving.remaining, instruction: this.driving.navigation.instruction,
+    } : null);
     if (this.state === 'driving' && this.driving) {
       const drive = this.driving;
       const hint = this.touch.enabled ? drive.objective
         .replace('W / ↑ gas · A D / ← → steer · S / ↓ brake', 'Hold GAS · stick steers · BRAKE slows')
         .replace('SPACE to park', 'Tap PARK').replace('S / ↓ brake', 'BRAKE').replace('A / D to steer', 'Steer with the stick') : drive.objective;
       this.overlay.chapterHud([
-        ['SPEED', `${Math.round(drive.speed * 3.6)} km/h`], ['TO BAY', `${Math.ceil(drive.remaining)} m`],
+        ['SPEED', `${Math.round(Math.abs(drive.speed) * 3.6)} km/h`], ['TO BAY', `${Math.ceil(drive.remaining)} m`],
         [this.practiceDestination ? 'PENALTY' : 'NIGHT SCORE', this.practiceDestination ? `−${drive.penalty} PTS` : String(Math.max(0, m.score + this.mallBonus - this.drivingPenalty))],
         ['CARGO', this.practiceDestination ? 'PRACTICE · SAFE' : drive.destination === 'mall' ? '6 BUNDLES · SAFE' : '6 / 6 SIGNED'],
       ], hint,
