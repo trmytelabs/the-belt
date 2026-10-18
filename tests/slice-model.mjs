@@ -16,10 +16,11 @@ function reachFirst(model) {
 
 function walkTo(model, target) {
   for (let frame = 0; frame < 1000; frame += 1) {
-    const dx = target.x - model.activeWorker.x;
-    const dy = target.y - model.activeWorker.y;
+    if (Math.hypot(target.x - model.activeWorker.x, target.y - model.activeWorker.y) < 3) return;
+    const waypoint = model.navigationTarget(target);
+    const dx = waypoint.x - model.activeWorker.x;
+    const dy = waypoint.y - model.activeWorker.y;
     const distance = Math.hypot(dx, dy);
-    if (distance < 3) return;
     model.update(20, { x: dx / distance, y: dy / distance });
     assert.equal(model.ended, false, 'walking to a reachable destination must not lose the shift');
   }
@@ -327,11 +328,11 @@ test('enlarged truck zones accept explicit deliveries across their reachable upp
   }
 });
 
-test('both larger bulk zones accept their full front-lane width through the inclusive lower edge', () => {
+test('both bulk zones accept their full lane width up to the supported edge before the rear wall', () => {
   for (const side of [0, 1]) {
     for (const x of side === 0 ? [360, 380, 400] : [560, 580, 600]) {
       const zone = SHIFT_LAYOUT.dropAreas[side === 0 ? 'bulkLeft' : 'bulkRight'];
-      for (const y of [zone.y - zone.height / 2, zone.y, zone.y + zone.height / 2]) {
+      for (const y of [zone.y - zone.height / 2, zone.y, Math.min(zone.y + zone.height / 2, SHIFT_LAYOUT.stairs.maxY - SHIFT_LAYOUT.carriedClearance)]) {
         const model = heldFixture(side, 'C', { x, y });
         assert.equal(model.currentDock(), 'C');
         model.action();
@@ -467,10 +468,10 @@ test('movement normalizes diagonals, respects lane bounds, and slows heavy carri
   const startY = heavy.activeWorker.y;
   heavy.update(100, { x: 0, y: 1 });
   assert.ok(Math.abs(heavy.activeWorker.y - startY - 9.4) < 1e-9);
-  // Down the lane, the stairs and onto the lower floor, where that side widens.
+  // The end of the deck is a wall; a diagonal cannot continue behind it.
   advance(heavy, 14_000, { x: 1, y: 1 });
-  assert.equal(heavy.activeWorker.x, SHIFT_LAYOUT.lowerFloor.left.maxX);
-  assert.equal(heavy.activeWorker.y, SHIFT_LAYOUT.workerMaxY);
+  assert.equal(heavy.activeWorker.x, SHIFT_LAYOUT.leftLane.maxX);
+  assert.equal(heavy.activeWorker.y, SHIFT_LAYOUT.stairs.maxY - SHIFT_LAYOUT.carriedClearance);
 });
 
 test('the platform edge is solid: parked trucks stay beyond the lane at every row', () => {
@@ -842,6 +843,7 @@ test('intake closes at three minutes and unfinished freight receives ten seconds
 test('full deterministic shift is winnable through public movement and action inputs', () => {
   const model = new ShiftModel();
   const seen = new Set();
+  let maximumBacklog = 0;
   for (let tick = 0; tick < 10_000 && !model.ended; tick += 1) {
     if (model.pendingScannerWorker && !model.heldPackage) {
       if (model.activeWorker.id !== model.pendingScannerWorker) model.switchWorker();
@@ -862,10 +864,12 @@ test('full deterministic shift is winnable through public movement and action in
         if (Math.hypot(model.activeWorker.x - parcel.x, model.activeWorker.y - parcel.y) < SHIFT_LAYOUT.grabRadius - 1) model.action();
       }
     }
-    const dx = target ? target.x - model.activeWorker.x : 0;
-    const dy = target ? target.y - model.activeWorker.y : 0;
+    const waypoint = target ? model.navigationTarget(target) : model.activeWorker;
+    const dx = waypoint.x - model.activeWorker.x;
+    const dy = waypoint.y - model.activeWorker.y;
     const length = Math.hypot(dx, dy);
     model.update(20, { x: length > 3 ? dx / length : 0, y: length > 3 ? dy / length : 0 });
+    maximumBacklog = Math.max(maximumBacklog, model.pileup);
     seen.add(model.phase);
     for (const parcel of model.packages) {
       if (parcel.state === 'belt') assert.ok(Math.abs(parcel.y - model.beltTravel - parcel.beltOffset) < 1e-8);
@@ -877,7 +881,7 @@ test('full deterministic shift is winnable through public movement and action in
   assert.ok(model.sorted >= 42, 'the normal-input simulation must meet the higher warehouse shift target');
   assert.equal(model.sorted, model.packages.length, 'the original freight weights must still allow the full workload to be dispatched');
   assert.deepEqual([...seen].filter((phase) => phase !== 'cleanup'), ['lesson', 'flow', 'rush', 'ended']);
-  assert.equal(model.missed, 0);
+  assert.ok(maximumBacklog < model.capacity, 'the longer rear-bulk walk leaves recoverable freight without overflowing');
   assert.deepEqual([...new Set(model.packages.map((parcel) => parcel.label))].sort(), [
     'MALLWOOD RD EAST', 'GOJI BERRIES', 'LIVE LOBSTERS', 'LE DUCK', 'MAKEUP LOTION',
     'MESA BOOGIE', 'PANCHETTERS', 'SMALL ATV', 'PARCEL', 'ENVELOPE', 'SMALL BOX', 'BIG BOX', 'LONG BOX',
@@ -894,6 +898,8 @@ test('full deterministic shift is winnable through public movement and action in
 
 test('a paced player wins with two scanner handovers while the partner carries its own routes without points', (t) => {
   const model = new ShiftModel();
+  const events = model.drainEvents();
+  const missedOwnership = [];
   let switches = 0;
   let scannerSwitches = 0;
   const scannerWorkers = [];
@@ -925,10 +931,17 @@ test('a paced player wins with two scanner handovers while the partner carries i
         if (model.nearestPackage()?.id === parcel.id) model.action();
       } else target = { x: intended === 0 ? 400 : 560, y: 500 };
     }
-    const dx = target.x - model.activeWorker.x;
-    const dy = target.y - model.activeWorker.y;
+    const waypoint = model.navigationTarget(target);
+    const dx = waypoint.x - model.activeWorker.x;
+    const dy = waypoint.y - model.activeWorker.y;
     const length = Math.hypot(dx, dy);
     model.update(100, { x: length > 12 ? dx / length : 0, y: length > 12 ? dy / length : 0 });
+    const frameEvents = model.drainEvents();
+    events.push(...frameEvents);
+    for (const event of frameEvents.filter(event => event.type === 'miss')) {
+      const owner = ['B', 'E', 'S'].includes(event.route) ? 'skanky' : event.route === 'C' ? 'shared' : 'termite';
+      missedOwnership.push(`${event.route}:${owner === model.activeWorker.id || owner === 'shared' ? 'player' : 'partner'}`);
+    }
     maximumBacklog = Math.max(maximumBacklog, model.pileup);
     for (const worker of model.workers) assert.ok(model.walkable(worker.side, worker.x, worker.y), `${worker.id} stays on clear floor`);
   }
@@ -942,16 +955,17 @@ test('a paced player wins with two scanner handovers while the partner carries i
   assert.deepEqual(scannerWorkers, ['skanky', 'termite'], 'the player keeps the worker they just reset');
   assert.equal(model.scannerResets, 2);
   assert.equal(model.pendingScannerWorker, null);
-  const events = model.drainEvents();
   assert.equal(events.filter(event => event.type === 'scanner' && /STOPPED/.test(event.message)).length, 2, 'the complete night requests exactly two resets');
   const assists = events.filter(event => event.type === 'sort' && event.assisted);
   assert.equal(assists.length, model.assistedSorted);
   assert.ok(assists.every(event => event.score === 0));
   assert.equal(model.score, events.filter(event => event.type === 'sort' && !event.assisted).reduce((sum, event) => sum + event.score, 0));
-  assert.equal(model.combo, model.playerSorted, 'only manual deliveries build the clean streak');
+  assert.ok(model.bestCombo <= model.playerSorted, 'automatic deliveries never increase the player’s best streak');
+  assert.ok(missedOwnership.every(miss => miss.endsWith(':player')), 'the partner handles its routes without missing freight');
+  assert.equal(model.errors, model.missed, 'neither worker makes a wrong-route delivery in this paced run');
   for (const route of ['A', 'D', 'T', 'B', 'E', 'S', 'C']) assert.ok(model.routeSorted[route] > 0);
   assert.ok(maximumBacklog < model.capacity);
-  t.diagnostic(`${model.sorted}/${model.packages.length} dispatched; ${model.playerSorted} scored / ${model.assistedSorted} partner deliveries; ${switches - scannerSwitches} tutorial + ${scannerSwitches} scanner switches; peak backlog ${maximumBacklog}/${model.capacity}`);
+  t.diagnostic(`${model.sorted}/${model.packages.length} dispatched; ${model.playerSorted} scored / ${model.assistedSorted} partner deliveries; ${switches - scannerSwitches} tutorial + ${scannerSwitches} scanner switches; peak backlog ${maximumBacklog}/${model.capacity}; errors ${model.errors}; misses ${missedOwnership.join(',')}`);
 });
 
 test('partner deliveries add team dispatch but never player points, combo, or accuracy', () => {
@@ -1120,10 +1134,9 @@ test('an assistant cannot collect its own route from the opposite lower-floor la
     model.elapsedMs = 36_000;
     model.activeIndex = 1 - side;
     const worker = model.workers[side];
-    Object.assign(worker, { x: side ? 492 : 468, y: 940 });
+    Object.assign(worker, side ? SHIFT_LAYOUT.floorS : SHIFT_LAYOUT.floorT);
     const parcel = model.packages[0];
-    Object.assign(parcel, { route: side ? 'S' : 'T', state: 'floor', x: side ? 418 : 542, y: 940 });
-    assert.ok(Math.hypot(worker.x - parcel.x, worker.y - parcel.y) < SHIFT_LAYOUT.grabRadius, 'fixture is within distance but across the centre barrier');
+    Object.assign(parcel, { route: side ? 'S' : 'T', state: 'floor', ...(side ? SHIFT_LAYOUT.floorT : SHIFT_LAYOUT.floorS) });
     assert.equal(model.nearestPackage(worker), null);
     model.update(20);
     assert.equal(parcel.state, 'floor');

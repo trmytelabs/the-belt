@@ -35,7 +35,8 @@ function line(g: Phaser.GameObjects.Graphics, x1: number, y1: number, x2: number
 }
 
 function pallet(g: Phaser.GameObjects.Graphics, x: number, y: number, w = 90, h = 62) {
-  g.fillStyle(0x08151d, 0.45).fillRoundedRect(x - w / 2 + 4, y - h / 2 + 9, w, h, 5);
+  // The pallet touches the final wall, which occludes the far end of its shadow.
+  g.fillStyle(0x08151d, 0.45).fillRoundedRect(x - w / 2 + 4, y - h / 2 + 9, w, h - 9, 5);
   g.fillStyle(0x463d30).fillRect(x - w / 2, y + h / 2 - 6, w, 6);
   const slats = Math.max(5, Math.ceil(h / 10));
   for (let i = 0; i < slats; i++) {
@@ -258,22 +259,26 @@ export class DepotArt {
    * the stairs are banded treads, and the lower floor is darker.
    */
   private drawPlatform(g: Phaser.GameObjects.Graphics) {
-    const { platform, stairs, leftLane, rightLane, lowerFloor, workerRadius } = SHIFT_LAYOUT;
-    const stairFlights = [leftLane, rightLane].map(lane => ({ minX: lane.minX - workerRadius, maxX: lane.maxX + workerRadius }));
+    const { platform, stairs, lowerFloor } = SHIFT_LAYOUT;
     const scene = this.scene;
-    // Lower floor beyond the belt-end wall.
-    g.fillStyle(0x1a2c33).fillRect(300, stairs.bottom, 360, lowerFloor.bottom - stairs.bottom);
-    for (let y = stairs.bottom + 20; y < lowerFloor.bottom; y += 40) line(g, 300, y, 660, y, 0x0e2933, 1, 0.3);
-    // The platform casts a shadow onto the lower ground along its edges and far end.
+    g.setData('platform', { ...platform }).setData('sideStairs', { ...stairs }).setData('lowerFloor', { ...lowerFloor });
+    // The ground drops sit outboard of the platform, inside the final wall.
+    for (const floor of [lowerFloor.left, lowerFloor.right]) {
+      g.fillStyle(0x1a2c33).fillRect(floor.minX, lowerFloor.top, floor.maxX - floor.minX, lowerFloor.bottom - lowerFloor.top);
+      for (let y = lowerFloor.top + 20; y < lowerFloor.bottom; y += 32) line(g, floor.minX, y, floor.maxX, y, 0x0e2933, 1, 0.3);
+      label(scene, (floor.minX + floor.maxX) / 2, lowerFloor.top - 7, 'LOWER FLOOR', 8, '#8fa6a3').setDepth(1);
+    }
+    // Lit nosing, a dark vertical face and a ground shadow distinguish the deck.
     g.fillStyle(0x061218, 0.55).fillRect(platform.left - 12, platform.top, 12, platform.bottom - platform.top);
     g.fillStyle(0x061218, 0.55).fillRect(platform.right, platform.top, 12, platform.bottom - platform.top);
-    g.fillStyle(0x061218, 0.55).fillRect(platform.left - 12, platform.bottom, platform.right - platform.left + 24, 14);
     // The deck itself.
     g.fillStyle(0x30494f).fillRect(platform.left, platform.top + 10, platform.right - platform.left, platform.bottom - platform.top - 10);
     g.fillStyle(0x3a555b).fillRect(platform.left + 10, 100, 90, 380).fillRect(platform.right - 100, 100, 90, 380);
     // Safety-yellow nosing on every drop-off edge.
-    g.fillStyle(0xe2b84e).fillRect(platform.left, platform.top + 10, 4, platform.bottom - platform.top - 10)
-      .fillRect(platform.right - 4, platform.top + 10, 4, platform.bottom - platform.top - 10);
+    for (const edge of [platform.left, platform.right - 4]) {
+      g.fillStyle(0xe2b84e).fillRect(edge, platform.top + 10, 4, stairs.minY - platform.top - 10)
+        .fillRect(edge, stairs.maxY, 4, platform.bottom - stairs.maxY);
+    }
     // Crew use the same narrow access stairs between the parked truck rows in
     // both renderers; the painted walk no longer runs through a sheer deck edge.
     for (const y of [196, 292, 388, 484]) {
@@ -286,14 +291,7 @@ export class DepotArt {
         }
       }
     }
-    for (let x = platform.left; x < platform.right; x += 16) {
-      const inStairs = stairFlights.some(flight => x >= flight.minX && x < flight.maxX);
-      if (inStairs) continue;
-      // Count stripes from the platform's edge so yellow and black alternate.
-      const stripe = Math.round((x - platform.left) / 16);
-      g.fillStyle(stripe % 2 === 0 ? 0xe2b84e : 0x1c1c1c).fillRect(x, platform.bottom - 6, 16, 6);
-    }
-    // The bulk pallet backs against the rear wall; both flights remain open.
+    // The bulk pallet backs against the final wall; nothing is drawn beyond it.
     const wall = SHIFT_LAYOUT.bulkRearWall;
     const wallLeft = wall.x - wall.width / 2;
     const wallRight = wall.x + wall.width / 2;
@@ -305,23 +303,25 @@ export class DepotArt {
       line(rearWall, x, wallTop + 3, x, wallTop + wall.height, 0x2b444a, 1);
     }
     line(rearWall, wallLeft, wallTop, wallRight, wallTop, 0xe0b23c, 2, 0.9);
-    // Lane coordinates constrain body centers: the stair deck must also support
-    // the full body at either extreme, rather than cutting through its feet.
-    for (const lane of stairFlights) {
-      const steps = 7;
-      const run = (stairs.bottom - stairs.top) / steps;
+    // Both flights descend horizontally away from the platform's long sides.
+    for (const side of ['left', 'right'] as const) {
+      const flight = stairs[side];
+      const { steps } = stairs;
+      const run = (flight.bottomX - flight.topX) / steps;
       for (let i = 0; i < steps; i += 1) {
         const shade = Phaser.Display.Color.Interpolate.ColorWithColor(
           Phaser.Display.Color.ValueToColor(0x4c5f62), Phaser.Display.Color.ValueToColor(0x22343b), steps, i);
-        g.fillStyle(Phaser.Display.Color.GetColor(shade.r, shade.g, shade.b)).fillRect(lane.minX, stairs.top + i * run, lane.maxX - lane.minX, run);
-        g.fillStyle(0xe2b84e, 0.85).fillRect(lane.minX, stairs.top + i * run, lane.maxX - lane.minX, 2);
+        const edge = flight.topX + i * run;
+        g.fillStyle(Phaser.Display.Color.GetColor(shade.r, shade.g, shade.b)).fillRect(Math.min(edge, edge + run), stairs.minY, Math.abs(run), stairs.maxY - stairs.minY);
+        g.fillStyle(0xe2b84e, 0.85).fillRect(edge - 1, stairs.minY, 2, stairs.maxY - stairs.minY);
       }
-      g.fillStyle(0x0a1a20).fillRect(lane.minX - 3, stairs.top, 3, stairs.bottom - stairs.top).fillRect(lane.maxX, stairs.top, 3, stairs.bottom - stairs.top);
-      label(scene, (lane.minX + lane.maxX) / 2, stairs.top + 46, 'STAIRS\n▼', 8, '#e8c04a').setAlign('center').setDepth(1);
+      const minX = Math.min(flight.topX, flight.bottomX);
+      const width = Math.abs(flight.bottomX - flight.topX);
+      g.fillStyle(0x0a1a20).fillRect(minX, stairs.minY - 3, width, 3).fillRect(minX, stairs.maxY, width, 3);
+      label(scene, minX + width / 2, stairs.centerY, side === 'left' ? '◀ DOWN' : 'DOWN ▶', 8, '#ffe27c').setDepth(1);
     }
-    label(scene, 480, platform.bottom + 22, 'REAR WALL', 8, '#c8b47a').setDepth(4);
+    label(scene, 480, wallTop - 10, 'REAR WALL', 8, '#c8b47a').setDepth(4);
     label(scene, 480, SHIFT_LAYOUT.recoveryPile.y + 55, 'RAISED LOADING PLATFORM', 7, '#c8b47a').setDepth(1);
-    label(scene, 480, lowerFloor.bottom - 12, 'LOWER FLOOR', 8, '#6e8a8b').setDepth(1);
     for (const route of ['T', 'S'] as const) {
       const storage = SHIFT_LAYOUT.floorStorage[route];
       g.fillStyle(DEPOT_ROUTE_COLORS[route], 0.07).fillRect(storage.x - storage.width / 2, storage.y - storage.height / 2, storage.width, storage.height);

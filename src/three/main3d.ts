@@ -374,7 +374,7 @@ export class Belt3d {
       <div class="kicker">TERMITE &amp; SKANKY  /  ONE MORE OVERNIGHT</div>
       <h1>ANOTHER NIGHT ON THE BELT.</h1>
       <p><b>Get in, survive the scrum, dispatch ${this.model.goal} parcels, then Skanky still has a mall run.</b></p>
-      <p>TERMITE loads A and D at his trucks and T down the stairs. SKANKY loads B, E and S. C goes to BULK at the belt end.</p>
+      <p>TERMITE loads A and D, then takes the left stairs down to T. SKANKY loads B and E, with S down the right stairs. Shared C bulk stands against the final back wall.</p>
       <p>After the warm-up, your partner sorts their own routes perfectly. Their deliveries count toward dispatch, but earn no points or combo. Your deliveries earn the score.</p>
       <p>Occasionally their scanner needs a reset. Switch to the worker named on screen, then ${this.touch.enabled ? 'tap RESET SCANNER' : 'press SPACE'} to get them sorting again. Carried freight stays safe.</p>
       ${this.touch.enabled ? `
@@ -1165,17 +1165,35 @@ export class Belt3d {
       if (portrait) position.add(new THREE.Vector3(0, 4, 3));
     } else if (this.overview || this.state === 'briefing' || this.state === 'celebrating') {
       look = new THREE.Vector3(0, 0, toWorldZ((SHIFT_LAYOUT.worldTop + SHIFT_LAYOUT.worldBottom) / 2));
-      position = look.clone().add(portrait ? new THREE.Vector3(0, 64, 30) : new THREE.Vector3(0, 54, 26));
+      // Leave room for the final wall, both outer floor signs and their zones,
+      // including the narrower horizontal field of view on portrait screens.
+      position = look.clone().add(new THREE.Vector3(0, Math.max(60, 48 / this.camera.aspect), 26));
     } else {
       const worker = this.workers[this.model.activeWorker.id].root.position;
-      // Keep the belt in frame by leaning the view toward the conveyor.
-      look = new THREE.Vector3(worker.x * 0.5, worker.y + 0.4, worker.z - 1.0);
-      position = look.clone().add(portrait ? new THREE.Vector3(0, 15, 9) : new THREE.Vector3(worker.x * 0.2, 10.5, 9.4));
+      // Lean toward the belt in the sorting lanes, then follow the actual
+      // worker through the side flights. Belt bias put ground workers offscreen
+      // once the camera stopped at the terminal wall.
+      const terminal = THREE.MathUtils.smoothstep(worker.z, toWorldZ(700), toWorldZ(790));
+      look = new THREE.Vector3(worker.x * (0.5 + 0.5 * terminal), worker.y + 0.4, worker.z - (1 - terminal));
+      position = look.clone().add(portrait ? new THREE.Vector3(0, 15, 9) : new THREE.Vector3(worker.x * 0.2 * (1 - terminal), 10.5, 9.4));
     }
+    // The final depot wall is solid. Reframe from its interior side when a
+    // worker reaches bulk or either side stair, including overview/portrait.
+    const cameraLimitZ = toWorldZ(SHIFT_LAYOUT.bulkRearWall.y - SHIFT_LAYOUT.bulkRearWall.height / 2) - this.camera.near - 0.15;
+    position.z = Math.min(position.z, cameraLimitZ);
     const ease = snap ? 1 : 1 - Math.exp(-dt * 4);
     this.camera.position.lerp(position, ease);
+    this.camera.position.z = Math.min(this.camera.position.z, cameraLimitZ);
     this.cameraTarget.lerp(look, ease);
     this.camera.lookAt(this.cameraTarget);
+    // Overview height must not turn the whole depot into the fog colour.
+    // Preserve the close-view haze while moving its distance with camera height.
+    const fog = this.world.scene.fog;
+    if (fog instanceof THREE.Fog) {
+      const altitude = Math.max(0, this.camera.position.y - 20);
+      fog.near = 26 + altitude;
+      fog.far = 62 + altitude;
+    }
   }
 
   private showResults(): void {

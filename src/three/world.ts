@@ -89,16 +89,22 @@ export class DepotWorld {
   public recoverySurface!: THREE.Mesh;
   public bulkSurface!: THREE.Mesh;
   public bulkRearWall!: THREE.Mesh;
+  public readonly stairTreads: { side: 'left' | 'right'; index: number; mesh: THREE.Mesh }[] = [];
+  public readonly stairRails: THREE.Mesh[] = [];
+  public groundSurface!: THREE.Mesh;
 
   public physicalBounds(object: THREE.Object3D): THREE.Box3 { return physicalBounds(object); }
 
   public geometrySnapshot(): {
-    platform: THREE.Box3; belt: THREE.Box3; bulk: THREE.Box3; recovery: THREE.Box3; rearWall: THREE.Box3;
+    platform: THREE.Box3; belt: THREE.Box3; bulk: THREE.Box3; recovery: THREE.Box3; rearWall: THREE.Box3; ground: THREE.Box3;
+    stairs: { side: 'left' | 'right'; index: number; bounds: THREE.Box3 }[];
     trucks: { name: string; route?: PlayerTruckRoute; bounds: THREE.Box3; rearX: number; cargoFloorY: number }[];
   } {
     return {
       platform: physicalBounds(this.platformDeck), belt: physicalBounds(this.beltSurface),
       bulk: physicalBounds(this.bulkSurface), recovery: physicalBounds(this.recoverySurface), rearWall: physicalBounds(this.bulkRearWall),
+      ground: physicalBounds(this.groundSurface),
+      stairs: this.stairTreads.map(({ side, index, mesh }) => ({ side, index, bounds: physicalBounds(mesh) })),
       trucks: this.trucks.map((truck) => ({
         name: truck.name, route: truck.route, bounds: physicalBounds(truck.group),
         rearX: truck.group.position.x - truck.direction * crewTruckLength / 2,
@@ -161,7 +167,8 @@ export class DepotWorld {
 
     // Sodium work lights make warm pools over each working area, including the lower floor.
     const pools: [number, number, number, number][] = [
-      [480, 150, 0xffc07a, 60], [480, 420, 0xffc07a, 66], [480, 700, 0xffcf96, 62], [480, 930, 0xffc98c, 58],
+      [480, 150, 0xffc07a, 60], [480, 420, 0xffc07a, 66], [480, 700, 0xffcf96, 62], [480, SHIFT_LAYOUT.bulkPile.y, 0xffc98c, 58],
+      [SHIFT_LAYOUT.floorT.x, SHIFT_LAYOUT.floorT.y, 0xffc98c, 32], [SHIFT_LAYOUT.floorS.x, SHIFT_LAYOUT.floorS.y, 0xffc98c, 32],
       [244, 260, 0xffb26a, 40], [716, 260, 0xffb26a, 40], [480, -120, 0x8fc4ff, 55],
       [150, 420, 0xffb26a, 26], [810, 420, 0xffb26a, 26],
     ];
@@ -173,7 +180,7 @@ export class DepotWorld {
       scene.add(light);
     }
     // Wall-mounted fixtures stay out of the follow camera's line of sight.
-    for (let y = -200; y <= 1000; y += 150) {
+    for (let y = -200; y <= SHIFT_LAYOUT.worldBottom - 24; y += 150) {
       for (const x of [-4, 964]) {
         const lamp = rounded(0.3, 0.16, 1.4, fixtureMaterial, 0.05);
         lamp.position.copy(toWorld({ x, y }, 6.4));
@@ -226,10 +233,14 @@ export class DepotWorld {
   private addShell(): void {
     const scene = this.scene;
     // The lower ground: truck courts, the outer bays and the lower floor.
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(40, 48), new THREE.MeshStandardMaterial({ map: this.concreteTexture('#3d494c', 6), roughness: 0.86, metalness: 0.05 }));
+    const groundTop = -23;
+    const groundEnd = toWorldZ(SHIFT_LAYOUT.bulkRearWall.y - SHIFT_LAYOUT.bulkRearWall.height / 2);
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(40, groundEnd - groundTop), new THREE.MeshStandardMaterial({ map: this.concreteTexture('#3d494c', 6), roughness: 0.86, metalness: 0.05 }));
     floor.rotation.x = -Math.PI / 2;
-    floor.position.z = 1;
+    floor.position.z = (groundTop + groundEnd) / 2;
     floor.receiveShadow = true;
+    floor.userData.keep = true;
+    this.groundSurface = floor;
     scene.add(floor);
 
     const wall = standard(PALETTE.wall, 0.9);
@@ -250,18 +261,26 @@ export class DepotWorld {
         scene.add(surround);
       }
     }
-    // The far wall closes the lower floor.
-    const southZ = toWorldZ(SHIFT_LAYOUT.worldBottom) + 0.2;
-    // A one-sided wall facing inward: the follow camera looks through it from outside
-    // when a worker is down on the lower floor.
-    const south = new THREE.Mesh(new THREE.PlaneGeometry(31.2, 7.4), standard(PALETTE.wall, 0.9));
-    south.position.set(0, 3.7, southZ);
-    south.rotation.y = Math.PI;
+    // One solid terminal wall closes the depot behind bulk and both side drops.
+    // The follow camera stays on its interior side; there is no rear landing.
+    const rear = SHIFT_LAYOUT.bulkRearWall;
+    const southZ = toWorldZ(rear.y + rear.height / 2);
+    const south = new THREE.Mesh(new THREE.BoxGeometry(rear.width * WORLD_SCALE, 7.4, rear.height * WORLD_SCALE), wall);
+    south.position.copy(toWorld(rear, 3.7));
     south.receiveShadow = true;
     south.userData.keep = true;
+    south.name = 'final-depot-wall';
+    this.bulkRearWall = south;
     scene.add(south);
-    const southSign = textPlane(['LOWER FLOOR / FLOOR DROPS'], 5.2, 0.5, { width: 420, height: 40, background: '#13252cdd', color: '#d8c79a' });
-    southSign.position.set(0, 4.2, southZ - 0.22);
+    // Close the 20cm seams to the shell's inner side faces at ±15.2m.
+    for (const side of [-1, 1]) {
+      const cap = new THREE.Mesh(new THREE.BoxGeometry(0.2, 7.4, rear.height * WORLD_SCALE), wall);
+      cap.position.set(side * 15.1, 3.7, south.position.z);
+      cap.receiveShadow = true;
+      scene.add(cap);
+    }
+    const southSign = textPlane(['BULK / END OF DEPOT'], 5.2, 0.5, { width: 420, height: 40, background: '#13252cdd', color: '#d8c79a' });
+    southSign.position.set(0, 4.2, groundEnd - 0.02);
     southSign.rotation.y = Math.PI;
     scene.add(southSign);
     // Each truck row faces an open dock bay, so the fleet can drive out at
@@ -269,7 +288,7 @@ export class DepotWorld {
     const bayTop = toWorldZ(100);
     const bayBottom = toWorldZ(796);
     const pillar = standard(0x2c3c43, 0.6, 0.3);
-    const outside = new THREE.Mesh(new THREE.PlaneGeometry(30, 48), standard(0x101619, 0.95));
+    const outside = new THREE.Mesh(new THREE.PlaneGeometry(30, groundEnd - groundTop), standard(0x101619, 0.95));
     outside.rotation.x = -Math.PI / 2;
     for (const side of [-1, 1]) {
       const segments: [number, number][] = [[-22, bayTop], [bayBottom, southZ]];
@@ -306,7 +325,7 @@ export class DepotWorld {
         scene.add(drum);
       }
       const yard = outside.clone();
-      yard.position.set(side * 30.6, -0.01, 1);
+      yard.position.set(side * 30.6, -0.01, (groundTop + groundEnd) / 2);
       scene.add(yard);
       const yardLight = new THREE.PointLight(0xffa64d, 22, 18, 1.6);
       yardLight.position.set(side * 21, 5, 3);
@@ -317,7 +336,7 @@ export class DepotWorld {
   /** The raised loading platform: belt, both lanes, every truck's rear door and the bulk pile. */
   private addPlatform(): void {
     const scene = this.scene;
-    const { platform, stairs, leftLane, rightLane } = SHIFT_LAYOUT;
+    const { platform, stairs } = SHIFT_LAYOUT;
     const x0 = toWorldX(platform.left);
     const x1 = toWorldX(platform.right);
     const z0 = toWorldZ(platform.top);
@@ -343,23 +362,7 @@ export class DepotWorld {
     };
     for (const x of [x0 + 0.06, x1 - 0.06]) edge(x, (z0 + z1) / 2, 0.12, z1 - z0);
     edge((x0 + x1) / 2, z1 - 0.06, x1 - x0, 0.12);
-    // Hazard-striped face on the far wall of the platform, between the stairs.
-    const stripes = document.createElement('canvas');
-    stripes.width = 256; stripes.height = 32;
-    const sctx = stripes.getContext('2d')!;
-    sctx.fillStyle = '#e8c04a'; sctx.fillRect(0, 0, 256, 32);
-    sctx.fillStyle = '#1c1c1c';
-    for (let i = -32; i < 256; i += 32) { sctx.beginPath(); sctx.moveTo(i, 32); sctx.lineTo(i + 16, 0); sctx.lineTo(i + 32, 0); sctx.lineTo(i + 16, 32); sctx.fill(); }
-    const stripeTexture = new THREE.CanvasTexture(stripes);
-    stripeTexture.colorSpace = THREE.SRGBColorSpace;
-    stripeTexture.wrapS = THREE.RepeatWrapping;
-    stripeTexture.repeat.set(4, 1);
-    const face = new THREE.Mesh(new THREE.PlaneGeometry(toWorldX(rightLane.minX) - toWorldX(leftLane.maxX), 0.32), new THREE.MeshStandardMaterial({ map: stripeTexture, roughness: 0.6 }));
-    face.position.set(0, PLATFORM_HEIGHT - 0.2, z1 + 0.005);
-    scene.add(face);
-
-    // Guard rails wherever the platform edge has no truck or stairs: the far
-    // wall between the two flights, the receiving apron and the empty bays.
+    // Guard rails leave the side stair entrances open.
     const railMaterial = new THREE.MeshStandardMaterial({ color: 0xe0b23c, roughness: 0.4, metalness: 0.3, emissive: 0x3a2a08, emissiveIntensity: 0.4 });
     const railRun = (ax: number, az: number, bx: number, bz: number): void => {
       const length = Math.hypot(bx - ax, bz - az);
@@ -380,71 +383,60 @@ export class DepotWorld {
         scene.add(post);
       }
     };
-    // Walk bounds describe body centres; the flight also supports the feet at
-    // either edge instead of leaving them over empty space beside the stairs.
-    const leftStairOuter = toWorldX(leftLane.minX - SHIFT_LAYOUT.workerRadius);
-    const leftStairInner = toWorldX(leftLane.maxX + SHIFT_LAYOUT.workerRadius);
-    const rightStairInner = toWorldX(rightLane.minX - SHIFT_LAYOUT.workerRadius);
-    const rightStairOuter = toWorldX(rightLane.maxX + SHIFT_LAYOUT.workerRadius);
-    // The shared pile ends against a low rear wall. Keep it between the stair
-    // flights and below the eye line so the floor drops remain visible.
-    const rear = SHIFT_LAYOUT.bulkRearWall;
-    const wall = new THREE.Mesh(new THREE.BoxGeometry(rear.width * WORLD_SCALE, 1.05, rear.height * WORLD_SCALE), standard(0x3d4a4f, 0.85));
-    wall.position.copy(toWorld(rear, PLATFORM_HEIGHT + 0.525));
-    wall.name = 'bulk-rear-wall';
-    wall.userData.keep = true;
-    this.bulkRearWall = wall;
-    scene.add(shadowed(wall));
-    railRun(leftStairInner + 0.05, z1 - 0.08, rightStairInner - 0.05, z1 - 0.08);
-    if (leftStairOuter - x0 > 0.2) railRun(x0 + 0.08, z1 - 0.08, leftStairOuter - 0.05, z1 - 0.08);
-    if (x1 - rightStairOuter > 0.2) railRun(rightStairOuter + 0.05, z1 - 0.08, x1 - 0.08, z1 - 0.08);
     // Worker bounds allow their shoulders to reach the deck edge. Mount these
     // rails just outside it, as with the stair handrails, to keep that space clear.
     for (const x of [x0 - 0.06, x1 + 0.06]) railRun(x, toWorldZ(-200), x, toWorldZ(100));
     // The east bay beside bulk holds the fish tank; the west one is Ralph's dock.
     railRun(x1 + 0.06, toWorldZ(SHIFT_LAYOUT.fishTank.y - 40), x1 + 0.06, toWorldZ(SHIFT_LAYOUT.fishTank.y + 40));
 
-    // Two stair flights descend from the lanes to the lower floor.
+    // Each flight runs outward from a side of the deck. Its solid treads use
+    // exactly the shared model's discrete heights; the last interval is floor.
     const steps = stairs.steps;
-    const run = (toWorldZ(stairs.bottom) - toWorldZ(stairs.top)) / steps;
     const rise = PLATFORM_HEIGHT / steps;
     const tread = standard(0x5d6d70, 0.6, 0.3);
     const nose = new THREE.MeshStandardMaterial({ color: PALETTE.safety, emissive: PALETTE.safety, emissiveIntensity: 0.3 });
-    for (const [inner, outer] of [[leftStairOuter, leftStairInner], [rightStairInner, rightStairOuter]] as const) {
-      const width = outer - inner;
-      const center = (inner + outer) / 2;
-      for (let i = 0; i < steps; i += 1) {
+    const flightDepth = (stairs.maxY - stairs.minY) * WORLD_SCALE;
+    const centerZ = toWorldZ((stairs.minY + stairs.maxY) / 2);
+    for (const side of ['left', 'right'] as const) {
+      const flight = stairs[side];
+      const startX = toWorldX(flight.topX);
+      const endX = toWorldX(flight.bottomX);
+      const direction = Math.sign(endX - startX);
+      const length = Math.abs(endX - startX);
+      const run = length / steps;
+      for (let i = 0; i < steps - 1; i += 1) {
         const height = PLATFORM_HEIGHT - rise * (i + 1);
-        if (height <= 0.001) continue;
-        const step = new THREE.Mesh(new THREE.BoxGeometry(width, height, run), tread);
-        step.position.set(center, height / 2, toWorldZ(stairs.top) + run * (i + 0.5));
+        const step = new THREE.Mesh(new THREE.BoxGeometry(run, height, flightDepth), tread);
+        step.position.set(startX + direction * run * (i + 0.5), height / 2, centerZ);
         step.receiveShadow = true;
-        const lip = new THREE.Mesh(new THREE.BoxGeometry(width, 0.025, 0.06), nose);
-        lip.position.set(center, height + 0.012, toWorldZ(stairs.top) + run * i + 0.03);
+        step.userData.keep = true;
+        this.stairTreads.push({ side, index: i, mesh: step });
+        const lip = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.025, flightDepth), nose);
+        lip.position.set(startX + direction * (run * i + 0.03), height + 0.012, centerZ);
         scene.add(step, lip);
       }
-      // Stringer walls and sloped handrails on both sides of each flight.
-      const flight = toWorldZ(stairs.bottom) - toWorldZ(stairs.top);
-      const midZ = (toWorldZ(stairs.top) + toWorldZ(stairs.bottom)) / 2;
-      for (const x of [inner, outer]) {
-        const railX = x + (x === inner ? -0.06 : 0.06);
-        const stringer = new THREE.Mesh(new THREE.BoxGeometry(0.1, PLATFORM_HEIGHT, flight), standard(0x2c393d, 0.7));
-        stringer.position.set(railX, PLATFORM_HEIGHT / 2, midZ);
-        scene.add(stringer);
-        // Tilted down toward the lower floor, 0.9 m above the step line.
-        const hand = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, Math.hypot(flight, PLATFORM_HEIGHT), 8), railMaterial);
-        hand.position.set(railX, PLATFORM_HEIGHT / 2 + 0.9, midZ);
-        hand.rotation.x = Math.PI / 2 + Math.atan2(PLATFORM_HEIGHT, flight);
+      // Rails sit outside the full physical flight width, clear of shoulders.
+      for (const edgeY of [stairs.minY - 2, stairs.maxY + 0.5]) {
+        const railZ = toWorldZ(edgeY);
+        const hand = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, Math.hypot(length, PLATFORM_HEIGHT), 8), railMaterial);
+        hand.position.set((startX + endX) / 2, PLATFORM_HEIGHT / 2 + 0.9, railZ);
+        hand.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(endX - startX, -PLATFORM_HEIGHT, 0).normalize());
+        hand.userData.keep = true;
+        this.stairRails.push(hand);
         scene.add(hand);
         for (const t of [0.05, 0.5, 0.95]) {
           const ground = PLATFORM_HEIGHT * (1 - t);
           const post = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.9, 8), railMaterial);
-          post.position.set(railX, ground + 0.45, toWorldZ(stairs.top) + flight * t);
+          post.position.set(startX + (endX - startX) * t, ground + 0.45, railZ);
+          post.userData.keep = true;
+          this.stairRails.push(post);
           scene.add(post);
         }
       }
-      const sign = textPlane(['STAIRS', '▼ FLOOR DROP'], 1.3, 0.5, { width: 160, height: 60, background: '#13252ce6', color: '#e8c04a', radius: 6 });
-      sign.position.set(center, PLATFORM_HEIGHT + 1.55, toWorldZ(stairs.top) - 0.15);
+      const sign = textPlane([side === 'left' ? 'T ◀ STAIRS' : 'STAIRS ▶ S', 'LOWER FLOOR'], 1.6, 0.5, {
+        width: 190, height: 60, background: '#13252ce6', color: '#e8c04a', radius: 6,
+      });
+      sign.position.set(startX - direction * 0.6, PLATFORM_HEIGHT + 1.55, toWorldZ(stairs.minY) - 0.15);
       scene.add(sign);
     }
 

@@ -182,9 +182,10 @@ try {
   await press('Enter');
   await skipOpening(page);
   const hold = (route, kind, x, y) => read(`(() => { const m = ${S}.model; for (const p of m.packages) if (p.state === 'belt') p.state = 'delivered';
+    const workerIndex = ['B', 'E', 'S'].includes('${route}') ? 1 : 0; const worker = m.workers[workerIndex];
     const parcel = { ...m.packages[0], id: 1000 + m.packages.length, flight: null, pileIndex: undefined, thrownDelivery: false, broken: false, breakY: null }; m.packages.push(parcel);
-    Object.assign(parcel, { state: 'held', workerId: 'termite', route: '${route}', kind: '${kind}', size: 'normal', recovered: false });
-    if (m.activeIndex !== 0) m.switchWorker(); Object.assign(m.workers[0], { x: ${x}, y: ${y}, heldId: parcel.id }); return parcel.id; })()`);
+    Object.assign(parcel, { state: 'held', workerId: worker.id, route: '${route}', kind: '${kind}', size: 'normal', recovered: false });
+    if (m.activeIndex !== workerIndex) m.switchWorker(); Object.assign(worker, { x: ${x}, y: ${y}, heldId: parcel.id }); return parcel.id; })()`);
   await hold('D', 'smallbox', 380, 560);
   await read(`${S}.model.random = () => 0.99`);
   await page.waitForTimeout(100);
@@ -208,15 +209,62 @@ try {
   for (let i = 0; i < 3; i += 1) { await press('Space'); await press('KeyF'); }
   assert.deepEqual(await read(`({ damaged: ${S}.model.damaged, sorted: ${S}.model.sorted, score: ${S}.model.score })`), { damaged: 1, sorted: 1, score: beforeRepeat }, 'no second penalty or credit');
   await read(`(() => { ${S}.model.eventStopped = false; ${S}.model.random = () => 0.99; })()`);
-  const floorId = await hold('T', 'smallbox', 380, 640);
-  await page.keyboard.down('KeyS');
-  await wait(`${S}.model.activeWorker.y > 912`);
-  await page.keyboard.up('KeyS');
-  await press('Space');
-  await wait(`${S}.model.packages.find((p) => p.id === ${floorId}).state === 'delivered'`);
-  assert.deepEqual(await read(`${S}.depot.floorPiles.getData('floorPiles')`), { T: 1, S: 0 }, 'the lower-floor drop shows its pile');
+  for (const [route, side, x, key] of [['T', 'left', 380, 'KeyA'], ['S', 'right', 580, 'KeyD']]) {
+    // Isolate the real lateral stair input from key-release timing: the cargo
+    // fixture starts at the landing. The seven-route section below walks the
+    // complete lane-to-floor approaches through the public movement rules.
+    const floorId = await hold(route, 'smallbox', x, SHIFT_LAYOUT.stairs.centerY);
+    const descentY = await read(`${S}.model.activeWorker.y`);
+    await page.keyboard.down(key);
+    const bottom = SHIFT_LAYOUT.stairs[side].bottomX;
+    await wait(`${S}.model.activeWorker.x ${side === 'left' ? '<' : '>'} ${bottom + (side === 'left' ? -15 : 15)}`);
+    await page.keyboard.up(key);
+    assert.ok(Math.abs(await read(`${S}.model.activeWorker.y`) - descentY) < 0.001, `${route}: descent travels sideways`);
+    assert.ok(descentY >= SHIFT_LAYOUT.stairs.minY + SHIFT_LAYOUT.carriedClearance
+      && descentY <= SHIFT_LAYOUT.stairs.maxY - SHIFT_LAYOUT.carriedClearance, `${route}: the worker and held cargo stay within the side flight`);
+    assert.equal(await read(`${S}.model.currentDock()`), route, `${route}: the stair foot reaches the ground drop`);
+    await press('Space');
+    await wait(`${S}.model.packages.find((p) => p.id === ${floorId}).state === 'delivered'`);
+    // At the rear limit, the illustration's boots must remain in front of the
+    // wall and the follow camera must retain the full body on either side.
+    await page.keyboard.down('KeyS');
+    await page.waitForTimeout(450);
+    await page.keyboard.up('KeyS');
+    await page.waitForTimeout(300);
+    const body = await read(() => {
+      const scene = window.fixtureGame.scene.getScene('DepotScene');
+      const art = scene.workers[scene.model.activeIndex].container;
+      const camera = scene.view.world;
+      const corners = [[art.x - 19, art.y - 37], [art.x + 19, art.y + 28]]
+        .map(([x, y]) => camera.matrix.transformPoint(x - camera.scrollX, y - camera.scrollY));
+      return { bottom: art.y + 28, screen: corners.map(({ x, y }) => ({ x, y })) };
+    });
+    assert.ok(body.bottom <= SHIFT_LAYOUT.bulkRearWall.y - SHIFT_LAYOUT.bulkRearWall.height / 2,
+      `${route}: boots stay in front of the final wall at the rear movement limit`);
+    assert.ok(body.screen.every(point => point.x >= 0 && point.x <= 960 && point.y >= 126 && point.y <= 620),
+      `${route}: follow camera shows the entire body on the outboard lower floor`);
+  }
+  assert.deepEqual(await read(`${S}.depot.floorPiles.getData('floorPiles')`), { T: 1, S: 1 }, 'both ground drops show their delivered piles');
+  const floorArt = await read(() => {
+    const children = window.fixtureGame.scene.getScene('DepotScene').children.list;
+    const floor = children.find(item => item.getData('sideStairs'));
+    return { platform: floor.getData('platform'), stairs: floor.getData('sideStairs'), ground: floor.getData('lowerFloor'),
+      wall: children.find(item => item.getData('rearWall')).getData('rearWall'),
+      drops: children.map(item => item.getData('dropArea')).filter(Boolean) };
+  });
+  assert.deepEqual(floorArt.platform, SHIFT_LAYOUT.platform, 'the drawn deck uses the physical platform edges');
+  assert.deepEqual(floorArt.stairs, SHIFT_LAYOUT.stairs, 'the drawn lateral treads use the physical side flights');
+  assert.deepEqual(floorArt.ground, SHIFT_LAYOUT.lowerFloor, 'both lower floors use the physical ground bounds');
+  assert.equal(floorArt.stairs.left.topX, floorArt.platform.left);
+  assert.ok(floorArt.stairs.left.bottomX < floorArt.platform.left);
+  assert.equal(floorArt.stairs.right.topX, floorArt.platform.right);
+  assert.ok(floorArt.stairs.right.bottomX > floorArt.platform.right);
+  assert.equal(floorArt.wall.width, 960, 'the final wall spans the whole warehouse');
+  const wallFront = floorArt.wall.y - floorArt.wall.height / 2;
+  assert.ok(floorArt.ground.bottom <= wallFront && floorArt.stairs.maxY < wallFront);
+  for (const area of floorArt.drops) assert.ok(area.y + area.height / 2 <= wallFront, `${area.route}: all painted drops stay in front of the final wall`);
   assert.deepEqual(errors, []);
-  console.log('PASS 2D throwing: F throw with risk shown, clean credit, one broken penalty with Shan while the belt runs, no repeat penalty, carry down the stairs to a floor-drop pile; no script errors');
+  console.log('PASS 2D throwing and side stairs: real left/right descent to T/S piles, drawn raised platform and every drop in front of the final wall, clean throws and one breakage penalty; no script errors');
 
   // Synthetic held freight isolates route coverage; reach every destination
   // through public movement, then dispatch with the real keyboard action.
@@ -235,7 +283,8 @@ try {
         recovered: false, missCounted: false, broken: false, breakY: null };
       m.packages.push(parcel); worker.heldId = parcel.id;
       for (let frame = 0; frame < 1000 && Math.hypot(worker.x - target.x, worker.y - target.y) > 3; frame++) {
-        m.update(20, { x: target.x - worker.x, y: target.y - worker.y });
+        const waypoint = m.navigationTarget(target, worker);
+        m.update(20, { x: waypoint.x - worker.x, y: waypoint.y - worker.y });
       }
       return { id: parcel.id, dock: m.currentDock(), before: m.routeSorted[route], distance: Math.hypot(worker.x - target.x, worker.y - target.y) };
     }, { route, index, layout: SHIFT_LAYOUT });
@@ -266,6 +315,25 @@ try {
   assert.ok(crewFloorClearance.distance >= SHIFT_LAYOUT.parcelRadius + crewFloorClearance.radius - 0.001,
     'the rendered colleague stands outside the loose parcel footprint');
   console.log('PASS 2D crew clearance: a visible colleague moves clear of loose floor freight');
+
+  const shanRearClearance = await read((layout) => {
+    const scene = window.fixtureGame.scene.getScene('DepotScene');
+    const m = scene.model; const worker = m.workers[0]; const previous = { ...worker };
+    Object.assign(worker, { x: layout.lowerFloor.left.maxX - layout.workerRadius, y: 836 });
+    scene.life.shanVisit = null;
+    scene.life.shanBreakage(worker);
+    scene.life.updateShanVisit(m.elapsedMs + 1200);
+    scene.life.clearStandingCast(m.workers);
+    const art = scene.life.cast.get('shan').art;
+    const boot = art.getWorldTransformMatrix().transformPoint(0, 25);
+    const result = { bottom: boot.y, separation: Math.hypot(art.x - worker.x, art.y - worker.y) };
+    Object.assign(worker, previous); scene.life.shanVisit = null; scene.life.update();
+    return result;
+  }, SHIFT_LAYOUT);
+  assert.ok(shanRearClearance.bottom <= SHIFT_LAYOUT.bulkRearWall.y - SHIFT_LAYOUT.bulkRearWall.height / 2 + 0.001,
+    'Shan yields around the ground-floor worker without drawing his boots through the rear wall');
+  assert.ok(shanRearClearance.separation >= SHIFT_LAYOUT.workerRadius * 2 - 0.001,
+    'keeping Shan in front of the wall also preserves worker clearance');
 
   // Four real assisted pickups/carries/deliveries unlock the late-shift fault.
   // Only cargo and the late clock are fixtures; score and assistance counters
@@ -319,6 +387,28 @@ try {
   console.log('PASS 2D partner and scanner: automatic team dispatch earns no personal points; real Tab/Space resets without losing freight, then manual delivery earns points');
 
   // A won shift goes on through the mall and home to the results.
+  const departure = await read((layout) => {
+    const scene = window.fixtureGame.scene.getScene('DepotScene');
+    return [0, 0.25, 0.5, 0.75, 1].map(leaves => {
+      const focus = scene.life.directStory({ scene: { id: 'mall-assignment' } }, scene.workers,
+        cue => cue === 'termite-leaves' ? leaves : 0);
+      for (let frame = 0; frame < 30; frame++) scene.view.update(100, scene.model.activeWorker, 'story', focus);
+      scene.view.world.preRender();
+      const camera = scene.view.world;
+      return { leaves, workers: scene.workers.map(worker => {
+        const point = worker.container;
+        const screen = camera.matrix.transformPoint(point.x - camera.scrollX, point.y - camera.scrollY);
+        return { x: point.x, y: point.y, screen: { x: screen.x, y: screen.y } };
+      }), wallFront: layout.bulkRearWall.y - layout.bulkRearWall.height / 2 };
+    });
+  }, SHIFT_LAYOUT);
+  for (const frame of departure) for (const worker of frame.workers) {
+    assert.ok(worker.y + 28 <= frame.wallFront, `departure ${frame.leaves}: worker stays in front of the final wall`);
+    assert.ok(worker.screen.x > 24 && worker.screen.x < 936 && worker.screen.y > 166 && worker.screen.y < 588,
+      `departure ${frame.leaves}: full worker stays in the world viewport`);
+  }
+  assert.deepEqual({ x: departure.at(-1).workers[0].x, y: departure.at(-1).workers[0].y }, SHIFT_LAYOUT.floorT,
+    'Termite leaves by the west stair foot rather than behind the warehouse');
   await read(`(() => { const m = ${S}.model; for (const p of m.packages) if (p.state !== 'damaged') p.state = 'delivered'; m.workers[0].heldId = null; m.sorted = m.goal; m.elapsedMs = m.durationMs - 20; })()`);
   await wait(`${S}.state === 'celebrating'`);
   await finishNight(page);

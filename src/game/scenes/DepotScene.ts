@@ -793,7 +793,7 @@ export class DepotScene extends Phaser.Scene {
   private showBriefing(): void {
     this.showPanel('TERMITE & SKANKY / ONE MORE OVERNIGHT', 'ANOTHER NIGHT ON THE BELT.', [
       `Get in, survive the scrum, dispatch ${this.model.goal} parcels, then Skanky has a mall run.`,
-      'TERMITE: A + D trucks, T down the stairs.   SKANKY: B + E trucks, S down the stairs.',
+      'TERMITE: A + D, T down the LEFT stairs.   SKANKY: B + E, S down the RIGHT stairs.',
       'C goes to BULK. Partner sorts after 36s: team dispatch only, no score.',
       'Scanner fault? TAB to that worker, then SPACE to reset it.',
       'WASD moves. SPACE grabs/delivers. F throws (breakage risk).',

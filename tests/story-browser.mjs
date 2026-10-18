@@ -4,6 +4,7 @@ import { chromium } from 'playwright';
 import { preview } from 'vite';
 
 import { BREAK_SCENES, OPENERS, SCRUM } from '../src/game/slice/StoryScript.ts';
+import { SHIFT_LAYOUT } from '../src/game/slice/ShiftModel.ts';
 
 // The overnight story in the 3D depot, played through the real app with real
 // keys. Synthetic fixtures only move the shift clock, place a parcel in hand,
@@ -257,21 +258,32 @@ try {
   assert.equal(settled.score, beforeRepeat.score, 'repeat contact neither restores nor re-deducts points');
   // Carrying still works, down the real stairs to the lower floor.
   await read(() => { const m = window.fixtureApp.model; m.workers[0].heldId = null; for (const p of m.packages) if (p.state === 'held') p.state = 'delivered'; });
-  const floorId = await holdFor('T', 'smallbox', { x: 380, y: 640 });
+  // Isolate the physical descent from protocol-latency overshoot while walking
+  // south: start this held-cargo fixture at the shared stair approach, then use
+  // real horizontal controls for every step down, delivery and return.
+  const floorId = await holdFor('T', 'smallbox', { x: 380, y: SHIFT_LAYOUT.stairs.centerY });
   const surface = () => read(() => window.fixtureApp.workers.termite.root.position.y);
   assert.ok(Math.abs(await surface() - 1.1) < 0.01, 'Termite stands on the raised platform');
-  await page.keyboard.down('KeyS');
-  await wait(() => window.fixtureApp.model.activeWorker.y > 912);
-  await page.keyboard.up('KeyS');
+  await page.keyboard.down('KeyA');
+  const stairPose = await wait(x => {
+    const app = window.fixtureApp;
+    return app.model.activeWorker.x < x ? { height: app.workers.termite.root.position.y } : false;
+  }, (SHIFT_LAYOUT.platform.left + SHIFT_LAYOUT.lowerFloor.left.maxX) / 2);
+  const { height: stairHeight } = await stairPose.jsonValue();
+  assert.ok(stairHeight > 0 && stairHeight < 1.1, 'the left flight descends outward across the side of the platform');
+  await wait(x => window.fixtureApp.model.activeWorker.x <= x + 3, SHIFT_LAYOUT.floorT.x);
+  await page.keyboard.up('KeyA');
   assert.ok(await surface() < 0.05, 'the stairs lead down to the lower floor');
   await page.keyboard.press('Space');
   await wait((id) => window.fixtureApp.model.packages.find((item) => item.id === id).state === 'delivered', floorId);
   await wait(() => window.fixtureApp.world.floorPiles.T.count === 1);
   await shot('lower-floor-pile');
-  await page.keyboard.down('KeyW');
-  await wait(() => window.fixtureApp.model.activeWorker.y < 700);
-  await page.keyboard.up('KeyW');
+  await page.keyboard.down('KeyD');
+  await wait(x => window.fixtureApp.model.activeWorker.x >= x + 20, SHIFT_LAYOUT.platform.left);
+  await page.keyboard.up('KeyD');
   assert.ok(Math.abs(await surface() - 1.1) < 0.01, 'and back up to the platform');
+  assert.ok(await read(y => window.fixtureApp.model.activeWorker.y < y, SHIFT_LAYOUT.bulkRearWall.y - SHIFT_LAYOUT.bulkRearWall.height / 2),
+    'the whole stair route stays in front of the final back wall');
   assert.deepEqual(errors, []);
   console.log('PASS 3D throwing: heavy freight carry-only, clean F throw with preview and credit, broken throw with one penalty and Shan while the belt runs, no repeat penalty, carry down and up the real stairs to a floor-drop pile; no script errors');
 

@@ -4,6 +4,7 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 import { LOT_LAYOUT, MALL_LAYOUT, type KeyReturnModel, type MallEvent, type MallModel } from '../game/slice/MallModel';
 import type { Cutscene } from '../game/slice/StoryModel';
 import type { StoryScene } from '../game/slice/StoryScript';
+import { SHIFT_LAYOUT } from '../game/slice/ShiftModel';
 import { animateCharacter, createCharacter, mergeCharacter, type Character, type CharacterSpec } from './characters';
 import { applyPose, type CrewLife, type Pose } from './crew';
 import { PuffField } from './fx';
@@ -1315,7 +1316,14 @@ export function directDepot(cast: DepotCast, cutscene: Cutscene, dt: number, tim
   const leaves = ease(cueProgress(cutscene, 'termite-leaves'));
   const catches = ease(cueProgress(cutscene, 'shan-catches'));
   placeWorker('skanky', 560, 650, face([560, 650], [500, 640]), 'none');
-  placeWorker('termite', mix(410, 365, leaves), mix(650, 900, leaves), leaves > 0 ? 0 : face([410, 650], [500, 640]), 'none');
+  // Walk to the west flight, then descend outwards. The terminal wall has no
+  // rear exit, and a diagonal shortcut would cross Ralph's parked truck.
+  const stairY = SHIFT_LAYOUT.stairs.centerY;
+  const landing = SHIFT_LAYOUT.floorT;
+  const approach = Math.min(1, leaves / 0.55);
+  const descend = Math.max(0, (leaves - 0.55) / 0.45);
+  placeWorker('termite', descend > 0 ? mix(365, landing.x, descend) : mix(410, 365, approach),
+    mix(650, stairY, approach), leaves > 0 ? descend > 0 ? -Math.PI / 2 : 0 : face([410, 650], [500, 640]), 'none');
   // Down the east side of the bulk pallet, never through it.
   shan.place(mix(532, 526, catches), mix(560, 652, catches));
   shan.faceAngle = Math.PI / 2;

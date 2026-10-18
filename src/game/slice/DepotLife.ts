@@ -203,7 +203,13 @@ export class DepotLife {
       const art = colleague.art;
       if (!art.visible || interacting.has(id)) continue;
       const radius = this.routines.isCarrying(id) ? DEPOT_CARRY_RADIUS : DEPOT_BODY_RADIUS;
-      const point = clearDepotFootprint(art, radius, occupied, this.solids);
+      // Shan can yield behind a worker during a ground-floor visit. His drawn
+      // boots extend 25 local pixels below the root, beyond the ground circle.
+      const solids = id === 'shan' ? [...this.solids, {
+        ...SHIFT_LAYOUT.bulkRearWall,
+        y: SHIFT_LAYOUT.bulkRearWall.y - Math.max(0, 25 * Math.abs(art.scaleY) - radius),
+      }] : this.solids;
+      const point = clearDepotFootprint(art, radius, occupied, solids);
       this.routines.moveFreight(id, point.x - art.x, point.y - art.y);
       art.setPosition(point.x, point.y).setData('bodyRadius', radius);
       occupied.push({ ...point, radius });
@@ -465,12 +471,16 @@ export class DepotLife {
       this.say('shan', line, 3400, 1);
       return;
     }
+    const { platform, stairs, workerRadius } = SHIFT_LAYOUT;
+    const outboard = worker.x < platform.left || worker.x > platform.right;
     const laneX = worker.side === 'left' ? 365 : 595;
-    const top = worker.y > 784 ? 790 : Math.max(-10, worker.y - 150);
+    // A ground-floor visit stays on the same side of the deck. Shan approaches
+    // along the clear stair landing instead of cutting across the raised edge.
+    const landingX = stairs[worker.side].bottomX + (worker.side === 'left' ? -workerRadius : workerRadius);
     this.shanVisit = {
       start: time, line, spoken: false,
-      from: { x: laneX, y: top },
-      to: { x: worker.x + (worker.side === 'left' ? 30 : -30), y: worker.y - 40 },
+      from: outboard ? { x: landingX, y: stairs.centerY - 20 } : { x: laneX, y: Math.max(-10, worker.y - 150) },
+      to: outboard ? { x: landingX, y: stairs.centerY + 20 } : { x: worker.x + (worker.side === 'left' ? 30 : -30), y: worker.y - 40 },
     };
     this.shanUntil = Math.max(this.shanUntil, time + SHAN_VISIT.total);
   }
@@ -531,13 +541,19 @@ export class DepotLife {
     const leaves = progress('termite-leaves');
     const catches = progress('shan-catches');
     workers[1].container.setPosition(560, 650).setVisible(true);
-    workers[0].container.setPosition(Phaser.Math.Linear(410, 365, leaves), Phaser.Math.Linear(650, 900, leaves)).setVisible(true);
+    // Leave by the west stair flight, entirely in front of the final wall.
+    const approach = Math.min(leaves * 2, 1);
+    const descend = Math.max(leaves * 2 - 1, 0);
+    workers[0].container.setPosition(
+      Phaser.Math.Linear(Phaser.Math.Linear(410, 365, approach), SHIFT_LAYOUT.floorT.x, descend),
+      Phaser.Math.Linear(650, SHIFT_LAYOUT.stairs.centerY, approach),
+    ).setVisible(true);
     workers[0].update(time, leaves > 0 && leaves < 1, true, false);
     workers[1].update(time, false, true, false);
     shan.setVisible(true).setPosition(Phaser.Math.Linear(480, 520, catches), Phaser.Math.Linear(560, 640, catches)).setData('ranting', false);
     updateColleagueArt(shan, time);
     this.clearStandingCast(workers.map(worker => worker.container));
-    return { x: 480, y: 680, zoom: 1.8 };
+    return { x: 480, y: 715, zoom: 1.15 };
   }
 
   private rant(): void {

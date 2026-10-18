@@ -71,8 +71,8 @@ try {
     { route: 'C', side: 'right', ...SHIFT_LAYOUT.dropAreas.bulkRight },
     { route: 'D', side: 'left', ...SHIFT_LAYOUT.dropAreas.D },
     { route: 'E', side: 'right', ...SHIFT_LAYOUT.dropAreas.E },
-    { route: 'S', side: 'right', x: 580, y: 940, width: 120, height: 84 },
-    { route: 'T', side: 'left', x: 380, y: 940, width: 120, height: 84 },
+    { route: 'S', side: 'right', ...SHIFT_LAYOUT.dropAreas.S },
+    { route: 'T', side: 'left', ...SHIFT_LAYOUT.dropAreas.T },
   ], 'the visible floor zones must represent every accepting area, bulk included');
   if (process.env.BELT_SCREENSHOT_DIR) await page.screenshot({ path: join(process.env.BELT_SCREENSHOT_DIR, 'after-title.png') });
   await holdBreak(page);
@@ -151,7 +151,7 @@ try {
   for (const [route, index, dockX, dockY, kind, name] of [
     ['A', 0, 400, 532, 'mallwood', 'MALLWOOD RD EAST'],
     ['B', 1, 560, 532, 'goji', 'GOJI BERRIES'],
-    ['C', 1, 580, SHIFT_LAYOUT.bulkRight.y + 16, 'lobsters', 'LIVE LOBSTERS'],
+    ['C', 1, 580, SHIFT_LAYOUT.bulkRight.y, 'lobsters', 'LIVE LOBSTERS'],
   ]) {
     if (await read(() => window.fixtureGame.scene.getScene('DepotScene').model.activeIndex) !== index) await press('Tab');
     await walkTo(index === 0 ? 400 : 560, 300);
@@ -218,7 +218,7 @@ try {
         const delivered = scene.model.packages.find(parcel => parcel.route === 'C' && parcel.state === 'delivered');
         return { x: delivered.x, y: delivered.y, stock: scene.depot.bulkStockCount, action: scene.actionText.text };
       });
-      assert.deepEqual([bulk.x, bulk.y, bulk.stock], [SHIFT_LAYOUT.bulkPile.x, SHIFT_LAYOUT.bulkPile.y, 1], 'C delivered from the extended lower area must reach the actual shared pile');
+      assert.deepEqual([bulk.x, bulk.y, bulk.stock], [SHIFT_LAYOUT.bulkPile.x, SHIFT_LAYOUT.bulkPile.y, 1], 'C delivered from its hand-in area must reach the actual shared pile');
       if (process.env.BELT_SCREENSHOT_DIR) await page.screenshot({ path: join(process.env.BELT_SCREENSHOT_DIR, 'after-layout-bulk.png') });
     }
   }

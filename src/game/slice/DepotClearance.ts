@@ -1,4 +1,4 @@
-import { DEPOT_EQUIPMENT_FOOTPRINTS, SHIFT_LAYOUT } from './ShiftModel.ts';
+import { DEPOT_EQUIPMENT_FOOTPRINTS, SHIFT_LAYOUT, stairAt, onLowerFloor } from './ShiftModel.ts';
 
 export type FootprintPoint = { x: number; y: number };
 export type FootprintCircle = FootprintPoint & { radius: number };
@@ -12,18 +12,23 @@ const GAP = 0;
 
 function supportedBounds(point: FootprintPoint, radius: number): StandingBounds {
   const { platform, stairs, lowerFloor } = SHIFT_LAYOUT;
-  const bounds = { minX: -180, maxX: 1140, minY: SHIFT_LAYOUT.worldTop + radius, maxY: lowerFloor.bottom - radius };
+  const bounds = { minX: -180, maxX: 1140, minY: SHIFT_LAYOUT.worldTop + radius, maxY: SHIFT_LAYOUT.bulkRearWall.y - SHIFT_LAYOUT.bulkRearWall.height / 2 - radius };
   // Coworker approach stairs legitimately cross the long platform edges. Once
   // a pose is on the central deck, yielding cannot push it off the raised edge.
-  if (point.x < platform.left || point.x > platform.right) return bounds;
-  if (point.y < stairs.top) return { ...bounds, minX: platform.left + radius, maxX: platform.right - radius, maxY: platform.bottom - radius };
-  const left = point.x < SHIFT_LAYOUT.beltX;
-  if (point.y < stairs.bottom) {
-    const lane = left ? SHIFT_LAYOUT.leftLane : SHIFT_LAYOUT.rightLane;
-    return { ...bounds, minX: lane.minX, maxX: lane.maxX, minY: stairs.top, maxY: stairs.bottom };
+  if (point.x >= platform.left && point.x <= platform.right) {
+    return { ...bounds, minX: platform.left + radius, maxX: platform.right - radius };
   }
-  const lane = left ? lowerFloor.left : lowerFloor.right;
-  return { ...bounds, minX: lane.minX, maxX: lane.maxX, minY: stairs.bottom };
+  const stairSide = stairAt(point.x, point.y);
+  if (stairSide) {
+    const flight = stairs[stairSide];
+    return { ...bounds, minX: Math.min(flight.topX, flight.bottomX), maxX: Math.max(flight.topX, flight.bottomX),
+      minY: stairs.minY + radius, maxY: stairs.maxY - radius };
+  }
+  if (onLowerFloor(point)) {
+    const floor = point.x < SHIFT_LAYOUT.beltX ? lowerFloor.left : lowerFloor.right;
+    return { ...bounds, minX: floor.minX + radius, maxX: floor.maxX - radius, minY: lowerFloor.top + radius };
+  }
+  return bounds;
 }
 
 export function overlapsFootprint(point: FootprintPoint, radius: number, rect: FootprintRect): boolean {

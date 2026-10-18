@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 import { preview } from 'vite';
-import { SHIFT_LAYOUT } from '../src/game/slice/ShiftModel.ts';
+import { SHIFT_LAYOUT, platformLevelAt } from '../src/game/slice/ShiftModel.ts';
 import { OPENERS, BREAK_SCENES, SCRUM, MALL_ASSIGNMENT, DRIVE_TO_MALL, DRIVE_TO_UPS, GO_HOME } from '../src/game/slice/StoryScript.ts';
 
 // Controlled geometry fixtures complement real-input gameplay in the other suites.
@@ -30,12 +30,23 @@ try {
   }
   assert.ok(snapshot.recovery.max.z < snapshot.bulk.min.z, 'recovery tray precedes the bulk area');
   assert.ok(snapshot.bulk.max.z < snapshot.rearWall.min.z, 'bulk pallet stops before its rear wall');
-  assert.ok(snapshot.rearWall.min.y >= snapshot.platform.max.y - 1e-5, 'rear wall stands on the raised platform');
+  assert.ok(Math.abs(snapshot.rearWall.min.y) < 1e-5 && snapshot.rearWall.max.y > 7, 'the final wall closes the full warehouse height');
   assert.ok(snapshot.rearWall.max.z <= snapshot.platform.max.z + 1e-5, 'rear wall ends at the platform edge');
-  assert.ok(snapshot.rearWall.min.x > (SHIFT_LAYOUT.leftLane.maxX + SHIFT_LAYOUT.workerRadius - 480) / 32,
-    'rear wall leaves the whole left stair flight clear');
-  assert.ok(snapshot.rearWall.max.x < (SHIFT_LAYOUT.rightLane.minX - SHIFT_LAYOUT.workerRadius - 480) / 32,
-    'rear wall leaves the whole right stair flight clear');
+  assert.ok(snapshot.rearWall.min.x <= -15 && snapshot.rearWall.max.x >= 15, 'terminal wall spans the whole depot');
+  assert.ok(snapshot.ground.max.z <= snapshot.rearWall.min.z + 1e-5, 'lower floor stops at the final wall');
+  assert.equal(snapshot.stairs.length, 12, 'both outward flights have six raised treads and a ground-level final interval');
+  for (const { side, index, bounds } of snapshot.stairs) {
+    const x = (bounds.min.x + bounds.max.x) / 2 * 32 + 480;
+    assert.ok(Math.abs(bounds.max.y - platformLevelAt(x, SHIFT_LAYOUT.stairs.centerY) * 1.1) < 1e-5, `${side} tread ${index}: rendered and walking heights match`);
+    assert.ok(side === 'left' ? bounds.max.x <= snapshot.platform.min.x + 1e-5 : bounds.min.x >= snapshot.platform.max.x - 1e-5,
+      `${side} tread ${index}: descends outwards from the side of the platform`);
+    assert.ok(bounds.max.z < snapshot.rearWall.min.z, `${side} tread ${index}: entirely before the final wall`);
+    assert.ok(Math.abs(bounds.min.z * 32 + 340 - SHIFT_LAYOUT.stairs.minY) < 1e-5
+      && Math.abs(bounds.max.z * 32 + 340 - SHIFT_LAYOUT.stairs.maxY) < 1e-5,
+    `${side} tread ${index}: matches both physical flight edges`);
+  }
+  const warehouseBounds = await page.evaluate(() => window.fixtureApp.world.physicalBounds(window.fixtureApp.world.scene));
+  assert.ok(warehouseBounds.max.z <= snapshot.rearWall.max.z + 1e-5, 'no depot scenery, props or floor extend behind the final wall');
   for (const truck of snapshot.trucks) {
     assert.ok(Math.abs(truck.cargoFloorY - snapshot.platform.max.y) < 1e-5, `${truck.name}: cargo floor meets deck`);
     assert.ok(Math.abs(Math.abs(truck.rearX) - 162 / 32) < 1e-5, `${truck.name}: rear meets platform edge`);
@@ -103,17 +114,18 @@ try {
       if (['B', 'E', 'S'].includes(route)) m.switchWorker();
       const target = route === 'C' ? layout.bulkLeft : layout.dropAreas[route];
       const worker = m.activeWorker;
-      for (let i = 0; i < 400 && Math.hypot(worker.x - target.x, worker.y - target.y) > 3; i++) {
-        m.update(50, { x: target.x - worker.x, y: target.y - worker.y });
-      }
       const parcel = { id: 9000, route, kind: 'smallbox', label: route, size: 'normal', x: worker.x, y: worker.y,
         state: 'held', workerId: worker.id, beltOffset: 0, recovered: false, missCounted: false, broken: false, breakY: null };
       m.packages.push(parcel); worker.heldId = parcel.id;
+      for (let i = 0; i < 400 && Math.hypot(worker.x - target.x, worker.y - target.y) > 3; i++) {
+        const waypoint = m.navigationTarget(target);
+        m.update(50, { x: waypoint.x - worker.x, y: waypoint.y - worker.y });
+      }
       app.syncWorkers(0); app.syncParcels(0);
       const position = app.workers[worker.id].root.position.clone();
       return { dock: m.currentDock(), position, distance: Math.hypot(worker.x - target.x, worker.y - target.y) };
     }, { route, layout: SHIFT_LAYOUT });
-    assert.equal(result.dock, route, `${route}: reachable using public movement`);
+    assert.equal(result.dock, route, `${route}: reachable using public movement: ${JSON.stringify(result)}`);
     assert.ok(Math.abs(result.position.y - (['T', 'S'].includes(route) ? 0 : 1.1)) < 1e-5, `${route}: worker feet use correct floor`);
     await page.keyboard.press('Space');
     await page.waitForFunction(route => window.fixtureApp.model.routeSorted[route] === 1, route, { polling: 20 });
@@ -191,6 +203,7 @@ try {
     const issues = [];
     let instances = 0;
     let approachSamples = 0;
+    let carriedSamples = 0;
     const overlaps = (a, b) => ['x', 'y', 'z'].every(axis => Math.min(a.max[axis], b.max[axis]) - Math.max(a.min[axis], b.min[axis]) > 0.001);
     for (const [side, route] of ['T', 'S'].entries()) {
       app.world.setFloorPile(route, 36);
@@ -216,19 +229,71 @@ try {
       const worker = app.model.activeWorker;
       const target = layout.dropAreas[route];
       for (let i = 0; i < 300 && Math.hypot(worker.x - target.x, worker.y - target.y) > 3; i++) {
-        app.model.update(20, { x: target.x - worker.x, y: target.y - worker.y });
+        const waypoint = app.model.navigationTarget(target);
+        app.model.update(20, { x: waypoint.x - worker.x, y: waypoint.y - worker.y });
         app.syncWorkers(0); approachSamples++;
         const body = app.world.physicalBounds(app.workers[worker.id].body);
         if (boxes.some(box => overlaps(body, box))) issues.push(`${route}: worker crosses stored freight`);
       }
       if (app.model.currentDock() !== route) issues.push(`${route}: stored freight blocks delivery approach`);
+      // The player can turn while carrying any form at the drop, before Space
+      // replaces it with the stored pile slot. Inspect the actual held geometry.
+      Object.assign(worker, target);
+      app.syncWorkers(0);
+      for (const kind of ['envelope', 'smallbox', 'standard', 'bigbox', 'longbox', 'mallwood', 'goji', 'lobsters', 'duck', 'makeup', 'mesa', 'panchetters', 'atv', 'snakes']) {
+        const parcel = { id: 7500 + carriedSamples, route, kind, label: kind, size: 'normal', ...target, state: 'held',
+          workerId: worker.id, beltOffset: 0, recovered: false, missCounted: false, broken: false, breakY: null };
+        app.model.packages.push(parcel); worker.heldId = parcel.id;
+        for (let angle = 0; angle < 360; angle += 15) {
+          app.workers[worker.id].root.rotation.y = angle * Math.PI / 180;
+          app.syncParcels(0); carriedSamples++;
+          const cargo = app.world.physicalBounds(app.parcels.get(parcel.id).body);
+          if (boxes.some(box => overlaps(cargo, box))) issues.push(`${route}/${kind}/${angle}: carried freight crosses stored pile`);
+          if (cargo.max.z >= app.world.physicalBounds(app.world.bulkRearWall).min.z) issues.push(`${route}/${kind}/${angle}: held freight crosses rear wall`);
+        }
+        parcel.state = 'delivered'; worker.heldId = null;
+      }
     }
-    return { issues, instances, approachSamples };
+    return { issues, instances, approachSamples, carriedSamples };
   }, SHIFT_LAYOUT);
   assert.equal(floorStorage.instances, 72, 'both full floor piles are inspected instance by instance');
   assert.ok(floorStorage.approachSamples > 100, 'workers actually traverse both approach routes');
+  assert.equal(floorStorage.carriedSamples, 672, 'all fourteen held forms turn through 24 headings at both floor drops');
   assert.deepEqual(floorStorage.issues, []);
   console.log('PASS geometry: mixed recovery cargo fits tray without overlap; both full floor stacks preserve clear worker approaches');
+
+  const stairCarry = await page.evaluate(layout => {
+    const app = window.fixtureApp; app.restart(); app.model.eventStopped = true; app.model.crewAssist = false;
+    const issues = [];
+    const rails = app.world.stairRails.map(mesh => app.world.physicalBounds(mesh));
+    const wall = app.world.physicalBounds(app.world.bulkRearWall);
+    const overlaps = (a, b) => ['x', 'y', 'z'].every(axis => Math.min(a.max[axis], b.max[axis]) - Math.max(a.min[axis], b.min[axis]) > 0.001);
+    let samples = 0;
+    for (const [side, worker] of app.model.workers.entries()) {
+      const flight = layout.stairs[side ? 'right' : 'left'];
+      for (const kind of ['envelope', 'smallbox', 'standard', 'bigbox', 'longbox', 'mallwood', 'goji', 'lobsters', 'duck', 'makeup', 'mesa', 'panchetters', 'atv', 'snakes']) {
+        const parcel = { id: 9000 + samples, route: side ? 'S' : 'T', kind, label: kind, size: 'normal', x: worker.x, y: worker.y,
+          state: 'held', workerId: worker.id, beltOffset: 0, recovered: false, missCounted: false, broken: false, breakY: null };
+        app.model.packages.push(parcel); worker.heldId = parcel.id;
+        for (const y of [822, 830]) for (let step = 0; step < layout.stairs.steps; step++) {
+          Object.assign(worker, { x: flight.topX + (flight.bottomX - flight.topX) * (step + 0.5) / layout.stairs.steps, y });
+          app.syncWorkers(0);
+          for (let angle = 0; angle < 360; angle += 15) {
+            app.workers[worker.id].root.rotation.y = angle * Math.PI / 180;
+            app.syncParcels(0); samples++;
+            const cargo = app.world.physicalBounds(app.parcels.get(parcel.id).body);
+            if (rails.some(rail => overlaps(cargo, rail))) issues.push(`${side}/${kind}/${step}/${y}/${angle}: carried freight crosses stair rail`);
+            if (overlaps(cargo, wall)) issues.push(`${side}/${kind}/${step}/${y}/${angle}: carried freight crosses final wall`);
+          }
+        }
+        parcel.state = 'delivered'; worker.heldId = null;
+      }
+    }
+    return { issues, samples, rails: rails.length };
+  }, SHIFT_LAYOUT);
+  assert.equal(stairCarry.rails, 16, 'both handrails and every supporting post are measured');
+  assert.equal(stairCarry.samples, 9408, 'all freight forms and headings clear both side flights at both permitted carry edges');
+  assert.deepEqual(stairCarry.issues, []);
 
   // Sample authored camera positions through every arrival, scrum and break.
   // The near plane stays outside truck bodies; intended seating is not treated
@@ -270,11 +335,34 @@ try {
     let samples = 0;
     const check = label => {
       const camera = app.camera; camera.updateMatrixWorld();
+      const visible = (point, item) => {
+        const fog = app.world.scene.fog;
+        if (app.state === 'playing' && app.overview && point.distanceTo(camera.position) > fog.near + (fog.far - fog.near) * 0.35) failures.push(`${label}: ${item} lost in overview fog`);
+        const screen = point.project(camera);
+        if (Math.abs(screen.x) > 0.9 || screen.y < -0.88 || screen.y > 0.84 || screen.z < -1 || screen.z > 1) failures.push(`${label}: ${item} outside usable frame`);
+      };
+      if (app.state === 'playing' && !app.overview) {
+        const worker = app.workers[app.model.activeWorker.id];
+        const body = app.world.physicalBounds(worker.body);
+        for (const x of [body.min.x, body.max.x]) for (const y of [body.min.y, body.max.y]) for (const z of [body.min.z, body.max.z]) {
+          visible(camera.position.clone().set(x, y, z), 'active worker');
+        }
+      } else if (app.state === 'playing' && app.overview) {
+        for (const [name, area] of Object.entries(layout.dropAreas)) {
+          for (const dx of [-area.width / 2, area.width / 2]) for (const dy of [-area.height / 2, area.height / 2]) {
+            visible(camera.position.clone().set((area.x + dx - 480) / 32, name === 'T' || name === 'S' ? 0 : 1.1, (area.y + dy - 340) / 32), `drop ${name}`);
+          }
+        }
+        for (const [name, area] of [['T', layout.floorT], ['S', layout.floorS]]) {
+          for (const dx of [-0.85, 0.85]) visible(camera.position.clone().set((area.x - 480) / 32 + (name === 'T' ? -3.125 : 3.125) + dx, 2.3, (area.y - 340) / 32 + 1), `${name} floor sign`);
+        }
+      }
       const halfHeight = camera.near * Math.tan(camera.fov * Math.PI / 360);
       const halfWidth = halfHeight * camera.aspect;
       const near = app.world.physicalBounds(app.world.platformDeck).makeEmpty().expandByPoint(camera.position);
       for (const x of [-halfWidth, halfWidth]) for (const y of [-halfHeight, halfHeight]) near.expandByPoint(camera.position.clone().set(x, y, -camera.near).applyMatrix4(camera.matrixWorld));
-      for (const solid of [app.world.platformDeck, app.world.beltSurface, app.world.bulkSurface, app.world.recoverySurface, app.world.bulkRearWall, ...app.world.trucks.map(truck => truck.group)]) {
+      if (near.max.z >= app.world.physicalBounds(app.world.bulkRearWall).min.z) failures.push(`${label}: camera crosses terminal wall`);
+      for (const solid of [app.world.platformDeck, app.world.beltSurface, app.world.bulkSurface, app.world.recoverySurface, app.world.bulkRearWall, ...app.world.stairTreads.map(step => step.mesh), ...app.world.stairRails, ...app.world.trucks.map(truck => truck.group)]) {
         samples++;
         if (near.intersectsBox(app.world.physicalBounds(solid))) failures.push(label);
       }
@@ -282,12 +370,18 @@ try {
     for (const aspect of [1.6, 390 / 844]) {
       app.camera.aspect = aspect; app.camera.updateProjectionMatrix();
       app.state = 'playing';
-      for (const side of [0, 1]) for (const y of [-20, layout.beltTop, layout.dockA.y, layout.dockD.y, layout.bulkLeft.y,
-        (layout.stairs.top + layout.stairs.bottom) / 2, layout.floorT.y, layout.workerMaxY]) for (const overview of [false, true]) {
+      for (const side of [0, 1]) {
+        const stair = layout.stairs[side ? 'right' : 'left'];
+        const points = [-20, layout.beltTop, layout.dockA.y, layout.dockD.y, layout.bulkLeft.y, layout.workerMaxY]
+          .map(y => ({ x: side ? 580 : 380, y }));
+        points.push({ x: stair.topX, y: layout.stairs.centerY }, { x: (stair.topX + stair.bottomX) / 2, y: layout.stairs.centerY },
+          { x: stair.bottomX, y: layout.stairs.centerY }, side ? layout.floorS : layout.floorT);
+        for (const point of points) for (const overview of [false, true]) {
         app.model.activeIndex = side; app.overview = overview;
-        Object.assign(app.model.activeWorker, { x: side ? 580 : 380, y });
+        Object.assign(app.model.activeWorker, point);
         app.syncWorkers(0); app.updateCamera(1, true);
-        check(`worker ${side} at ${y}, overview ${overview}, aspect ${aspect}`);
+        check(`worker ${side} at ${point.x}/${point.y}, overview ${overview}, aspect ${aspect}`);
+        }
       }
       app.playScene(scrum);
       for (let beat = 0; beat < scrum.beats.length; beat++) {
@@ -300,6 +394,31 @@ try {
   }, { layout: SHIFT_LAYOUT, scrum: SCRUM });
   assert.ok(depotCameras.samples > 1_000, 'warehouse checks cover actual geometry, both workers, all drop heights, both views and two aspect ratios');
   assert.deepEqual(depotCameras.failures, []);
+
+  const clockout = await page.evaluate(({ scene, layout }) => {
+    const app = window.fixtureApp; app.restart(); app.playScene(scene);
+    const failures = [];
+    let stairSamples = 0;
+    for (let beat = 0; beat < scene.beats.length; beat++) for (let i = 0; i <= 20; i++) {
+      app.cutscene.index = beat; app.cutscene.elapsedMs = scene.beats[beat].ms * i / 21;
+      app.lastFrame = performance.now(); app.tick();
+      const worker = app.workers.termite;
+      const bounds = app.world.physicalBounds(worker.body);
+      const wall = app.world.physicalBounds(app.world.bulkRearWall);
+      if (bounds.max.z >= wall.min.z) failures.push(`${beat}/${i}: Termite crosses final wall`);
+      const x = worker.root.position.x * 32 + 480;
+      const y = worker.root.position.z * 32 + 340;
+      if (x < layout.stairs.left.topX && x > layout.stairs.left.bottomX) {
+        stairSamples++;
+        if (Math.abs(y - layout.stairs.centerY) > 0.001) failures.push(`${beat}/${i}: exits across unprotected deck edge`);
+        const level = 1 - (Math.floor((layout.stairs.left.topX - x) / (layout.stairs.left.topX - layout.stairs.left.bottomX) * layout.stairs.steps) + 1) / layout.stairs.steps;
+        if (Math.abs(worker.root.position.y - level * 1.1) > 1e-5) failures.push(`${beat}/${i}: feet miss side tread`);
+      }
+    }
+    return { failures, stairSamples };
+  }, { scene: MALL_ASSIGNMENT, layout: SHIFT_LAYOUT });
+  assert.ok(clockout.stairSamples > 0, 'clock-out actually samples Termite descending the west side flight');
+  assert.deepEqual(clockout.failures, []);
 
   const lifecycle = await page.evaluate(() => {
     const app = window.fixtureApp; app.restart();

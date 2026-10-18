@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { clearDepotFootprint, depotSolidFootprints, overlapsFootprint, DEPOT_BODY_RADIUS, DEPOT_CARRY_RADIUS } from '../src/game/slice/DepotClearance.ts';
-import { SHIFT_LAYOUT, platformLevelAt } from '../src/game/slice/ShiftModel.ts';
+import { SHIFT_LAYOUT, platformLevelAt, stairAt, onLowerFloor } from '../src/game/slice/ShiftModel.ts';
 import { MallModel, MALL_LAYOUT, MALL_RULES, KeyReturnModel, LOT_LAYOUT } from '../src/game/slice/MallModel.ts';
 
 const solids = depotSolidFootprints();
@@ -51,15 +51,16 @@ test('dense synthetic cast placements remain pairwise clear without leaving the 
 
 test('yielding on stairs and lower floor retains the intended supported side', () => {
   for (const side of ['left', 'right']) {
-    const stairs = SHIFT_LAYOUT[`${side}Lane`];
-    const floor = SHIFT_LAYOUT.lowerFloor[side];
-    for (const [y, bounds] of [[830, stairs], [940, floor]]) {
-      const intended = { x: (bounds.minX + bounds.maxX) / 2, y };
+    const stairs = SHIFT_LAYOUT.stairs[side];
+    const floor = side === 'left' ? SHIFT_LAYOUT.floorT : SHIFT_LAYOUT.floorS;
+    for (const intended of [{ x: (stairs.topX + stairs.bottomX) / 2, y: SHIFT_LAYOUT.stairs.centerY }, floor]) {
       const actor = { ...intended, radius: 12 };
       const point = clearDepotFootprint(intended, 12, [actor], solids);
       assertClear(point, 12, [actor]);
-      assert.ok(point.x >= bounds.minX && point.x <= bounds.maxX);
-      assert.ok(point.y >= (y === 830 ? SHIFT_LAYOUT.stairs.top : SHIFT_LAYOUT.stairs.bottom));
+      assert.equal(point.x < 480, side === 'left');
+      assert.equal(Boolean(stairAt(point.x, point.y)), Boolean(stairAt(intended.x, intended.y)));
+      assert.equal(onLowerFloor(point), onLowerFloor(intended));
+      assert.ok(point.y + 12 <= SHIFT_LAYOUT.lowerFloor.bottom);
     }
   }
 });
