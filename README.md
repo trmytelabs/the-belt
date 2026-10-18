@@ -27,7 +27,8 @@ WebGL; without it the page links to the 2D depot. See
 The **2D Night Shift / Depot 07** is at `?mode=2d`, and the description below
 applies to both. Both depots now play a whole night: one of three random
 arrivals outside the locked gate, Shan's morning scrum, the warehouse shift
-with a Tim Hortons or 7-Eleven break, then Skanky's mall run in the five-ton,
+with a Tim Hortons or 7-Eleven break, then Skanky's mall run in the five-ton
+(a 3D mall inspired by Edmonton's Southgate Centre),
 returning the truck and going home. Story scenes advance by themselves; Space
 shows the next line and Enter skips the scene. See
 [the overnight shift expansion](docs/overnight-shift-expansion.md).
