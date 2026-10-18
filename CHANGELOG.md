@@ -2,6 +2,18 @@
 
 ## 0.1.0 — development snapshot
 
+- Add a driving-only practice start, a city of locally served Kenney building,
+  streetlight, traffic-light and box-truck models, ten cars, four steerable
+  left/right corners and cycling signals. Brake at reds; crossing costs five
+  points. Both short journeys retain forgiving shoulders and safe cargo.
+- Match 3D receiving collisions to its angled feeder guards and head drive,
+  leaving a clear crossing and keeping the workers apart around the belt top.
+- Start the 3D lo-fi at START THE NIGHT and resume it after pausing the opening.
+  Replace handling, impact, latch and interface tones with 24 small local CC0
+  recordings, mix varied quiet foley, and use a pulsed diesel bed on the road.
+- Refresh lower-floor stack culling bounds as cartons arrive so delivered
+  freight stays visible, and remove invisible sorting-lane fences beside the
+  belt, recovery tray, bulk and stair approaches while retaining solid scenery.
 - Add two short 3D five-ton drives between UPS and the mall, with a raised chase
   camera, gentle turn assist, traffic, cones, keyboard and held touch pedals.
   Parking continues the existing deliveries and key return; bumps cost five

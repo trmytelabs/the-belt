@@ -3,6 +3,7 @@ import { chromium } from 'playwright';
 import { preview } from 'vite';
 import { DEPOT_3D_LAYOUT as SHIFT_LAYOUT, platformLevelAt } from '../src/three/layout.ts';
 import { OPENERS, BREAK_SCENES, SCRUM, MALL_ASSIGNMENT, DRIVE_TO_MALL, DRIVE_TO_UPS, GO_HOME } from '../src/game/slice/StoryScript.ts';
+import { receivingBlocked } from '../src/three/receivingCollision.ts';
 
 // Controlled geometry fixtures complement real-input gameplay in the other suites.
 const server = process.env.BELT_TEST_BASE_URL ? null : await preview({ preview: { host: '127.0.0.1', port: 0 }, logLevel: 'silent' });
@@ -164,6 +165,30 @@ try {
   });
   assert.ok(crewCargoDistance >= 36 - 1e-5, 'standing coworkers yield around loose floor freight');
 
+  const receivingCrew = await page.evaluate(() => {
+    const app = window.fixtureApp; app.restart(); app.state = 'paused'; app.model.eventStopped = true;
+    Object.assign(app.model.workers[0], { x: 430, y: 84 }); Object.assign(app.model.workers[1], { x: 530, y: 84 });
+    const points = [], overlaps = [];
+    for (let step = 0; step < 400; step++) {
+      app.model.elapsedMs = 10_000 + step * 50; app.model.beltTravel = step * 8;
+      app.crew.update(0.05, app.model, step / 20); app.clearCrewFootprints();
+      const occupied = app.model.workers.map(w => ({ id: w.id, x: w.x, y: w.y }));
+      for (const [id, actor] of app.crew.clearanceActors) {
+        if (!actor.root.visible || actor.pose === 'massage' || actor.pose === 'sit' || Math.abs(actor.character.body.rotation.z) > 0.8) continue;
+        const point = { id, x: actor.root.position.x * 32 + 480, y: actor.root.position.z * 32 + 340 };
+        if (point.y < 210) {
+          points.push(point);
+          for (const other of occupied) if (Math.hypot(point.x - other.x, point.y - other.y) < 24 - 0.001) overlaps.push(`${id}/${other.id}`);
+        }
+        occupied.push(point);
+      }
+    }
+    return { points, overlaps };
+  });
+  assert.ok(receivingCrew.points.length > 800, 'sample ordinary moving receiving crew');
+  assert.deepEqual(receivingCrew.overlaps, [], 'workers never occupy the same standing space');
+  assert.deepEqual(receivingCrew.points.filter(point => receivingBlocked(point, 12)), [], 'workers clear the visible feeder guards and head motor');
+
   // Mixed recovery freight must fit on the actual tray, stack without overlap,
   // and stay clear of a worker approaching from either lane.
   const recovery = await page.evaluate(layout => {
@@ -206,7 +231,13 @@ try {
     let carriedSamples = 0;
     const overlaps = (a, b) => ['x', 'y', 'z'].every(axis => Math.min(a.max[axis], b.max[axis]) - Math.max(a.min[axis], b.min[axis]) > 0.001);
     for (const [side, route] of ['T', 'S'].entries()) {
+      const growing = app.world.floorPiles[route];
+      app.world.setFloorPile(route, 0); growing.computeBoundingSphere();
+      app.world.setFloorPile(route, 1);
+      if (!growing.boundingSphere || growing.boundingSphere.radius <= 0 || growing.boundingBox.isEmpty()) issues.push(`${route}: first carton still has empty culling bounds`);
+      const firstRadius = growing.boundingSphere.radius;
       app.world.setFloorPile(route, 36);
+      if (growing.boundingSphere.radius <= firstRadius) issues.push(`${route}: growing stack does not refresh culling bounds`);
       const pile = app.world.floorPiles[route]; pile.updateWorldMatrix(true, false);
       pile.geometry.computeBoundingBox();
       const boxes = [];

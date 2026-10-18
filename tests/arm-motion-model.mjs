@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { createServer } from 'vite';
 
 // Load the actual 3D pose functions without constructing canvas-backed art.
-const server = await createServer({ server:{ middlewareMode:true } });
+const server = await createServer({ cacheDir: 'node_modules/.vite-arm-motion', server:{ middlewareMode:true } });
 let animateCharacter, applyPose, BODY;
 try {
   ({ animateCharacter, BODY } = await server.ssrLoadModule('/src/three/characters.ts'));

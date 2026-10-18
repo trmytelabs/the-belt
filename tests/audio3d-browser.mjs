@@ -47,7 +47,8 @@ try {
 
     const cues=[];
     for(const effect of ['grab','drop','correct','wrong','package-spawn','dig','whistle','drive-brake','drive-collision']){
-      const f=make(2);if(effect==='whistle')f.system.lunchWhistle();else if(effect.startsWith('drive-'))f.system.drivingCue(effect.slice(6));else f.system.play(effect);
+      const f=make(2);await f.system.preloadFoley();ensure(f.system.foleyBuffers.size===24,'all bundled recorded foley decodes');
+      if(effect==='whistle')f.system.lunchWhistle();else if(effect.startsWith('drive-'))f.system.drivingCue(effect.slice(6));else f.system.play(effect);
       const rendered=await f.offline.startRendering(),level=metrics(rendered);
       ensure(level.peak<.65 && level.rms>.0001,`${effect}: audible soft cue, no clipping`);
       ensure(metrics(rendered,1.8).peak<.000001,`${effect}: no hanging voice`);cues.push({effect,...level});

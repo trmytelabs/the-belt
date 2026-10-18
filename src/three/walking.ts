@@ -1,10 +1,11 @@
+import { RECEIVING_CROSSING_Y } from './receivingCollision.ts';
 export interface WalkPoint { x: number; y: number }
 
 /** Cross to the other platform lane around the receiving end of the belt. */
 export function platformWalkPath(from: WalkPoint, to: WalkPoint): WalkPoint[] {
   const crossesBelt = (from.x < 448 && to.x > 512) || (from.x > 512 && to.x < 448);
-  return crossesBelt ? [from, { x: from.x < 480 ? 400 : 560, y: 128 },
-    { x: to.x < 480 ? 400 : 560, y: 128 }, to] : [from, to];
+  return crossesBelt ? [from, { x: from.x < 480 ? 400 : 560, y: RECEIVING_CROSSING_Y },
+    { x: to.x < 480 ? 400 : 560, y: RECEIVING_CROSSING_Y }, to] : [from, to];
 }
 
 export function pathLength(points: readonly WalkPoint[]): number {

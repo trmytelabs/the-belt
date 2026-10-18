@@ -3,6 +3,31 @@ export type { SoundEffect } from '../game/systems/AudioSystem';
 
 export const DEPOT_MUSIC_URL = '/audio/music/after-hours.mp3';
 const CROSSFADE_SECONDS = 1.6;
+type FoleyCue = { files: string[]; volume: number; cutoff?: number };
+// Small CC0 recordings replace the old oscillator-based handling/UI effects.
+const FOLEY: Partial<Record<SoundEffect | 'drive-collision', FoleyCue>> = {
+  grab: { files: ['cloth1', 'cloth2', 'handleSmallLeather'], volume: 0.24 },
+  dig: { files: ['cloth3', 'handleSmallLeather2'], volume: 0.26 },
+  drop: { files: ['impactSoft_medium_000', 'impactSoft_medium_001', 'impactSoft_medium_002'], volume: 0.5, cutoff: 2800 },
+  correct: { files: ['impactSoft_medium_001', 'impactSoft_medium_002', 'impactSoft_medium_000'], volume: 0.48, cutoff: 2800 },
+  bulk: { files: ['impactWood_light_000', 'impactWood_light_001'], volume: 0.52, cutoff: 2200 },
+  'pile-up': { files: ['impactSoft_medium_002', 'impactWood_light_001'], volume: 0.46, cutoff: 2400 },
+  'package-spawn': { files: ['cloth1', 'cloth3'], volume: 0.045, cutoff: 2200 },
+  throw: { files: ['knifeSlice'], volume: 0.25, cutoff: 3200 },
+  smash: { files: ['impactGlass_light_000'], volume: 0.38, cutoff: 2800 },
+  'drive-collision': { files: ['impactSoft_medium_000', 'impactMetal_light_000'], volume: 0.55, cutoff: 1700 },
+  button: { files: ['metalClick'], volume: 0.22 },
+  'belt-start': { files: ['metalLatch'], volume: 0.3, cutoff: 2600 },
+  'belt-stop': { files: ['metalLatch'], volume: 0.28, cutoff: 2200 },
+  gate: { files: ['metalLatch', 'doorClose_1'], volume: 0.28, cutoff: 2600 },
+  switch: { files: ['click_001', 'click_002'], volume: 0.17 },
+  'ui-start': { files: ['click_002'], volume: 0.22 },
+  sign: { files: ['scratch_001', 'bookPlace1', 'bookPlace2'], volume: 0.25 },
+  register: { files: ['handleCoins'], volume: 0.24, cutoff: 3200 },
+  wrong: { files: ['error_001'], volume: 0.18, cutoff: 2000 },
+  warning: { files: ['metalClick'], volume: 0.2, cutoff: 2400 },
+  'event-alert': { files: ['confirmation_001'], volume: 0.18, cutoff: 3000 },
+};
 
 /** Recorded lo-fi and softer foley for the active 3D game. */
 export class DepotAudio extends AudioSystem {
@@ -17,12 +42,100 @@ export class DepotAudio extends AudioSystem {
   private duckUntil = 0;
   private idleSources: AudioScheduledSourceNode[] = [];
   private idleGain: GainNode | null = null;
-  private drivingHum: OscillatorNode | null = null;
+  private drivingHum: AudioBufferSourceNode | null = null;
   private drivingGain: GainNode | null = null;
+  private motorBuffer: AudioBuffer | null = null;
+  private foleyLoad: Promise<void> | null = null;
+  private readonly foleyBuffers = new Map<string, AudioBuffer>();
+  private readonly foleyVoices = new Map<AudioBufferSourceNode, GainNode>();
+  private readonly variations = new Map<string, number>();
 
   public override async unlock(): Promise<void> {
     await super.unlock();
+    void this.preloadFoley();
     this.scheduleTrack();
+  }
+
+  /** Load while the briefing is visible; never replay stale events after a download. */
+  public preloadFoley(): Promise<void> {
+    const context = this.getContext();
+    if (!context) return Promise.resolve();
+    this.foleyLoad ??= Promise.all([...new Set(Object.values(FOLEY).flatMap(cue => cue.files))].map(async file => {
+      try {
+        const response = await fetch(`/audio/foley/${file}.ogg`);
+        if (!response.ok) return;
+        const buffer = await context.decodeAudioData(await response.arrayBuffer());
+        let sum = 0, peak = 0, count = 0;
+        for (let channel = 0; channel < buffer.numberOfChannels; channel++) for (const value of buffer.getChannelData(channel)) {
+          peak = Math.max(peak, Math.abs(value)); sum += value * value; count++;
+        }
+        const level = Math.min(0.85 / Math.max(peak, 0.001), 0.14 / Math.max(Math.sqrt(sum / Math.max(1, count)), 0.001));
+        for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
+          const data = buffer.getChannelData(channel);
+          for (let i = 0; i < data.length; i++) data[i] *= level;
+        }
+        this.foleyBuffers.set(file, buffer);
+      } catch { /* Quiet local synthesis remains available if an asset cannot decode. */ }
+    })).then(() => undefined);
+    return this.foleyLoad;
+  }
+
+  private stopFoley(): void {
+    const now = this.context?.currentTime ?? 0;
+    for (const [source, gain] of this.foleyVoices) {
+      this.fade(gain, 0, 0.025); source.stop(now + 0.04);
+    }
+    this.foleyVoices.clear();
+  }
+
+  private sample(buffer: AudioBuffer, volume: number, rate: number, cutoff: number, delay = 0): void {
+    const context = this.context;
+    if (!context || !this.sfxGain) return;
+    // Bound overlapping foley so a busy belt never drowns out the recording.
+    if (this.foleyVoices.size >= 10) {
+      const [source, gain] = this.foleyVoices.entries().next().value!;
+      this.fade(gain, 0, 0.02); source.stop(context.currentTime + 0.03); this.foleyVoices.delete(source);
+    }
+    const source = context.createBufferSource(), gain = context.createGain(), filter = context.createBiquadFilter();
+    const start = context.currentTime + 0.005 + delay, duration = Math.min(buffer.duration / rate, 1.4);
+    source.buffer = buffer; source.playbackRate.value = rate;
+    filter.type = 'lowpass'; filter.frequency.value = cutoff; filter.Q.value = 0.5;
+    gain.gain.setValueAtTime(0, start);
+    gain.gain.linearRampToValueAtTime(volume, start + 0.004);
+    gain.gain.setValueAtTime(volume, start + Math.max(0.005, duration - 0.035));
+    gain.gain.linearRampToValueAtTime(0, start + duration);
+    source.connect(filter); filter.connect(gain); gain.connect(this.sfxGain);
+    this.foleyVoices.set(source, gain);
+    source.onended = () => { source.disconnect(); filter.disconnect(); gain.disconnect(); this.foleyVoices.delete(source); };
+    source.start(start); source.stop(start + duration);
+  }
+
+  private recordedFoley(effect: SoundEffect | 'drive-collision'): boolean {
+    const cue = FOLEY[effect];
+    if (!cue) return false;
+    const available = cue.files.filter(file => this.foleyBuffers.has(file));
+    if (!available.length) return false;
+    const index = this.variations.get(effect) ?? 0;
+    this.variations.set(effect, index + 1);
+    this.sample(this.foleyBuffers.get(available[index % available.length])!, cue.volume, [0.97, 1.015, 1][index % 3], cue.cutoff ?? 4000);
+    if (effect === 'correct' && this.foleyBuffers.has('click_002')) this.sample(this.foleyBuffers.get('click_002')!, 0.1, 1, 3000, 0.08);
+    return true;
+  }
+
+  /** Combustion pulses and filtered road noise replace a pitched triangle drone. */
+  private motor(): AudioBuffer {
+    const context = this.context!;
+    if (this.motorBuffer) return this.motorBuffer;
+    const buffer = context.createBuffer(1, context.sampleRate * 2, context.sampleRate), data = buffer.getChannelData(0);
+    let seed = 0x5482, smooth = 0;
+    for (let i = 0; i < data.length; i++) {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+      const noise = seed / 0x80000000 - 1, t = i / context.sampleRate;
+      smooth = smooth * 0.94 + noise * 0.06;
+      const pulse = Math.exp(-((t * 24) % 1) * 8);
+      data[i] = smooth * (0.5 + pulse * 1.5) + Math.sin(t * Math.PI * 2 * 48) * pulse * 0.12;
+    }
+    this.motorBuffer = buffer; return buffer;
   }
 
   public override startMusic(mode: MusicMode): void {
@@ -53,11 +166,13 @@ export class DepotAudio extends AudioSystem {
     this.stopRecordings();
     this.setTruckIdle(false);
     this.setDriving(null);
+    this.stopFoley();
   }
 
   public override setMuted(muted: boolean): void {
     super.setMuted(muted);
     if (muted) this.setDriving(null);
+    if (muted) this.stopFoley();
     if (!muted) this.scheduleTrack();
   }
 
@@ -74,14 +189,14 @@ export class DepotAudio extends AudioSystem {
     const context = this.getContext();
     if (!context || context.state !== 'running' || !this.sfxGain) return;
     if (!this.drivingHum) {
-      const hum = context.createOscillator(), gain = context.createGain();
-      hum.type = 'triangle'; gain.gain.value = 0;
+      const hum = context.createBufferSource(), gain = context.createGain();
+      hum.buffer = this.motor(); hum.loop = true; gain.gain.value = 0;
       hum.connect(gain); gain.connect(this.sfxGain);
       hum.onended = () => { hum.disconnect(); gain.disconnect(); };
       hum.start(); this.drivingHum = hum; this.drivingGain = gain;
     }
-    this.drivingHum.frequency.setTargetAtTime(44 + Math.max(0, speed) * 3.8, context.currentTime, 0.15);
-    this.fade(this.drivingGain, 0.018 + Math.min(13.5, speed) * 0.0006, 0.16);
+    this.drivingHum.playbackRate.setTargetAtTime(0.75 + Math.max(0, speed) / 20, context.currentTime, 0.2);
+    this.fade(this.drivingGain, 0.055 + Math.min(13.5, speed) * 0.003, 0.16);
   }
 
   public drivingCue(kind: 'brake' | 'collision'): void {
@@ -93,6 +208,7 @@ export class DepotAudio extends AudioSystem {
     if (kind === 'brake') {
       this.noise(now + 0.005, 0.25, 1200, 0.065);
     } else {
+      if (this.recordedFoley('drive-collision')) return;
       this.voice(82, 0.2, now + 0.005, 0.12, { end: 40, cutoff: 320 });
       this.noise(now + 0.01, 0.15, 650, 0.1);
     }
@@ -145,6 +261,12 @@ export class DepotAudio extends AudioSystem {
       this.duckUntil = now + 1.7;
       this.updateMusicVolume();
       return;
+    }
+    const cooldown = effect === 'warning' ? 0.7 : effect === 'event-alert' ? 0.4 : 0.12;
+    if (now - (this.foleyTimes.get(effect) ?? -Infinity) < cooldown) return;
+    if (this.recordedFoley(effect)) { this.foleyTimes.set(effect, now); return; }
+    if (effect === 'engine' || effect === 'truck') {
+      this.foleyTimes.set(effect, now); this.sample(this.motor(), 0.16, effect === 'engine' ? 0.7 : 0.95, 700); return;
     }
     if (!['grab', 'drop', 'correct', 'wrong', 'package-spawn', 'dig'].includes(effect)) { super.play(effect); return; }
     if (now - (this.foleyTimes.get(effect) ?? -Infinity) < 0.12) return;

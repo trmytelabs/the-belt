@@ -3,6 +3,7 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 
 import { ROUTE_INFO, streetRange } from './addresses';
 import { DEPOT_3D_LAYOUT as SHIFT_LAYOUT, floorPileSlot, truckInteriorAt } from './layout';
+import { RECEIVING_FEEDERS } from './receivingCollision';
 import { BODY, bendElbows, bendKnees, createCharacter, mergeCharacter, type Character, type CharacterSpec } from './characters';
 import { mergeStatic } from './merge';
 import { physicalBounds } from './collision3d';
@@ -588,7 +589,14 @@ export class DepotWorld {
 
   /** Each lower-floor drop shows one box per parcel delivered there. */
   public setFloorPile(route: 'T' | 'S', count: number): void {
-    this.floorPiles[route].count = Math.min(count, this.floorPiles[route].instanceMatrix.count);
+    const pile = this.floorPiles[route];
+    const visible = Math.max(0, Math.min(count, pile.instanceMatrix.count));
+    if (pile.count === visible) return;
+    pile.count = visible;
+    // The first draw caches an empty sphere at count=0. Growing the stack must
+    // refresh it, otherwise Three.js keeps culling delivered cartons forever.
+    pile.computeBoundingBox();
+    pile.computeBoundingSphere();
   }
 
   public setTruckRunning(index: number, running: boolean): void {
@@ -743,9 +751,9 @@ export class DepotWorld {
       scene.add(shadowed(trailer));
     }
     // Two angled feeder conveyors merge into the head of the main belt.
-    const target = toWorld({ x: SHIFT_LAYOUT.beltX, y: 112 }, 0);
-    for (const x of [372, 588]) {
-      const start = toWorld({ x, y: -150 }, 0);
+    for (const { from, to } of RECEIVING_FEEDERS) {
+      const target = toWorld(to, 0);
+      const start = toWorld(from, 0);
       const span = target.clone().sub(start);
       const length = span.length();
       const feeder = new THREE.Group();

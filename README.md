@@ -36,8 +36,11 @@ and have procedural fallbacks; see [prop sources](public/models/PROP-SOURCES.md)
 Kylie is a short Asian man; AJ is a clothed bald man with fitted glasses.
 The 3D soundtrack is a recorded chill lo-fi instrumental made in Google Flow
 Music, with smooth loop transitions, quieter package foley and music ducking
-under dialogue. M mutes both music and effects. Source details are in
-[music sources](public/audio/MUSIC-SOURCES.md).
+under dialogue. It starts with START THE NIGHT, during the arrival scene.
+Package rustles, impacts, mechanical latches and tablet clicks use small local
+recordings, with subtle variation and controlled volume. M mutes both music and
+effects. Source details are in [music sources](public/audio/MUSIC-SOURCES.md)
+and [foley sources](public/audio/FOLEY-SOURCES.md).
 
 The legacy **2D Night Shift / Depot 07** is at `?mode=2d`. The current 3D game
 plays a whole night: one of three random
@@ -112,11 +115,14 @@ SORT!** countdown starts the shift.
   of 6–10 cartons; the cart carries two stops per trip. Taking freight highlights
   an available bundle for the current run and skips empty truck slots. Delivering
   a stop removes that stop's bundle while the other one stays on the cart.
-- In 3D, drive the five-ton from UPS to the mall and back, about 23 seconds each
+- In 3D, drive the five-ton from UPS to the mall and back, about 26 seconds each
   way. W / up accelerates, A/D / left/right steers and S / down brakes. Touch has
-  a steering stick plus held GAS and BRAKE pedals. Stop in the lit loading bay
+  a steering stick plus held GAS and BRAKE pedals. Follow left/right turn signs
+  through the modelled city and brake at working traffic lights. Stop in the lit loading bay
   and press Space / PARK to continue. Bumps cost five points and briefly slow the
-  truck; cargo stays safe. Escape / PAUSE and M / MUTE work on the road too.
+  truck; crossing a red light costs five points, and cargo stays safe.
+  Escape / PAUSE and M / MUTE work on the road too. Try just the driving at
+  `?mode=3d&drive=mall` (or `drive=ups`); parking offers the trip back.
   See [the 3D driving mini-game](docs/3d-driving.md).
 
 Touch devices have a movement stick and Switch, Grab / Deliver, and Brake

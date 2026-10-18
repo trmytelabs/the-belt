@@ -2,20 +2,38 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { chromium } from 'playwright';
 import { preview } from 'vite';
-import { driveJourney } from './driving-helpers.mjs';
+import { driveJourney, driveToBay } from './driving-helpers.mjs';
 
 const server = await preview({ preview: { host: '127.0.0.1', port: 0 }, logLevel: 'silent' });
 const browser = await chromium.launch({ headless: true,
   ...(process.env.BELT_BROWSER_EXECUTABLE ? { executablePath: process.env.BELT_BROWSER_EXECUTABLE } : { channel: 'chromium' }),
   args: process.env.BELT_3D_GPU ? ['--ignore-gpu-blocklist'] : ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
 });
+const observeAppAndMusic = () => {
+  window.addEventListener('belt3d:ready', e => { window.fixtureApp = e.detail; });
+  window.fixtureMusicStarts = 0;
+  const create = AudioContext.prototype.createBufferSource;
+  AudioContext.prototype.createBufferSource = function (...args) {
+    const source = create.apply(this, args), start = source.start.bind(source);
+    source.start = (...values) => { if (source.buffer?.duration > 60) window.fixtureMusicStarts++; return start(...values); };
+    return source;
+  };
+};
 try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
-  await page.addInitScript(() => window.addEventListener('belt3d:ready', e => { window.fixtureApp = e.detail; }));
+  await page.addInitScript(observeAppAndMusic);
   await page.goto(server.resolvedUrls.local[0]);
   await page.waitForFunction(() => window.fixtureApp?.state === 'briefing', null, { timeout: 90_000 });
+  assert.equal(await page.evaluate(() => window.fixtureMusicStarts), 0, 'briefing waits for the start gesture');
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => window.fixtureMusicStarts > 0 && window.fixtureApp.story.chapter === 'arrival', null, { polling: 10 });
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => window.fixtureApp.state === 'paused', null, { polling: 10 });
+  const musicStarts = await page.evaluate(() => window.fixtureMusicStarts);
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(n => window.fixtureMusicStarts > n && window.fixtureApp.story.chapter === 'arrival', musicStarts, { polling: 10 });
   // Synthetic warehouse completion; use the real assignment and road transitions.
   await page.evaluate(() => {
     const app = window.fixtureApp;
@@ -27,6 +45,11 @@ try {
   await page.waitForFunction(() => window.fixtureApp.cutscene?.scene.id === 'drive-to-mall', null, { polling: 10 });
   await page.keyboard.press('Enter');
   await page.waitForFunction(() => window.fixtureApp.state === 'driving', null, { polling: 10 });
+  await page.evaluate(() => window.fixtureApp.drivingView.ready);
+  assert.ok(await page.evaluate(() => {
+    const view = window.fixtureApp.drivingView;
+    return view.buildingCount >= 30 && view.truck.userData.modelReady && view.scene.children.filter(c => c.name === 'city-building').every(c => c.userData.modelReady);
+  }), 'local building and five-ton models load successfully');
   await page.keyboard.press('Enter');
   assert.equal(await page.evaluate(() => window.fixtureApp.state), 'driving', 'Enter cannot skip driving');
   await page.keyboard.down('KeyW');
@@ -61,9 +84,7 @@ try {
   assert.ok(await page.evaluate(t => window.fixtureApp.driving.elapsed - t < 0.2, beforePause.elapsed));
   await page.keyboard.press('KeyM');
   await page.keyboard.press('KeyM');
-  await page.keyboard.down('KeyW');
-  await page.waitForFunction(() => window.fixtureApp.driving.canPark, null, { polling: 10, timeout: 90_000 });
-  await page.keyboard.up('KeyW');
+  await driveToBay(page);
   if (process.env.BELT_SCREENSHOT_DIR) await page.screenshot({ path: join(process.env.BELT_SCREENSHOT_DIR, 'driving-mall-bay.png') });
   await page.keyboard.press('Space');
   await page.waitForFunction(() => window.fixtureApp.cutscene?.scene.id === 'mall-intro', null, { polling: 10 });
@@ -78,10 +99,13 @@ try {
   await driveJourney(page, 'ups');
   assert.equal(await page.evaluate(() => window.fixtureApp.lot.done), false, 'the drive still requires returning the keys');
   const roadBefore = await page.evaluate(() => window.fixtureApp.drivingView.scene.children.length);
+  const deductions = await page.evaluate(() => ({ bumps: window.fixtureApp.drivingCollisions, red: window.fixtureApp.drivingRedLights, penalty: window.fixtureApp.drivingPenalty }));
+  assert.equal(deductions.penalty, (deductions.bumps + deductions.red) * 5, 'each traffic incident charges exactly once');
   await page.evaluate(() => window.fixtureApp.showResults());
   const results = await page.locator('.b3d-panel').innerText();
-  assert.match(results, /DRIVING · 1 bumps · −5 points · cargo safe/);
-  assert.match(results, /NIGHT TOTAL 00995/);
+  assert.ok(results.includes(`DRIVING · ${deductions.bumps} bumps`));
+  assert.ok(results.includes(`−${deductions.penalty} points · cargo safe`));
+  assert.ok(results.includes(`NIGHT TOTAL ${String(1000 - deductions.penalty).padStart(5, '0')}`));
   assert.equal(await page.evaluate(() => window.fixtureApp.model.score), 1000, 'driving leaves warehouse scoring and grade inputs intact');
   await page.evaluate(() => window.fixtureApp.restart());
   assert.deepEqual(await page.evaluate(() => ({ state: window.fixtureApp.state, drive: window.fixtureApp.driving, penalty: window.fixtureApp.drivingPenalty, bumps: window.fixtureApp.drivingCollisions, gas: window.fixtureApp.touch.pedals.throttle })),
@@ -90,12 +114,15 @@ try {
   assert.equal(await page.evaluate(() => window.fixtureApp.drivingView.scene.children.length), roadBefore, 'replay reuses traffic without leaking road props');
   await page.evaluate(() => { window.dispatchEvent(new Event('blur')); });
   assert.equal(await page.evaluate(() => window.fixtureApp.state), 'paused', 'focus loss pauses the road');
+  await page.close();
 
   const touch = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   touch.on('pageerror', e => errors.push(e.message));
-  await touch.addInitScript(() => window.addEventListener('belt3d:ready', e => { window.fixtureApp = e.detail; }));
+  await touch.addInitScript(observeAppAndMusic);
   await touch.goto(server.resolvedUrls.local[0]);
   await touch.waitForFunction(() => window.fixtureApp?.state === 'briefing', null, { timeout: 90_000 });
+  await touch.getByRole('button', { name: 'START THE NIGHT', exact: false }).tap();
+  await touch.waitForFunction(() => window.fixtureMusicStarts > 0 && window.fixtureApp.story.chapter === 'arrival', null, { polling: 10 });
   await touch.evaluate(() => window.fixtureApp.beginDriving('mall'));
   await touch.getByRole('button', { name: 'Accelerate truck', exact: true }).waitFor();
   const cdp = await touch.context().newCDPSession(touch);
@@ -116,11 +143,31 @@ try {
   await touch.waitForFunction(() => window.fixtureApp.driving.speed < 1, null, { polling: 10 });
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [brakePoint] });
   assert.equal(await touch.evaluate(() => window.fixtureApp.touch.pedals.throttle), 1, 'the brake can release while gas stays held');
-  await touch.waitForFunction(() => window.fixtureApp.driving.canPark, null, { polling: 10, timeout: 90_000 });
+  await touch.waitForFunction(() => window.fixtureApp.driving.canPark, null, { polling: 10, timeout: 150_000 });
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   if (process.env.BELT_SCREENSHOT_DIR) await touch.screenshot({ path: join(process.env.BELT_SCREENSHOT_DIR, 'driving-touch-portrait.png') });
   await touch.getByRole('button', { name: 'Park truck', exact: true }).tap();
   await touch.waitForFunction(() => window.fixtureApp.cutscene?.scene.id === 'mall-intro', null, { polling: 10 });
+  await touch.close();
+
+  // Open the real public practice link: no sorting, mall cargo or key-return fixture.
+  const practice = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+  practice.on('pageerror', e => errors.push(e.message));
+  await practice.addInitScript(observeAppAndMusic);
+  await practice.goto(`${server.resolvedUrls.local[0]}?mode=3d&drive=mall`);
+  await practice.getByRole('button', { name: 'START DRIVE', exact: false }).click();
+  await practice.waitForFunction(() => window.fixtureApp?.state === 'driving', null, { timeout: 90_000 });
+  await driveToBay(practice);
+  await practice.keyboard.press('Space');
+  await practice.getByRole('heading', { name: 'TRUCK PARKED. NICE.', exact: true }).waitFor();
+  assert.deepEqual(await practice.evaluate(() => ({ time: window.fixtureApp.model.elapsedMs, mall: window.fixtureApp.mall, lot: window.fixtureApp.lot })), { time: 0, mall: null, lot: null });
+  await practice.getByRole('button', { name: 'DRIVE BACK', exact: false }).click();
+  assert.equal(await practice.evaluate(() => window.fixtureApp.driving.destination), 'ups');
+  await driveToBay(practice);
+  await practice.keyboard.press('Space');
+  await practice.getByRole('heading', { name: 'TRUCK PARKED. NICE.', exact: true }).waitFor();
+  await practice.keyboard.press('Enter');
+  assert.deepEqual(await practice.evaluate(() => ({ destination: window.fixtureApp.driving.destination, bumps: window.fixtureApp.driving.collisions, penalty: window.fixtureApp.driving.penalty })), { destination: 'mall', bumps: 0, penalty: 0 });
   assert.deepEqual(errors, []);
-  console.log('PASS real multitouch held gas plus steering, release, portrait parking, both 20–30 second journeys, key-return gate, focus pause and clean replay');
+  console.log('PASS real multitouch gas/steering/brake, portrait parking, both journeys, driving-only round trip, key-return gate, focus pause and clean replay');
 } finally { await browser.close(); await server.httpServer.close(); }

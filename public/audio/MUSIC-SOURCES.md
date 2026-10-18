@@ -17,6 +17,6 @@ recording is governed by the account's Google Flow Music terms; it is not one
 of the CC0 visual assets. Google documents commercial music rights among its
 [Flow Music membership benefits](https://support.google.com/googleone/answer/16286513).
 
-Package foley, lunch whistle and the continuous diesel bed are original local
-Web Audio effects in `src/three/audio.ts`. They require no external audio
+Recorded package/mechanical foley and original local Web Audio effects are
+documented in [FOLEY-SOURCES.md](FOLEY-SOURCES.md). They require no external audio
 service at runtime. Legacy depots retain their previous audio behavior.
