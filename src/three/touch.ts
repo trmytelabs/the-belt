@@ -38,7 +38,11 @@ const CSS = `
 .b3d.touch.chapter.driving .b3d-chapterhud { top: 76px; padding: 8px 12px; display: grid; grid-template-columns: .8fr .8fr 1fr 1.6fr; gap: 6px 12px; }
 .b3d.touch.driving .b3d-chapterhud .stat b { font-size: 14px; }
 .b3d.touch.driving .b3d-chapterhud .objective { grid-column: 1 / -1; min-width: 0; font-size: 12px; }
-.b3d.touch.driving .b3d-toast { top: 212px; width: max-content; max-width: calc(100% - 32px); box-sizing: border-box; }
+.b3d.touch.driving .b3d-toast { top: 310px; width: max-content; max-width: calc(100% - 32px); box-sizing: border-box; }
+@media (max-height: 520px) {
+  .b3d.touch.chapter.driving .b3d-chapterhud { top: 100px; }
+  .b3d.touch.driving .b3d-toast { top: 212px; }
+}
 .b3d-actions button.down, .b3d-corner button.down { background: #edba6d; color: #10232a; }
 .b3d-actions .brake[disabled] { opacity: .55; }
 .b3d-corner { position: absolute; left: max(12px, env(safe-area-inset-left)); top: 96px; display: flex; gap: 8px; }

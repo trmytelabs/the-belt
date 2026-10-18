@@ -134,6 +134,8 @@ try {
   await touch.waitForFunction(() => window.fixtureMusicStarts > 0 && window.fixtureApp.story.chapter === 'arrival', null, { polling: 10 });
   await touch.evaluate(() => window.fixtureApp.beginDriving('mall'));
   await touch.getByRole('button', { name: 'Accelerate truck', exact: true }).waitFor();
+  const navBox = await touch.locator('.b3d-drive-nav').boundingBox(), toastBox = await touch.locator('.b3d-toast').boundingBox();
+  assert.ok(toastBox.y >= navBox.y + navBox.height + 6, 'the portrait opening hint stays below the navigation arrow and label');
   const cdp = await touch.context().newCDPSession(touch);
   const box = await touch.getByRole('button', { name: 'Accelerate truck', exact: true }).boundingBox();
   const gasPoint = { x: box.x + box.width / 2, y: box.y + box.height / 2, id: 1 };
@@ -157,6 +159,12 @@ try {
   if (process.env.BELT_SCREENSHOT_DIR) await touch.screenshot({ path: join(process.env.BELT_SCREENSHOT_DIR, 'driving-touch-portrait.png') });
   await touch.getByRole('button', { name: 'Park truck', exact: true }).tap();
   await touch.waitForFunction(() => window.fixtureApp.cutscene?.scene.id === 'mall-intro', null, { polling: 10 });
+  await touch.setViewportSize({ width: 844, height: 390 });
+  await touch.evaluate(() => window.fixtureApp.beginDriving('ups'));
+  await touch.locator('.b3d-drive-nav').waitFor({ state: 'visible' });
+  const landscapeNav = await touch.locator('.b3d-drive-nav').boundingBox(), landscapeHud = await touch.locator('.b3d-chapterhud').boundingBox();
+  assert.ok(landscapeNav.y + landscapeNav.height <= landscapeHud.y, 'landscape guidance stays above the driving stats');
+  if (process.env.BELT_SCREENSHOT_DIR) await touch.screenshot({ path: join(process.env.BELT_SCREENSHOT_DIR, 'driving-touch-landscape.png') });
   await touch.close();
 
   // Open the real public practice link: no sorting, mall cargo or key-return fixture.
