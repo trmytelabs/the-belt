@@ -36,7 +36,7 @@ try {
           workers:Object.values(app.workers).map(worker => ({ x:worker.root.position.x,z:worker.root.position.z })) });
       };
       sample();
-      const timer = setInterval(() => { sample(); if (app.model.elapsedMs >= 4200) clearInterval(timer); }, 25);
+      const timer = setInterval(() => { sample(); if (app.model.elapsedMs >= 6000) clearInterval(timer); }, 25);
     };
   });
   await page.keyboard.press('Enter');
@@ -44,7 +44,7 @@ try {
   await page.keyboard.press('Enter');
   await wait(() => window.fixtureApp.cutscene?.scene.id === 'scrum');
   await page.keyboard.press('Enter');
-  await wait(() => window.fixtureApp.state === 'playing' && window.fixtureApp.model.elapsedMs >= 4400);
+  await wait(() => window.fixtureApp.state === 'playing' && window.fixtureApp.model.elapsedMs >= 6200);
   const opening = await read(() => ({ jump:window.initialShiftJump, samples:window.walkSamples, remaining:window.fixtureApp.crew.workWalks.size }));
   assert.equal(opening.jump, 0, 'ending the scrum preserves the exact same crew roots and positions');
   assert.equal(opening.remaining, 0, 'everyone reaches their own work area');

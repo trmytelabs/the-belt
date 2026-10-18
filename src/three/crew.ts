@@ -222,7 +222,7 @@ export class CrewLife {
   private readonly cellCaption: THREE.Sprite;
   private readonly crewFreight = new Map<string, ParcelView>();
   private readonly crewEpoch = new Map<string, number>();
-  private readonly workWalks = new Map<string, { points: WalkPoint[]; distance: number }>();
+  private readonly workWalks = new Map<string, { points: WalkPoint[]; distance: number; delay: number }>();
   private readonly patrols = new CrewPatrols();
   private readonly drivers: Actor[] = [];
   private readonly unloaders: Actor[] = [];
@@ -450,7 +450,8 @@ export class CrewLife {
         if (points.length > 2) points.splice(2, 1, { x: 550, y: 128 }, { x: 550, y: to.y });
         else points.splice(1, 0, { x: 550, y: from.y }, { x: 550, y: to.y });
       }
-      this.workWalks.set(id, { points, distance: 0 });
+      const queueIndex = ['brian', 'fruitloop', 'doris', 'donna'].indexOf(id);
+      this.workWalks.set(id, { points, distance: 0, delay: Math.max(0, queueIndex) * 0.16 });
       this.crewEpoch.set(id, 0);
     }
   }
@@ -459,7 +460,9 @@ export class CrewLife {
     const walking = new Set<string>();
     for (const [id, route] of this.workWalks) {
       const actor = this.actor(id);
-      route.distance += 135 * dt;
+      const waiting = Math.min(route.delay, dt);
+      route.delay -= waiting;
+      route.distance += 135 * (dt - waiting);
       const point = walkPath(route.points, route.distance);
       actor.place(point.x, point.y); actor.faceAngle = point.heading;
       actor.root.visible = true;
