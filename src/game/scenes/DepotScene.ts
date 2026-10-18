@@ -512,7 +512,7 @@ export class DepotScene extends Phaser.Scene {
       const visual = this.workers[index];
       const moving = delta > 0 && Phaser.Math.Distance.Between(visual.container.x, visual.container.y, worker.x, worker.y) > 0.1;
       visual.container.setPosition(worker.x, worker.y).setDepth(25 + worker.y / 1000);
-      visual.update(this.reducedMotion ? 0 : this.time.now, moving, index === this.model.activeIndex, worker.heldId !== null);
+      visual.update(this.reducedMotion ? 0 : this.time.now, moving, index === this.model.activeIndex, worker.heldId !== null, this.model.assistanceActive);
     });
     const visibleIds = new Set<number>();
     let backlogIndex = 0;
@@ -666,7 +666,7 @@ export class DepotScene extends Phaser.Scene {
     this.statusText.setText(phases[m.phase]);
     this.comboText.setText(m.combo > 1 ? `${m.combo} IN A ROW  /  +${Math.min(m.combo * 15, 150)} NEXT` : `TARGET  /  ${m.goal} CLEAN DISPATCHES`);
     const player = m.activeWorker;
-    this.operatorText.setText(`● ${player.id.toUpperCase()}`).setColor(player.side === 'left' ? '#76cbd1' : '#a6cc9a');
+    this.operatorText.setText(`● ${player.id.toUpperCase()}${m.assistanceActive ? ' + AUTO' : ''}`).setColor(player.side === 'left' ? '#76cbd1' : '#a6cc9a');
     const held = m.packages.find(item => item.id === player.heldId);
     const nearby = m.nearestPackage();
     if (held) {
@@ -764,7 +764,8 @@ export class DepotScene extends Phaser.Scene {
       const spill = this.add.ellipse(event.x, event.y + 8, 34, 11, 0xda8db6, 0.62).setDepth(8);
       this.tweens.add({ targets: spill, scaleX: 1.35, alpha: 0, duration: 4200, onComplete: () => spill.destroy() });
     }
-    if (['wrong', 'miss', 'phase', 'brian', 'recover', 'brake'].includes(event.type)) {
+    if ((!event.workerId || event.workerId === this.model.activeWorker.id)
+      && ['wrong', 'miss', 'phase', 'brian', 'recover', 'brake'].includes(event.type)) {
       this.tell(event.type === 'wrong' ? `NO SCORE · ${event.message}` : event.message, event.type === 'wrong' || event.type === 'miss' ? '#f3987c' : INK, 3300);
     }
   }
@@ -783,9 +784,9 @@ export class DepotScene extends Phaser.Scene {
     this.showPanel('TERMITE & SKANKY / ONE MORE OVERNIGHT', 'ANOTHER NIGHT ON THE BELT.', [
       `Get in, survive the scrum, dispatch ${this.model.goal} parcels, then Skanky has a mall run.`,
       'TERMITE: A + D trucks, T down the stairs.   SKANKY: B + E trucks, S down the stairs.',
-      'C goes to BULK at the belt end. Move with WASD / arrows. TAB switches.',
+      'C goes to BULK. After 36 seconds your partner sorts their own routes automatically.',
       'SPACE grabs and delivers. F throws to save the walk, but it can break.',
-      'E brakes. V overview. Story: SPACE next line, ENTER skips the scene.',
+      'WASD moves. TAB switches. E brakes. V overview. Story: SPACE next, ENTER skips.',
     ], 'START THE NIGHT  ↵', () => this.startShift());
     const original = this.textButton(480, 543, 'O  /  PLAY THE ORIGINAL FULL SHIFT', () => this.scene.start('TitleScene'), 11).setOrigin(0.5);
     this.overlay?.add(original);
@@ -806,7 +807,7 @@ export class DepotScene extends Phaser.Scene {
         `${dispatchRate}% of freight dispatched · ${m.missed} parcels reached the belt end · ${m.bulkSorted} to bulk`,
         `${m.thrownDeliveries} thrown in clean · ${m.damaged} broken (−${m.breakagePenalty} points)${m.gradedBreaks ? ` · ${m.gradedBreaks} against the grade` : ''}`,
         mall ? `MALL RUN · ${mall.delivered}/6 delivered · ${mall.signatures}/6 signed · five-ton ${home ? 'returned' : 'not returned'} · +${this.mallBonus}`
-          : m.pileup >= m.capacity ? 'Recover a missed parcel at the belt exit with SPACE.' : 'Park each worker near their dock. Switch early. Brake when crowded.',
+          : m.pileup >= m.capacity ? 'Recover a missed parcel at the belt exit with SPACE.' : `${m.assistedSorted} partner deliveries · focus on your routes; use C for shared bulk.`,
         mall ? `NIGHT TOTAL ${String(m.score + this.mallBonus).padStart(5, '0')} · ${m.gradeQuote}` : 'The full original shift is still available.',
       ], 'ANOTHER NIGHT  ↵', () => this.scene.restart());
     const original = this.textButton(480, 543, 'PLAY THE ORIGINAL FULL SHIFT', () => this.scene.start('TitleScene'), 11).setOrigin(0.5);

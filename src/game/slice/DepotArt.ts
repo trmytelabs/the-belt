@@ -258,7 +258,8 @@ export class DepotArt {
    * the stairs are banded treads, and the lower floor is darker.
    */
   private drawPlatform(g: Phaser.GameObjects.Graphics) {
-    const { platform, stairs, leftLane, rightLane, lowerFloor } = SHIFT_LAYOUT;
+    const { platform, stairs, leftLane, rightLane, lowerFloor, workerRadius } = SHIFT_LAYOUT;
+    const stairFlights = [leftLane, rightLane].map(lane => ({ minX: lane.minX - workerRadius, maxX: lane.maxX + workerRadius }));
     const scene = this.scene;
     // Lower floor beyond the belt-end wall.
     g.fillStyle(0x1a2c33).fillRect(300, stairs.bottom, 360, lowerFloor.bottom - stairs.bottom);
@@ -273,17 +274,30 @@ export class DepotArt {
     // Safety-yellow nosing on every drop-off edge.
     g.fillStyle(0xe2b84e).fillRect(platform.left, platform.top + 10, 4, platform.bottom - platform.top - 10)
       .fillRect(platform.right - 4, platform.top + 10, 4, platform.bottom - platform.top - 10);
+    // Crew use the same narrow access stairs between the parked truck rows in
+    // both renderers; the painted walk no longer runs through a sheer deck edge.
+    for (const y of [196, 292, 388, 484]) {
+      for (const side of [-1, 1]) {
+        const edge = side < 0 ? platform.left : platform.right;
+        for (let step = 0; step < 5; step += 1) {
+          const x = side < 0 ? edge - 30 + step * 6 : edge + 24 - step * 6;
+          g.fillStyle(0x30494f + step * 0x040404).fillRect(x, y - 12, 6, 24);
+          line(g, x + (side < 0 ? 5 : 1), y - 12, x + (side < 0 ? 5 : 1), y + 12, 0xe2b84e, 1);
+        }
+      }
+    }
     for (let x = platform.left; x < platform.right; x += 16) {
-      const inStairs = (x >= leftLane.minX && x < leftLane.maxX) || (x >= rightLane.minX && x < rightLane.maxX);
+      const inStairs = stairFlights.some(flight => x >= flight.minX && x < flight.maxX);
       if (inStairs) continue;
       // Count stripes from the platform's edge so yellow and black alternate.
       const stripe = Math.round((x - platform.left) / 16);
       g.fillStyle(stripe % 2 === 0 ? 0xe2b84e : 0x1c1c1c).fillRect(x, platform.bottom - 6, 16, 6);
     }
     // Guard rail between the two flights.
-    line(g, leftLane.maxX, platform.bottom - 10, rightLane.minX, platform.bottom - 10, 0xe0b23c, 3, 0.9);
-    // Two stair flights, as wide as each worker's lane.
-    for (const lane of [leftLane, rightLane]) {
+    line(g, stairFlights[0].maxX, platform.bottom - 10, stairFlights[1].minX, platform.bottom - 10, 0xe0b23c, 3, 0.9);
+    // Lane coordinates constrain body centers: the stair deck must also support
+    // the full body at either extreme, rather than cutting through its feet.
+    for (const lane of stairFlights) {
       const steps = 7;
       const run = (stairs.bottom - stairs.top) / steps;
       for (let i = 0; i < steps; i += 1) {
@@ -297,6 +311,11 @@ export class DepotArt {
     }
     label(scene, 480, platform.bottom - 28, 'LOADING PLATFORM', 8, '#c8b47a').setDepth(1);
     label(scene, 480, lowerFloor.bottom - 12, 'LOWER FLOOR', 8, '#6e8a8b').setDepth(1);
+    for (const route of ['T', 'S'] as const) {
+      const storage = SHIFT_LAYOUT.floorStorage[route];
+      g.fillStyle(DEPOT_ROUTE_COLORS[route], 0.07).fillRect(storage.x - storage.width / 2, storage.y - storage.height / 2, storage.width, storage.height);
+      g.lineStyle(1, DEPOT_ROUTE_COLORS[route], 0.45).strokeRect(storage.x - storage.width / 2, storage.y - storage.height / 2, storage.width, storage.height);
+    }
   }
 
   /** Each worker's two trucks, rear doors flush with the platform edge. */
@@ -338,10 +357,10 @@ export class DepotArt {
     label(this.scene, x, y + height / 2 + 10, 'BULK / DISPATCH', 7, '#c5b384').setDepth(4);
     const recovery = SHIFT_LAYOUT.recoveryPile;
     const tray = this.scene.add.graphics().setDepth(3).setData('recoveryPile', { ...recovery });
-    tray.fillStyle(0x0a2028).fillRoundedRect(recovery.x - 59, recovery.y - 13, 118, 26, 4);
-    tray.lineStyle(2, 0x788784).strokeRoundedRect(recovery.x - 59, recovery.y - 13, 118, 26, 4);
-    for (let dx = -51; dx < 54; dx += 13) line(tray, recovery.x + dx, recovery.y - 9, recovery.x + dx, recovery.y + 9, 0x364f56, 1, 0.7);
-    label(this.scene, recovery.x, recovery.y + 18, 'MISSED / RECOVER', 7, '#afaaa0').setDepth(4);
+    tray.fillStyle(0x0a2028).fillRoundedRect(recovery.x - 59, recovery.y - 26, 118, 52, 4);
+    tray.lineStyle(2, 0x788784).strokeRoundedRect(recovery.x - 59, recovery.y - 26, 118, 52, 4);
+    for (let dx = -51; dx < 54; dx += 13) line(tray, recovery.x + dx, recovery.y - 22, recovery.x + dx, recovery.y + 22, 0x364f56, 1, 0.7);
+    label(this.scene, recovery.x, recovery.y + 31, 'MISSED / RECOVER', 7, '#afaaa0').setDepth(4);
   }
 
   private drawDock(route: DepotRoute, side: DepotSide) {
@@ -400,7 +419,7 @@ export class DepotArt {
     ];
     for (const [id, name, x, y, side] of trucks) {
       const truck = createCrewTruckArt(this.scene, name, id === 'ben', side).setPosition(x, y).setDepth(3);
-      this.crewTruckPoints[id] = { x: x + (side === 'left' ? 80 : -80), y };
+      this.crewTruckPoints[id] = { x: x + (side === 'left' ? 86 : -86), y };
       this.departureObjects.push({ object: truck, x, direction: side === 'left' ? -1 : 1 });
     }
     this.crewTruckPoints.froodoo = this.crewTruckPoints.fruitloop;
@@ -586,7 +605,7 @@ export function updateParcelArt(container: Phaser.GameObjects.Container, kind: P
 
 export interface DepotWorkerArt {
   container: Phaser.GameObjects.Container;
-  update(timeMs: number, moving: boolean, active: boolean, holding: boolean): void;
+  update(timeMs: number, moving: boolean, active: boolean, holding: boolean, assisting?: boolean): void;
 }
 
 /** Illustrated workers with independently articulated arms and boots. */
@@ -665,7 +684,7 @@ export function createWorkerArt(scene: Phaser.Scene, side: DepotSide): DepotWork
   root.add(head);
   return {
     container: root,
-    update(timeMs, moving, active, holding) {
+    update(timeMs, moving, active, holding, assisting = false) {
       const stride = moving ? Math.sin(timeMs / 80) : 0;
       legs[0].y = 10 + stride * 3;
       legs[1].y = 10 - stride * 3;
@@ -677,8 +696,9 @@ export function createWorkerArt(scene: Phaser.Scene, side: DepotSide): DepotWork
       arms[0].y = holding ? -8 : -11;
       arms[1].y = holding ? -8 : -11;
       ring.setVisible(active);
+      sleepy.setText(assisting ? 'AUTO' : 'zZz');
       sleepy.setVisible(!active);
-      root.setAlpha(active ? 1 : 0.6);
+      root.setAlpha(active || assisting ? 1 : 0.6);
       body.y = moving ? -Math.abs(stride) * 0.7 : 0;
       head.y = body.y;
       shadow.scaleX = moving ? 1 - Math.abs(stride) * 0.025 : 1;

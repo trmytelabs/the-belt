@@ -1,16 +1,17 @@
 import Phaser from 'phaser';
+import { SHIFT_LAYOUT } from './ShiftModel';
 
 const text = (scene: Phaser.Scene, x: number, y: number, copy: string, size: number, color = '#eee2bd') =>
   scene.add.text(x, y, copy, { fontFamily: 'Arial, sans-serif', fontSize: `${size}px`, fontStyle: 'bold', color }).setOrigin(0.5);
 
 type TruckStyle = { name: string; side: 'left' | 'right'; body?: number; trim?: number; accent?: number; loaded?: boolean; route?: string };
 
-/** One authored 148×84 truck, shared by both workers, all eight colleagues and Ralph. */
+/** One truck footprint, shared by both workers, all eight colleagues and Ralph. */
 export function createDepotTruckArt(scene: Phaser.Scene, style: TruckStyle): Phaser.GameObjects.Container {
-  const root = scene.add.container(0, 0).setSize(148, 84);
-  root.setData('truckFootprint', { width: 148, height: 84 }).setData('truckLabel', style.name);
+  const root = scene.add.container(0, 0).setSize(148, SHIFT_LAYOUT.truckDepth);
+  root.setData('truckFootprint', { width: 148, height: SHIFT_LAYOUT.truckDepth }).setData('truckLabel', style.name);
   const direction = style.side === 'left' ? 1 : -1;
-  const chassis = scene.add.container(0, 0).setScale(direction, 1);
+  const chassis = scene.add.container(0, 0).setScale(direction, SHIFT_LAYOUT.truckDepth / 84);
   const g = scene.add.graphics();
   chassis.add(g);
   root.add(chassis);

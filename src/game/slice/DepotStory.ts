@@ -55,6 +55,7 @@ export class DepotStoryView {
   private dynamic: Phaser.GameObjects.Graphics | null = null;
   private storeLabels = new Map<string, string>();
   private roadTravel = 0;
+  private speechBubble: Phaser.GameObjects.Text | null = null;
 
   constructor(scene: Phaser.Scene, view: DepotCamera, reducedMotion: boolean) {
     this.scene = scene;
@@ -74,6 +75,7 @@ export class DepotStoryView {
     this.subtitleText = this.directionText = this.titleText = this.clockText = this.hudText = this.objectiveText = null;
     this.dynamic = null;
     this.active = null;
+    this.speechBubble = null;
   }
 
   private text(x: number, y: number, copy: string, size: number, color = INK, bold = true): Phaser.GameObjects.Text {
@@ -124,6 +126,8 @@ export class DepotStoryView {
 
   /** A beat's line with its speaker, plus any stage direction and sound caption. */
   public showBeat(beat: StoryBeat): void {
+    this.speechBubble?.destroy();
+    this.speechBubble = null;
     const speaker = beat.speaker ? SPEAKER_NAMES[beat.speaker] : '';
     this.subtitleText?.setText(beat.line ? `${speaker}:  ${beat.line}` : '');
     const extra = [beat.caption, beat.direction].filter(Boolean).join(' ');
@@ -132,9 +136,11 @@ export class DepotStoryView {
     if (extra) this.subtitles.push(extra);
     const actor = beat.speaker ? this.actors.get(beat.speaker) : undefined;
     if (actor && beat.line) {
-      const bubble = this.screen(this.text(actor.art.x, actor.art.y - 44, beat.line, 11, '#19313a')
+      this.speechBubble = this.screen(this.text(actor.art.x, actor.art.y - 44, beat.line, 11, '#19313a')
         .setOrigin(0.5, 1).setBackgroundColor('#f0dfb3').setPadding(6, 4).setDepth(94).setWordWrapWidth(220).setAlign('center'));
-      this.scene.time.delayedCall(Math.max(1400, beat.ms), () => bubble.destroy());
+      // Own the bubble with the current scene: skipping destroys it immediately,
+      // while pausing keeps the current line visible for its full story beat.
+      this.stage?.add(this.speechBubble);
     }
   }
 

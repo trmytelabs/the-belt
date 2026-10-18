@@ -178,7 +178,7 @@ export class DepotRoutines {
       ralph.setVisible(true);
       // The parcel is anchored to his right hand (+9,-4): at pickup that hand
       // meets the shared pile, and at delivery the flatbed backed against the platform.
-      const pickupX = SHIFT_LAYOUT.bulkPile.x - 9;
+      const pickupX = SHIFT_LAYOUT.bulkPile.x - 58 - 12;
       const pickupY = SHIFT_LAYOUT.bulkPile.y + 4;
       const doorX = SHIFT_LAYOUT.platform.left + 12;
       if (trip < 1300) ralph.setPosition(mix(doorX, pickupX, trip / 1300), mix(RALPH_BAY.y, pickupY, trip / 1300));
@@ -202,7 +202,9 @@ export class DepotRoutines {
     this.drivers.forEach((driver, index) => {
       const point = this.driverPoints[index];
       driver.setVisible(this.driversVisible);
-      driver.setPosition(point.x, point.y + mix(48, 21, (time - DRIVERS.arriveAt - index * 70) / 2200));
+      // Stop beside the cab before the driver disappears into it. The previous
+      // endpoint was inside the truck body; these positions fit the clear aisle.
+      driver.setPosition(point.x, point.y + mix(54, SHIFT_LAYOUT.truckDepth / 2 + 6, (time - DRIVERS.arriveAt - index * 70) / 2200));
     });
     if (!active) return;
     for (let index = 0; index < this.driverPoints.length; index++) {
@@ -219,6 +221,20 @@ export class DepotRoutines {
   }
 
   public hideCrewFreight(id: string): void { this.crewFreight.get(id)?.setVisible(false); }
+
+  public isCarrying(id: string): boolean {
+    return Boolean(this.crewFreight.get(id)?.visible)
+      || (id === 'ralph' && this.ralphBox.visible)
+      || (id === 'hussan' && this.snakeState === 'dancing');
+  }
+
+  /** Keep carried freight in the hands when actor clearance shifts a standing pose. */
+  public moveFreight(id: string, dx: number, dy: number): void {
+    const parcel = this.crewFreight.get(id);
+    if (parcel?.visible) parcel.setPosition(parcel.x + dx, parcel.y + dy);
+    if (id === 'ralph' && this.ralphBox.visible) this.ralphBox.setPosition(this.ralphBox.x + dx, this.ralphBox.y + dy);
+    if (id === 'hussan' && (this.snakeState === 'collecting' || this.snakeState === 'dancing')) this.cell.setPosition(this.cell.x + dx, this.cell.y + dy);
+  }
 
   public hideFreight(): void {
     for (const parcel of this.crewFreight.values()) parcel.setVisible(false);

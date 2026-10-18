@@ -4,6 +4,7 @@ import { chromium } from 'playwright';
 import { preview } from 'vite';
 
 import { finishNight, holdBreak, skipOpening } from './night-helpers.mjs';
+import { SHIFT_LAYOUT } from '../src/game/slice/ShiftModel.ts';
 import { KYLIE_QUOTES, SHAN_RANTS, WORKER_SWEARS, COUGH_LINES, SHOT_WORDS, CLOCK_OUT_LINES } from '../src/game/slice/DepotReferences.ts';
 
 // These are isolated clock/cargo fixtures, not claims of organic play. The
@@ -86,8 +87,8 @@ try {
   });
   assert.equal(truckLayout.length, 13, 'four player trucks, eight crew trucks and Ralph must use the same renderer');
   for (const truck of truckLayout) {
-    assert.deepEqual(truck.footprint, { width: 148, height: 84 }, truck.name);
-    assert.deepEqual([truck.width, truck.height, truck.scaleX, truck.scaleY], [148, 84, 1, 1], `${truck.name} must render at the common size`);
+    assert.deepEqual(truck.footprint, { width: 148, height: SHIFT_LAYOUT.truckDepth }, truck.name);
+    assert.deepEqual([truck.width, truck.height, truck.scaleX, truck.scaleY], [148, SHIFT_LAYOUT.truckDepth, 1, 1], `${truck.name} must render at the common size`);
   }
   for (const [name, x, y] of [
     ['HUSSAN', 244, 148], ['AJ', 244, 244], ['PAULA ABDUL', 244, 340], ['BANNERMAN', 244, 436],
@@ -329,7 +330,8 @@ try {
     return { box: { x: r.ralphBox.x, y: r.ralphBox.y, visible: r.ralphBox.visible },
       truck: { x: r.ralphTruck.x, y: r.ralphTruck.y } };
   });
-  assert.deepEqual(bulkContact.box, { x: 480, y: 610, visible: true }, 'Ralph must lift from the same central bulk pile used for C deliveries');
+  assert.deepEqual(bulkContact.box, { x: SHIFT_LAYOUT.bulkPile.x - 61, y: SHIFT_LAYOUT.bulkPile.y, visible: true },
+    'Ralph lifts at the near edge of the shared pile while his body stays outside it');
   assert.deepEqual(bulkContact.truck, { x: 244, y: 628 }, 'Ralph backs into the empty west bay beside the bulk pile');
   for (let trip = 0; trip < 5; trip++) {
     await advance(93_600 + trip * 3000);

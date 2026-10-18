@@ -3,11 +3,12 @@ import { chromium } from 'playwright';
 import { preview } from 'vite';
 
 import { BREAK_SCENES, OPENERS, SCRUM, SPEAKER_NAMES } from '../src/game/slice/StoryScript.ts';
+import { SHIFT_LAYOUT } from '../src/game/slice/ShiftModel.ts';
 import { finishNight, skipOpening } from './night-helpers.mjs';
 
 // The overnight story in the 2D depot (?mode=2d), with the game's real keys.
 // Fixtures only move the shift clock, put a parcel in hand or fix a breakage roll.
-const server = await preview({ preview: { host: '127.0.0.1', port: 0 }, logLevel: 'silent' });
+const server = process.env.BELT_TEST_BASE_URL ? null : await preview({ preview: { host: '127.0.0.1', port: 0 }, logLevel: 'silent' });
 let browser;
 try {
   browser = await chromium.launch({
@@ -28,7 +29,7 @@ try {
       value.Game.prototype.boot = function (...args) { window.fixtureGame = this; return boot.apply(this, args); };
     } });
   });
-  await page.goto(`${server.resolvedUrls.local[0]}?mode=2d`);
+  await page.goto(`${process.env.BELT_TEST_BASE_URL ?? server.resolvedUrls.local[0]}?mode=2d`);
   await page.waitForFunction(() => window.fixtureGame?.scene.isActive('DepotScene'));
   const S = 'window.fixtureGame.scene.getScene("DepotScene")';
   const read = (fn, arg) => page.evaluate(fn, arg);
@@ -55,7 +56,17 @@ try {
   await fresh({ opener: 1, breakAtMs: 1e12 });
   await press('Enter');
   await wait(`${S}.cutscene?.scene.id === 'opener-2'`);
+  await wait(`${S}.storyView.speechBubble !== null`);
+  await read(`window.fixtureSpeech = ${S}.storyView.speechBubble`);
+  assert.equal(await read(`${S}.storyView.speechBubble.parentContainer === ${S}.storyView.stage`), true,
+    'the current speech bubble belongs to the story stage');
+  await press('Escape');
+  await wait(`${S}.state === 'paused'`);
+  await page.waitForTimeout(1800);
+  assert.equal(await read('window.fixtureSpeech.active'), true, 'pause keeps the current line visible');
+  await press('Escape');
   await stepScene('opener-2');
+  assert.equal(await read('window.fixtureSpeech.active'), false, 'advancing or skipping destroys the old stage speech');
   for (const beat of OPENERS[1].beats.filter((item) => item.line)) {
     assert.ok((await read(`${S}.storyView.history`)).includes(`${name(beat.speaker)}: ${beat.line}`), `opener-2: ${beat.line}`);
   }
@@ -147,6 +158,55 @@ try {
   assert.deepEqual(errors, []);
   console.log('PASS 2D throwing: F throw with risk shown, clean credit, one broken penalty with Shan while the belt runs, no repeat penalty, carry down the stairs to a floor-drop pile; no script errors');
 
+  // Synthetic held freight isolates route coverage; reach every destination
+  // through public movement, then dispatch with the real keyboard action.
+  for (const [index, route] of ['A', 'D', 'T', 'B', 'E', 'S', 'C'].entries()) {
+    const arrival = await read(({ route, index, layout }) => {
+      const m = window.fixtureGame.scene.getScene('DepotScene').model;
+      m.eventStopped = true; m.crewAssist = false; m.elapsedMs = 1000;
+      for (const parcel of m.packages) parcel.state = 'delivered';
+      for (const worker of m.workers) worker.heldId = null;
+      const side = ['B', 'E', 'S'].includes(route) ? 1 : 0;
+      if (m.activeIndex !== side) m.switchWorker();
+      const worker = m.activeWorker;
+      const target = route === 'C' ? layout.bulkLeft : layout.dropAreas[route];
+      const parcel = { id: 8000 + index, route, kind: 'smallbox', label: `SYNTHETIC ${route}`, size: 'normal',
+        x: worker.x, y: worker.y, state: 'held', workerId: worker.id, beltOffset: 0,
+        recovered: false, missCounted: false, broken: false, breakY: null };
+      m.packages.push(parcel); worker.heldId = parcel.id;
+      for (let frame = 0; frame < 1000 && Math.hypot(worker.x - target.x, worker.y - target.y) > 3; frame++) {
+        m.update(20, { x: target.x - worker.x, y: target.y - worker.y });
+      }
+      return { id: parcel.id, dock: m.currentDock(), before: m.routeSorted[route], distance: Math.hypot(worker.x - target.x, worker.y - target.y) };
+    }, { route, index, layout: SHIFT_LAYOUT });
+    assert.equal(arrival.dock, route, `${route}: public movement reaches its drop`);
+    assert.ok(arrival.distance <= 3, `${route}: worker reaches the intended approach`);
+    await press('Space');
+    await wait(`${S}.model.packages.find(p => p.id === ${arrival.id}).state === 'delivered'`);
+    assert.equal(await read(`${S}.model.routeSorted.${route}`), arrival.before + 1, `${route}: real Space records a delivery`);
+  }
+  await read(`(() => { ${S}.model.eventStopped = false; ${S}.model.crewAssist = true; })()`);
+  assert.deepEqual(errors, []);
+  console.log('PASS 2D destinations: A, D, T, B, E, S and shared C reached through movement and delivered using real Space');
+
+  const crewFloorClearance = await read(() => {
+    const scene = window.fixtureGame.scene.getScene('DepotScene');
+    const m = scene.model;
+    m.elapsedMs = 1000; m.eventStopped = true;
+    scene.life.update();
+    const art = scene.life.cast.get('bannerman').art;
+    const parcel = { ...m.packages[0], id: 9000, state: 'floor', workerId: null, x: art.x, y: art.y };
+    m.packages.push(parcel);
+    scene.life.update();
+    const result = { visible: art.visible, radius: art.getData('bodyRadius'), distance: Math.hypot(art.x - parcel.x, art.y - parcel.y) };
+    parcel.state = 'delivered'; m.eventStopped = false;
+    return result;
+  });
+  assert.equal(crewFloorClearance.visible, true, 'the floor-cargo fixture uses a visible colleague');
+  assert.ok(crewFloorClearance.distance >= SHIFT_LAYOUT.parcelRadius + crewFloorClearance.radius - 0.001,
+    'the rendered colleague stands outside the loose parcel footprint');
+  console.log('PASS 2D crew clearance: a visible colleague moves clear of loose floor freight');
+
   // A won shift goes on through the mall and home to the results.
   await read(`(() => { const m = ${S}.model; for (const p of m.packages) if (p.state !== 'damaged') p.state = 'delivered'; m.workers[0].heldId = null; m.sorted = m.goal; m.elapsedMs = m.durationMs - 20; })()`);
   await wait(`${S}.state === 'celebrating'`);
@@ -163,5 +223,5 @@ try {
   console.log('PASS 2D finale and replay: clock-out into the mall run, six drops and signatures, keys back, home, results and a clean restart; no script errors');
 } finally {
   await browser?.close();
-  await server.close();
+  await server?.close();
 }

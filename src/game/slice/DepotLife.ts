@@ -6,8 +6,9 @@ import { type DepotWorkerArt } from './DepotArt';
 import type { Cutscene } from './StoryModel';
 import { DRIVERS, SHAN_BREAKAGE_LINES, SHAN_NAME } from './StoryScript';
 import { KYLIE_QUOTES, SHAN_RANTS, WORKER_SWEARS, COUGH_LINES, SHOT_WORDS, CLOCK_OUT_LINES, MESA } from './DepotReferences';
-import type { ShiftEvent, ShiftModel } from './ShiftModel';
+import { SHIFT_LAYOUT, type ShiftEvent, type ShiftModel } from './ShiftModel';
 import { audioSystem } from '../systems/AudioSystem';
+import { clearDepotFootprint, depotSolidFootprints, DEPOT_BODY_RADIUS, DEPOT_CARRY_RADIUS, type FootprintCircle } from './DepotClearance';
 
 type Speech = { panel: Phaser.GameObjects.Container; expires: number; priority: number; id: string; copy: string; duration: number };
 type PendingSpeech = Omit<Speech, 'panel' | 'expires'>;
@@ -54,6 +55,7 @@ export class DepotLife {
   private readonly reducedMotion: boolean;
   private readonly portal: Phaser.GameObjects.Graphics;
   private readonly bang: Phaser.GameObjects.Text;
+  private readonly solids = depotSolidFootprints();
 
   constructor(scene: Phaser.Scene, model: ShiftModel, depot: DepotArt) {
     this.scene = scene;
@@ -61,10 +63,10 @@ export class DepotLife {
     this.depot = depot;
     this.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const residents: [string, string, number, number][] = [
-      ['hussan', 'HUSSAN', 150, 198], ['aj', 'AJ', 150, 294],
-      ['ben', 'BEN', 150, 390], ['bannerman', 'BANNERMAN', 150, 486],
-      ['fruitloop', 'FRUIT LOOP', 810, 198], ['doris', 'DORIS', 810, 294],
-      ['brian', 'BRIAN', 810, 390], ['donna', 'DONNA', 810, 486],
+      ['hussan', 'HUSSAN', 150, 196], ['aj', 'AJ', 200, 292],
+      ['ben', 'BEN', 150, 388], ['bannerman', 'BANNERMAN', 150, 484],
+      ['fruitloop', 'FRUIT LOOP', 810, 196], ['doris', 'DORIS', 810, 292],
+      ['brian', 'BRIAN', 810, 388], ['donna', 'DONNA', 810, 484],
     ];
     for (const [id, name, x, y] of residents) this.add(id, name, x, y, true);
     for (const [id, name, x, y] of [
@@ -151,7 +153,7 @@ export class DepotLife {
     this.towel.setVisible(lyingDown);
     const aj = this.cast.get('aj')!;
     aj.art.rotation = 0;
-    if (massage) aj.art.setPosition(lyingDown ? 174 : aj.x, lyingDown ? 286 : aj.y);
+    if (massage) aj.art.setPosition(lyingDown ? 200 : aj.x, lyingDown ? 286 : aj.y);
     setColleaguePose(aj.art, lyingDown ? 'massage' : 'idle', this.reducedMotion ? 0 : time);
 
     this.once('paid-day', 134000, () => {
@@ -187,7 +189,23 @@ export class DepotLife {
     if (this.benCompleted) reserved.add('ben');
     if (this.routines.isHussanBusy(time)) reserved.add('hussan');
     this.routines.update(time, reserved);
+    this.clearStandingCast(this.model.workers, lyingDown ? new Set(['vic']) : undefined);
     this.depot.updateDetails(this.reducedMotion ? 0 : time);
+  }
+
+  /** Give real workers priority; coworkers stand beside equipment and one another. */
+  private clearStandingCast(workers: readonly { x: number; y: number }[], interacting = new Set<string>()): void {
+    const occupied: FootprintCircle[] = workers.map(worker => ({ x: worker.x, y: worker.y, radius: DEPOT_CARRY_RADIUS }));
+    for (const parcel of this.model.packages) if (parcel.state === 'floor') occupied.push({ x: parcel.x, y: parcel.y, radius: SHIFT_LAYOUT.parcelRadius });
+    for (const [id, colleague] of this.cast) {
+      const art = colleague.art;
+      if (!art.visible || interacting.has(id)) continue;
+      const radius = this.routines.isCarrying(id) ? DEPOT_CARRY_RADIUS : DEPOT_BODY_RADIUS;
+      const point = clearDepotFootprint(art, radius, occupied, this.solids);
+      this.routines.moveFreight(id, point.x - art.x, point.y - art.y);
+      art.setPosition(point.x, point.y).setData('bodyRadius', radius);
+      occupied.push({ ...point, radius });
+    }
   }
 
   public get benInterludeReady(): boolean {
@@ -499,6 +517,7 @@ export class DepotLife {
       workers[1].update(time, false, true, false);
       shan.setVisible(true).setPosition(480, 100).setData('ranting', progress('shan-over') > 0);
       updateColleagueArt(shan, time);
+      this.clearStandingCast(workers.map(worker => worker.container));
       return { x: 480, y: 60, zoom: 2.1 };
     }
     const leaves = progress('termite-leaves');
@@ -509,6 +528,7 @@ export class DepotLife {
     workers[1].update(time, false, true, false);
     shan.setVisible(true).setPosition(Phaser.Math.Linear(480, 520, catches), Phaser.Math.Linear(560, 640, catches)).setData('ranting', false);
     updateColleagueArt(shan, time);
+    this.clearStandingCast(workers.map(worker => worker.container));
     return { x: 480, y: 680, zoom: 1.8 };
   }
 
