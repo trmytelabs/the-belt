@@ -300,7 +300,7 @@ export class DepotStoryView {
 
   private drawMall(g: Phaser.GameObjects.Graphics): void {
     g.fillStyle(0x101820).fillRect(VIEW.x, VIEW.y, VIEW.w, VIEW.h);
-    for (const rect of MALL_LAYOUT.walk) g.fillStyle(0xc8c0b0).fillRect(mallX(rect.x), mallY(rect.y), rect.w * 0.6, rect.h * 0.6);
+    for (const rect of MALL_LAYOUT.walk) g.fillStyle(0xd9d1c2).fillRect(mallX(rect.x), mallY(rect.y), rect.w * 0.6, rect.h * 0.6);
     MALL_LAYOUT.doors.forEach((door, index) => {
       const north = door.side === 'north';
       const top = north ? door.y - 200 : door.y;
@@ -308,10 +308,22 @@ export class DepotStoryView {
       g.lineStyle(2, 0x9cc8dc, 0.8).lineBetween(mallX(door.x - 150), mallY(door.y), mallX(door.x - 56), mallY(door.y))
         .lineBetween(mallX(door.x + 56), mallY(door.y), mallX(door.x + 150), mallY(door.y));
     });
+    // The concourse's darker centre runner, as in the 3D mall.
+    g.fillStyle(0x9c9284).fillRect(mallX(280), mallY(340), 980 * 0.6, 120 * 0.6);
     for (const rect of MALL_LAYOUT.obstacles) {
-      const color = rect.label === 'FOUNTAIN' ? 0x3a8ac8 : rect.label === 'BENCH' ? 0x7a5a3a : 0x3a7a3a;
-      if (rect.label === 'FOUNTAIN') g.fillStyle(color).fillCircle(mallX(rect.x + rect.w / 2), mallY(rect.y + rect.h / 2), rect.w * 0.3);
-      else g.fillStyle(color).fillRoundedRect(mallX(rect.x), mallY(rect.y), rect.w * 0.6, rect.h * 0.6, 4);
+      const [x, y, w, h] = [mallX(rect.x), mallY(rect.y), rect.w * 0.6, rect.h * 0.6];
+      if (rect.label === 'ATRIUM') {
+        // The railed opening over the lower level's bleacher seating.
+        g.fillStyle(0x1c2226).fillRect(x, y, w, h);
+        for (let step = 0; step < 6; step += 1) g.fillStyle(step % 2 ? 0x8a6440 : 0xa47a50).fillRect(x + 4, y + 4 + step * (h - 8) / 7, w - 8, (h - 8) / 7 - 1);
+        g.lineStyle(2, 0xc8d4dc).strokeRect(x, y, w, h);
+      } else if (rect.label === 'BENCH') {
+        g.fillStyle(0x7a5a3a).fillRoundedRect(x, y, w, h, 4);
+        g.fillStyle(0x2c3a44).fillRect(x + w / 2 - 6, y + 4, 12, h - 8);
+      } else {
+        g.fillStyle(0xb9ab95).fillRoundedRect(x, y, w, h, 4);
+        g.fillStyle(0x3a7a3a).fillRoundedRect(x + 4, y + 4, w - 8, h - 8, 4);
+      }
     }
     const truck = MALL_LAYOUT.truck;
     g.fillStyle(0x5a4632).fillRect(mallX(truck.x), mallY(truck.y), truck.w * 0.6, truck.h * 0.6);
