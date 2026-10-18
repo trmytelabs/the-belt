@@ -16,6 +16,7 @@ import {
   type StoryActor, type StoryBeat, type StoryScene,
 } from '../game/slice/StoryScript';
 import { audioSystem, type SoundEffect } from '../game/systems/AudioSystem';
+import { syncCharacterModels, useCharacterModels, type CharacterModelEntry } from './characterModels';
 import { animateCharacter, createCharacter, mergeCharacter, type Character } from './characters';
 import { CrewLife } from './crew';
 import { MesaDream } from './dream';
@@ -243,6 +244,11 @@ export class Belt3d {
       window.setInterval(() => this.tick(), 16);
       this.renderer.setAnimationLoop(() => this.draw());
     }
+  }
+
+  /** Swaps the imported character model list. For checks and rehearsal. */
+  public useCharacterModels(list: CharacterModelEntry[]): Promise<void> {
+    return useCharacterModels(list);
   }
 
   /** Fixes the next run's random choices (opener, break place, variant, time). For checks and rehearsal. */
@@ -741,6 +747,7 @@ export class Belt3d {
     const stageScene = this.usesStage() ? this.stage.scene : null;
     const scene = stageScene ?? this.world.scene;
     const camera = stageScene ? this.stage.camera : this.camera;
+    syncCharacterModels(this.state === 'dream' ? this.dream.scene : scene);
     if (this.state === 'dream') this.renderer.render(this.dream.scene, this.dream.camera);
     else if (this.composer && this.renderPass) {
       this.renderPass.scene = scene;
