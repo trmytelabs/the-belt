@@ -595,7 +595,7 @@ export class Belt3d {
         this.overlay.clearCenter();
         this.state = 'playing';
         this.story.go('shift');
-        this.overlay.showToast(`You are ${m.activeWorker.id.toUpperCase()} · TAB switches · watch the route letter`, 3200);
+        this.overlay.showToast(`You are ${m.activeWorker.id.toUpperCase()} · TAB switches · read the street address`, 3200);
         audioSystem.startMusic('game');
       }
     }

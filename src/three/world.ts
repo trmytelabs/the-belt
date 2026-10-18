@@ -760,7 +760,7 @@ export class DepotWorld {
     scene.add(trayTag);
   }
 
-  /** The two lower-floor drops: painted zones, tall signs above any pile, and the piles themselves. */
+  /** The two lower-floor drops: street numbers, pallets, tall signs and tidy piles. */
   private addLowerFloor(): void {
     for (const route of ['T', 'S'] as const) {
       const area = SHIFT_LAYOUT.dropAreas[route];
@@ -1196,7 +1196,7 @@ export function createTruck(name: string, color: number, cabColor: number, side:
       truck.add(wheel);
     }
   }
-  // A player truck shows its loaded freight and its route letter at the open door.
+  // District names and street ranges identify each player's open rear door.
   if (route) {
     const doorSign = textPlane([ROUTE_INFO[route].name, streetRange(route)], 2.1, 0.65, { width: 320, height: 100, background: '#d9ccab', color: '#12232a', radius: 6 });
     doorSign.position.set(facing * (length / 2 + 0.04), floor + boxHeight + 0.3, 0);
