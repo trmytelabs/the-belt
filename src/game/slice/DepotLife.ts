@@ -521,10 +521,12 @@ export class DepotLife {
       workers[1].container.setPosition(404, 216 - 40 * (1 - gather)).setVisible(true);
       workers[0].update(time, false, true, false);
       workers[1].update(time, false, true, false);
-      shan.setVisible(true).setPosition(377, 152).setData('ranting', progress('shan-over') > 0);
+      // Leave room for the workers' full head-to-boot silhouettes at the start
+      // of gather, not just their much smaller ground-contact circles.
+      shan.setVisible(true).setPosition(377, 112).setData('ranting', progress('shan-over') > 0);
       updateColleagueArt(shan, time);
       this.clearStandingCast(workers.map(worker => worker.container));
-      return { x: 460, y: 328, zoom: 1.05 };
+      return { x: 480, y: 302, zoom: 0.96 };
     }
     const leaves = progress('termite-leaves');
     const catches = progress('shan-catches');

@@ -72,34 +72,64 @@ try {
   }
   assert.equal(await read(`${S}.cutscene.scene.id`), 'scrum');
   await wait(`${S}.cutscene.index > 0`);
-  const scrum = await read(() => {
+  const scrumSamples = await read(() => {
     const scene = window.fixtureGame.scene.getScene('DepotScene');
     const camera = scene.view.world;
     const members = [...scene.life.cast].filter(([id]) =>
       ['shan', 'hussan', 'aj', 'ben', 'bannerman', 'fruitloop', 'doris', 'brian', 'donna'].includes(id))
       .map(([id, actor]) => ({ id, art: actor.art, tag: actor.tag }));
     members.push(...scene.workers.map((worker, index) => ({ id: index ? 'skanky' : 'termite', art: worker.container })));
-    return members.map(({ id, art, tag }) => {
-      // Phaser Graphics have no measured geometry bounds. Check the authored
-      // body envelope plus the actual raster-text label bounds instead of the
-      // container's bounds, which can incorrectly include the world origin.
-      const label = tag?.getBounds();
-      const bounds = { left: Math.min(art.x - 28, label?.left ?? Infinity), right: Math.max(art.x + 28, label?.right ?? -Infinity),
-        top: Math.min(art.y - 55, label?.top ?? Infinity), bottom: Math.max(art.y + 24, label?.bottom ?? -Infinity) };
-      return { id, x: art.x, y: art.y, visible: art.visible,
-        left: camera.x + camera.width / 2 + (bounds.left - camera.midPoint.x) * camera.zoom,
-        right: camera.x + camera.width / 2 + (bounds.right - camera.midPoint.x) * camera.zoom,
-        top: camera.y + camera.height / 2 + (bounds.top - camera.midPoint.y) * camera.zoom,
-        bottom: camera.y + camera.height / 2 + (bounds.bottom - camera.midPoint.y) * camera.zoom };
+    const bodyEnvelope = (id, art) => {
+      // Bounds of the authored idle silhouettes in DepotCastArt/DepotArt,
+      // including hats, limbs and held props, excluding text/shadows/effects.
+      // Transform them through the actual sprite scale/rotation; foot circles
+      // alone miss head/torso overlaps between staggered rows.
+      const local = id === 'termite' ? [-17, -37, 19, 28]
+        : id === 'skanky' ? [-17, -35, 19, 28]
+          : id === 'hussan' ? [-19, -34, 19, 25]
+            : id === 'ben' ? [-17.5, -34, 30, 25]
+              : id === 'bannerman' ? [-17.5, -34, 23, 25]
+                : id === 'doris' ? [-17.5, -40, 23.5, 25] : [-17.5, -34, 18.5, 25];
+      const matrix = art.getWorldTransformMatrix();
+      const corners = [[local[0], local[1]], [local[2], local[1]], [local[0], local[3]], [local[2], local[3]]]
+        .map(([x, y]) => matrix.transformPoint(x, y));
+      return { left: Math.min(...corners.map(p => p.x)), right: Math.max(...corners.map(p => p.x)),
+        top: Math.min(...corners.map(p => p.y)), bottom: Math.max(...corners.map(p => p.y)) };
+    };
+    return [0, 0.5, 1].map(gather => {
+      const focus = scene.life.directStory(scene.cutscene, scene.workers, cue => cue === 'gather' ? gather : 0);
+      for (let frame = 0; frame < 30; frame++) scene.view.update(100, scene.model.activeWorker, 'story', focus);
+      camera.preRender();
+      return { gather, members: members.map(({ id, art, tag }) => {
+        // Phaser Graphics have no measured geometry bounds. Check the authored
+        // body envelope plus the actual raster-text label bounds instead of the
+        // container's bounds, which can incorrectly include the world origin.
+        const label = tag?.getBounds();
+        const bounds = { left: Math.min(art.x - 28, label?.left ?? Infinity), right: Math.max(art.x + 28, label?.right ?? -Infinity),
+          top: Math.min(art.y - 55, label?.top ?? Infinity), bottom: Math.max(art.y + 24, label?.bottom ?? -Infinity) };
+        return { id, x: art.x, y: art.y, visible: art.visible, body: bodyEnvelope(id, art),
+          left: camera.x + camera.width / 2 + (bounds.left - camera.midPoint.x) * camera.zoom,
+          right: camera.x + camera.width / 2 + (bounds.right - camera.midPoint.x) * camera.zoom,
+          top: camera.y + camera.height / 2 + (bounds.top - camera.midPoint.y) * camera.zoom,
+          bottom: camera.y + camera.height / 2 + (bounds.bottom - camera.midPoint.y) * camera.zoom };
+      }) };
     });
   });
-  for (const member of scrum) {
-    assert.equal(member.visible, true, `${member.id} is present at the scrum`);
-    assert.ok(member.left >= 0 && member.right <= 960 && member.top >= 126 && member.bottom <= 620,
-      `${member.id}: the complete illustration and name fit between the story bars`);
-    assert.ok(member.x - SHIFT_LAYOUT.workerRadius >= SHIFT_LAYOUT.platform.left
-      && member.x + SHIFT_LAYOUT.workerRadius <= SHIFT_LAYOUT.beltX - 52,
-    `${member.id}: the scrum stands on the clear west platform, outside the conveyor`);
+  for (const { gather, members } of scrumSamples) {
+    assert.equal(members.length, 11, 'the whole scrum cast is present');
+    for (const member of members) {
+      assert.equal(member.visible, true, `${member.id} is present at the scrum`);
+      assert.ok(member.left >= 0 && member.right <= 960 && member.top >= 126 && member.bottom <= 620,
+        `${member.id}: the complete illustration and name fit between the story bars`);
+      assert.ok(member.body.left >= SHIFT_LAYOUT.platform.left && member.body.right <= SHIFT_LAYOUT.beltX - 52,
+        `${member.id}: the scrum stands on the clear west platform, outside the conveyor`);
+    }
+    for (let first = 0; first < members.length; first++) for (let second = first + 1; second < members.length; second++) {
+      const a = members[first]; const b = members[second];
+      const overlapX = Math.min(a.body.right, b.body.right) - Math.max(a.body.left, b.body.left);
+      const overlapY = Math.min(a.body.bottom, b.body.bottom) - Math.max(a.body.top, b.body.top);
+      assert.ok(overlapX <= 0 || overlapY <= 0, `gather ${gather}: ${a.id}/${b.id} body silhouettes overlap`);
+    }
   }
   await stepScene('scrum');
   const life = await read(`${S}.life.history`);
