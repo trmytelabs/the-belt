@@ -142,7 +142,7 @@ try {
         Object.assign(m.activeWorker, { x: id === 9101 ? 236 : 292, facing: id === 9101 ? 'up' : 'down', heldId: id });
         m.action();
       }
-      m.packages.push({ ...original, id: 9121, route: 'D', state: 'held', workerId: 'termite' });
+      m.packages.push({ ...original, id: 9121, route: 'D', street: 99, address: '2417 99 ST', state: 'held', workerId: 'termite' });
       m.activeWorker.heldId = 9121; m.score = 100;
     });
     await page.keyboard.press('Space');
@@ -163,8 +163,13 @@ try {
     assert.equal(cargo.loaded, 20); assert.equal(cargo.overflow, 2); assert.equal(cargo.front, 0);
     assert.equal(cargo.shelves, 10); assert.equal(cargo.floorNumbers, 6); assert.equal(cargo.arc, false);
     assert.equal(cargo.treads, 12); assert.ok(cargo.lights >= 0.9);
+    await read(() => {
+      const app = window.fixtureApp, m = app.model;
+      m.activeWorker.heldId = null;
+      m.packages.splice(m.packages.findIndex(parcel => parcel.id === 9121), 1);
+      app.syncParcels(0); app.updateHud();
+    });
     if (process.env.BELT_SCREENSHOT_DIR) await page.screenshot({ path: join(process.env.BELT_SCREENSHOT_DIR, 'truck-shelves-3d.png') });
-    await read(() => { const m = window.fixtureApp.model; m.activeWorker.heldId = null; m.packages.find(p => p.id === 9121).state = 'delivered'; });
     await page.keyboard.down('KeyD');
     await wait(() => window.fixtureApp.model.activeWorker.x > 330);
     await page.keyboard.up('KeyD');

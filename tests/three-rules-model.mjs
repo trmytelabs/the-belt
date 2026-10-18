@@ -195,4 +195,3 @@ test('the coworker waits quietly for a clear handoff and returns wrong-side frei
   assert.equal(parcel.workerId, null);
   assert.equal(model.drainEvents().filter(event => event.type === 'drop').length, 1);
 });
-

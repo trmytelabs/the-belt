@@ -110,4 +110,3 @@ export function onLowerFloor(point: { x: number; y: number }): boolean {
     && ((point.x >= floor.left.minX && point.x <= floor.left.maxX)
       || (point.x >= floor.right.minX && point.x <= floor.right.maxX));
 }
-
