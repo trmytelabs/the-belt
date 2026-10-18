@@ -132,6 +132,7 @@ interface Bubble {
 
 export class Overlay {
   public readonly root: HTMLDivElement;
+  private readonly style = document.createElement('style');
   private readonly hud: HTMLDivElement;
   private readonly bubbles: HTMLDivElement;
   private readonly pops: HTMLDivElement;
@@ -150,7 +151,7 @@ export class Overlay {
   public readonly history: string[] = [];
 
   constructor(host: HTMLElement) {
-    const style = document.createElement('style');
+    const style = this.style;
     style.textContent = CSS;
     document.head.append(style);
     this.root = document.createElement('div');
@@ -160,7 +161,7 @@ export class Overlay {
     this.hud.innerHTML = `
       <div class="b3d-top">
         <div class="b3d-brand"><b>THE BELT</b><small>NIGHT SORT SIMULATOR</small></div>
-        <div class="b3d-stat"><small>DISPATCHED</small><b data-f="sorted">00 / 24</b><div class="b3d-progress"><i data-f="bar"></i></div></div>
+        <div class="b3d-stat"><small>DISPATCHED</small><b data-f="sorted">00</b><div class="b3d-progress"><i data-f="bar"></i></div></div>
         <div class="b3d-stat"><small>SHIFT SCORE</small><b data-f="score">00000</b></div>
         <div class="b3d-stat time"><small>TIME LEFT</small><b data-f="time">03:00</b></div>
         <div class="b3d-stat"><small>BACKLOG</small><div class="b3d-pips" data-f="pips"></div></div>
@@ -195,6 +196,13 @@ export class Overlay {
   private readonly chapterhud: HTMLDivElement;
   /** Every subtitle direction or caption shown, for the checks. */
   public readonly subtitles: string[] = [];
+
+  public dispose(): void {
+    this.clearSpeech();
+    this.popups.length = 0;
+    this.root.remove();
+    this.style.remove();
+  }
 
   /** 'shift' shows the sorting HUD; 'story' a cutscene; 'chapter' the mall or lot HUD. */
   public setMode(mode: 'shift' | 'story' | 'chapter'): void {
@@ -308,7 +316,7 @@ export class Overlay {
     if (f.pips.childElementCount !== state.capacity) f.pips.innerHTML = '<i></i>'.repeat(state.capacity);
     [...f.pips.children].forEach((pip, index) => pip.classList.toggle('on', index < state.backlog));
     f.phase.textContent = state.phase;
-    f.combo.textContent = state.combo > 1 ? `${state.combo} IN A ROW  /  +${Math.min(state.combo, 10) * 15} NEXT` : 'TARGET  /  24 CLEAN DISPATCHES';
+    f.combo.textContent = state.combo > 1 ? `${state.combo} IN A ROW  /  +${Math.min(state.combo, 10) * 15} NEXT` : `TARGET  /  ${state.goal} CLEAN DISPATCHES`;
     f.worker.textContent = `● ${state.worker.toUpperCase()}`;
     f.worker.className = `b3d-worker ${state.worker}`;
     f.hint.textContent = state.hint;

@@ -320,6 +320,10 @@ export class CrewLife {
     return this.actors.get(id)?.character;
   }
 
+  public get clearanceActors(): [string, Actor][] {
+    return [...this.actors, ...this.unloaders.map((actor, index): [string, Actor] => [`unloader-${index}`, actor]), ['dockhand', this.dockhand]];
+  }
+
   public reset(): void {
     this.cues = new Set();
     this.johnUntil = -1;
@@ -458,7 +462,9 @@ export class CrewLife {
       const cycle = (travel / 185 + index * 0.5) % 1;
       const carrying = cycle < 0.58;
       const p = carrying ? cycle / 0.58 : 1 - (cycle - 0.58) / 0.42;
-      worker.place(mix(trailerX, trailerX + side * 34, p), mix(-205, -122, p));
+      // Leave the trailer into the side aisle before walking down alongside
+      // the feeder; the old diagonal crossed its first guard and support leg.
+      worker.place(mix(trailerX, trailerX + side * 34, Math.min(1, p * 2)), mix(-205, -122, Math.max(0, p * 2 - 1)));
       worker.carrying = carrying;
       const crate = this.unloaderCrates[index];
       if (carrying) {
@@ -800,6 +806,35 @@ export class CrewLife {
     const view = this.crewFreight.get(id);
     if (view) view.root.visible = false;
     this.actor(id).carrying = false;
+  }
+
+  /** Freight is a scene child, so it follows any final clearance correction. */
+  public translateActorFreight(id: string, dx: number, dz: number, dy = 0): void {
+    const view = this.crewFreight.get(id);
+    if (view?.root.visible) {
+      view.root.position.x += dx;
+      view.root.position.y += dy;
+      view.root.position.z += dz;
+    }
+    if (id === 'hussan' && this.cell.root.visible && this.snakeState === 'dancing') {
+      this.cell.root.position.x += dx;
+      this.cell.root.position.y += dy;
+      this.cell.root.position.z += dz;
+    }
+    if (id.startsWith('unloader-')) {
+      const index = Number(id.slice('unloader-'.length));
+      const crate = this.unloaderCrates[index];
+      if (crate?.visible && this.unloaders[index]?.carrying) {
+        crate.position.x += dx;
+        crate.position.y += dy;
+        crate.position.z += dz;
+      }
+    }
+    if (id === 'dockhand') for (const fly of this.flies) {
+      fly.position.x += dx;
+      fly.position.y += dy;
+      fly.position.z += dz;
+    }
   }
 
   /** Animates visible actors (all, or only `ids` while a story holds the shift). */

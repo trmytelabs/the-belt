@@ -64,11 +64,12 @@ export class TouchControls {
   private readonly root: HTMLDivElement;
   private readonly knob: HTMLDivElement;
   private readonly brakeButton: HTMLButtonElement;
+  private readonly style = document.createElement('style');
   private stickPointer: number | null = null;
 
   constructor(host: HTMLElement, handlers: TouchHandlers) {
     this.enabled = window.matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
-    const style = document.createElement('style');
+    const style = this.style;
     style.textContent = CSS;
     document.head.append(style);
     if (this.enabled) host.classList.add('touch');
@@ -150,6 +151,7 @@ export class TouchControls {
     };
     stick.addEventListener('pointerup', end);
     stick.addEventListener('pointercancel', end);
+    stick.addEventListener('lostpointercapture', end);
   }
 
   /**
@@ -163,14 +165,21 @@ export class TouchControls {
     const grab = this.root.querySelector<HTMLButtonElement>('.grab')!;
     const grabLabel = chapter ? 'ACT' : 'GRAB /<br>DELIVER';
     if (grab.innerHTML !== grabLabel) grab.innerHTML = grabLabel;
-    if (!live && this.stickPointer === null) this.reset();
+    if (!live) this.reset();
     if (this.brakeButton.textContent !== brakeLabel) this.brakeButton.textContent = brakeLabel;
     this.brakeButton.disabled = !brakeReady;
   }
 
   public reset(): void {
+    this.stickPointer = null;
     this.move.x = 0;
     this.move.y = 0;
     this.knob.style.transform = '';
+  }
+
+  public dispose(): void {
+    this.reset();
+    this.root.remove();
+    this.style.remove();
   }
 }

@@ -7,10 +7,10 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "test:model": "node --test tests/slice-model.mjs tests/reference-parity.mjs tests/story-model.mjs",
+    "test:model": "node --test tests/slice-model.mjs tests/reference-parity.mjs tests/story-model.mjs tests/three-resources.mjs tests/three-geometry.mjs tests/depot-clearance.mjs",
     "test:browser": "npm run test:browser:2d && npm run test:browser:3d",
     "test:browser:2d": "node tests/browser-smoke.mjs && node tests/slice-browser.mjs && node tests/reference-browser.mjs && node tests/camera-browser.mjs && node tests/mesa-risk-browser.mjs && node tests/audio-browser.mjs && node tests/receiving-browser.mjs && node tests/story-2d-browser.mjs",
-    "test:browser:3d": "node tests/three-browser.mjs && node tests/story-browser.mjs"
+    "test:browser:3d": "node tests/three-browser.mjs && node tests/story-browser.mjs && node tests/depot-geometry-browser.mjs && node tests/story-clearance-browser.mjs"
   },
   "devDependencies": {
     "@types/three": "^0.180.0",

@@ -35,9 +35,11 @@ export const surfaceAt = (x: number, y: number): number => platformLevelAt(x, y)
 export function actorSurfaceAt(x: number, y: number): number {
   const level = platformLevelAt(x, y);
   if (level > 0 || y < 100 || y > SHIFT_LAYOUT.platform.bottom) return level * PLATFORM_HEIGHT;
+  if (![196, 292, 388, 484].some((row) => Math.abs(y - row) <= 12)) return 0;
   const { left, right } = SHIFT_LAYOUT.platform;
   const climb = x < 480 ? (x - (left - 20)) / 20 : ((right + 20) - x) / 20;
-  return Math.max(0, Math.min(1, climb)) * PLATFORM_HEIGHT;
+  if (climb <= 0) return 0;
+  return Math.min(1, (Math.floor(climb * 3) + 1) / 3) * PLATFORM_HEIGHT;
 }
 
 /** Every destination's colour; letters and names always accompany it. */
@@ -103,7 +105,9 @@ export function textTexture(lines: string[], options: {
 /** A plane showing text, for nameplates painted onto props. */
 export function textPlane(lines: string[], width: number, height: number, options: Parameters<typeof textTexture>[1]): THREE.Mesh {
   const material = new THREE.MeshStandardMaterial({ map: textTexture(lines, options), roughness: 0.7, transparent: !options.background });
-  return new THREE.Mesh(new THREE.PlaneGeometry(width, height), material);
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(width, height), material);
+  mesh.userData.solid = false;
+  return mesh;
 }
 
 /** A camera-facing label (parcel tags, name tags). */
