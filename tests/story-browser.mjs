@@ -73,7 +73,7 @@ try {
     window.scrumSamples = [];
     const sampler = setInterval(() => {
       const app = window.fixtureApp;
-      if (app.cutscene?.scene.id !== 'scrum' || app.cutscene.index !== 0) return;
+      if (app.cutscene?.scene.id !== 'scrum' || app.cutscene.index !== 0 || app.cutscene.progress < 0.05) return;
       const roots = ['termite', 'skanky', 'doris', 'brian'].map(id => id in app.workers ? app.workers[id].root : app.crew.actors.get(id).root);
       window.scrumSamples.push(roots.map(root => ({ z: root.position.z, facing: Math.cos(root.rotation.y) })));
       if (window.scrumSamples.length > 100) clearInterval(sampler);
@@ -93,8 +93,8 @@ try {
   await wait(() => window.scrumSamples.length > 3 && window.scrumSamples.at(-1)[0].z < window.scrumSamples[0][0].z - 0.15);
   const approach = await read(() => [window.scrumSamples[0], window.scrumSamples.at(-1)]);
   for (let i = 0; i < approach[0].length; i++) {
-    assert.ok(approach[1][i].z < approach[0][i].z, 'the crew moves up toward Shan');
-    assert.ok(approach[1][i].facing < -0.5, 'the crew faces forward while approaching Shan');
+    assert.ok(approach[1][i].z < approach[0][i].z, `the crew moves up toward Shan: ${JSON.stringify(approach)}`);
+    assert.ok(approach[1][i].facing < -0.5, `the crew faces forward while approaching Shan: ${JSON.stringify(approach)}`);
   }
   await shot('scrum');
   const scrumLines = SCRUM.beats.filter((beat) => beat.line).map((beat) => `${name(beat.speaker)}: ${beat.line}`);
