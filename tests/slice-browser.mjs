@@ -44,7 +44,7 @@ try {
   });
   await page.goto(`${server.resolvedUrls.local[0]}?mode=2d`);
   await page.waitForFunction(() => window.fixtureGame?.scene.isActive('DepotScene'));
-  const read = fn => page.evaluate(fn);
+  const read = (fn, arg) => page.evaluate(fn, arg);
   const press = key => page.keyboard.press(key, { delay: 40 });
   console.log(`Slice renderer: ${await read(() => window.fixtureGame.renderer.type === 2 ? 'WebGL' : 'Canvas')}`);
   if (process.env.BELT_BROWSER_RENDERER === 'canvas') {
