@@ -38,8 +38,10 @@ nothing is left uninitialized. NEXT never skips a line that has not been shown.
 
 The belt, both worker lanes, the bulk pile and the recovery tray stand on a
 raised loading platform (1.1 m in 3D). Every truck backs against the platform
-edge with its roll-up rear door open at deck height. Two stair flights at the
-end of the belt, one in each worker's lane, lead down to the lower floor.
+edge with its roll-up rear door open at deck height. Near the belt's end, two
+stair flights descend outward from the left and right sides to the ground drops.
+Bulk backs against the final warehouse wall; all stairs and floor drops remain
+in front of it, with nothing behind that wall.
 Workers cannot step off the platform anywhere else: from the lower floor the
 only way up is the stairs. Walking speed is unchanged everywhere; the stairs
 only make the route longer. In 2D the platform is lighter with a lit edge and
@@ -50,10 +52,10 @@ Each worker now has two trucks and a lower-floor drop:
 | Letter | Destination | Worker | Where |
 | --- | --- | --- | --- |
 | A | HERES UR SOVICE | Termite | existing truck, now flush with the platform edge |
-| D | DOWNTOWN *(provisional name)* | Termite | new truck, row below the bulk pile |
+| D | DOWNTOWN *(provisional name)* | Termite | second truck row, before the bulk pile |
 | T | TERMITE FLOOR DROP | Termite | lower floor, down the west stairs |
 | B | PAYTMAN | Skanky | existing truck, now flush with the platform edge |
-| E | EASTSIDE *(provisional name)* | Skanky | new truck, row below the bulk pile |
+| E | EASTSIDE *(provisional name)* | Skanky | second truck row, before the bulk pile |
 | S | SKANKY FLOOR DROP | Skanky | lower floor, down the east stairs |
 | C | BULK | both | unchanged shared pile at the belt end |
 
@@ -66,13 +68,13 @@ appears. Names live in `ROUTE_INFO` in `ShiftModel.ts` and can be renamed there.
 
 Layout changes made to fit this:
 
-- The two player trucks moved 24 px outward so their rear doors are flush with
+- The player trucks moved 24 px outward so their rear doors are flush with
   the platform edge, like the crew trucks. Their drop zones now reach the door
   (A and B are wider; they still accept the whole reachable lane).
-- Ralph's five-ton now backs into the empty west bay beside the bulk pile
+- Ralph's five-ton now backs into the empty west bay ahead of the bulk pile
   instead of the east outer bay, which the new E truck row would have crossed.
   His five trips to the pile and his departure are unchanged.
-- Paytman's fish tank moved into the empty east bay beside his truck.
+- Paytman's fish tank occupies the matching empty east bay, clear of the stairs.
 - The outer-bay crew climb short steps in the aisles between trucks to reach
   the platform for their freight trips.
 

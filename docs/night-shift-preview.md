@@ -99,19 +99,17 @@ eases back to the worker. Reduced-motion preference removes camera interpolation
 The HUD, speech panels, menus and their hit targets use a separate fixed camera.
 Text textures use higher resolution so authored labels stay sharp in close-ups.
 
-The floor plan follows the original game: four coworker truck rows on each side,
-followed by HERES UR SOVICE and PAYTMAN at the bottom. All eleven delivery trucks, including
-Ralph's arrival, use the same 148 × 84 footprint and shared artwork. The bulk pile
-is centered immediately beyond the conveyor, with a separate recovery tray below
-it. Either worker can deliver C freight from their side of this one pile; Ralph
-collects the same stock. The full-floor camera includes receiving, all five rows and the end
-of the belt. Personal props and event choreography follow their original bays.
+The floor plan retains four coworker truck rows on each side, followed by the
+A/B and D/E player rows. The twelve parked trucks and Ralph's arriving flatbed
+use the same 148 × 72 footprint and shared artwork. Recovery sits beyond the
+conveyor exit. Farther back, either worker delivers C from their side of one
+shared bulk pile, and Ralph collects that stock.
 
-The truck drop zones are now 78 × 88 and bulk receiving zones 80 × 96. Painted
-rectangles and acceptance use the same definitions: either truck accepts from
-the entire reachable front lane, and bulk extends farther down to y672. The
-longer central pallet sits at y610, with recovery at y690 and floor ending at
-y714. Camera follow and overview include the extra walking space.
+Bulk backs against the warehouse's final wall. Near that end, the left and
+right stair flights descend outward from the platform to the T/S ground drops.
+Every route and stair stays in front of the wall; nothing extends behind it.
+Painted rectangles and acceptance use the same shared layout definitions.
+Camera follow and overview include both side landings and all truck rows.
 
 A receiving annex extends the top of the warehouse to y-240. Walking up to
 y-20 reveals two articulated semis, unloading workers and a ragged, very smelly

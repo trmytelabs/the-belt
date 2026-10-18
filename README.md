@@ -49,14 +49,16 @@ SORT!** countdown starts the shift.
 - F (or THROW) throws a held parcel to its destination. Throws can break
   parcels: a breakage earns nothing and costs points once, and Shan yells.
 - The belt and both workers stand on a raised loading platform; trucks back
-  against its edge, and stairs at the belt's end lead to the lower floor.
+  against its edge. Near the end, stairs descend outward from the left and right
+  sides to the T/S ground drops.
 - The A/B truck pair is followed by D/E, then the shared bulk build-up against
-  the rear wall. The T/S ground drops sit beyond the stairs.
+  the warehouse's final rear wall. The stairs and ground drops stay in front
+  of that wall; there is no floor or destination beyond it.
 - Termite sorts A (HERES UR SOVICE), D (DOWNTOWN) and his lower-floor drop T;
   Skanky sorts B (PAYTMAN), E (EASTSIDE) and his lower-floor drop S. Heavy C
   freight still goes to the shared bulk pile at the belt's end. Letters, names
   and colors identify every route.
-- Deliver anywhere inside the painted drop zones. The recovery tray sits between
+- Carry freight into the painted drop zones to deliver. The recovery tray sits between
   the belt exit and the bulk area, with clear approaches beside both.
 - E brakes the belt for two seconds, with an eight-second cooldown.
 - Escape pauses; M toggles sound. Losing focus pauses the preview automatically.
