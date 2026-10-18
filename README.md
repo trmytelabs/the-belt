@@ -112,6 +112,12 @@ SORT!** countdown starts the shift.
   of 6–10 cartons; the cart carries two stops per trip. Taking freight highlights
   an available bundle for the current run and skips empty truck slots. Delivering
   a stop removes that stop's bundle while the other one stays on the cart.
+- In 3D, drive the five-ton from UPS to the mall and back, about 23 seconds each
+  way. W / up accelerates, A/D / left/right steers and S / down brakes. Touch has
+  a steering stick plus held GAS and BRAKE pedals. Stop in the lit loading bay
+  and press Space / PARK to continue. Bumps cost five points and briefly slow the
+  truck; cargo stays safe. Escape / PAUSE and M / MUTE work on the road too.
+  See [the 3D driving mini-game](docs/3d-driving.md).
 
 Touch devices have a movement stick and Switch, Grab / Deliver, and Brake
 buttons. Landscape gives a closer view; portrait reserves room below the game

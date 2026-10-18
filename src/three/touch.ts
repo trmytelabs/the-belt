@@ -22,6 +22,23 @@ const CSS = `
 .b3d-actions .grab { grid-row: 1 / span 3; }
 .b3d-actions .throw { background: #6d4a7a; }
 .b3d-touch.chapter .switch, .b3d-touch.chapter .throw, .b3d-touch.chapter .b3d-corner [data-touch="view"] { display: none; }
+.b3d-touch.driving .b3d-actions { display: none; }
+.b3d-drive-pedals { display: none; position: absolute; right: max(16px, env(safe-area-inset-right)); bottom: max(22px, env(safe-area-inset-bottom)); gap: 10px; }
+.b3d-touch.driving .b3d-drive-pedals { display: flex; align-items: end; }
+.b3d-drive-pedals button { pointer-events: auto; touch-action: none; width: 76px; min-height: 64px; border: 1px solid #ffffff70; border-radius: 14px; background: #b8d5a9; color: #10232a; font: 800 13px 'Segoe UI', sans-serif; }
+.b3d-drive-pedals [data-drive="brake"] { background: #edba6d; }
+.b3d-drive-pedals [data-drive="park"] { position: absolute; bottom: 76px; right: 0; width: 162px; min-height: 44px; }
+.b3d-drive-pedals button.down { filter: brightness(1.3); }
+.b3d-drive-pedals button[hidden] { display: none; }
+.b3d.touch.chapter.driving .b3d-corner { top: 164px; }
+.b3d.touch.driving .b3d-storybar .title { font-size: 16px; }
+.b3d.touch.driving .b3d-storybar .title small { font-size: 9px; letter-spacing: 1px; }
+.b3d.driving .b3d-storybar .clock { white-space: nowrap; flex-shrink: 0; }
+.b3d.touch.driving .b3d-storybar .clock { font-size: 14px; }
+.b3d.touch.chapter.driving .b3d-chapterhud { top: 76px; padding: 8px 12px; display: grid; grid-template-columns: .8fr .8fr 1fr 1.6fr; gap: 6px 12px; }
+.b3d.touch.driving .b3d-chapterhud .stat b { font-size: 14px; }
+.b3d.touch.driving .b3d-chapterhud .objective { grid-column: 1 / -1; min-width: 0; font-size: 12px; }
+.b3d.touch.driving .b3d-toast { top: 212px; width: max-content; max-width: calc(100% - 32px); box-sizing: border-box; }
 .b3d-actions button.down, .b3d-corner button.down { background: #edba6d; color: #10232a; }
 .b3d-actions .brake[disabled] { opacity: .55; }
 .b3d-corner { position: absolute; left: max(12px, env(safe-area-inset-left)); top: 96px; display: flex; gap: 8px; }
@@ -33,6 +50,9 @@ const CSS = `
 /* Narrow portrait phones (320-380px): smaller controls keep the stick and
    the action buttons apart. */
 @media (orientation: portrait) and (max-width: 380px) {
+  .b3d-drive-pedals { right: max(12px, env(safe-area-inset-right)); gap: 8px; }
+  .b3d-drive-pedals button { width: 64px; }
+  .b3d-drive-pedals [data-drive="park"] { width: 136px; }
   .b3d-stick { width: 96px; height: 96px; left: max(12px, env(safe-area-inset-left)); }
   .b3d-knob { width: 44px; height: 44px; margin: -22px 0 0 -22px; }
   .b3d-actions { right: max(12px, env(safe-area-inset-right)); gap: 8px; }
@@ -55,11 +75,13 @@ export interface TouchHandlers {
   throwParcel(): void;
   overview(): void;
   pause(): void;
+  mute(): void;
 }
 
 export class TouchControls {
   /** Current stick direction, each axis -1..1. */
   public readonly move = { x: 0, y: 0 };
+  public readonly pedals = { throttle: 0, brake: 0 };
   public readonly enabled: boolean;
   private readonly root: HTMLDivElement;
   private readonly knob: HTMLDivElement;
@@ -86,15 +108,21 @@ export class TouchControls {
       <div class="b3d-corner">
         <button type="button" data-touch="view">VIEW</button>
         <button type="button" data-touch="pause">PAUSE</button>
+        <button type="button" data-touch="mute">MUTE</button>
+      </div>
+      <div class="b3d-drive-pedals">
+        <button type="button" data-drive="brake" aria-label="Brake truck">BRAKE</button>
+        <button type="button" data-drive="throttle" aria-label="Accelerate truck">GAS</button>
+        <button type="button" data-drive="park" aria-label="Park truck" hidden>PARK</button>
       </div>`;
     host.append(this.root);
     this.knob = this.root.querySelector('.b3d-knob')!;
     this.brakeButton = this.root.querySelector('.brake')!;
 
     const actions: Record<string, () => void> = {
-      grab: handlers.action, switch: handlers.switchWorker, brake: handlers.brake, throw: handlers.throwParcel, view: handlers.overview, pause: handlers.pause,
+      grab: handlers.action, switch: handlers.switchWorker, brake: handlers.brake, throw: handlers.throwParcel, view: handlers.overview, pause: handlers.pause, mute: handlers.mute,
     };
-    for (const button of this.root.querySelectorAll<HTMLButtonElement>('button')) {
+    for (const button of this.root.querySelectorAll<HTMLButtonElement>('[data-touch]')) {
       // Pointer presses act at once, for responsive play. A click with no
       // preceding press (screen readers, switch control, keyboard) acts too,
       // but the click that follows an ordinary press does not act twice.
@@ -119,6 +147,23 @@ export class TouchControls {
       button.addEventListener('pointerup', release);
       button.addEventListener('pointercancel', release);
       button.addEventListener('pointerleave', release);
+    }
+
+    for (const button of this.root.querySelectorAll<HTMLButtonElement>('[data-drive]')) {
+      const pedal = button.dataset.drive as 'throttle' | 'brake' | 'park';
+      button.addEventListener('pointerdown', event => {
+        event.preventDefault(); event.stopPropagation();
+        button.setPointerCapture(event.pointerId);
+        if (pedal === 'park') handlers.action();
+        else { this.pedals[pedal] = 1; button.classList.add('down'); }
+      });
+      const release = (): void => { if (pedal !== 'park') this.pedals[pedal] = 0; button.classList.remove('down'); };
+      button.addEventListener('pointerup', release);
+      button.addEventListener('pointercancel', release);
+      button.addEventListener('lostpointercapture', release);
+      button.addEventListener('click', event => {
+        if (event.detail === 0) { if (pedal === 'park') handlers.action(); else this.pedals[pedal] = this.pedals[pedal] ? 0 : 1; }
+      });
     }
 
     const stick = this.root.querySelector<HTMLDivElement>('.b3d-stick')!;
@@ -147,7 +192,8 @@ export class TouchControls {
     const end = (event: PointerEvent): void => {
       if (event.pointerId !== this.stickPointer) return;
       this.stickPointer = null;
-      this.reset();
+      this.move.x = this.move.y = 0;
+      this.knob.style.transform = '';
     };
     stick.addEventListener('pointerup', end);
     stick.addEventListener('pointercancel', end);
@@ -173,10 +219,18 @@ export class TouchControls {
     this.brakeButton.disabled = !brakeReady;
   }
 
+  public setDriving(driving: boolean, canPark: boolean): void {
+    this.root.classList.toggle('driving', driving);
+    this.root.querySelector<HTMLElement>('[data-drive="park"]')!.hidden = !canPark;
+    this.root.querySelector('.b3d-stick')!.setAttribute('aria-label', driving ? 'Steer truck' : 'Move');
+  }
+
   public reset(): void {
     this.stickPointer = null;
     this.move.x = 0;
     this.move.y = 0;
+    this.pedals.throttle = this.pedals.brake = 0;
+    for (const button of this.root.querySelectorAll('.down')) button.classList.remove('down');
     this.knob.style.transform = '';
   }
 

@@ -17,6 +17,8 @@ export class DepotAudio extends AudioSystem {
   private duckUntil = 0;
   private idleSources: AudioScheduledSourceNode[] = [];
   private idleGain: GainNode | null = null;
+  private drivingHum: OscillatorNode | null = null;
+  private drivingGain: GainNode | null = null;
 
   public override async unlock(): Promise<void> {
     await super.unlock();
@@ -50,11 +52,50 @@ export class DepotAudio extends AudioSystem {
     this.fade(this.musicGain, 0, 0.12);
     this.stopRecordings();
     this.setTruckIdle(false);
+    this.setDriving(null);
   }
 
   public override setMuted(muted: boolean): void {
     super.setMuted(muted);
+    if (muted) this.setDriving(null);
     if (!muted) this.scheduleTrack();
+  }
+
+  /** A quiet speed-dependent diesel layer, owned only by the playable road. */
+  public setDriving(speed: number | null): void {
+    if (speed === null || this.muted) {
+      if (this.drivingHum) {
+        this.fade(this.drivingGain, 0, 0.08);
+        this.drivingHum.stop((this.context?.currentTime ?? 0) + 0.12);
+        this.drivingHum = null; this.drivingGain = null;
+      }
+      return;
+    }
+    const context = this.getContext();
+    if (!context || context.state !== 'running' || !this.sfxGain) return;
+    if (!this.drivingHum) {
+      const hum = context.createOscillator(), gain = context.createGain();
+      hum.type = 'triangle'; gain.gain.value = 0;
+      hum.connect(gain); gain.connect(this.sfxGain);
+      hum.onended = () => { hum.disconnect(); gain.disconnect(); };
+      hum.start(); this.drivingHum = hum; this.drivingGain = gain;
+    }
+    this.drivingHum.frequency.setTargetAtTime(44 + Math.max(0, speed) * 3.8, context.currentTime, 0.15);
+    this.fade(this.drivingGain, 0.018 + Math.min(13.5, speed) * 0.0006, 0.16);
+  }
+
+  public drivingCue(kind: 'brake' | 'collision'): void {
+    const context = this.getContext();
+    if (!context || context.state !== 'running' || this.muted) return;
+    const now = context.currentTime;
+    if (now - (this.foleyTimes.get(`drive-${kind}`) ?? -Infinity) < (kind === 'brake' ? 0.9 : 0.3)) return;
+    this.foleyTimes.set(`drive-${kind}`, now);
+    if (kind === 'brake') {
+      this.noise(now + 0.005, 0.25, 1200, 0.065);
+    } else {
+      this.voice(82, 0.2, now + 0.005, 0.12, { end: 40, cutoff: 320 });
+      this.noise(now + 0.01, 0.15, 650, 0.1);
+    }
   }
 
   protected override updateMusicVolume(): void {

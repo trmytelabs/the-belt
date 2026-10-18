@@ -2,6 +2,11 @@
 
 ## 0.1.0 — development snapshot
 
+- Add two short 3D five-ton drives between UPS and the mall, with a raised chase
+  camera, gentle turn assist, traffic, cones, keyboard and held touch pedals.
+  Parking continues the existing deliveries and key return; bumps cost five
+  points with a brief slowdown, while cargo and signatures stay safe. Retain
+  lo-fi music with quiet engine, brake and bump cues, pause, mute and clean replay.
 - Add John Rushton's two-lane patrol and random squat sets, plus Shan and Vic's
   loading-lane patrols with a brief slowdown when squeezing past them.
 - Let Space grab/park the 3D mall cart, highlight eligible truck bundles, skip

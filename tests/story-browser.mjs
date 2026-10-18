@@ -5,6 +5,7 @@ import { preview } from 'vite';
 
 import { BREAK_SCENES, OPENERS, SCRUM } from '../src/game/slice/StoryScript.ts';
 import { DEPOT_3D_LAYOUT as L } from '../src/three/layout.ts';
+import { driveJourney } from './driving-helpers.mjs';
 
 // The overnight story in the 3D depot, played through the real app with real
 // keys. Synthetic fixtures only move the shift clock, place a parcel in hand,
@@ -323,6 +324,7 @@ try {
   await page.waitForTimeout(1500);
   await shot('drive-to-mall');
   await page.keyboard.press('Enter');
+  await driveJourney(page, 'mall');
   await wait(() => window.fixtureApp.cutscene?.scene.id === 'mall-intro');
   await page.keyboard.press('Enter');
   await wait(() => window.fixtureApp.state === 'mall');
@@ -398,6 +400,7 @@ try {
   await page.keyboard.press('Space');
   await wait(() => window.fixtureApp.cutscene?.scene.id === 'drive-to-ups');
   await page.keyboard.press('Enter');
+  await driveJourney(page, 'ups');
   await wait(() => window.fixtureApp.state === 'lot');
   await page.waitForTimeout(800);
   await shot('return-truck');
