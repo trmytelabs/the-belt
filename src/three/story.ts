@@ -779,8 +779,8 @@ export class StoryStage {
       const actor = stage.actors.get(`clerk-${index}`)!;
       actor.character.nameTag.visible = false;
       const pad = rounded(0.24, 0.32, 0.03, standard(0x7a5a3a, 0.7), 0.02);
-      pad.position.set(0, -0.6, 0.12);
-      actor.character.rightArm.add(pad);
+      pad.position.set(0, -0.1, 0.07);
+      actor.character.rightHand.add(pad);
     });
   }
 

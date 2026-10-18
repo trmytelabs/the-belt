@@ -18,7 +18,15 @@ layout.
 - `world.ts` builds the warehouse: lit concrete floor, the belt with a moving
   tread, receiving feeders and trailers, the ten named trucks, A/B/C drop areas,
   the bulk cage, the recovery tray, the resident crew and their props.
-- `characters.ts` builds low-poly people with walking and carrying poses.
+- `characters.ts` builds every person in code at real proportions (about
+  1.78 m, a head about a seventh of the height): a shaped torso and hips,
+  tapered limbs with elbows and knees, hands with a thumb, shoes, and faces
+  with eyes, irises, brows, ears, nose and lips, plus each cast member's hair,
+  beard, glasses, hat, tie, overalls or vest. Held props go in `rightHand`.
+  The walk bends the knees and swings the arms; poses in `crew.ts` set the
+  elbows and knees too. Cloth, skin and hair share one surface finish, so the
+  merge draws each rigid body part in a single call: a full depot uses fewer
+  draw calls than the earlier box figures, with about a quarter more triangles.
 - `setpieces.ts` stages Vic and Shan's belt buttons, Ralph's five-ton and
   Ben's robbery. `mesa.ts` runs the Mesa choice, and `dream.ts` is Skanky's
   bedroom.

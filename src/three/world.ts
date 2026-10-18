@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 
 import { ROUTE_INFO, SHIFT_LAYOUT, floorPileSlot, type Route } from '../game/slice/ShiftModel';
-import { createCharacter, mergeCharacter, type Character, type CharacterSpec } from './characters';
+import { BODY, bendElbows, bendKnees, createCharacter, mergeCharacter, type Character, type CharacterSpec } from './characters';
 import { mergeStatic } from './merge';
 import { PuffField } from './fx';
 import {
@@ -868,9 +868,10 @@ export class DepotWorld {
     const at = (x: number, y: number): THREE.Vector3 => toWorld({ x, y });
     if (id === 'hussan') {
       const phone = rounded(0.07, 0.14, 0.02, new THREE.MeshStandardMaterial({ color: 0x111111, emissive: 0x5aa0ff, emissiveIntensity: 0.6 }), 0.01);
-      phone.position.set(0, -0.62, 0.05);
-      character.rightArm.add(phone);
-      character.rightArm.rotation.x = -2.4;
+      phone.position.set(0, -0.08, 0.03);
+      character.rightHand.add(phone);
+      character.rightArm.rotation.set(-1.65, -0.5, 0.3);
+      character.rightForearm.rotation.x = -2.3;
       character.leftArm.rotation.set(-0.9, 0, 0.4);
     } else if (id === 'aj') {
       const table = new THREE.Group();
@@ -963,9 +964,13 @@ export class DepotWorld {
     const husband = createCharacter({ name: "DONNA'S HUSBAND", skin: SKIN.light, shirt: 0x40444c, pants: 0x2b2e33, hair: 0x4a3a2a, hairStyle: 'short', beard: true });
     husband.root.position.set(0, 0, 0.62);
     husband.root.rotation.y = Math.PI;
-    husband.leftArm.rotation.x = husband.rightArm.rotation.x = -1.2;
+    // Seated at the desk, hands on the keyboard.
+    husband.leftArm.rotation.set(-0.4, 0, 0.15);
+    husband.rightArm.rotation.set(-0.4, 0, -0.15);
+    bendElbows(husband, -1.1);
     husband.leftLeg.rotation.x = husband.rightLeg.rotation.x = -1.4;
-    husband.body.position.y = -0.3;
+    bendKnees(husband, 1.4);
+    husband.body.position.y = 0.42 - BODY.hipY;
     husband.nameTag.position.y = 1.8;
     const chair = rounded(0.5, 0.08, 0.5, standard(0x2c2f34, 0.6), 0.03);
     chair.position.set(0, 0.42, 0.68);

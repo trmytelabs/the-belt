@@ -136,6 +136,10 @@ try {
   await page.locator('.b3d-storykeys [data-story="skip"]').focus();
   await page.keyboard.press('Space');
   await wait(() => window.fixtureApp.cutscene?.scene.id !== 'scrum');
+  // Leaving the story lets go of the button's focus, so Enter starts the next night again.
+  await wait(() => window.fixtureApp.state !== 'story');
+  assert.equal(await read(() => document.querySelector('.b3d-storykeys').contains(document.activeElement)), false,
+    'no story button keeps keyboard focus outside a story scene');
   assert.deepEqual(errors, []);
   console.log('PASS 3D story: three openers reach the scrum (stepped, skipped and unattended), approved scrum lines in order, NEXT/SKIP/PAUSE buttons by keyboard and click, countdown into playable sorting; no script errors');
 

@@ -200,7 +200,13 @@ export class Overlay {
   public setMode(mode: 'shift' | 'story' | 'chapter'): void {
     this.root.classList.toggle('story', mode === 'story');
     this.root.classList.toggle('chapter', mode === 'chapter');
-    if (mode !== 'story') this.subtitle(null);
+    if (mode !== 'story') {
+      this.subtitle(null);
+      // A story button keeps keyboard focus after its scene; let it go, so Enter
+      // and Space reach the briefing, the shift and the results again.
+      const focused = document.activeElement;
+      if (focused instanceof HTMLElement && this.storykeys.contains(focused)) focused.blur();
+    }
     // A shift toast must not hang over a cutscene or carry into the next chapter.
     if (mode !== 'shift') {
       this.toastMs = 0;
@@ -219,6 +225,8 @@ export class Overlay {
       // own Enter (skip) and Space (next) keys must not also see the press.
       button.addEventListener('keydown', (event) => {
         if (event.code !== 'Enter' && event.code !== 'NumpadEnter' && event.code !== 'Space') return;
+        // Outside a story scene the buttons are hidden: the game's own keys apply.
+        if (!this.root.classList.contains('story')) return;
         event.preventDefault();
         event.stopPropagation();
         if (event.repeat) return;
