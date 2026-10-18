@@ -17,6 +17,7 @@ import {
   type StoryActor, type StoryBeat, type StoryScene,
 } from '../game/slice/StoryScript';
 import { audioSystem, type SoundEffect } from '../game/systems/AudioSystem';
+import { syncCharacterModels, useCharacterModels, type CharacterModelEntry } from './characterModels';
 import { animateCharacter, createCharacter, mergeCharacter, type Character } from './characters';
 import { CrewLife } from './crew';
 import { MesaDream } from './dream';
@@ -147,6 +148,8 @@ export class Belt3d {
     const rendererName = debug ? String(gl.getParameter(debug.UNMASKED_RENDERER_WEBGL)) : '';
     this.quality = /swiftshader|llvmpipe|software|basic render/i.test(rendererName) ? 'low' : 'high';
     this.renderer.setPixelRatio(this.quality === 'high' ? Math.min(window.devicePixelRatio, 2) : 0.6);
+    // Software renderers keep the lighter procedural people and download no models.
+    if (this.quality === 'low') void useCharacterModels([]);
     this.renderer.shadowMap.enabled = this.quality === 'high';
     this.renderer.shadowMap.type = this.quality === 'high' ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -276,6 +279,11 @@ export class Belt3d {
     this.renderer.dispose();
     this.renderer.forceContextLoss();
     this.overlay.dispose();
+  }
+
+  /** Swaps the imported character model list. For checks and rehearsal. */
+  public useCharacterModels(list: CharacterModelEntry[]): Promise<void> {
+    return useCharacterModels(list);
   }
 
   /** Fixes the next run's random choices (opener, break place, variant, time). For checks and rehearsal. */
@@ -783,6 +791,7 @@ export class Belt3d {
     const stageScene = this.usesStage() ? this.stage.scene : null;
     const scene = stageScene ?? this.world.scene;
     const camera = stageScene ? this.stage.camera : this.camera;
+    syncCharacterModels(this.state === 'dream' ? this.dream.scene : scene);
     if (this.state === 'dream') this.renderer.render(this.dream.scene, this.dream.camera);
     else if (this.composer && this.renderPass) {
       this.renderPass.scene = scene;

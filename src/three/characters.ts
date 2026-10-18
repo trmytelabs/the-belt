@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 
+import { trackCharacter } from './characterModels';
 import { mergeStatic } from './merge';
 import { shadowed, standard, textSprite } from './space';
 
@@ -461,9 +462,13 @@ export function createCharacter(spec: CharacterSpec): Character {
   const scale = spec.scale ?? 1;
   root.scale.setScalar(scale);
   shadowed(body, true, false);
+  // Marks the figure itself, which an imported model hides; props added later stay visible.
+  body.traverse((child) => {
+    if ((child as THREE.Mesh).isMesh) child.userData.figure = true;
+  });
   // A relaxed stance: elbows slightly bent.
   leftArmParts.forearm.rotation.x = rightArmParts.forearm.rotation.x = -0.12;
-  return {
+  const character: Character = {
     root, body, head,
     leftArm: leftArmParts.arm, rightArm: rightArmParts.arm,
     leftForearm: leftArmParts.forearm, rightForearm: rightArmParts.forearm,
@@ -472,6 +477,8 @@ export function createCharacter(spec: CharacterSpec): Character {
     skinMaterial, nameTag,
     headHeight: 1.85 * scale, walkPhase: Math.random() * Math.PI * 2,
   };
+  trackCharacter(character, spec);
+  return character;
 }
 
 /** Merges each rigid part once props are attached; every joint stays animatable. */
@@ -481,8 +488,19 @@ export function mergeCharacter(character: Character): void {
     character.leftLeg, character.rightLeg, character.leftShin, character.rightShin,
   ]);
   const keep = (object: THREE.Object3D): boolean => pivots.has(object) || object.userData.keep === true;
-  mergeStatic(character.body, keep);
-  for (const pivot of pivots) mergeStatic(pivot, keep);
+  // Props and the figure merge separately, so an imported model can hide the figure alone.
+  const figure = (object: THREE.Object3D): boolean => object.userData.figure === true;
+  const props = (object: THREE.Object3D): boolean => object.userData.mergedProps === true;
+  for (const part of [character.body, ...pivots]) {
+    mergeTagged(part, (object) => keep(object) || figure(object), 'mergedProps');
+    mergeTagged(part, (object) => keep(object) || props(object), 'figure');
+  }
+}
+
+function mergeTagged(root: THREE.Object3D, keep: (object: THREE.Object3D) => boolean, tag: string): void {
+  const before = new Set(root.children);
+  mergeStatic(root, keep);
+  for (const child of root.children) if (!before.has(child)) child.userData[tag] = true;
 }
 
 /** Sets both elbows (negative bends the forearm forward and up). */
