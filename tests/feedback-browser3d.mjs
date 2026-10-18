@@ -4,7 +4,7 @@ import { chromium } from 'playwright';
 import { preview } from 'vite';
 import { CHARACTER_MODELS } from '../src/three/characterModels.ts';
 
-const server = await preview({ preview: { host:'127.0.0.1', port:0 }, logLevel:'silent' });
+const server = process.env.BELT_TEST_BASE_URL ? null : await preview({ preview: { host:'127.0.0.1', port:0 }, logLevel:'silent' });
 const browser = await chromium.launch({ headless:true,
   ...(process.env.BELT_BROWSER_EXECUTABLE ? { executablePath:process.env.BELT_BROWSER_EXECUTABLE } : { channel:'chromium' }),
   args:process.env.BELT_3D_GPU ? ['--ignore-gpu-blocklist'] : ['--use-angle=swiftshader','--enable-unsafe-swiftshader'],
@@ -15,7 +15,7 @@ try {
   await page.route('https://fonts.googleapis.com/**', route=>route.fulfill({body:''}));
   await page.route('https://fonts.gstatic.com/**', route=>route.fulfill({body:''}));
   await page.addInitScript(()=>window.addEventListener('belt3d:ready',event=>{window.fixtureApp=event.detail;}));
-  await page.goto(server.resolvedUrls.local[0]);
+  await page.goto(process.env.BELT_TEST_BASE_URL ?? server.resolvedUrls.local[0]);
   const read=(fn,arg)=>page.evaluate(fn,arg), wait=(fn,arg)=>page.waitForFunction(fn,arg,{polling:10,timeout:90_000});
   await wait(()=>window.fixtureApp?.state==='briefing');
   await read(()=>{const app=window.fixtureApp;app.forceStory({breakAtMs:1e12});app.benStarted=true;app.model.autonomousCoworker=false;app.overlay.clearCenter();app.state='playing';app.model.eventStopped=true;});
@@ -54,17 +54,26 @@ try {
     const before=sample(119999),first=sample(120000),all=sample(125500);
     const puffsBefore=app.world.puffs.puffs.length;c.emitExhaust(1,125500);
     const exhaust=app.world.puffs.puffs.length-puffsBefore;
+    c.emitExhaust(.19,125500);
+    const repeat=app.world.puffs.puffs.length-puffsBefore-exhaust;
+    app.world.update(.1,125.5,m.beltTravel,false);
+    const shake=app.world.trucks.map(truck=>truck.group.rotation.z);
+    app.world.update(.1,125.6,m.beltTravel,false);
+    const vibrates=app.world.trucks.every((truck,index)=>Math.abs(truck.group.rotation.z-shake[index])>.00001&&Math.abs(truck.group.rotation.z)<=.003);
+    app.world.update(.1,125.7,m.beltTravel,true);
+    const reduced=app.world.trucks.every(truck=>truck.group.rotation.z===0&&truck.group.rotation.x===0);
     m.elapsedMs=129500;m.beltTravel=185*.7;c.updateReceiving(m,.01,129.5);
     const cough=c.unloaders[0].pose;
     m.elapsedMs=131000;c.updateReceiving(m,.01,131);
     const resumed=c.unloaders[0].pose;
     const headlights=app.world.trucks.map(truck=>{let lights=0;truck.group.traverse(child=>{if(child.name==='truck-headlight'&&child.material.emissiveIntensity>2)lights++;});return lights;});
-    c.reset();return {before,first,all,exhaust,cough,resumed,headlights,reset:app.world.trucks.every(truck=>!truck.group.userData.engineRunning)};
+    c.reset();return {before,first,all,exhaust,repeat,vibrates,reduced,cough,resumed,headlights,reset:app.world.trucks.every(truck=>!truck.group.userData.engineRunning&&truck.group.rotation.x===0&&truck.group.rotation.z===0)};
   });
   assert.deepEqual(engines.before,{running:0,lit:0});assert.deepEqual(engines.first,{running:1,lit:1});
   assert.deepEqual(engines.all,{running:12,lit:12});assert.equal(engines.exhaust,12);
+  assert.equal(engines.repeat,12);assert.ok(engines.vibrates&&engines.reduced);
   assert.ok(engines.headlights.every(count=>count===2));assert.equal(engines.cough,'cough');assert.equal(engines.resumed,'none');assert.ok(engines.reset);
-  console.log('PASS trucks start with one minute left, illuminate headlights and emit exhaust; a receiving loader coughs briefly and resumes; replay clears engines');
+  console.log('PASS trucks start with one minute left, illuminate headlights, emit denser exhaust and visibly idle; reduced motion disables shaking, replay clears engines, loaders cough and resume');
 
   await read(()=>{const app=window.fixtureApp;app.model.elapsedMs=80000;app.beginBreak();});
   await page.locator('.b3d-lunch-alert').waitFor({state:'visible'});
@@ -179,4 +188,4 @@ try {
   if(process.env.BELT_SCREENSHOT_DIR)await page.screenshot({path:join(process.env.BELT_SCREENSHOT_DIR,'kylie-and-aj.png')});
   assert.deepEqual(errors,[]);
   console.log('PASS recast Kylie is shorter; clothed bald AJ keeps visible glasses with the actual imported models');
-} finally {await browser.close();await server.httpServer.close();}
+} finally {await browser.close();await server?.httpServer.close();}

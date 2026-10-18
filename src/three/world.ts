@@ -580,6 +580,8 @@ export class DepotWorld {
 
   public setTruckRunning(index: number, running: boolean): void {
     const truck = this.trucks[index];
+    if (!running) { truck.group.rotation.x = 0; truck.group.rotation.z = 0; }
+    if (truck.group.userData.engineRunning === running) return;
     truck.group.userData.engineRunning = running;
     truck.group.traverse(child => {
       if (child.name === 'truck-headlight') (child as THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>).material.emissiveIntensity = running ? 2.4 : 0.04;
@@ -1099,6 +1101,11 @@ export class DepotWorld {
   }
 
   public update(dt: number, time: number, beltTravel: number, reducedMotion: boolean): void {
+    if (dt > 0) this.trucks.forEach((truck, index) => {
+      const idle = truck.group.userData.engineRunning && !reducedMotion;
+      truck.group.rotation.z = idle ? Math.sin(time * 23 + index * 1.7) * 0.003 : 0;
+      truck.group.rotation.x = idle ? Math.sin(time * 19 + index * 2.3) * 0.0015 : 0;
+    });
     if (this.residents.get('ben')?.character.root.visible) this.shoulderDevil?.update('Idle', dt, reducedMotion);
     // One texture repeat spans one world unit of belt.
     this.tread.offset.y = beltTravel * WORLD_SCALE;

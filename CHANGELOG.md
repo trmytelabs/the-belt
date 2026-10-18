@@ -17,6 +17,8 @@
   loop transitions, softer package foley and dialogue ducking in 3D.
 - Start 3D truck engines with one minute left, showing headlights, exhaust,
   a continuous diesel idle and occasional loader coughs.
+- Make engine exhaust larger and more frequent, lower the hum, and gently shake
+  running trucks while respecting reduced motion, pause and restart.
 - Announce lunch in the warehouse with a whistle and a multi-second
   15 MINUTE LUNCH BREAK alert before travelling to the lunch location.
 - Combine the 3D gameplay with 23 rigged Microsoft Rocketbox characters,

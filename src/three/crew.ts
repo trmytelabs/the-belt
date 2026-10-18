@@ -789,18 +789,18 @@ export class CrewLife {
   /** Subtitles for sounds; main3d shows them so nothing depends on audio alone. */
   public caption: (text: string) => void = () => undefined;
 
-  /** Restrained exhaust from every running engine, drifting in over the loading platform. */
+  /** Denser, larger exhaust clouds from every running engine. */
   public emitExhaust(dt: number, t = Infinity): void {
     this.exhaustTimer -= dt;
     if (this.exhaustTimer > 0 || dt <= 0) return;
-    this.exhaustTimer = 0.32;
+    this.exhaustTimer = 0.18;
     const at = new THREE.Vector3();
     this.world.trucks.forEach((truck, index) => {
       if (t < this.engineStartAt(index)) return;
       truck.stack.getWorldPosition(at);
       this.world.puffs.emit(at, {
-        color: 0x8a948f, size: 0.28, life: 3.6, opacity: 0.3, grow: 5, spread: 0.08,
-        velocity: new THREE.Vector3(-truck.direction * 0.55, 0.32, 0),
+        color: 0xa2aaa4, size: 0.46, life: 3.2, opacity: 0.46, grow: 4.5, spread: 0.15,
+        velocity: new THREE.Vector3(-truck.direction * 0.55, 0.46, 0),
       });
     });
   }

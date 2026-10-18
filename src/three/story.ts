@@ -692,13 +692,17 @@ export class StoryStage {
       leg.position.set(x, 0.22, z);
       cart.add(leg);
     }
-    const handle = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.9, 0.7), standard(0x8a949a, 0.4, 0.6));
-    handle.position.set(-0.58, 0.75, 0);
-    cart.add(handle);
+    const handleMaterial = standard(0x8a949a, 0.4, 0.6);
+    for (const z of [-0.32, 0.32]) {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.8, 0.045), handleMaterial);
+      post.position.set(-0.58, 0.75, z); cart.add(post);
+    }
+    const handle = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.045, 0.7), handleMaterial);
+    handle.position.set(-0.58, 1.15, 0); cart.add(handle);
     for (let i = 0; i < 2; i += 1) {
       const load = this.bundle(6);
-      load.position.set(-0.22 + i * 0.5, 0.36, 0);
-      load.scale.setScalar(0.8);
+      load.position.set(0, 0.36, i ? 0.2 : -0.2);
+      load.scale.setScalar(0.9);
       load.visible = false;
       cart.add(load);
       props[`cart-${i}`] = load;

@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { chromium } from 'playwright';
 import { preview } from 'vite';
 import { depotSolidFootprints, overlapsFootprint, DEPOT_BODY_RADIUS } from '../src/game/slice/DepotClearance.ts';
+import { DEPOT_3D_LAYOUT as L } from '../src/three/layout.ts';
 
 // The 3D preview needs WebGL. CI's GPU-free runners provide it through
 // SwiftShader, so this suite requests that explicitly rather than inheriting
@@ -148,10 +149,10 @@ try {
   if (process.env.BELT_SCREENSHOT_DIR) await page.screenshot({ path: join(process.env.BELT_SCREENSHOT_DIR, 'after-3d-overview.png') });
   await page.keyboard.press('KeyV');
 
-  // John Rushton's scheduled visit follows on the ordinary clock: he yells, then crouches.
+  // John retains the warning and now performs random sets of proper squats.
   await page.waitForFunction(() => window.fixtureApp.overlay.history.includes("JOHN RUSHTON: DON'T STACK BOXES ON BOXES!"), null, { timeout: 120_000 });
   await page.waitForFunction(() => window.fixtureApp.crew.actors.get('john').pose === 'shout');
-  await page.waitForFunction(() => window.fixtureApp.crew.actors.get('john').pose === 'crouch', null, { timeout: 60_000 });
+  await page.waitForFunction(() => window.fixtureApp.crew.actors.get('john').pose === 'squat', null, { timeout: 60_000 });
 
   // A brake brings Shan out for his first original rant. Belt state is sampled
   // every 10 ms from the press, since a slow runner's round trips can outlast
@@ -401,7 +402,7 @@ try {
     return { x: p.x * 32 + 480, y: p.z * 32 + 340 };
   });
   assert.ok(dockhand.x >= 400 && dockhand.x <= 430, 'the dockhand stands beside the intake');
-  assert.ok(depotSolidFootprints().every(rect => !overlapsFootprint(dockhand, DEPOT_BODY_RADIUS, rect)), 'the dockhand stays clear of the belt casing');
+  assert.ok(depotSolidFootprints(L, L.crewTruckRows, L.playerTruckDepth).every(rect => !overlapsFootprint(dockhand, DEPOT_BODY_RADIUS, rect)), 'the dockhand stays clear of the belt casing');
 
   // A winning clock-out: lines, celebration and every truck departing.
   const truckStart = await crew(() => window.fixtureApp.world.trucks.map((truck) => truck.group.position.x));

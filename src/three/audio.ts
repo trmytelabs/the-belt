@@ -154,17 +154,18 @@ export class DepotAudio extends AudioSystem {
     if (this.idleSources.length || this.muted) return;
     const context = this.getContext();
     if (!context || context.state !== 'running' || !this.sfxGain || !this.noiseBuffer) return;
-    const gain = context.createGain(), filter = context.createBiquadFilter();
+    const gain = context.createGain(), filter = context.createBiquadFilter(), humLevel = context.createGain();
     gain.gain.value = 0; filter.type = 'lowpass'; filter.frequency.value = 185;
     const noise = context.createBufferSource(); noise.buffer = this.noiseBuffer; noise.loop = true;
     const hum = context.createOscillator(); hum.type = 'triangle'; hum.frequency.value = 49;
-    noise.connect(filter); hum.connect(filter); filter.connect(gain); gain.connect(this.sfxGain);
+    humLevel.gain.value = 0.22;
+    noise.connect(filter); hum.connect(humLevel); humLevel.connect(filter); filter.connect(gain); gain.connect(this.sfxGain);
     let remaining = 2;
-    const cleanup = () => { if (--remaining === 0) { filter.disconnect(); gain.disconnect(); } };
+    const cleanup = () => { if (--remaining === 0) { humLevel.disconnect(); filter.disconnect(); gain.disconnect(); } };
     noise.onended = () => { noise.disconnect(); cleanup(); };
     hum.onended = () => { hum.disconnect(); cleanup(); };
     this.idleGain = gain; this.idleSources = [noise, hum];
-    this.fade(gain, 0.065, 1.2);
+    this.fade(gain, 0.03, 1.2);
     noise.start(); hum.start();
   }
 }

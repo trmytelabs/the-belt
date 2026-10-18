@@ -64,8 +64,9 @@ try {
     const idle=make(4);idle.system.setTruckIdle(true);idle.system.setTruckIdle(true);
     ensure(idle.system.idleSources.length===2,'one diesel bed, without duplicate sources');
     idle.clock.now=2;idle.system.stopMusic();ensure(idle.system.idleSources.length===0,'pause/lunch/replay stop the idle bed');
-    const engine=await idle.offline.startRendering();ensure(metrics(engine,1,1.9).rms>.001,'diesel rumble is audible');ensure(metrics(engine,2.3).peak<.000001,'diesel fades to silence');
-    return{duration:s.trackBuffer.duration,music:level,seam,cues};
+    const engine=await idle.offline.startRendering(),idleLevel=metrics(engine,1,1.9);
+    ensure(idleLevel.rms>.0002&&idleLevel.rms<.004,'diesel idle stays audible and quiet below music');ensure(metrics(engine,2.3).peak<.000001,'diesel fades to silence');
+    return{duration:s.trackBuffer.duration,music:level,seam,cues,idle:idleLevel};
   },depot);
   console.log(JSON.stringify(report));
   await page.route('**/audio/music/after-hours.mp3',route=>route.abort());
