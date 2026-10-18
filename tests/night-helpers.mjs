@@ -21,8 +21,6 @@ export async function skipOpening(page, { touch = false } = {}) {
   }
   await page.waitForFunction(`${scene}.state === 'countdown' || ${scene}.state === 'playing'`);
   await page.waitForFunction(`${scene}.state === 'playing'`, null, { timeout: 30_000 });
-  // Manual-input scenarios isolate the selected worker; default autonomy has its own suite.
-  await page.evaluate(`${scene}.model.autonomousCoworker = false`);
 }
 
 /**

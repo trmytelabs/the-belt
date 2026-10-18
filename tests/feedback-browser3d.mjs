@@ -80,6 +80,87 @@ try {
   assert.ok(await read(()=>window.fixtureApp.state==='story'&&window.fixtureApp.cutscene!==null),'the alert finishes before starting the existing lunch destination');
   console.log('PASS lunch has a multi-second 15 MINUTE LUNCH BREAK alert; pause/resume preserves the alert, shift clock and held freight');
 
+  const patrols = await read(() => {
+    const app = window.fixtureApp; app.restart(); app.state = 'paused';
+    const crew = app.crew, samples = { left: 0, right: 0, squats: 0, shanMin: 2000, shanMax: 0, vicMin: 2000, vicMax: 0, crossings: 0 };
+    for (let time = 0; time < 180000; time += 100) {
+      app.model.elapsedMs = time; crew.update(.1, app.model, time / 1000); app.clearCrewFootprints();
+      const john = crew.actor('john'), x = john.root.position.x * 32 + 480, y = john.root.position.z * 32 + 340;
+      if (x < 428) samples.left++; if (x > 532) samples.right++;
+      if (john.pose === 'squat') samples.squats++;
+      if (x >= 428 && x <= 532) { if (y > 134) throw new Error('John crosses the running belt'); samples.crossings++; }
+      const shanY = crew.actor('shan').root.position.z * 32 + 340;
+      samples.shanMin = Math.min(samples.shanMin, shanY); samples.shanMax = Math.max(samples.shanMax, shanY);
+      if (time < 21000 || time > 33500) {
+        const vicY = crew.actor('vic').root.position.z * 32 + 340;
+        samples.vicMin = Math.min(samples.vicMin, vicY); samples.vicMax = Math.max(samples.vicMax, vicY);
+      }
+    }
+    return samples;
+  });
+  assert.ok(patrols.left > 100 && patrols.right > 100 && patrols.crossings > 5 && patrols.squats > 50);
+  assert.ok(patrols.shanMin < 260 && patrols.shanMax > 980 && patrols.vicMin < 250 && patrols.vicMax > 980);
+  console.log('PASS John visibly patrols both belt lanes and performs squat sets; Shan and Vic walk up and down between their scenes');
+
+  await read(() => {
+    const app = window.fixtureApp; app.restart(); app.forceStory({ breakAtMs: 1e12 }); app.benStarted = true;
+    app.model.autonomousCoworker = false; app.model.eventStopped = true;
+    app.overlay.clearCenter(); app.state = 'playing';
+    Object.assign(app.model.packages[0], { y: 400, beltOffset: 400, route: 'A', state: 'belt' });
+    Object.assign(app.model.activeWorker, { x: 400, y: 400 });
+    window.interactionOscillators = 0;
+    const original = AudioContext.prototype.createOscillator;
+    AudioContext.prototype.createOscillator = function (...args) { window.interactionOscillators++; return original.apply(this, args); };
+  });
+  await wait(() => window.fixtureApp.pickupHalo.visible && window.fixtureApp.parcels.get(window.fixtureApp.model.packages[0].id)?.root.userData.pickable);
+  assert.ok(await read(() => window.fixtureApp.pickupPrompt.visible));
+  await page.keyboard.press('Space'); await wait(() => window.fixtureApp.model.heldPackage !== null);
+  await wait(() => !window.fixtureApp.pickupHalo.visible);
+  await read(() => {
+    const app = window.fixtureApp;
+    app.model.activeWorker.heldId = null;
+    for (const p of app.model.packages) p.state = 'delivered';
+    window.interactionOscillators = 0;
+  });
+  await page.keyboard.press('Space'); await page.waitForTimeout(100);
+  assert.equal(await read(() => window.interactionOscillators), 0, 'an empty grab emits no error tone');
+  await read(() => {
+    const m = window.fixtureApp.model, p = m.packages[0];
+    Object.assign(p, { route: 'D', state: 'held', workerId: 'termite' });
+    Object.assign(m.activeWorker, { x: 264, y: m.layout.dockA.y, heldId: p.id });
+    m.score = 100; window.interactionOscillators = 0;
+  });
+  await page.keyboard.press('Space'); await wait(() => window.fixtureApp.model.score === 90);
+  await wait(() => window.interactionOscillators >= 2);
+  console.log('PASS the pickable package has a halo and Space prompt; empty grabs stay quiet, while the wrong truck deducts ten points and sounds an error');
+
+  await read(() => { const app = window.fixtureApp; app.restart(); app.overlay.clearCenter(); app.beginMall(); });
+  await page.keyboard.press('Space'); await wait(() => window.fixtureApp.mall.cart.pushed);
+  await page.keyboard.press('Space'); await wait(() => !window.fixtureApp.mall.cart.pushed);
+  await read(() => { const m = window.fixtureApp.mall; Object.assign(m.skanky, { x: 75, y: 400 }); Object.assign(m.cart, { x: 130, y: 400 }); });
+  for (let stop = 0; stop < 2; stop++) {
+    await wait(() => window.fixtureApp.stage.stages.mall.props[`slot-${window.fixtureApp.mall.interaction.slot}`]?.userData.pickable);
+    await page.keyboard.press('Space'); await wait(() => window.fixtureApp.mall.carrying !== null);
+    await page.keyboard.press('Space'); await wait(() => window.fixtureApp.mall.carrying === null);
+  }
+  await wait(() => window.fixtureApp.mall.cart.load.every((id, index) => {
+    const bundle = window.fixtureApp.stage.stages.mall.props[`cart-${index}`];
+    return bundle.visible && bundle.userData.boxes === window.fixtureApp.mall.store(id).boxes;
+  }));
+  const load = await read(() => {
+    const app = window.fixtureApp, m = app.mall, props = app.stage.stages.mall.props;
+    return m.cart.load.map((id, index) => ({ expected: m.store(id).boxes,
+      visible: props[`cart-${index}`].visible,
+      boxes: props[`cart-${index}`].children.filter(child => child.name === 'delivery-box' && child.visible).length }));
+  });
+  assert.equal(load.length, 2);
+  assert.ok(load.every(stop => stop.visible && stop.expected >= 6 && stop.expected === stop.boxes), JSON.stringify(load));
+  if (process.env.BELT_SCREENSHOT_DIR) {
+    await read(() => { const app = window.fixtureApp; app.lastRender = -Infinity; app.draw(); });
+    await page.screenshot({ path: join(process.env.BELT_SCREENSHOT_DIR, 'mall-full-cart.png') });
+  }
+  console.log('PASS real Space grabs and parks the cart, highlights available truck freight, skips emptied slots and loads two full bundles matching their store box counts');
+
   await read(async list=>{
     const app=window.fixtureApp;app.state='paused';app.pausedFrom='playing';app.stage.end();app.overlay.setMode('shift');app.overlay.clearSpeech();app.overlay.setLunchAlert(false);app.overlay.clearCenter();
     await app.useCharacterModels(list);

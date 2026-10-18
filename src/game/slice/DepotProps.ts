@@ -1,16 +1,17 @@
 import Phaser from 'phaser';
+import { SHIFT_LAYOUT } from './ShiftModel';
 
 const text = (scene: Phaser.Scene, x: number, y: number, copy: string, size: number, color = '#eee2bd') =>
   scene.add.text(x, y, copy, { fontFamily: 'Arial, sans-serif', fontSize: `${size}px`, fontStyle: 'bold', color }).setOrigin(0.5);
 
 type TruckStyle = { name: string; side: 'left' | 'right'; body?: number; trim?: number; accent?: number; loaded?: boolean; route?: string };
 
-/** One authored 148×84 truck, shared by both workers, all eight colleagues and Ralph. */
+/** One truck footprint, shared by both workers, all eight colleagues and Ralph. */
 export function createDepotTruckArt(scene: Phaser.Scene, style: TruckStyle): Phaser.GameObjects.Container {
-  const root = scene.add.container(0, 0).setSize(148, 84);
-  root.setData('truckFootprint', { width: 148, height: 84 }).setData('truckLabel', style.name);
+  const root = scene.add.container(0, 0).setSize(148, SHIFT_LAYOUT.truckDepth);
+  root.setData('truckFootprint', { width: 148, height: SHIFT_LAYOUT.truckDepth }).setData('truckLabel', style.name);
   const direction = style.side === 'left' ? 1 : -1;
-  const chassis = scene.add.container(0, 0).setScale(direction, 1);
+  const chassis = scene.add.container(0, 0).setScale(direction, SHIFT_LAYOUT.truckDepth / 84);
   const g = scene.add.graphics();
   chassis.add(g);
   root.add(chassis);
@@ -53,10 +54,10 @@ export function createDepotTruckArt(scene: Phaser.Scene, style: TruckStyle): Pha
     : style.name === 'PAULA ABDUL' ? 'PAULA ABDUL' : style.name;
   root.add(text(scene, direction * 13, style.loaded ? -16 : -1, lettering, style.name.length > 10 ? 10 : 11).setAlign('center'));
   if (style.route) {
-    // Every truck posts a street range; parcels carry their own address.
+    // The route letter sits by the rear door, matching the floor zone and the parcels.
     const badge = scene.add.graphics();
-    badge.fillStyle(0xd9ccab).fillRoundedRect(-42, 12, 84, 16, 3);
-    root.add([badge, text(scene, 0, 20, style.route, 11, '#14232a')]);
+    badge.fillStyle(style.accent ?? 0xa2946f).fillRoundedRect(direction * 52 - 10, -30, 20, 20, 3);
+    root.add([badge, text(scene, direction * 52, -20, style.route, 13, '#14232a')]);
   }
   return root;
 }

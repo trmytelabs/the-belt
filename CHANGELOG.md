@@ -2,6 +2,12 @@
 
 ## 0.1.0 — development snapshot
 
+- Add John Rushton's two-lane patrol and random squat sets, plus Shan and Vic's
+  loading-lane patrols with a brief slowdown when squeezing past them.
+- Let Space grab/park the 3D mall cart, highlight eligible truck bundles, skip
+  empty slots and show 6–10 real cartons per store delivery.
+- Highlight the parcel Space can grab, and keep empty interactions quiet while
+  retaining error sounds for actual wrong deliveries.
 - Grade 3D recovered freight by its final dispatch outcome, with S at 95% and
   a visible breakdown instead of permanent errors for belt-end incidents.
 - Guide carrying approaches through both stair flights and keep location street
@@ -11,7 +17,8 @@
   loop transitions, softer package foley and dialogue ducking in 3D.
 - Start 3D truck engines with one minute left, showing headlights, exhaust,
   a continuous diesel idle and occasional loader coughs.
-- Announce lunch with a whistle and a multi-second 15 MINUTE LUNCH BREAK alert.
+- Announce lunch in the warehouse with a whistle and a multi-second
+  15 MINUTE LUNCH BREAK alert before travelling to the lunch location.
 - Combine the 3D gameplay with 23 rigged Microsoft Rocketbox characters,
   preserving their animations, attached props and software-renderer fallback.
 - Spread truck rows apart and stage crew events between them, keeping loading

@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 
-import { LOT_LAYOUT, MALL_LAYOUT, type KeyReturnModel, type MallEvent, type MallModel } from '../game/slice/MallModel';
+import { LOT_LAYOUT, MALL_LAYOUT, type KeyReturnModel, type MallEvent } from '../game/slice/MallModel';
+import type { MallModel3D as MallModel } from './MallModel3D';
 import type { Cutscene } from '../game/slice/StoryModel';
 import type { StoryScene } from '../game/slice/StoryScript';
 import { animateCharacter, createCharacter, mergeCharacter, type Character, type CharacterSpec } from './characters';
@@ -10,6 +11,8 @@ import { upgradeCar } from './propModels';
 import { PuffField } from './fx';
 import { buildSouthgateMall, mallX, mallZ, type SouthgateMall } from './mall';
 import { mergeStatic } from './merge';
+import { disposeObject3D } from './resources';
+import { physicalBounds } from './collision3d';
 import { actorSurfaceAt, setFromModel, shadowed, standard, textPlane, textSprite, toWorld } from './space';
 import { RESIDENT_SPECS, SKANKY_SPEC, SKIN, TERMITE_SPEC, VISITORS, createTruck } from './world';
 import { DEPOT_3D_LAYOUT as DEPOT } from './layout';
@@ -43,6 +46,8 @@ export class StageActor {
   public poseStart = 0;
   public faceAngle: number | null = null;
   public carrying = false;
+  /** A seated passenger can contact their own vehicle; other solids still apply. */
+  public seatedIn: THREE.Object3D | null = null;
   private readonly previous = new THREE.Vector3();
   private moved = false;
   private heading = 0;
@@ -54,6 +59,7 @@ export class StageActor {
   public get root(): THREE.Group { return this.character.root; }
 
   public at(x: number, z: number, y = 0): void {
+    this.seatedIn = null;
     this.previous.copy(this.root.position);
     this.root.position.set(x, y, z);
     const dx = x - this.previous.x;
@@ -75,6 +81,9 @@ export class StageActor {
     animateCharacter(c, dt, { moving: this.moved, carrying: this.carrying, time, reducedMotion });
     c.body.rotation.set(0, 0, 0);
     c.head.rotation.set(0, 0, 0);
+    // Smoking/phone gestures are upper-body actions. Preserve the seat's hip
+    // height and folded legs so they cannot stand a passenger through the roof.
+    if (this.seatedIn) applyPose(c, 'sit', time - this.poseStart, reducedMotion);
     applyPose(c, this.pose, time - this.poseStart, reducedMotion);
     this.moved = false;
   }
@@ -206,6 +215,15 @@ export class StoryStage {
     return this.active ? this.stage(this.active).scene : null;
   }
 
+  public geometrySnapshot(): { actors: { id: string; bounds: THREE.Box3 }[]; props: { id: string; bounds: THREE.Box3 }[] } {
+    if (!this.active) return { actors: [], props: [] };
+    const stage = this.stage(this.active);
+    return {
+      actors: [...stage.actors].filter(([, actor]) => actor.root.visible).map(([id, actor]) => ({ id, bounds: physicalBounds(actor.root) })),
+      props: Object.entries(stage.props).filter(([, prop]) => prop.visible).map(([id, prop]) => ({ id, bounds: physicalBounds(prop) })),
+    };
+  }
+
   public resize(aspect: number): void {
     this.camera.aspect = aspect;
     this.camera.fov = aspect < 1 ? 60 : 42;
@@ -220,6 +238,7 @@ export class StoryStage {
   public reset(): void {
     this.end();
     for (const [id, stage] of Object.entries(this.stages)) {
+      stage.puffs.clear();
       for (const actor of stage.actors.values()) {
         actor.root.visible = false;
         actor.pose = 'none';
@@ -227,6 +246,14 @@ export class StoryStage {
         actor.carrying = false;
       }
       if (id === 'mall') this.mallStoreText.clear();
+    }
+  }
+
+  public dispose(): void {
+    this.end();
+    for (const stage of Object.values(this.stages)) {
+      stage.puffs.dispose();
+      disposeObject3D(stage.scene);
     }
   }
 
@@ -252,7 +279,10 @@ export class StoryStage {
     else if (id === 'road') this.buildRoad(stage);
     else this.buildMall(stage);
     const dynamic = new Set<THREE.Object3D>([...stage.actors.values()].map((actor) => actor.root));
-    for (const prop of Object.values(stage.props)) dynamic.add(prop);
+    for (const [name, prop] of Object.entries(stage.props)) {
+      prop.name = name;
+      dynamic.add(prop);
+    }
     mergeStatic(scene, (object) => dynamic.has(object) || object.userData.keep === true || (object as THREE.Light).isLight === true);
     return stage;
   }
@@ -306,6 +336,7 @@ export class StoryStage {
     building.position.set(0, 4, -18);
     building.receiveShadow = true;
     scene.add(building);
+    props.lotBuilding = building;
     for (const x of [-16, -10, -4]) {
       const door = new THREE.Mesh(new THREE.PlaneGeometry(4, 3.6), standard(0x10181c, 0.9));
       door.position.set(x, 1.8, -13.98);
@@ -336,6 +367,7 @@ export class StoryStage {
       const panel = new THREE.Mesh(new THREE.PlaneGeometry(to - from, 2.2), link);
       panel.position.set((from + to) / 2, 1.1, 0);
       scene.add(panel);
+      props[from < 0 ? 'fence-west' : 'fence-east'] = panel;
       for (let x = from; x <= to; x += 2.6) {
         const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.4, 8), post);
         pole.position.set(x, 1.2, 0);
@@ -641,7 +673,7 @@ export class StoryStage {
     scene.add(ramp);
     // Six labelled bundles in the truck, one per store.
     for (let slot = 0; slot < 6; slot += 1) {
-      const bundle = this.bundle(slot % 2 ? 3 : 2);
+      const bundle = this.bundle(6 + slot % 3 * 2);
       // The slots are squeezed to fit between the truck's side walls; the model's slot rows are unchanged.
       bundle.position.set(mallX(22), 1.1, mallZ(350 + slot * 20) * 0.62);
       scene.add(bundle);
@@ -664,7 +696,7 @@ export class StoryStage {
     handle.position.set(-0.58, 0.75, 0);
     cart.add(handle);
     for (let i = 0; i < 2; i += 1) {
-      const load = this.bundle(3);
+      const load = this.bundle(6);
       load.position.set(-0.22 + i * 0.5, 0.36, 0);
       load.scale.setScalar(0.8);
       load.visible = false;
@@ -673,7 +705,7 @@ export class StoryStage {
     }
     scene.add(cart);
     props.cart = cart;
-    const carried = this.bundle(2);
+    const carried = this.bundle(6);
     carried.visible = false;
     scene.add(carried);
     props.carried = carried;
@@ -687,33 +719,51 @@ export class StoryStage {
     });
   }
 
-  /** A strapped stack of two or three boxes with a name label above it. */
+  /** Two columns of real cartons make a visibly full, strapped store delivery. */
   private bundle(boxes: number): THREE.Group {
     const group = new THREE.Group();
     for (let i = 0; i < boxes; i += 1) {
-      const box = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.3, 0.36), standard(i % 2 ? 0xb8875a : 0xa47650, 0.9));
-      box.position.set((i % 2) * 0.06 - 0.03, 0.15 + i * 0.3, 0);
+      const box = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.22, 0.3), standard(i % 2 ? 0xb8875a : 0xa47650, 0.9));
+      box.name = 'delivery-box';
+      box.position.set(i % 2 ? 0.16 : -0.16, 0.11 + Math.floor(i / 2) * 0.24, 0);
       box.castShadow = true;
       group.add(box);
     }
-    const strap = new THREE.Mesh(new THREE.BoxGeometry(0.05, boxes * 0.3 + 0.02, 0.38), standard(0xd8c060, 0.6));
-    strap.position.y = boxes * 0.15;
+    const height = Math.ceil(boxes / 2) * 0.24;
+    const strap = new THREE.Mesh(new THREE.BoxGeometry(0.05, height + 0.02, 0.32), standard(0xd8c060, 0.6));
+    strap.position.y = height / 2;
     group.add(strap);
     group.userData.boxes = boxes;
     return group;
   }
 
+  private setBundleCount(group: THREE.Object3D, boxes: number): void {
+    if (group.userData.boxes === boxes) return;
+    for (const child of [...group.children]) disposeObject3D(child);
+    group.add(...this.bundle(boxes).children);
+    group.userData.boxes = boxes; group.userData.label = undefined;
+  }
+
+  private highlightBundle(group: THREE.Object3D, active: boolean): void {
+    group.userData.pickable = active;
+    group.traverse(child => {
+      if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshStandardMaterial) {
+        child.material.emissive.setHex(0xffe7ab); child.material.emissiveIntensity = active ? 0.32 : 0;
+      }
+    });
+  }
+
   private setLabel(group: THREE.Object3D, text: string, color = '#f1e5c4'): void {
     if (group.userData.label === text) return;
     const old = group.getObjectByName('label');
-    if (old) group.remove(old);
+    if (old) disposeObject3D(old);
     if (text) {
       const sprite = textSprite([text], 0.32, { width: Math.max(110, text.length * 13 + 20), height: 30, background: color, border: '#9e8452', color: '#2b2116', radius: 5 });
       sprite.name = 'label';
       // Store tags are gameplay labels: never hidden behind the truck's walls.
       sprite.material.depthTest = false;
       sprite.renderOrder = 10;
-      sprite.position.y = (group.userData.boxes ?? 2) * 0.3 + 0.35;
+      sprite.position.y = Math.ceil((group.userData.boxes ?? 2) / 2) * 0.24 + 0.35;
       group.add(sprite);
     }
     group.userData.label = text;
@@ -777,6 +827,7 @@ export class StoryStage {
     const world = car.localToWorld(local.clone());
     actor.root.visible = true;
     actor.at(world.x, world.z, world.y);
+    actor.seatedIn = car;
     actor.faceAngle = car.rotation.y + Math.PI / 2;
     actor.pose = 'sit';
   }
@@ -809,13 +860,17 @@ export class StoryStage {
         this.seat(a('skanky'), car, new THREE.Vector3(-0.3, SEAT_Y, 0.36));
         this.seat(a('termite'), car, new THREE.Vector3(-0.3, SEAT_Y, -0.36));
       } else {
-        for (const [who, offset] of [['skanky', -0.5], ['termite', 0.5]] as const) {
+        for (const [who, offset] of [['skanky', -0.6], ['termite', 0.6]] as const) {
           const actor = a(who);
           actor.root.visible = inside < 0.95;
           actor.pose = 'none';
           actor.faceAngle = null;
           const along = Math.min(1, run * 0.85 + inside * 0.15);
-          actor.at(mix(-1.5 + offset, 9.2 + offset * 0.4, along), mix(-3.6, -12.4 - inside * 1.5, along));
+          // Exit on opposite sides, pass behind the parked car, then follow
+          // the empty aisle. The previous diagonal began inside one car seat
+          // and squeezed the pair to less than a shoulder-width at the door.
+          const path = alongPath([[offset < 0 ? -3.6 : 0.6, -2.8], [2 + offset, -2.0], [2 + offset, -10], [9 + offset, -13.2]], along);
+          actor.at(path.x, path.z);
         }
         a('termite').setPose(run < 0.4 ? 'handup' : 'none', time);
       }
@@ -833,14 +888,17 @@ export class StoryStage {
     const drive = ease(cueProgress(cutscene, 'walk-in'));
     // [car, driver, waiting spot x/z, parking stall x]
     const queue: [string, string, number, number, number][] = id === 'opener-3'
-      ? [['car-skanky', 'skanky', 0, 5.2, 2.5], ['car-brian', 'brian', -6.5, 6.5, -3.5], ['car-fruitloop', 'fruitloop', 6.5, 6.5, 5.5], ['car-doris', 'doris', -12.5, 7.2, -6.5]]
-      : [['car-skanky', 'skanky', 0, 5.2, 2.5], ['car-doris', 'doris', -6.5, 6.5, -3.5], ['car-hussan', 'hussan', 6.5, 6.5, 5.5]];
+      ? [['car-skanky', 'skanky', 0, 5.2, 3], ['car-brian', 'brian', -6.5, 6.5, -3], ['car-fruitloop', 'fruitloop', 6.5, 6.5, 7], ['car-doris', 'doris', -12.5, 7.2, -7]]
+      : [['car-skanky', 'skanky', 0, 5.2, 3], ['car-doris', 'doris', -6.5, 6.5, -3], ['car-hussan', 'hussan', 6.5, 6.5, 7]];
     queue.forEach(([name, driver, x, z, stall], index) => {
       const car = props[name];
       // One at a time: out to the gate line, straight through, then into a stall.
-      const go = THREE.MathUtils.clamp((drive - 0.3 - index * 0.16) / 0.36, 0, 1);
-      const path: [number, number][] = x === 0 ? [[x, z], [0, -1.2], [stall, -2.6], [stall, -5.2]]
-        : [[x, z], [x * 0.25, 3.8], [0, 2.6], [0, -1.2], [stall, -2.6], [stall, -5.2]];
+      const window = 0.7 / queue.length;
+      const go = THREE.MathUtils.clamp((drive - 0.3 - index * window) / window, 0, 1);
+      // Clear the gate with the full car before turning; deep stalls leave a
+      // complete turning aisle ahead of already parked vehicles.
+      const path: [number, number][] = x === 0 ? [[x, z], [0, -3.6], [stall, -3.6], [stall, -8.4]]
+        : [[x, z], [x * 0.25, 3.8], [0, 2.6], [0, -3.6], [stall, -3.6], [stall, -8.4]];
       const at = go <= 0 ? { x, z, h: toGate } : alongPath(path, ease(go));
       this.placeCar(car, at.x, at.z, at.h);
       this.seat(a(driver), car, new THREE.Vector3(-0.3, SEAT_Y, 0.36));
@@ -875,7 +933,8 @@ export class StoryStage {
     const inside = Math.min(1, drive / 0.3);
     // From his car round the front of the waiting car beside it, to the gate.
     const toGatePath = alongPath([[9.5, 9.0], [8.6, 2.0], [-1.2, 1.0]], walk);
-    shan.at(toGatePath.x + mix(0, 7.4, inside), toGatePath.z + mix(0, -9.6, inside));
+    const insidePath = alongPath([[-1.2, 1], [-1.2, -3], [10, -3], [10, -12.8]], inside);
+    shan.at(inside > 0 ? insidePath.x : toGatePath.x, inside > 0 ? insidePath.z : toGatePath.z);
     shan.faceAngle = walk >= 1 && drive <= 0 ? Math.PI : null;
     if (walk >= 1 && open <= 0) shan.setPose('press', time);
     props.shanCoffee.visible = id === 'opener-3' && walk > 0;
@@ -1066,32 +1125,35 @@ export class StoryStage {
       const load = props[`cart-${i}`];
       const id = model.cart.load[i];
       load.visible = Boolean(id);
-      if (id) this.setLabel(load, model.store(id).name);
+      if (id) { this.setBundleCount(load, model.store(id).boxes); this.setLabel(load, `${model.store(id).name} · ${model.store(id).boxes} BOXES`); }
       const tag = load.getObjectByName('label');
-      if (tag) tag.position.y = (load.userData.boxes ?? 2) * 0.3 + 0.35 + (i === raised ? 0.55 : 0);
+      if (tag) tag.position.y = Math.ceil((load.userData.boxes ?? 2) / 2) * 0.24 + 0.35 + (i === raised ? 0.55 : 0);
     }
     model.truckBundles.forEach((id, slot) => {
       const bundle = props[`slot-${slot}`];
       bundle.visible = id !== null;
       if (id) {
         const store = model.store(id);
+        this.setBundleCount(bundle, store.boxes);
         const current = store.run === model.run || (model.runComplete && store.run === model.run + 1);
-        this.setLabel(bundle, store.name, current ? '#f2c14e' : '#c8c0b0');
+        this.setLabel(bundle, `${store.name} · ${store.boxes} BOXES`, current ? '#f2c14e' : '#c8c0b0');
         // Alternate slots' tags sit in two staggered columns over the tailgate.
         const tag = bundle.getObjectByName('label');
         if (tag) tag.position.set(slot % 2 ? 0.75 : -0.75, 1.25, 0);
       }
     });
-    const nearestSlot = model.nearestSlot();
-    const atTail = model.skanky.x < MALL_LAYOUT.tailgate.x + MALL_LAYOUT.tailgate.w && !model.carrying;
+    const selection = model.interaction;
     model.truckBundles.forEach((_, slot) => {
-      props[`slot-${slot}`].scale.setScalar(atTail && slot === nearestSlot ? 1.12 + Math.sin(time * 6) * 0.04 : 1);
+      const selected = selection.action === 'take' && slot === selection.slot;
+      props[`slot-${slot}`].scale.setScalar(selected ? 1.08 + Math.sin(time * 6) * 0.02 : 1);
+      this.highlightBundle(props[`slot-${slot}`], selected);
     });
     const carried = props.carried;
     carried.visible = model.carrying !== null;
     if (model.carrying) {
+      this.setBundleCount(carried, model.store(model.carrying).boxes);
       const forward = new THREE.Vector3(Math.sin(skanky.root.rotation.y), 0, Math.cos(skanky.root.rotation.y));
-      carried.position.copy(skanky.root.position).addScaledVector(forward, 0.42).setY(0.75);
+      carried.position.copy(skanky.root.position).addScaledVector(forward, 0.58).setY(0.75);
       carried.rotation.y = skanky.root.rotation.y;
       this.setLabel(carried, model.store(model.carrying).name);
     }
@@ -1168,7 +1230,7 @@ export class StoryStage {
     if (!stage) return;
     for (const [name, prop] of Object.entries(stage.props)) {
       if (name.startsWith('drop-')) {
-        stage.scene.remove(prop);
+        disposeObject3D(prop);
         delete stage.props[name];
       }
     }
@@ -1218,8 +1280,8 @@ export interface DepotCast {
 // receiving feeders, with Shan at its top end facing everyone.
 const SCRUM_SPOTS: Record<string, [number, number]> = {
   termite: [366, 214], skanky: [418, 214],
-  hussan: [342, 252], aj: [386, 256], ben: [428, 250],
-  donna: [336, 292], doris: [368, 296], brian: [402, 292], bannerman: [434, 288],
+  hussan: [342, 252], aj: [386, 256], ben: [420, 250],
+  donna: [330, 292], doris: [362, 296], brian: [394, 292], bannerman: [426, 288],
   fruitloop: [384, 330],
 };
 const SHAN_SPOT: [number, number] = [392, 166];

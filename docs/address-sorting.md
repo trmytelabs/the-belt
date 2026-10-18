@@ -120,3 +120,18 @@ boundary, wrong throws, Shan's visible visit, Mesa's keyboard/touch outcomes and
 clean restart. Cargo and clock fixtures are synthetic; the shipped character
 models and production rendering are exercised directly.
 Physical touch-device usability and audible sound still need manual checks.
+
+The nearest eligible package has a neutral light halo and a **SPACE · GRAB**
+prompt. Empty or out-of-reach actions do not play an error sound. A wrong drop
+still sounds its error and deducts points.
+
+John patrols both sides around the belt head and stops for random squat sets.
+Shan and Vic walk up and down the loading lanes between their existing scenes.
+They briefly slow a head-on squeeze, while sidestepping keeps normal speed.
+Their patrols do not enter the stairs or truck interiors.
+
+In the 3D mall, Space handles the highlighted action, including grabbing or
+parking the cart. Eligible truck bundles are highlighted and empty or future-run
+slots are skipped. Each store has 6–10 visible cartons, and the cart holds two
+separate store bundles. Dropping one leaves the other bundle visible aboard.
+The legacy mall retains its original controls and box counts.

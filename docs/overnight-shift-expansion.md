@@ -38,8 +38,10 @@ nothing is left uninitialized. NEXT never skips a line that has not been shown.
 
 The belt, both worker lanes, the bulk pile and the recovery tray stand on a
 raised loading platform (1.1 m in 3D). Every truck backs against the platform
-edge with its roll-up rear door open at deck height. Two stair flights at the
-end of the belt, one in each worker's lane, lead down to the lower floor.
+edge with its roll-up rear door open at deck height. Near the belt's end, two
+stair flights descend outward from the left and right sides to the ground drops.
+Bulk backs against the final warehouse wall; all stairs and floor drops remain
+in front of it, with nothing behind that wall.
 Workers cannot step off the platform anywhere else: from the lower floor the
 only way up is the stairs. Walking speed is unchanged everywhere; the stairs
 only make the route longer. In 2D the platform is lighter with a lit edge and
@@ -47,48 +49,46 @@ a cast shadow, the stairs are banded treads, and the lower floor is darker.
 
 Each worker now has two trucks and a lower-floor drop:
 
-| Destination | Worker | Street range | Drop |
+| Letter | Destination | Worker | Where |
 | --- | --- | --- | --- |
-| Mill Woods | Termite | 10–49 ST | First truck |
-| Downtown | Termite | 90–109 ST | Second truck |
-| Westmount | Termite | 110–129 ST | Lower floor, west stairs |
-| Bonnie Doon | Skanky | 50–89 ST | First truck |
-| West End | Skanky | 130–169 ST | Second truck |
-| Northside | Skanky | 170–199 ST | Lower floor, east stairs |
-| Bulk | Both | OVERSIZE | Shared platform pile |
+| A | HERES UR SOVICE | Termite | existing truck, now flush with the platform edge |
+| D | DOWNTOWN *(provisional name)* | Termite | second truck row, before the bulk pile |
+| T | TERMITE FLOOR DROP | Termite | lower floor, down the west stairs |
+| B | PAYTMAN | Skanky | existing truck, now flush with the platform edge |
+| E | EASTSIDE *(provisional name)* | Skanky | second truck row, before the bulk pile |
+| S | SKANKY FLOOR DROP | Skanky | lower floor, down the east stairs |
+| C | BULK | both | unchanged shared pile at the belt end |
 
-These are synthetic Edmonton-inspired game districts. Parcels show street
-addresses; signs show inclusive street ranges. Neutral signs replace visible
-letters and matching colours, and guidance does not disclose the correct drop.
-See [address sorting](address-sorting.md) for the rules, triple freight and the
-automatic coworker. Lower-floor piles leave their signs clear. Heavy freight
-never goes to floor drops. Internal IDs remain in the model and layout only.
+Every destination shows its letter and name on the floor, on the truck and on
+each parcel, so colour is never the only cue. Floor drops pile parcels in a
+grid that leaves the painted name clear, with a tall sign above the pile.
+Heavy freight never goes to the floor drops. The first six parcels still
+teach A, B and C; D, E, T and S follow, each announced the first time it
+appears. Names live in `ROUTE_INFO` in `ShiftModel.ts` and can be renamed there.
 
 Layout changes made to fit this:
 
-- The two player trucks moved 24 px outward so their rear doors are flush with
+- The player trucks moved 24 px outward so their rear doors are flush with
   the platform edge, like the crew trucks. Their drop zones now reach the door
   (A and B are wider; they still accept the whole reachable lane).
-- Ralph's five-ton now backs into the empty west bay beside the bulk pile
+- Ralph's five-ton now backs into the empty west bay ahead of the bulk pile
   instead of the east outer bay, which the new E truck row would have crossed.
   His five trips to the pile and his departure are unchanged.
-- Paytman's fish tank moved into the empty east bay beside his truck.
+- Paytman's fish tank occupies the matching empty east bay, clear of the stairs.
 - The outer-bay crew climb short steps in the aisles between trucks to reach
   the platform for their freight trips.
 
 ## Throwing and breakage
 
-Holding a parcel, press **F** (or THROW on touch) to throw toward the nearest
-physical drop. You still need to check the address: a wrong drop earns no credit
-and leaves recoverable freight. The preview shows the selected throw's landing
-position and risk. From the top of the stairs, it targets that side's lower-floor
-drop with a 30% break risk, regardless of ordinary or fragile type.
+Holding a parcel, press **F** (or THROW on touch) to throw it straight to its
+own destination instead of walking it there. The arc and landing ring (3D) or
+the dotted arc and risk label (2D) show where it will land and the break risk.
 Carrying is unchanged and never breaks anything.
 
 - Heavy freight (bulk crates, the Mesa amp, the ATV, big and long boxes,
   Mallwood) must be carried. Light bulk freight can be thrown onto the pile.
-- A throw must be within range; on the lower floor it targets the local
-  floor drop, never an upstairs truck.
+- A throw must be within range and from the worker's own side; from the lower
+  floor you cannot throw up onto the platform.
 - A clean throw delivers with normal points and keeps the streak.
 - A broken parcel earns no delivery credit and costs points **once**. It stays
   visibly crushed with a BROKEN tag for a few seconds and can never be picked
@@ -102,7 +102,6 @@ Tuning (`THROWING` in `ShiftModel.ts`):
 | `rangePx` | 300 (about 9.4 m) | Farthest throw |
 | `breakChance.ordinary` | 0.15 | Break chance for ordinary freight |
 | `breakChance.fragile` | 0.55 | Break chance for fragile freight |
-| `stairBreakChance` | 0.30 | Either throwable type at the stair top |
 | `fragileKinds` | makeup, duck, mesa, lobsters | The fragile list (a simple two-level distinction) |
 | `breakPenalty` | 150 points | Charged once per broken parcel, never below zero |
 | `gradeForgivenBreaks` | 1 | Breakages beyond this count as errors in the grade |

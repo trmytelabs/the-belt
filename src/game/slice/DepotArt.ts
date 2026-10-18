@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { ROUTE_INFO, SHIFT_LAYOUT, floorPileSlot, streetRange, type ParcelKind, type Route } from './ShiftModel';
+import { ROUTE_INFO, SHIFT_LAYOUT, floorPileSlot, type ParcelKind, type Route } from './ShiftModel';
 import { createCrewTruckArt, createDepotTruckArt, createPaytmanTankArt } from './DepotProps';
 
 /** Editable, resolution-independent artwork for the night shift vertical slice. */
@@ -7,8 +7,13 @@ export type DepotRoute = Route;
 export type DepotSide = 'left' | 'right';
 
 export const DEPOT_ROUTE_COLORS: Record<DepotRoute, number> = {
-  A: 0xd9ccab, B: 0xd9ccab, C: 0xd9ccab, D: 0xd9ccab,
-  E: 0xd9ccab, T: 0xd9ccab, S: 0xd9ccab,
+  A: 0x76cbd1,
+  B: 0xa6cc9a,
+  C: 0xedba6d,
+  D: 0x86a8f0,
+  E: 0xd6d877,
+  T: 0xc6a3ee,
+  S: 0xee9cb9,
 };
 
 const INK = 0x10222a;
@@ -30,7 +35,8 @@ function line(g: Phaser.GameObjects.Graphics, x1: number, y1: number, x2: number
 }
 
 function pallet(g: Phaser.GameObjects.Graphics, x: number, y: number, w = 90, h = 62) {
-  g.fillStyle(0x08151d, 0.45).fillRoundedRect(x - w / 2 + 4, y - h / 2 + 9, w, h, 5);
+  // The pallet touches the final wall, which occludes the far end of its shadow.
+  g.fillStyle(0x08151d, 0.45).fillRoundedRect(x - w / 2 + 4, y - h / 2 + 9, w, h - 9, 5);
   g.fillStyle(0x463d30).fillRect(x - w / 2, y + h / 2 - 6, w, 6);
   const slats = Math.max(5, Math.ceil(h / 10));
   for (let i = 0; i < slats; i++) {
@@ -253,54 +259,83 @@ export class DepotArt {
    * the stairs are banded treads, and the lower floor is darker.
    */
   private drawPlatform(g: Phaser.GameObjects.Graphics) {
-    const { platform, stairs, leftLane, rightLane, lowerFloor } = SHIFT_LAYOUT;
+    const { platform, stairs, lowerFloor } = SHIFT_LAYOUT;
     const scene = this.scene;
-    // Lower floor beyond the belt-end wall.
-    g.fillStyle(0x1a2c33).fillRect(300, stairs.bottom, 360, lowerFloor.bottom - stairs.bottom);
-    for (let y = stairs.bottom + 20; y < lowerFloor.bottom; y += 40) line(g, 300, y, 660, y, 0x0e2933, 1, 0.3);
-    // The platform casts a shadow onto the lower ground along its edges and far end.
+    g.setData('platform', { ...platform }).setData('sideStairs', { ...stairs }).setData('lowerFloor', { ...lowerFloor });
+    // The ground drops sit outboard of the platform, inside the final wall.
+    for (const floor of [lowerFloor.left, lowerFloor.right]) {
+      g.fillStyle(0x1a2c33).fillRect(floor.minX, lowerFloor.top, floor.maxX - floor.minX, lowerFloor.bottom - lowerFloor.top);
+      for (let y = lowerFloor.top + 20; y < lowerFloor.bottom; y += 32) line(g, floor.minX, y, floor.maxX, y, 0x0e2933, 1, 0.3);
+      label(scene, (floor.minX + floor.maxX) / 2, lowerFloor.top - 7, 'LOWER FLOOR', 8, '#8fa6a3').setDepth(1);
+    }
+    // Lit nosing, a dark vertical face and a ground shadow distinguish the deck.
     g.fillStyle(0x061218, 0.55).fillRect(platform.left - 12, platform.top, 12, platform.bottom - platform.top);
     g.fillStyle(0x061218, 0.55).fillRect(platform.right, platform.top, 12, platform.bottom - platform.top);
-    g.fillStyle(0x061218, 0.55).fillRect(platform.left - 12, platform.bottom, platform.right - platform.left + 24, 14);
     // The deck itself.
     g.fillStyle(0x30494f).fillRect(platform.left, platform.top + 10, platform.right - platform.left, platform.bottom - platform.top - 10);
     g.fillStyle(0x3a555b).fillRect(platform.left + 10, 100, 90, 380).fillRect(platform.right - 100, 100, 90, 380);
     // Safety-yellow nosing on every drop-off edge.
-    g.fillStyle(0xe2b84e).fillRect(platform.left, platform.top + 10, 4, platform.bottom - platform.top - 10)
-      .fillRect(platform.right - 4, platform.top + 10, 4, platform.bottom - platform.top - 10);
-    for (let x = platform.left; x < platform.right; x += 16) {
-      const inStairs = (x >= leftLane.minX && x < leftLane.maxX) || (x >= rightLane.minX && x < rightLane.maxX);
-      if (inStairs) continue;
-      // Count stripes from the platform's edge so yellow and black alternate.
-      const stripe = Math.round((x - platform.left) / 16);
-      g.fillStyle(stripe % 2 === 0 ? 0xe2b84e : 0x1c1c1c).fillRect(x, platform.bottom - 6, 16, 6);
+    for (const edge of [platform.left, platform.right - 4]) {
+      g.fillStyle(0xe2b84e).fillRect(edge, platform.top + 10, 4, stairs.minY - platform.top - 10)
+        .fillRect(edge, stairs.maxY, 4, platform.bottom - stairs.maxY);
     }
-    // Guard rail between the two flights.
-    line(g, leftLane.maxX, platform.bottom - 10, rightLane.minX, platform.bottom - 10, 0xe0b23c, 3, 0.9);
-    // Two stair flights, as wide as each worker's lane.
-    for (const lane of [leftLane, rightLane]) {
-      const steps = 7;
-      const run = (stairs.bottom - stairs.top) / steps;
+    // Crew use the same narrow access stairs between the parked truck rows in
+    // both renderers; the painted walk no longer runs through a sheer deck edge.
+    for (const y of [196, 292, 388, 484]) {
+      for (const side of [-1, 1]) {
+        const edge = side < 0 ? platform.left : platform.right;
+        for (let step = 0; step < 5; step += 1) {
+          const x = side < 0 ? edge - 30 + step * 6 : edge + 24 - step * 6;
+          g.fillStyle(0x30494f + step * 0x040404).fillRect(x, y - 12, 6, 24);
+          line(g, x + (side < 0 ? 5 : 1), y - 12, x + (side < 0 ? 5 : 1), y + 12, 0xe2b84e, 1);
+        }
+      }
+    }
+    // The bulk pallet backs against the final wall; nothing is drawn beyond it.
+    const wall = SHIFT_LAYOUT.bulkRearWall;
+    const wallLeft = wall.x - wall.width / 2;
+    const wallRight = wall.x + wall.width / 2;
+    const wallTop = wall.y - wall.height / 2;
+    const rearWall = scene.add.graphics().setDepth(4).setData('rearWall', { ...wall });
+    rearWall.fillStyle(0x142a31).fillRect(wallLeft, wallTop, wall.width, wall.height);
+    rearWall.fillStyle(0x526b6c).fillRect(wallLeft, wallTop, wall.width, 3);
+    for (let x = wallLeft + 8; x < wallRight; x += 20) {
+      line(rearWall, x, wallTop + 3, x, wallTop + wall.height, 0x2b444a, 1);
+    }
+    line(rearWall, wallLeft, wallTop, wallRight, wallTop, 0xe0b23c, 2, 0.9);
+    // Both flights descend horizontally away from the platform's long sides.
+    for (const side of ['left', 'right'] as const) {
+      const flight = stairs[side];
+      const { steps } = stairs;
+      const run = (flight.bottomX - flight.topX) / steps;
       for (let i = 0; i < steps; i += 1) {
         const shade = Phaser.Display.Color.Interpolate.ColorWithColor(
           Phaser.Display.Color.ValueToColor(0x4c5f62), Phaser.Display.Color.ValueToColor(0x22343b), steps, i);
-        g.fillStyle(Phaser.Display.Color.GetColor(shade.r, shade.g, shade.b)).fillRect(lane.minX, stairs.top + i * run, lane.maxX - lane.minX, run);
-        g.fillStyle(0xe2b84e, 0.85).fillRect(lane.minX, stairs.top + i * run, lane.maxX - lane.minX, 2);
+        const edge = flight.topX + i * run;
+        g.fillStyle(Phaser.Display.Color.GetColor(shade.r, shade.g, shade.b)).fillRect(Math.min(edge, edge + run), stairs.minY, Math.abs(run), stairs.maxY - stairs.minY);
+        g.fillStyle(0xe2b84e, 0.85).fillRect(edge - 1, stairs.minY, 2, stairs.maxY - stairs.minY);
       }
-      g.fillStyle(0x0a1a20).fillRect(lane.minX - 3, stairs.top, 3, stairs.bottom - stairs.top).fillRect(lane.maxX, stairs.top, 3, stairs.bottom - stairs.top);
-      label(scene, (lane.minX + lane.maxX) / 2, stairs.top + 46, 'STAIRS\n▼', 8, '#e8c04a').setAlign('center').setDepth(1);
+      const minX = Math.min(flight.topX, flight.bottomX);
+      const width = Math.abs(flight.bottomX - flight.topX);
+      g.fillStyle(0x0a1a20).fillRect(minX, stairs.minY - 3, width, 3).fillRect(minX, stairs.maxY, width, 3);
+      label(scene, minX + width / 2, stairs.centerY, side === 'left' ? '◀ DOWN' : 'DOWN ▶', 8, '#ffe27c').setDepth(1);
     }
-    label(scene, 480, platform.bottom - 28, 'LOADING PLATFORM', 8, '#c8b47a').setDepth(1);
-    label(scene, 480, lowerFloor.bottom - 12, 'LOWER FLOOR', 8, '#6e8a8b').setDepth(1);
+    label(scene, 480, wallTop - 10, 'REAR WALL', 8, '#c8b47a').setDepth(4);
+    label(scene, 480, SHIFT_LAYOUT.recoveryPile.y + 55, 'RAISED LOADING PLATFORM', 7, '#c8b47a').setDepth(1);
+    for (const route of ['T', 'S'] as const) {
+      const storage = SHIFT_LAYOUT.floorStorage[route];
+      g.fillStyle(DEPOT_ROUTE_COLORS[route], 0.07).fillRect(storage.x - storage.width / 2, storage.y - storage.height / 2, storage.width, storage.height);
+      g.lineStyle(1, DEPOT_ROUTE_COLORS[route], 0.45).strokeRect(storage.x - storage.width / 2, storage.y - storage.height / 2, storage.width, storage.height);
+    }
   }
 
   /** Each worker's two trucks, rear doors flush with the platform edge. */
   private drawTruck(route: 'A' | 'B' | 'D' | 'E') {
     const point = SHIFT_LAYOUT.playerTrucks[route];
     const side: DepotSide = point.x < 480 ? 'left' : 'right';
-    const colors = [0x827a67, 0xc2bba4];
+    const colors = { A: [0x4f8495, 0x8dafae], B: [0x789369, 0xaac49d], D: [0x56689e, 0x8e9ccc], E: [0x9a9a4f, 0xc4c47a] }[route];
     const truck = createDepotTruckArt(this.scene, {
-      name: ROUTE_INFO[route].name, route: streetRange(route), side, body: colors[0], trim: colors[1], accent: DEPOT_ROUTE_COLORS[route],
+      name: ROUTE_INFO[route].name, route, side, body: colors[0], trim: colors[1], accent: DEPOT_ROUTE_COLORS[route],
     }).setPosition(point.x, point.y).setDepth(3);
     this.departureObjects.push({ object: truck, x: point.x, direction: side === 'left' ? -1 : 1 });
   }
@@ -308,7 +343,7 @@ export class DepotArt {
   private drawBulk() {
     const { x, y } = SHIFT_LAYOUT.bulkPile;
     const g = this.scene.add.graphics().setDepth(3);
-    const height = 96;
+    const height = 2 * (SHIFT_LAYOUT.bulkRearWall.y - SHIFT_LAYOUT.bulkRearWall.height / 2 - y);
     g.setData('bulkPile', { x, y, width: 116, height });
     g.fillStyle(0x173039).fillRoundedRect(x - 63, y - height / 2 - 3, 126, height + 6, 4);
     g.lineStyle(1, 0xc2a771, 0.55).strokeRoundedRect(x - 63, y - height / 2 - 3, 126, height + 6, 4);
@@ -330,13 +365,13 @@ export class DepotArt {
     };
     for (const cy of [y + 6, y - 9]) for (const cx of [x, x - 30, x + 30]) crate(cx, cy, 26, 20);
     this.setBulkStock(0);
-    label(this.scene, x, y + height / 2 + 10, 'BULK / DISPATCH', 7, '#c5b384').setDepth(4);
+    label(this.scene, x, y - height / 2 - 10, 'BULK / DISPATCH', 7, '#c5b384').setDepth(4);
     const recovery = SHIFT_LAYOUT.recoveryPile;
     const tray = this.scene.add.graphics().setDepth(3).setData('recoveryPile', { ...recovery });
-    tray.fillStyle(0x0a2028).fillRoundedRect(recovery.x - 59, recovery.y - 13, 118, 26, 4);
-    tray.lineStyle(2, 0x788784).strokeRoundedRect(recovery.x - 59, recovery.y - 13, 118, 26, 4);
-    for (let dx = -51; dx < 54; dx += 13) line(tray, recovery.x + dx, recovery.y - 9, recovery.x + dx, recovery.y + 9, 0x364f56, 1, 0.7);
-    label(this.scene, recovery.x, recovery.y + 18, 'MISSED / RECOVER', 7, '#afaaa0').setDepth(4);
+    tray.fillStyle(0x0a2028).fillRoundedRect(recovery.x - 59, recovery.y - 26, 118, 52, 4);
+    tray.lineStyle(2, 0x788784).strokeRoundedRect(recovery.x - 59, recovery.y - 26, 118, 52, 4);
+    for (let dx = -51; dx < 54; dx += 13) line(tray, recovery.x + dx, recovery.y - 22, recovery.x + dx, recovery.y + 22, 0x364f56, 1, 0.7);
+    label(this.scene, recovery.x, recovery.y + 31, 'MISSED / RECOVER', 7, '#afaaa0').setDepth(4);
   }
 
   private drawDock(route: DepotRoute, side: DepotSide) {
@@ -355,8 +390,8 @@ export class DepotArt {
       line(g, x - 8 * arrow, y + oy - 4, x - 15 * arrow, y + oy, color, 2, 0.65);
       line(g, x - 15 * arrow, y + oy, x - 8 * arrow, y + oy + 4, color, 2, 0.65);
     }
-    label(scene, x, y - 7, streetRange(route), 12, '#d9ccab').setDepth(depth + 0.5);
-    label(scene, x, y + 17, bulk ? 'TO BULK' : ROUTE_INFO[route].name, 9, '#a9c0b4').setDepth(depth + 0.5);
+    label(scene, x, y - 7, route, 26, `#${color.toString(16).padStart(6, '0')}`).setDepth(depth + 0.5);
+    label(scene, x, y + 17, bulk ? 'TO BULK' : route === 'T' || route === 'S' ? 'FLOOR DROP' : ROUTE_INFO[route].name.length > 10 ? 'LOAD' : ROUTE_INFO[route].name, 8, '#a9c0b4').setDepth(depth + 0.5);
     const highlight = scene.add.graphics().setDepth(depth).setAlpha(0);
     highlight.fillStyle(color, 0.16).fillRoundedRect(x - width / 2 + 1, y - height / 2 + 1, width - 2, height - 2, 5);
     highlight.lineStyle(2, color, 0.95).strokeRoundedRect(x - width / 2, y - height / 2, width, height, 5);
@@ -395,15 +430,15 @@ export class DepotArt {
     ];
     for (const [id, name, x, y, side] of trucks) {
       const truck = createCrewTruckArt(this.scene, name, id === 'ben', side).setPosition(x, y).setDepth(3);
-      this.crewTruckPoints[id] = { x: x + (side === 'left' ? 80 : -80), y };
+      this.crewTruckPoints[id] = { x: x + (side === 'left' ? 86 : -86), y };
       this.departureObjects.push({ object: truck, x, direction: side === 'left' ? -1 : 1 });
     }
     this.crewTruckPoints.froodoo = this.crewTruckPoints.fruitloop;
     this.crewTruckPoints.dorothy = this.crewTruckPoints.doris;
     this.fishTank = createPaytmanTankArt(this.scene);
     // In the empty bay beside Paytman's truck.
-    this.fishTank.container.setPosition(716, 628).setDepth(4);
-    this.departureObjects.push({ object: this.fishTank.container, x: 716, direction: 1 });
+    this.fishTank.container.setPosition(SHIFT_LAYOUT.fishTank.x, SHIFT_LAYOUT.fishTank.y).setDepth(4);
+    this.departureObjects.push({ object: this.fishTank.container, x: SHIFT_LAYOUT.fishTank.x, direction: 1 });
   }
 }
 
@@ -411,7 +446,7 @@ const parcelDecorations = new WeakMap<Phaser.GameObjects.Container, Phaser.GameO
 const parcelRecoveredBadges = new WeakMap<Phaser.GameObjects.Container, Phaser.GameObjects.Star>();
 
 /** Origin is the parcel contact center. No idle motion is baked into its art. */
-export function createParcelArt(scene: Phaser.Scene, _route: DepotRoute, heavy = false, kind: ParcelKind = 'standard', address?: string, parcelLabel?: string): Phaser.GameObjects.Container {
+export function createParcelArt(scene: Phaser.Scene, route: DepotRoute, heavy = false, kind: ParcelKind = 'standard'): Phaser.GameObjects.Container {
   const root = scene.add.container(0, 0);
   const g = scene.add.graphics();
   const dimensions: Partial<Record<ParcelKind, [number, number]>> = {
@@ -510,21 +545,21 @@ export function createParcelArt(scene: Phaser.Scene, _route: DepotRoute, heavy =
   const badge = scene.add.graphics();
   const badgeTop = t + (kind === 'envelope' ? 1 : 5);
   badge.fillStyle(0x6e5840, 0.4).fillRoundedRect(l + 5, badgeTop + 1, 17, 16, 1);
-  badge.fillStyle(0xd9ccab).fillRoundedRect(l + 4, badgeTop, 17, 16, 1);
+  badge.fillStyle(DEPOT_ROUTE_COLORS[route]).fillRoundedRect(l + 4, badgeTop, 17, 16, 1);
   for (let x = l + 25; x < r - 3; x += 2) line(g, x, b - 13, x, b - 8, 0x5a5844, 1, 0.8);
-  const letter = label(scene, l + 12.5, badgeTop + 8, '▤', 12, '#19383b');
+  const letter = label(scene, l + 12.5, badgeTop + 8, route, 12, '#19383b');
   if (kind === 'snakes') { badge.destroy(); letter.destroy(); }
   else root.add([badge, letter]);
-  if (address || kind !== 'standard') {
+  if (kind !== 'standard') {
     const stamp: Partial<Record<ParcelKind, string>> = {
       mallwood: 'MALLWOOD\nRD EAST', goji: 'GOJI\nBERRIES', lobsters: 'LIVE\nLOBSTERS', duck: 'LE DUCK',
       makeup: 'MAKEUP\nLOTION', mesa: 'MESA\nBOOGIE', panchetters: 'PANCHETTERS', atv: 'SMALL ATV',
     };
     if (kind === 'snakes') root.add(label(scene, 1, 0, 'THE SNAKES CELL', 6, '#eae2be'));
-    else if (address || stamp[kind]) {
+    else if (stamp[kind]) {
       // The full joke belongs on the freight itself. A tied paper tag keeps it
       // legible without covering the destination badge or the object's shape.
-      const copy = label(scene, 0, 0, [address, stamp[kind] ?? parcelLabel].filter(Boolean).join('\n'), 9, '#24383b').setAlign('center');
+      const copy = label(scene, 0, 0, stamp[kind]!, 9, '#24383b').setAlign('center');
       const tagWidth = copy.width + 9;
       const tagHeight = copy.height + 5;
       const tagY = t - tagHeight / 2 - 5;
@@ -581,7 +616,7 @@ export function updateParcelArt(container: Phaser.GameObjects.Container, kind: P
 
 export interface DepotWorkerArt {
   container: Phaser.GameObjects.Container;
-  update(timeMs: number, moving: boolean, active: boolean, holding: boolean): void;
+  update(timeMs: number, moving: boolean, active: boolean, holding: boolean, assisting?: boolean, scannerFault?: boolean): void;
 }
 
 /** Illustrated workers with independently articulated arms and boots. */
@@ -660,20 +695,21 @@ export function createWorkerArt(scene: Phaser.Scene, side: DepotSide): DepotWork
   root.add(head);
   return {
     container: root,
-    update(timeMs, moving, active, holding) {
+    update(timeMs, moving, active, holding, assisting = false, scannerFault = false) {
       const stride = moving ? Math.sin(timeMs / 80) : 0;
       legs[0].y = 10 + stride * 3;
       legs[1].y = 10 - stride * 3;
       // Both forearms support the parcel's underside on the belt-facing side.
-      // The parcel clears the worker's silhouette on the belt-facing side.
+      // This matches the model's +/-18, -17 carry offset instead of clasping air.
       const carryAngle = side === 'left' ? -0.9 : 0.9;
       arms[0].rotation = holding ? carryAngle : stride * 0.17;
       arms[1].rotation = holding ? carryAngle : -stride * 0.17;
       arms[0].y = holding ? -8 : -11;
       arms[1].y = holding ? -8 : -11;
       ring.setVisible(active);
-      sleepy.setVisible(false);
-      root.setAlpha(1);
+      sleepy.setText(scannerFault ? 'SCAN!' : assisting ? 'AUTO' : 'zZz').setColor(scannerFault ? '#f3987c' : '#e5e9d6');
+      sleepy.setVisible(!active || scannerFault);
+      root.setAlpha(active || assisting || scannerFault ? 1 : 0.6);
       body.y = moving ? -Math.abs(stride) * 0.7 : 0;
       head.y = body.y;
       shadow.scaleX = moving ? 1 - Math.abs(stride) * 0.025 : 1;

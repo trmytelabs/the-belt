@@ -7,7 +7,7 @@ import { audioSystem } from '../systems/AudioSystem';
 export interface DepotMesaCallbacks {
   begin(): void;
   finish(): void;
-  caught(penalty: number): void;
+  caught(): void;
   offer(visible: boolean): void;
   thought(): void;
 }
@@ -104,14 +104,13 @@ export class DepotMesaEncounter {
     this.callbacks.thought();
     audioSystem.play('switch');
     if (this.roll() < 0.2) {
-      const penalty = this.model.penalizeMesaTheft();
       this.stage = 'caught';
-      this.showCaught(penalty);
+      this.showCaught();
       audioSystem.play('warning');
       this.schedule(1_300, () => {
         this.clearPanel();
-        this.resumeWarehouse();
-        this.callbacks.caught(penalty);
+        this.stage = 'done';
+        this.callbacks.caught();
       });
       return;
     }
@@ -148,12 +147,12 @@ export class DepotMesaEncounter {
     this.scene.events.emit('depot-screen-object', this.panel);
   }
 
-  private showCaught(penalty: number): void {
+  private showCaught(): void {
     const children = this.panelBase();
     children.push(
       this.text(480, 247, MESA.caught, 28, '#f3987c').setOrigin(0.5),
       this.text(480, 324, MESA.caughtDetail, 18, '#edf0de').setOrigin(0.5),
-      this.text(480, 414, `−${penalty} POINTS · SHIFT CONTINUES`, 18, '#edba6d').setOrigin(0.5),
+      this.text(480, 414, 'GAME OVER', 18, '#edba6d').setOrigin(0.5),
     );
     this.panel = this.scene.add.container(0, 0, children).setDepth(120);
     this.scene.events.emit('depot-screen-object', this.panel);

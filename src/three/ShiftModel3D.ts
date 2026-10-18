@@ -1,7 +1,8 @@
 import {
-  ShiftModel, CARRY_MULTIPLIER, ROUTE_INFO, WORKER_ROUTES, THROWING,
+  ShiftModel, CARRY_MULTIPLIER, WORKER_ROUTES, THROWING,
   type Parcel, type ParcelKind, type Route, type Worker, type ThrowTarget, type ShiftGrade,
 } from '../game/slice/ShiftModel.ts';
+import { ROUTE_INFO, PARCEL_LABELS, PARCEL_SEQUENCE, EVERYDAY_FREIGHT, parcelAddress, MESA_CATCH_PENALTY } from './addresses.ts';
 import { DEPOT_3D_LAYOUT, platformLevelAt, onLowerFloor, floorPileSlot, stairAt, truckInteriorAt, TRUCK_ROUTES, type TruckRoute } from './layout.ts';
 
 export const WRONG_DROP_PENALTY = 10;
@@ -20,6 +21,7 @@ export class ShiftModel3D extends ShiftModel {
   protected override get freightFlow() { return ARRIVALS_3D; }
   private placement: { x: number; row: number } | null = null;
   public readonly truckLoads = new Map<number, TruckLoad>();
+  public laneObstacles: readonly { x: number; y: number }[] = [];
   protected override surfaceLevelAt = platformLevelAt;
   protected override isLowerFloor = onLowerFloor;
   protected override pileSlot = floorPileSlot;
@@ -44,7 +46,37 @@ export class ShiftModel3D extends ShiftModel {
   }
   public override get gradeQuote(): string { return this.grade === 'S' ? 'OUTSTANDING SHIFT' : super.gradeQuote; }
 
-  private canPickup(worker: Worker, parcel: Parcel): boolean {
+  protected override freightIdentity(id: number, slot: number, brianKind: ParcelKind | null) {
+    const everyday = brianKind === null && slot % 3 !== 0;
+    const regular = everyday ? EVERYDAY_FREIGHT[Math.min(EVERYDAY_FREIGHT.length - 1, Math.floor(this.freightRandom() * EVERYDAY_FREIGHT.length))] : null;
+    const routes: readonly Route[] = regular && CARRY_MULTIPLIER[regular.kind] <= 0.7 ? ['A', 'B', 'C', 'D', 'E'] : ['A', 'B', 'D', 'E', 'T', 'S'];
+    const { route, kind } = brianKind ? { route: 'C' as const, kind: brianKind }
+      : regular ? { route: routes[Math.min(routes.length - 1, Math.floor(this.freightRandom() * routes.length))], kind: regular.kind }
+        : PARCEL_SEQUENCE[Math.floor(slot / 3) % PARCEL_SEQUENCE.length];
+    const range = ROUTE_INFO[route].streets;
+    const street = range ? range[0] + id * 17 % (range[1] - range[0] + 1) : undefined;
+    return { id, route, kind, label: regular?.label ?? PARCEL_LABELS[kind], street, address: parcelAddress({ id, route, street }), size: CARRY_MULTIPLIER[kind] <= 0.7 ? 'heavy' as const : 'normal' as const };
+  }
+
+  public penalizeMesaTheft(): number {
+    const penalty = Math.min(this.score, MESA_CATCH_PENALTY);
+    this.score -= penalty; this.combo = 0; return penalty;
+  }
+
+  protected override syncHeld(worker: Worker, parcel: Parcel): void {
+    parcel.x = worker.x + (worker.side === 'left' ? 42 : -42);
+    parcel.y = worker.y - 17;
+  }
+
+  protected override pickup(worker: Worker, parcel: Parcel): void {
+    const recovered = parcel.state === 'missed';
+    if (recovered) parcel.recovered = true;
+    parcel.state = 'held'; parcel.workerId = worker.id; worker.heldId = parcel.id;
+    this.syncHeld(worker, parcel);
+    this.emit(recovered ? 'recover' : 'grab', `${recovered ? 'Recovered · ' : ''}${parcelAddress(parcel)} · read the floor ranges`, worker, parcel);
+  }
+
+  protected override canPickup(worker: Worker, parcel: Parcel): boolean {
     if (!['belt', 'floor', 'missed'].includes(parcel.state)) return false;
     if (parcel.route === 'C' && worker !== this.activeWorker) return false;
     if (parcel.route !== 'C' && ROUTE_INFO[parcel.route].side !== worker.side) return false;
@@ -63,6 +95,7 @@ export class ShiftModel3D extends ShiftModel {
 
   public override action(worker: Worker = this.activeWorker): void {
     if (!this.canAct()) return;
+    if (this.pendingScannerWorker === worker.id) { if (worker === this.activeWorker) super.action(worker); return; }
     const held = this.packages.find(parcel => parcel.id === worker.heldId);
     if (held?.route === 'C' && worker !== this.activeWorker) return;
     const atBelt = Math.abs(worker.x - this.layout.beltX) <= this.layout.grabRadius
@@ -161,7 +194,11 @@ export class ShiftModel3D extends ShiftModel {
     worker.moving = false;
     if (!magnitude) return;
     const held = this.packages.find(parcel => parcel.id === worker.heldId);
-    const speed = 235 * (held ? CARRY_MULTIPLIER[held.kind] : 1) * deltaMs / 1000 * requestedSpeed / magnitude;
+    const squeezed = worker === this.activeWorker && this.laneObstacles.some(point => {
+      const dx = point.x - worker.x, dy = point.y - worker.y;
+      return Math.hypot(dx, dy) < 32 && dx * x + dy * y > 0 && Math.abs(dx * y - dy * x) / magnitude < 22;
+    });
+    const speed = 235 * (held ? CARRY_MULTIPLIER[held.kind] : 1) * deltaMs / 1000 * requestedSpeed / magnitude * (squeezed ? 0.55 : 1);
     const previousX = worker.x, previousY = worker.y;
     const maxY = held ? this.layout.stairs.maxY - this.layout.carriedClearance : this.layout.workerMaxY;
     let nextY = clamp(worker.y + y * speed, this.layout.workerMinY, maxY);
@@ -207,7 +244,7 @@ export class ShiftModel3D extends ShiftModel {
       y: clamp(y, storage.y - storage.height / 2, storage.y + storage.height / 2) }) >= radius;
   }
 
-  private clearForCarry(x: number, y: number, side: 'left' | 'right'): boolean {
+  protected override clearForCarry(x: number, y: number, side: 'left' | 'right'): boolean {
     const { stairs, carriedClearance: radius } = this.layout;
     if (y + radius > stairs.maxY) return false;
     const flight = stairs[side];
@@ -241,7 +278,9 @@ export class ShiftModel3D extends ShiftModel {
   protected override updateCoworker(deltaMs: number): void {
     const worker = this.workers[1 - this.activeIndex];
     worker.moving = false;
-    if (!this.autonomousCoworker) return;
+    if (!this.autonomousCoworker || !this.crewAssist) return;
+    this.updateScannerRequest();
+    if (this.pendingScannerWorker === worker.id) return;
     const held = this.packages.find(parcel => parcel.id === worker.heldId);
     // Bulk picked up by the player stays in their hands if they switch away.
     if (held?.route === 'C') return;
@@ -251,6 +290,11 @@ export class ShiftModel3D extends ShiftModel {
       target = ownSide ? this.destinationCenter(held.route, worker.side) : { x: worker.side === 'left' ? 400 : 560, y: 440 };
       if ((ownSide && this.currentDock(worker) === held.route) || (!ownSide && distance(worker, target) < 4)) {
         if (!ownSide && this.packages.some(parcel => parcel.state === 'belt' && Math.abs(parcel.y - worker.y) < this.layout.parcelGap)) return;
+        if (ownSide) {
+          const truck = truckInteriorAt(worker);
+          this.placement = truck ? { x: worker.x, row: worker.facing === 'down' ? 1 : 0 } : null;
+          this.release(worker, held); this.deliver(held, true); this.placement = null; return;
+        }
         this.action(worker); return;
       }
     } else {
@@ -281,8 +325,8 @@ export class ShiftModel3D extends ShiftModel {
     return Math.abs(worker.x - bulk.x) <= bulk.width / 2 && Math.abs(worker.y - bulk.y) <= bulk.height / 2 ? 'C' : null;
   }
 
-  protected override deliver(parcel: Parcel): void {
-    super.deliver(parcel);
+  protected override deliver(parcel: Parcel, assisted = false): void {
+    super.deliver(parcel, assisted);
     if (!TRUCK_ROUTES.includes(parcel.route as TruckRoute)) return;
     const route = parcel.route as TruckRoute;
     const existing = [...this.truckLoads.values()].filter(load => load.route === route);

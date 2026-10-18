@@ -85,23 +85,25 @@ Present in 3D:
   - The Small ATV.
   - Goji berries.
   - Panchetters.
-- Kylie's three Timmy Hortans lines, on her walk.
+- Kylie's three Timmy Hortans lines, on his walk.
 - Shan's seven rants, cycling on each brake, as he reddens.
 - Fruit Loop's `LIVE LOBSTERS?!`.
 - Brian's `SENDING 5 DOWN` and the active worker's reply.
 - The 3-2-1-SORT countdown.
 - The grade quotes and the failure flavour.
 - **Phase 2 crew routines:**
-  - John Rushton: walks in at 13 s and after misses, yells `DON'T STACK BOXES
-    ON BOXES!` with his arms raised, crouches, then leaves.
+  - John Rushton: patrols both belt lanes around the receiving end, stopping for
+    randomly spaced squat sets. At 13 s and after misses he retains his warning
+    `DON'T STACK BOXES ON BOXES!`.
+  - Shan and Vic walk up and down loading lanes between their reference scenes.
+    A player can squeeze past or step around them; patrols avoid stair entrances.
   - Vic and AJ's massage: Vic walks to the table and says `I NEED A QUICK TUNE
     UP`, then lies under a towel while AJ massages him. Both return.
   - THE SNAKES CELL: the case rides the belt and Hussan walks over and
     collects it. Its label becomes `CELL`. He dances with it overhead for
     3.2 s, then returns.
-  - Drivers and exhaust: twelve drivers bring keys to the cab fronts at 153 s
-    (moved from 114 s by the [overnight expansion](overnight-shift-expansion.md)).
-    One engine starts first, then the others one by one; exhaust stacks then
+  - Drivers and exhaust: twelve drivers head for their cabs at 117 s.
+    With one minute left, an engine starts first, then the others one by one; exhaust stacks then
     smoke for the rest of the shift.
   - Coughs: Hussan and Doris cough all four original lines.
   - United Way: Shan's announcement, then the whole floor's swearing reaction

@@ -1,8 +1,10 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 
-import { parcelAddress, type Parcel, type ParcelKind } from '../game/slice/ShiftModel';
+import type { Parcel, ParcelKind } from '../game/slice/ShiftModel';
+import { parcelAddress } from './addresses';
 import { mergeStatic } from './merge';
+import { physicalBounds } from './collision3d';
 import { PALETTE, shadowed, standard, textPlane, textSprite } from './space';
 
 const PARCEL_SCALE = 1.3;
@@ -16,6 +18,8 @@ export interface ParcelView {
   height: number;
   /** Distance from the body origin to its back edge, after parcel scaling. */
   carryDepth: number;
+  width: number;
+  depth: number;
   kind: ParcelKind;
 }
 
@@ -37,6 +41,17 @@ function carton(w: number, h: number, d: number, material = cardboard): THREE.Gr
   const flap = new THREE.Mesh(new THREE.BoxGeometry(w + 0.004, 0.012, 0.01), cardboardDark);
   flap.position.set(0, h - 0.005, 0);
   group.add(shell, strip, flap);
+  const endTape = new THREE.Mesh(new THREE.BoxGeometry(w * 0.2, h * 0.32, 0.005), tape);
+  endTape.position.set(0, h * 0.84, d / 2 + 0.003);
+  const label = new THREE.Mesh(new THREE.BoxGeometry(w * 0.36, h * 0.23, 0.004), standard(0xe9e0c6, 0.92));
+  label.position.set(w * 0.2, h * 0.4, d / 2 + 0.003);
+  group.add(endTape, label);
+  const ink = standard(0x41372b, 0.92);
+  for (let i = 0; i < 6; i += 1) {
+    const bar = new THREE.Mesh(new THREE.BoxGeometry(w * (i % 2 ? 0.012 : 0.024), h * 0.13, 0.004), ink);
+    bar.position.set(w * (0.07 + i * 0.045), h * 0.4, d / 2 + 0.006);
+    group.add(bar);
+  }
   return group;
 }
 
@@ -231,16 +246,34 @@ export function createParcelView(parcel: Parcel): ParcelView {
   group.scale.setScalar(PARCEL_SCALE);
   const carryDepth = Math.max(0, -new THREE.Box3().setFromObject(group).min.z);
   root.add(group);
+  const size = physicalBounds(group).getSize(new THREE.Vector3());
   // Every named freight shows its full authored name, as in the 2D depot.
   const lines = [parcelAddress(parcel), ...splitLabel(parcel.label)];
   const tag = textSprite(lines, 0.52, {
     width: Math.max(90, Math.max(...lines.map((line) => line.length)) * 12 + 20),
     height: 78, background: '#f1e5c4', border: '#9e8452', color: '#2b2116', radius: 5,
   });
-  tag.position.y = height * PARCEL_SCALE + 0.38;
+  tag.position.y = Math.max(height * PARCEL_SCALE, size.y) + 0.38;
   tag.center.set(0.5, 0);
   root.add(tag);
-  return { root, body: group, tag, parts, height: height * PARCEL_SCALE, carryDepth, kind: parcel.kind };
+  return { root, body: group, tag, parts, height: size.y, carryDepth, width: size.x, depth: size.z, kind: parcel.kind };
+}
+
+/** Carry the long edge across the hands and keep the back face ahead of the
+ * worker's chest. The previous fixed offset put long cartons through torsos.
+ */
+export function setParcelCarried(view: ParcelView, carried: boolean): number {
+  const sideways = carried && view.depth > view.width;
+  view.body.rotation.y = sideways ? Math.PI / 2 : 0;
+  return Math.max(0.42, (sideways ? view.width : view.depth) / 2 + 0.2);
+}
+
+/** After rotation/scaling, place the actual visible bottom on a surface.
+ * Parcel roots are scene children, so this offset is in world-height units.
+ */
+export function alignParcelToSurface(view: ParcelView, surfaceHeight: number): void {
+  const bounds = physicalBounds(view.body);
+  if (!bounds.isEmpty()) view.root.position.y += surfaceHeight - bounds.min.y;
 }
 
 function splitLabel(label: string): string[] {

@@ -202,6 +202,13 @@ function buildLeg(side: number, trousers: THREE.Material, shoe: THREE.Material, 
     const base = box(0.106, 0.022, 0.275, sole, 0.008);
     base.position.set(0, ankle + footY + 0.011, 0.05);
     shin.add(upper, toe, base);
+    // The laces and reinforced toe read in close shots; the rigid foot merge
+    // folds these small flat pieces into the existing shoe draw call.
+    for (let i = 0; i < 3; i += 1) {
+      const lace = new THREE.Mesh(new THREE.BoxGeometry(0.064, 0.008, 0.009), sole);
+      lace.position.set(0, ankle + footY + 0.084, 0.015 + i * 0.022);
+      shin.add(lace);
+    }
   }
   return { leg, shin };
 }
@@ -367,6 +374,13 @@ function buildClothing(body: THREE.Group, spec: CharacterSpec, shirt: THREE.Mate
     collar.scale.set(1, 0.8, 1);
     collar.position.set(0, 1.445, 0.006);
     body.add(collar);
+    const seam = matte(darker(spec.overalls ?? spec.shirt, 0.74));
+    const pocket = box(0.085, 0.075, 0.008, seam, 0.003, 1);
+    const pocketY = spec.overalls !== undefined ? 1.12 : 1.3;
+    pocket.position.set(spec.overalls !== undefined ? 0 : -0.075, pocketY, chestFront(pocketY) + (spec.overalls !== undefined ? 0.02 : 0.005));
+    body.add(pocket);
+    const hem = lathe([[0.161, 0.972], [0.157, 0.988]], TORSO_DEPTH + 0.02, seam, 12);
+    body.add(hem);
   }
   if (spec.overalls !== undefined) {
     const denim = matte(spec.overalls);

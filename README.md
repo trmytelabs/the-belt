@@ -50,12 +50,14 @@ shows the next line and Enter skips the scene. See
 
 The shift is one polished three-minute warehouse section, followed by
 up to ten seconds to clear remaining freight. Press Enter or tap **START THE NIGHT**. Dispatch
-24 parcels and keep the recovery backlog below five. The original **3, 2, 1,
+42 parcels and keep the recovery backlog below five. The original **3, 2, 1,
 SORT!** countdown starts the shift.
 
 - WASD / arrows move; Tab or right-click switches workers.
 - Space or left-click grabs, loads inside a truck, delivers at a floor drop,
   or puts a parcel down. Carry truck freight through its open rear door.
+  The parcel Space will grab has a bright halo and a GRAB prompt. Empty button
+  presses stay quiet; incorrect deliveries still sound an error and cost points.
 - Inside a truck the roof turns transparent. Face a shelf and load near where
   you stand; the actual parcels remain on the shelves. Full shelves overflow
   through the rear opening. The roof returns when you leave.
@@ -91,6 +93,10 @@ SORT!** countdown starts the shift.
 - After the morning scrum, the same crew walk to their stations. They stay
   mostly on the platform, collecting and loading parcels on short work cycles;
   the original gags remain brief interruptions. Shan stays visible between reactions.
+- John Rushton walks both sides of the belt, crossing around its head and stopping
+  for occasional sets of squats. Shan O'Mack and Vic patrol the loading lanes
+  between their existing scenes. Squeezing past them briefly slows your worker;
+  there is room to step around, and patrols stay clear of the stairs.
 - Pick up missed freight near the belt exit to recover it for half base points.
 - Recovered freight counts as dispatched for the 3D grade. S starts at 95%;
   freight left behind, wrong drops and excess breakages lower the percentage.
@@ -102,6 +108,10 @@ SORT!** countdown starts the shift.
 - Lunch starts with a whistle and a short **15 MINUTE LUNCH BREAK!** alert,
   still inside the warehouse. Only after the alert does the game travel to
   lunch; the shift and held freight remain paused.
+- In the mall, Space also grabs or parks the cart. Each stop has a labelled bundle
+  of 6–10 cartons; the cart carries two stops per trip. Taking freight highlights
+  an available bundle for the current run and skips empty truck slots. Delivering
+  a stop removes that stop's bundle while the other one stays on the cart.
 
 Touch devices have a movement stick and Switch, Grab / Deliver, and Brake
 buttons. Landscape gives a closer view; portrait reserves room below the game
@@ -182,6 +192,11 @@ unloading handoff, parcel identity, contact, stops and restart cleanup.
 Story checks play all three arrivals, the scrum, all six break exchanges,
 throwing and breakage, the stairs, the full mall run, the key return and a
 clean replay in both depots.
+Geometry checks cover all seven destinations, truck/deck alignment, stairs,
+mixed recovery freight, full lower-floor stacks, sampled story and camera
+clearances, and GPU-resource cleanup across restarts. See the
+[depot review and validation record](docs/depot-quality-review.md) for findings,
+fixes, performance measurements and remaining manual checks.
 Browser checks use a
 loopback server, real opening inputs and isolated synthetic clock/cargo fixtures
 for later events and edge cases. TypeScript strict checking is enabled. Dependabot maintains

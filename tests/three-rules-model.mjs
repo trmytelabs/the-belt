@@ -28,7 +28,7 @@ test('3D keeps truck rows before rear bulk, outward stairs and every drop before
   assert.equal(onLowerFloor(L.floorT), true);
   const legacy = new ShiftModel();
   assert.equal(legacy.layout, SHIFT_LAYOUT);
-  assert.equal(legacy.layout.bulkPile.y, 610, '3D layout restoration does not move the legacy depot');
+  assert.equal(legacy.layout.bulkPile.y, 832, '3D layout preserves the approved legacy layout on main');
 });
 
 test('3D truck gaps leave space for crew events away from truck doors and keep the rear stairs reachable', () => {
@@ -315,7 +315,9 @@ test('3D arrivals leave a little more breathing room while legacy intake retains
   assert.equal(m.packages.length, 2);
   const legacy = new ShiftModel({ autonomousCoworker: false });
   advance(legacy, 4000);
-  assert.equal(legacy.packages.length, 3);
+  assert.equal(legacy.packages.length, 1);
+  advance(legacy, 2000);
+  assert.equal(legacy.packages.length, 2);
 });
 
 test('all four truck doors guide off-centre carrying approaches into the aisle at walking speed', () => {

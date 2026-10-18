@@ -1,6 +1,7 @@
-import { MESA } from '../game/slice/DepotReferences';
-import type { Parcel, ShiftModel } from '../game/slice/ShiftModel';
-import { audioSystem } from '../game/systems/AudioSystem';
+import { MESA } from './references';
+import type { Parcel } from '../game/slice/ShiftModel';
+import type { ShiftModel3D as ShiftModel } from './ShiftModel3D';
+import { audioSystem } from './audio';
 import { mix, type CrewLife } from './crew';
 import type { Overlay } from './overlay';
 

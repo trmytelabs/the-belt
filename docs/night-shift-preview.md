@@ -4,7 +4,7 @@ This is one playable section for direction review, not a replacement of the
 full game or a release. Termite, Skanky, the warehouse crew, special parcels and
 adaptations of the original comic incidents are part of this preview itself.
 The original scene and its randomized event timing also remain accessible
-from the briefing and at `?mode=classic`. The repository remains a private 0.1.0
+from the briefing and at `?mode=classic`. The repository remains a private 0.0.0
 snapshot.
 
 ## Why this direction
@@ -15,8 +15,8 @@ freight and specific workplace jokes interrupting that job. Both are essential.
 The first art pass lost too much of that personality. The second restoration
 inventories the actual original source and restores its specific references
 inside the new scene; classic-mode access alone does not count as parity.
-The preview preserves the switching decision and the three
-route types, heavy carries, temporary belt stops, and recovery.
+The preview preserves occasional switching decisions alongside truck, lower-floor
+and shared bulk destinations, heavy carries, temporary belt stops, and recovery.
 
 The original playthrough exposed several readability problems: movement keys
 were not taught; parcel names were more prominent than their routing; many
@@ -26,9 +26,9 @@ inconsistent shadows, and unrelated shape styles obscured the play lane.
 
 The new scene uses a restrained midnight freight palette, a consistent shallow
 overhead view, illustrated steel and timber, kraft parcels, and warm task lights.
-Parcel street addresses are compared with inclusive ranges on neutral truck
-and floor signs. The correct destination is not highlighted. Lit approach bays,
-contact shadows and selection brackets keep physical interactions readable.
+Route letters accompany cyan, sage, and amber accents. Art and functional
+affordances share the same language: lit approach bays, contact shadows,
+selection brackets, and a short dotted delivery guide.
 
 ## The warehouse's personality
 
@@ -52,7 +52,7 @@ during a surviving shift. These have different editable artwork, including
 moving lobster claws, lotion that breaks and spills during transport, and
 Mallwood's curry-colored stink. Generic envelopes, small boxes, parcels, big
 boxes and long boxes also have distinct shapes. The nearby-parcel hint
-shows their full names alongside the street address on each object.
+shows their full names while the route letter remains readable on each object.
 Brian's "SENDING 5 DOWN" is an actual five-parcel bulk burst, not just dialogue.
 
 `DepotLife.ts` and `DepotRoutines.ts` stage everyday scenes against simulation time. The
@@ -78,7 +78,7 @@ shows MESA AT HOME and a redrawn bedroom with BULK RULES, PAYTMAN SUCKS,
 NO REPEATS and BUILT THE BELT. Trmyte plays Lumines on a TV connected to a visible
 PS3, with animated controller thumbs, falling blocks and a sweeping timeline.
 Long-haired Skanky strums an electric guitar connected to the Mesa amp beside him.
-The dream returns to this shift instead of restarting it. Getting caught deducts up to 500 points and resumes the same shift. The original source
+The dream returns to this shift instead of restarting it. The original source
 advertised a one-in-five Shan capture risk
 but never called its capture path; the preview completes that unfinished risk.
 This is a deliberate behavior change, not a claim of restoring working logic.
@@ -99,19 +99,17 @@ eases back to the worker. Reduced-motion preference removes camera interpolation
 The HUD, speech panels, menus and their hit targets use a separate fixed camera.
 Text textures use higher resolution so authored labels stay sharp in close-ups.
 
-The floor plan follows the original game: four coworker truck rows on each side,
-followed by HERES UR SOVICE and PAYTMAN at the bottom. All eleven delivery trucks, including
-Ralph's arrival, use the same 148 × 84 footprint and shared artwork. The bulk pile
-is centered immediately beyond the conveyor, with a separate recovery tray below
-it. Either worker can deliver C freight from their side of this one pile; Ralph
-collects the same stock. The full-floor camera includes receiving, all five rows and the end
-of the belt. Personal props and event choreography follow their original bays.
+The floor plan retains four coworker truck rows on each side, followed by the
+A/B and D/E player rows. The twelve parked trucks and Ralph's arriving flatbed
+use the same 148 × 72 footprint and shared artwork. Recovery sits beyond the
+conveyor exit. Farther back, either worker delivers C from their side of one
+shared bulk pile, and Ralph collects that stock.
 
-The truck drop zones are now 78 × 88 and bulk receiving zones 80 × 96. Painted
-rectangles and acceptance use the same definitions: either truck accepts from
-the entire reachable front lane, and bulk extends farther down to y672. The
-longer central pallet sits at y610, with recovery at y690 and floor ending at
-y714. Camera follow and overview include the extra walking space.
+Bulk backs against the warehouse's final wall. Near that end, the left and
+right stair flights descend outward from the platform to the T/S ground drops.
+Every route and stair stays in front of the wall; nothing extends behind it.
+Painted rectangles and acceptance use the same shared layout definitions.
+Camera follow and overview include both side landings and all truck rows.
 
 A receiving annex extends the top of the warehouse to y-240. Walking up to
 y-20 reveals two articulated semis, unloading workers and a ragged, very smelly
@@ -143,19 +141,21 @@ per-cue buffer creation and does not consume gameplay randomness. Filtering,
 envelopes, event throttles and compression keep overlapping cues controlled;
 the music scheduler skips missed beats after a stalled tab.
 
-Regular freight now arrives at triple the original frequency: two-second intake,
-then 1⅓-second flow after 36 seconds and one-second rush intake after 126 seconds.
-Two randomized everyday parcels separate each authored reference parcel. Brian
-announces five bulk parcels at 63 seconds, using one-second intervals. The
-automatic coworker handles the uncontrolled side. Address ranges replace the
-visible routing letters and matching colours; see [address sorting](address-sorting.md). Speed
+The first six parcels teach A, B, and C at six-second intervals. Flow increases
+after 36 seconds. Brian announces a rush at 63 seconds: five heavy bulk parcels
+arrive at 1.9-second intervals, then 2.8-second intake resumes; the final rush
+uses 2.2-second intake after 126 seconds. Speed
 ramps smoothly and brakes stop the scheduled intake as well as belt travel.
-New freight stops at 180 seconds, with up to ten seconds of cleanup. Twenty-four
+New freight stops at 180 seconds, with up to ten seconds of cleanup. Forty-two
 dispatches meets the target. Five simultaneous missed parcels fill the recovery
 bay and end the shift. Original per-freight carrying penalties distinguish
 lobsters, the amp and ATV from lighter boxes. Recovery earns half base points;
 a parcel never adds the
-same miss twice. The input, pause, mute, and results paths support repeat play.
+same miss twice. After the 36-second lesson the inactive worker carries and
+sorts its own three routes without adding points or combo bonuses; shared C
+freight still needs the player. Two scanner faults ask the player to switch to
+the affected worker and press Space, keeping occasional switches meaningful.
+The input, pause, mute, and results paths support repeat play.
 
 ## Verification and review boundary
 

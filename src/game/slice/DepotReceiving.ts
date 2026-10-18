@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { createParcelArt, updateParcelArt } from './DepotArt';
-import { SHIFT_LAYOUT, parcelAddress, type ParcelKind, type ShiftModel } from './ShiftModel';
+import { SHIFT_LAYOUT, type ParcelKind, type ShiftModel } from './ShiftModel';
 
 /** Editable receiving-dock miniatures. No downloaded textures or baked animation. */
 export class DepotReceiving {
@@ -127,7 +127,7 @@ export class DepotReceiving {
     const preview = this.model.intakePreview;
     if (preview?.id !== this.previewId) {
       this.previewArt?.destroy();
-      this.previewArt = preview ? createParcelArt(this.scene, preview.route, preview.size === 'heavy', preview.kind, parcelAddress(preview), preview.label).setDepth(50) : null;
+      this.previewArt = preview ? createParcelArt(this.scene, preview.route, preview.size === 'heavy', preview.kind).setDepth(50) : null;
       this.previewId = preview?.id ?? null;
     }
     const y = preview?.y ?? 127;

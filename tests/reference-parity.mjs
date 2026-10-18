@@ -5,6 +5,7 @@ import ts from 'typescript';
 
 import * as references from '../src/game/slice/DepotReferences.ts';
 import { ShiftModel } from '../src/game/slice/ShiftModel.ts';
+import { MESA as MESA_3D } from '../src/three/references.ts';
 
 // The retained original source is the reference, rather than a second manually
 // copied list in this test. This checks content provenance, not rendered event
@@ -72,7 +73,7 @@ for (const [exportName, path, originalName] of [
   });
 }
 
-test('Mesa retains its reference dialogue and describes the points-only catch penalty', () => {
+test('Mesa retains legacy dialogue and the 3D offer describes its points-only catch penalty', () => {
   const original = new Set([
     ...allStrings(source('systems/BeltEventSystem.ts')),
     ...allStrings(source('scenes/GameScene.ts')),
@@ -82,9 +83,11 @@ test('Mesa retains its reference dialogue and describes the points-only catch pe
   for (const [key, copy] of Object.entries(references.MESA)) {
     if (key === 'body') {
       assert.match(copy, /1 IN 5/);
-      assert.match(copy, /lose up to 500 points and get back to work/);
+      assert.match(copy, /the run ends/);
     } else assert.ok(original.has(copy), `Mesa ${key} must retain exact original copy`);
   }
+  assert.match(MESA_3D.body, /lose up to 500 points and get back to work/);
+  assert.deepEqual({ ...MESA_3D, body: references.MESA.body }, references.MESA);
   // This deliberately checks advertised copy, not original risk behavior. The
   // old mesaCaught state was unreachable; its new implementation needs explicit
   // outcome tests rather than pretending the old source already rolled a risk.

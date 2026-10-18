@@ -3,7 +3,7 @@ import * as THREE from 'three';
 
 import { SHOT_WORDS } from '../game/slice/DepotReferences';
 import { type ShiftModel } from '../game/slice/ShiftModel';
-import { audioSystem } from '../game/systems/AudioSystem';
+import { audioSystem } from './audio';
 import { createCharacter } from './characters';
 import { mix, type Actor, type CrewLife, type Say } from './crew';
 import { setFromModel, standard, textSprite, toWorld, toWorldX } from './space';
@@ -50,6 +50,14 @@ export class SetPieces {
   private readonly muzzle: THREE.Mesh;
   private cues = new Set<string>();
   private ralphStart = 0;
+
+  public translateActorFreight(id: string, dx: number, dz: number, dy = 0): void {
+    if (id === 'ralph' && this.ralphBox.visible) {
+      this.ralphBox.position.x += dx;
+      this.ralphBox.position.y += dy;
+      this.ralphBox.position.z += dz;
+    }
+  }
 
   constructor(world: DepotWorld, crew: CrewLife, say: Say) {
     this.world = world;
@@ -293,8 +301,8 @@ export class SetPieces {
       this.ralphLifted = Math.min(5, loaded + Number(trip >= 1600));
       this.world.setRalphLoad(loaded);
       // From the flatbed, backed against the platform edge, to the shared pile.
-      const door = { x: 330, y: RALPH_BAY.y };
-      const pile = { x: SHIFT_LAYOUT.bulkPile.x - 46, y: SHIFT_LAYOUT.bulkPile.y + 8 };
+      const door = { x: SHIFT_LAYOUT.platform.left + SHIFT_LAYOUT.workerRadius, y: RALPH_BAY.y };
+      const pile = { x: SHIFT_LAYOUT.bulkPile.x - 70, y: SHIFT_LAYOUT.bulkPile.y + 8 };
       if (trip < 1300) ralph.place(mix(door.x, pile.x, trip / 1300), mix(door.y, pile.y, trip / 1300));
       else if (trip < 1600) ralph.place(pile.x, pile.y);
       else ralph.place(mix(pile.x, door.x, (trip - 1600) / 1400), mix(pile.y, door.y, (trip - 1600) / 1400));

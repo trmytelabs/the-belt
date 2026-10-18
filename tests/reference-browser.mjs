@@ -4,6 +4,7 @@ import { chromium } from 'playwright';
 import { preview } from 'vite';
 
 import { finishNight, holdBreak, skipOpening } from './night-helpers.mjs';
+import { SHIFT_LAYOUT } from '../src/game/slice/ShiftModel.ts';
 import { KYLIE_QUOTES, SHAN_RANTS, WORKER_SWEARS, COUGH_LINES, SHOT_WORDS, CLOCK_OUT_LINES } from '../src/game/slice/DepotReferences.ts';
 
 // These are isolated clock/cargo fixtures, not claims of organic play. The
@@ -57,26 +58,16 @@ try {
   await press('Enter');
   await page.waitForFunction(() => window.fixtureGame.scene.getScene('DepotScene').state === 'countdown');
   const workerAtCountdown = await read(() => ({ ...window.fixtureGame.scene.getScene('DepotScene').model.activeWorker }));
-  await read(() => {
-    window.countdownSamples=[];
-    const timer=setInterval(() => {
-      const scene=window.fixtureGame.scene.getScene('DepotScene');
-      if(scene.state !== 'countdown') { clearInterval(timer); return; }
-      window.countdownSamples.push({worker:{...scene.model.activeWorker},elapsed:scene.model.elapsedMs});
-    },10);
-  });
   await page.keyboard.down('ArrowUp');
   await press('Space');
   for (const copy of ['3', '2', '1', 'SORT!']) {
     await page.waitForFunction(copy => window.fixtureGame.scene.getScene('DepotScene').children.list.some(item => item.type === 'Text' && item.text === copy), copy);
+    assert.equal(await read(() => window.fixtureGame.scene.getScene('DepotScene').model.elapsedMs), 0,
+      'the original countdown must finish before the shift clock and freight move');
   }
   await page.keyboard.up('ArrowUp');
-  const countdownSamples=await read(() => window.countdownSamples);
-  assert.ok(countdownSamples.length > 3);
-  for(const sample of countdownSamples) {
-    assert.equal(sample.elapsed,0,'the shift clock waits for the complete countdown');
-    assert.deepEqual(sample.worker,workerAtCountdown,'movement and grab controls remain gated during countdown');
-  }
+  assert.deepEqual(await read(() => ({ ...window.fixtureGame.scene.getScene('DepotScene').model.activeWorker })), workerAtCountdown,
+    'movement and grab controls must remain gated during countdown');
   await page.waitForFunction(() => window.fixtureGame.scene.getScene('DepotScene').state === 'playing');
   const truckNames = await read(() => window.fixtureGame.scene.getScene('DepotScene').depot.departureObjects
     .flatMap(({ object }) => (object.list ?? []).filter(child => child.type === 'Text')
@@ -96,16 +87,18 @@ try {
   });
   assert.equal(truckLayout.length, 13, 'four player trucks, eight crew trucks and Ralph must use the same renderer');
   for (const truck of truckLayout) {
-    assert.deepEqual(truck.footprint, { width: 148, height: 84 }, truck.name);
-    assert.deepEqual([truck.width, truck.height, truck.scaleX, truck.scaleY], [148, 84, 1, 1], `${truck.name} must render at the common size`);
+    assert.deepEqual(truck.footprint, { width: 148, height: SHIFT_LAYOUT.truckDepth }, truck.name);
+    assert.deepEqual([truck.width, truck.height, truck.scaleX, truck.scaleY], [148, SHIFT_LAYOUT.truckDepth, 1, 1], `${truck.name} must render at the common size`);
   }
   for (const [name, x, y] of [
     ['HUSSAN', 244, 148], ['AJ', 244, 244], ['PAULA ABDUL', 244, 340], ['BANNERMAN', 244, 436],
     ['FRUIT LOOP', 716, 148], ['DORIS', 716, 244], ['BRIAN', 716, 340], ['DONNA', 716, 436],
-    ['MILL WOODS', 244, 532], ['BONNIE DOON', 716, 532], ['DOWNTOWN', 244, 740], ['WEST END', 716, 740],
+    ['HERES UR SOVICE', 244, 532], ['PAYTMAN', 716, 532],
+    ['DOWNTOWN', SHIFT_LAYOUT.playerTrucks.D.x, SHIFT_LAYOUT.playerTrucks.D.y],
+    ['EASTSIDE', SHIFT_LAYOUT.playerTrucks.E.x, SHIFT_LAYOUT.playerTrucks.E.y],
   ]) {
     const truck = truckLayout.find(truck => truck.name === name);
-    assert.deepEqual([truck?.x, truck?.y], [x, y], `${name} must occupy its original truck bay`);
+    assert.deepEqual([truck?.x, truck?.y], [x, y], `${name} must occupy its designated truck bay`);
   }
   await read(() => {
     window.fixtureGame.loop.sleep();
@@ -125,7 +118,7 @@ try {
         const view = scene.parcels.get(parcel.id);
         if (view?.container.visible) {
           const label = view.container.list.find(child => child.type === 'Text'
-            && child.visible && child.text.replace(/\s+/g, ' ').trim().includes(parcel.label));
+            && child.visible && child.text.replace(/\s+/g, ' ').trim() === parcel.label);
           if (label && Number.parseFloat(label.style.fontSize) >= 9) window.renderedFreightLabels.add(parcel.label);
         }
         parcel.state = 'delivered';
@@ -339,8 +332,9 @@ try {
     return { box: { x: r.ralphBox.x, y: r.ralphBox.y, visible: r.ralphBox.visible },
       truck: { x: r.ralphTruck.x, y: r.ralphTruck.y } };
   });
-  assert.deepEqual(bulkContact.box, { x: 480, y: 610, visible: true }, 'Ralph must lift from the same central bulk pile used for C deliveries');
-  assert.deepEqual(bulkContact.truck, { x: 244, y: 628 }, 'Ralph backs into the empty west bay beside the bulk pile');
+  assert.deepEqual(bulkContact.box, { x: SHIFT_LAYOUT.bulkPile.x - 61, y: SHIFT_LAYOUT.bulkPile.y, visible: true },
+    'Ralph lifts at the near edge of the shared pile while his body stays outside it');
+  assert.deepEqual(bulkContact.truck, { x: SHIFT_LAYOUT.ralphBay.x, y: SHIFT_LAYOUT.ralphBay.y }, 'Ralph backs into the empty west bay beside the bulk pile');
   for (let trip = 0; trip < 5; trip++) {
     await advance(93_600 + trip * 3000);
     const lifted = await snapshot();
@@ -504,7 +498,15 @@ try {
   await restart();
   await arrangeMesa(0.5);
   await press('KeyY');
-  await page.waitForFunction(() => window.fixtureGame.scene.isActive('MesaDreamScene'));
+  // Capture the complete queued transition in one browser turn. On a busy
+  // runner, separate protocol round trips can consume the short dream before
+  // its paused warehouse is inspected. Resume real frames after the assertions.
+  await page.waitForFunction(() => {
+    const game = window.fixtureGame;
+    if (!game.scene.isActive('MesaDreamScene') || !game.scene.isPaused('DepotScene')) return false;
+    game.loop.sleep();
+    return true;
+  });
   assert.equal(await read(() => window.fixtureGame.scene.isPaused('DepotScene')), true);
   // Emit the same browser focus lifecycle event consumed by production Phaser;
   // do not mutate the scene's focus flag or resume it directly.
@@ -516,8 +518,8 @@ try {
     return found;
   });
   for (const label of ['BULK RULES', 'PAYTMAN SUCKS', 'NO REPEATS', 'BUILT THE BELT', 'MESA BOOGIE', 'LUMINES', 'PS3']) assert.ok(dreamCopy.includes(label));
-  await page.waitForFunction(() => !window.fixtureGame.scene.isActive('MesaDreamScene')
-    || window.fixtureGame.scene.getScene('MesaDreamScene').cameras.main.fadeEffect.progress >= 1);
+  await read(() => window.fixtureGame.loop.wake());
+  await page.waitForFunction(() => window.fixtureGame.scene.getScene('MesaDreamScene').cameras.main.fadeEffect.progress >= 1);
   await screenshot('after-mesa-dream-fixture.png');
   await page.waitForFunction(() => window.fixtureGame.scene.isActive('DepotScene') && !window.fixtureGame.scene.isActive('MesaDreamScene'));
   assert.equal(await read(() => window.fixtureGame.scene.getScene('DepotScene').state), 'paused',
@@ -532,10 +534,10 @@ try {
   await arrangeMesa(0.1);
   const bounds = await page.locator('canvas').boundingBox();
   await page.touchscreen.tap(bounds.x + 376 / 960 * bounds.width, bounds.y + 451 / 720 * bounds.height);
-  await page.waitForFunction(() => window.fixtureGame.scene.getScene('DepotScene').state === 'playing');
+  await page.waitForFunction(() => window.fixtureGame.scene.getScene('DepotScene').state === 'results');
   assert.equal(await read(() => window.fixtureGame.scene.isActive('MesaDreamScene')), false);
-  assert.equal(await read(() => window.fixtureGame.scene.getScene('DepotScene').model.score), 734);
-  assert.equal(await read(() => window.fixtureGame.scene.getScene('DepotScene').model.ended), false);
+  assert.ok(await read(() => window.fixtureGame.scene.getScene('DepotScene').overlay.list.some(item => item.text === 'BUSTED BY SHAN O MAC')),
+    'the advertised unlucky outcome must actually end the shift with its original consequence');
   assert.deepEqual(errors, []);
   console.log('PASS rendered quote windows, crew freight, CELL contact/dance, five shots and demon/Paula, five Ralph loads, exhaust/coughs, clock-out departures, Mesa keyboard/touch leave/dream/caught; no script errors');
   await context.close();

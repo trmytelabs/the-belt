@@ -6,8 +6,9 @@ import { type DepotWorkerArt } from './DepotArt';
 import type { Cutscene } from './StoryModel';
 import { DRIVERS, SHAN_BREAKAGE_LINES, SHAN_NAME } from './StoryScript';
 import { KYLIE_QUOTES, SHAN_RANTS, WORKER_SWEARS, COUGH_LINES, SHOT_WORDS, CLOCK_OUT_LINES, MESA } from './DepotReferences';
-import type { ShiftEvent, ShiftModel } from './ShiftModel';
+import { SHIFT_LAYOUT, type ShiftEvent, type ShiftModel } from './ShiftModel';
 import { audioSystem } from '../systems/AudioSystem';
+import { clearDepotFootprint, depotSolidFootprints, DEPOT_BODY_RADIUS, DEPOT_CARRY_RADIUS, type FootprintCircle } from './DepotClearance';
 
 type Speech = { panel: Phaser.GameObjects.Container; expires: number; priority: number; id: string; copy: string; duration: number };
 type PendingSpeech = Omit<Speech, 'panel' | 'expires'>;
@@ -18,7 +19,7 @@ const BEN_CAST = new Set(['ben', 'gunman', 'demon', 'paula']);
 
 /** The original warehouse's people and running jokes, staged outside the sort lanes. */
 /** Shan's breakage visit, in shift milliseconds: arrive, yell, leave. */
-const SHAN_VISIT = { walk: 650, leave: 4800, total: 6000 } as const;
+const SHAN_VISIT = { walk: 1200, leave: 4800, total: 6000 } as const;
 
 export class DepotLife {
   public readonly history: string[] = [];
@@ -54,6 +55,7 @@ export class DepotLife {
   private readonly reducedMotion: boolean;
   private readonly portal: Phaser.GameObjects.Graphics;
   private readonly bang: Phaser.GameObjects.Text;
+  private readonly solids = depotSolidFootprints();
 
   constructor(scene: Phaser.Scene, model: ShiftModel, depot: DepotArt) {
     this.scene = scene;
@@ -61,16 +63,16 @@ export class DepotLife {
     this.depot = depot;
     this.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const residents: [string, string, number, number][] = [
-      ['hussan', 'HUSSAN', 150, 198], ['aj', 'AJ', 150, 294],
-      ['ben', 'BEN', 150, 390], ['bannerman', 'BANNERMAN', 150, 486],
-      ['fruitloop', 'FRUIT LOOP', 810, 198], ['doris', 'DORIS', 810, 294],
-      ['brian', 'BRIAN', 810, 390], ['donna', 'DONNA', 810, 486],
+      ['hussan', 'HUSSAN', 150, 196], ['aj', 'AJ', 200, 292],
+      ['ben', 'BEN', 150, 388], ['bannerman', 'BANNERMAN', 150, 484],
+      ['fruitloop', 'FRUIT LOOP', 810, 196], ['doris', 'DORIS', 810, 292],
+      ['brian', 'BRIAN', 810, 388], ['donna', 'DONNA', 810, 484],
     ];
     for (const [id, name, x, y] of residents) this.add(id, name, x, y, true);
     for (const [id, name, x, y] of [
       ['kylie', 'KYLIE', 850, 400], ['vic', 'VIC', 132, 286],
       ['john', 'JOHN RUSHTON', 77, 397], ['shan', SHAN_NAME, 880, 395],
-      ['ralph', 'RALPH', 751, 610], ['paula', 'PAULA ABDUL', 214, 382],
+      ['ralph', 'RALPH', SHIFT_LAYOUT.platform.left + SHIFT_LAYOUT.workerRadius, SHIFT_LAYOUT.ralphBay.y], ['paula', 'PAULA ABDUL', 214, 382],
       ['gunman', 'GUNMAN', 344, 348], ['demon', '', 160, 360],
     ] as [string, string, number, number][]) this.add(id, name, x, y, false);
     this.portal = scene.add.graphics().setDepth(14);
@@ -101,6 +103,7 @@ export class DepotLife {
       fontFamily: 'Arial, sans-serif', fontSize: '10px', fontStyle: 'bold',
       color: '#d0d3b9', stroke: '#142b34', strokeThickness: 3,
     }).setOrigin(0.5);
+    tag.setData('homeY', tag.y);
     art.add(tag);
     this.cast.set(id, { art, tag, name, x, y });
   }
@@ -109,6 +112,7 @@ export class DepotLife {
     // The interlude owns its own clock. Normal updates cannot advance the crew
     // or consume a suspended speech window while the story is in progress.
     if (this.benActive) return;
+    for (const colleague of this.cast.values()) colleague.tag.y = colleague.tag.getData('homeY');
     const time = this.model.elapsedMs;
     this.advanceSpeech(time);
     // A few purposeful idle gestures; the crew stays out of both workers' lanes.
@@ -151,7 +155,7 @@ export class DepotLife {
     this.towel.setVisible(lyingDown);
     const aj = this.cast.get('aj')!;
     aj.art.rotation = 0;
-    if (massage) aj.art.setPosition(lyingDown ? 174 : aj.x, lyingDown ? 286 : aj.y);
+    if (massage) aj.art.setPosition(lyingDown ? 200 : aj.x, lyingDown ? 286 : aj.y);
     setColleaguePose(aj.art, lyingDown ? 'massage' : 'idle', this.reducedMotion ? 0 : time);
 
     this.once('paid-day', 134000, () => {
@@ -187,7 +191,29 @@ export class DepotLife {
     if (this.benCompleted) reserved.add('ben');
     if (this.routines.isHussanBusy(time)) reserved.add('hussan');
     this.routines.update(time, reserved);
+    this.clearStandingCast(this.model.workers, lyingDown ? new Set(['vic']) : undefined);
     this.depot.updateDetails(this.reducedMotion ? 0 : time);
+  }
+
+  /** Give real workers priority; coworkers stand beside equipment and one another. */
+  private clearStandingCast(workers: readonly { x: number; y: number }[], interacting = new Set<string>()): void {
+    const occupied: FootprintCircle[] = workers.map(worker => ({ x: worker.x, y: worker.y, radius: DEPOT_CARRY_RADIUS }));
+    for (const parcel of this.model.packages) if (parcel.state === 'floor') occupied.push({ x: parcel.x, y: parcel.y, radius: SHIFT_LAYOUT.parcelRadius });
+    for (const [id, colleague] of this.cast) {
+      const art = colleague.art;
+      if (!art.visible || interacting.has(id)) continue;
+      const radius = this.routines.isCarrying(id) ? DEPOT_CARRY_RADIUS : DEPOT_BODY_RADIUS;
+      // Shan can yield behind a worker during a ground-floor visit. His drawn
+      // boots extend 25 local pixels below the root, beyond the ground circle.
+      const solids = id === 'shan' ? [...this.solids, {
+        ...SHIFT_LAYOUT.bulkRearWall,
+        y: SHIFT_LAYOUT.bulkRearWall.y - Math.max(0, 25 * Math.abs(art.scaleY) - radius),
+      }] : this.solids;
+      const point = clearDepotFootprint(art, radius, occupied, solids);
+      this.routines.moveFreight(id, point.x - art.x, point.y - art.y);
+      art.setPosition(point.x, point.y).setData('bodyRadius', radius);
+      occupied.push({ ...point, radius });
+    }
   }
 
   public get benInterludeReady(): boolean {
@@ -445,17 +471,21 @@ export class DepotLife {
       this.say('shan', line, 3400, 1);
       return;
     }
+    const { platform, stairs, workerRadius } = SHIFT_LAYOUT;
+    const outboard = worker.x < platform.left || worker.x > platform.right;
     const laneX = worker.side === 'left' ? 365 : 595;
-    const top = worker.y > 784 ? 790 : Math.max(-10, worker.y - 150);
+    // A ground-floor visit stays on the same side of the deck. Shan approaches
+    // along the clear stair landing instead of cutting across the raised edge.
+    const landingX = stairs[worker.side].bottomX + (worker.side === 'left' ? -workerRadius : workerRadius);
     this.shanVisit = {
       start: time, line, spoken: false,
-      from: { x: laneX, y: top },
-      to: { x: worker.x + (worker.side === 'left' ? 30 : -30), y: worker.y - 40 },
+      from: outboard ? { x: landingX, y: stairs.centerY - 20 } : { x: laneX, y: Math.max(-10, worker.y - 150) },
+      to: outboard ? { x: landingX, y: stairs.centerY + 20 } : { x: worker.x + (worker.side === 'left' ? 30 : -30), y: worker.y - 40 },
     };
     this.shanUntil = Math.max(this.shanUntil, time + SHAN_VISIT.total);
   }
 
-  /** Shan runs over, yells once he arrives, then heads back. */
+  /** Walks Shan over, has him yell once he arrives, then walks him back. */
   private updateShanVisit(time: number): boolean {
     const visit = this.shanVisit;
     if (!visit || time >= visit.start + SHAN_VISIT.total) return false;
@@ -481,35 +511,49 @@ export class DepotLife {
       // Everyone puts their freight down for the scrum.
       this.routines.hideFreight();
       const gather = progress('gather');
+      // Use the clear west platform, as in 3D. The taller 2D illustrations need
+      // two spaced columns so heads and name tags remain readable, including
+      // while everyone walks in from the back of the shot.
       const spots: [string, number, number][] = [
-        ['hussan', 372, 40], ['aj', 398, 4], ['ben', 420, 54], ['bannerman', 560, 6],
-        ['fruitloop', 584, 46], ['doris', 540, 54], ['brian', 612, 16], ['donna', 348, 8],
+        ['hussan', 350, 292], ['aj', 404, 292], ['ben', 350, 368], ['bannerman', 404, 368],
+        ['fruitloop', 350, 444], ['doris', 404, 444], ['brian', 350, 520], ['donna', 404, 520],
       ];
       for (const [id, x, y] of spots) {
         if (id === 'ben' && this.benCompleted) continue;
         place(id, x, y - 40 * (1 - gather));
+        this.cast.get(id)!.tag.y = 39;
         const art = this.cast.get(id)!.art;
         const furious = progress('crew-furious') > 0;
         art.rotation = furious && !this.reducedMotion ? Math.sin(time / 90 + x) * 0.08 : 0;
         setColleaguePose(art, id === 'aj' && furious ? 'shout' : 'idle', time);
       }
-      workers[0].container.setPosition(452, 18 - 40 * (1 - gather)).setVisible(true);
-      workers[1].container.setPosition(508, 18 - 40 * (1 - gather)).setVisible(true);
+      workers[0].container.setPosition(350, 216 - 40 * (1 - gather)).setVisible(true);
+      workers[1].container.setPosition(404, 216 - 40 * (1 - gather)).setVisible(true);
       workers[0].update(time, false, true, false);
       workers[1].update(time, false, true, false);
-      shan.setVisible(true).setPosition(480, 100).setData('ranting', progress('shan-over') > 0);
+      // Leave room for the workers' full head-to-boot silhouettes at the start
+      // of gather, not just their much smaller ground-contact circles.
+      shan.setVisible(true).setPosition(377, 112).setData('ranting', progress('shan-over') > 0);
       updateColleagueArt(shan, time);
-      return { x: 480, y: 60, zoom: 2.1 };
+      this.clearStandingCast(workers.map(worker => worker.container));
+      return { x: 480, y: 302, zoom: 0.96 };
     }
     const leaves = progress('termite-leaves');
     const catches = progress('shan-catches');
     workers[1].container.setPosition(560, 650).setVisible(true);
-    workers[0].container.setPosition(Phaser.Math.Linear(410, 365, leaves), Phaser.Math.Linear(650, 900, leaves)).setVisible(true);
+    // Leave by the west stair flight, entirely in front of the final wall.
+    const approach = Math.min(leaves * 2, 1);
+    const descend = Math.max(leaves * 2 - 1, 0);
+    workers[0].container.setPosition(
+      Phaser.Math.Linear(Phaser.Math.Linear(410, 365, approach), SHIFT_LAYOUT.floorT.x, descend),
+      Phaser.Math.Linear(650, SHIFT_LAYOUT.stairs.centerY, approach),
+    ).setVisible(true);
     workers[0].update(time, leaves > 0 && leaves < 1, true, false);
     workers[1].update(time, false, true, false);
     shan.setVisible(true).setPosition(Phaser.Math.Linear(480, 520, catches), Phaser.Math.Linear(560, 640, catches)).setData('ranting', false);
     updateColleagueArt(shan, time);
-    return { x: 480, y: 680, zoom: 1.8 };
+    this.clearStandingCast(workers.map(worker => worker.container));
+    return { x: 480, y: 715, zoom: 1.15 };
   }
 
   private rant(): void {

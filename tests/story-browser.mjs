@@ -274,11 +274,20 @@ try {
   assert.equal(settled.score, beforeRepeat.score, 'repeat contact neither restores nor re-deducts points');
   // Carrying still works, down the real stairs to the lower floor.
   await read(() => { const m = window.fixtureApp.model; m.workers[0].heldId = null; for (const p of m.packages) if (p.state === 'held') p.state = 'delivered'; });
+  // Isolate the physical descent from protocol-latency overshoot while walking
+  // south: start this held-cargo fixture at the shared stair approach, then use
+  // real horizontal controls for every step down, delivery and return.
   const floorId = await holdFor('T', 'smallbox', { x: 380, y: L.stairs.centerY });
   const surface = () => read(() => window.fixtureApp.workers.termite.root.position.y);
   assert.ok(Math.abs(await surface() - 1.1) < 0.01, 'Termite stands on the raised platform');
   await page.keyboard.down('KeyA');
-  await wait(() => window.fixtureApp.model.activeWorker.x < 215);
+  const stairPose = await wait(x => {
+    const app = window.fixtureApp;
+    return app.model.activeWorker.x < x ? { height: app.workers.termite.root.position.y } : false;
+  }, (L.platform.left + L.lowerFloor.left.maxX) / 2);
+  const { height: stairHeight } = await stairPose.jsonValue();
+  assert.ok(stairHeight > 0 && stairHeight < 1.1, 'the left flight descends outward across the side of the platform');
+  await wait(x => window.fixtureApp.model.activeWorker.x <= x + 3, L.floorT.x);
   await page.keyboard.up('KeyA');
   assert.ok(await surface() < 0.05, 'the stairs lead down to the lower floor');
   await page.keyboard.press('Space');
@@ -286,9 +295,11 @@ try {
   await wait(() => window.fixtureApp.world.floorPiles.T.count === 2);
   await shot('lower-floor-pile');
   await page.keyboard.down('KeyD');
-  await wait(() => window.fixtureApp.model.activeWorker.x > 340);
+  await wait(x => window.fixtureApp.model.activeWorker.x >= x + 20, L.platform.left);
   await page.keyboard.up('KeyD');
   assert.ok(Math.abs(await surface() - 1.1) < 0.01, 'and back up to the platform');
+  assert.ok(await read(y => window.fixtureApp.model.activeWorker.y < y, SHIFT_LAYOUT.bulkRearWall.y - SHIFT_LAYOUT.bulkRearWall.height / 2),
+    'the whole stair route stays in front of the final back wall');
   assert.deepEqual(errors, []);
   console.log('PASS 3D throwing: heavy freight carry-only, clean F throw without aiming guides and with credit, broken throw with one penalty and Shan while the belt runs, no repeat penalty, carry down and up the real stairs to a floor-drop pile; no script errors');
 

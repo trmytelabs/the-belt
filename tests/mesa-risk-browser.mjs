@@ -41,7 +41,6 @@ try {
     const usesNativeRandom = scene.mesa.roll === Math.random;
     scene.mesa.roll = () => { window.fixtureRollCalls += 1; return 0.19999999999999998; };
     scene.model.elapsedMs = 34_100;
-    scene.model.score = 1000;
     for (const parcel of scene.model.packages) parcel.state = 'delivered';
     for (const worker of scene.model.workers) worker.heldId = null;
     const parcel = {
@@ -66,14 +65,12 @@ try {
   await page.touchscreen.tap(stealPoint.x, stealPoint.y);
   await page.touchscreen.tap(stealPoint.x, stealPoint.y);
   assert.equal(await page.evaluate(() => window.fixtureRollCalls), 1, 'one theft must make exactly one roll despite repeat Y and extra taps');
-  await page.waitForFunction(() => window.fixtureGame.scene.getScene('DepotScene').state === 'playing');
-  assert.equal(await page.evaluate(() => window.fixtureGame.scene.getScene('DepotScene').model.score), 500);
-  assert.equal(await page.evaluate(() => window.fixtureGame.scene.getScene('DepotScene').model.ended), false);
+  await page.waitForFunction(() => window.fixtureGame.scene.getScene('DepotScene').state === 'results');
   assert.equal(await page.evaluate(() => window.fixtureGame.scene.isActive('MesaDreamScene')), false);
 
   // Restart through the game's real input, then verify the previous encounter
   // and its input subscriptions cannot carry a prior result into the new shift.
-  await page.evaluate(() => window.fixtureGame.scene.getScene('DepotScene').scene.restart());
+  await page.keyboard.press('Enter');
   await page.waitForFunction(() => window.fixtureGame.scene.getScene('DepotScene').state === 'briefing');
   const restart = await page.evaluate(() => {
     const scene = window.fixtureGame.scene.getScene('DepotScene');
@@ -99,7 +96,6 @@ try {
     const make = (roll, reentrant = false) => {
       const model = new Model();
       model.elapsedMs = 34_100;
-      model.score = 1000;
       model.paused = false;
       const parcel = { id: nextParcel--, route: 'C', kind: 'mesa', label: 'MESA BOOGIE', size: 'normal',
         x: model.workers[1].x, y: model.workers[1].y, state: 'held', workerId: 'skanky',
@@ -151,11 +147,6 @@ try {
       ensure(fixture.parcel.state === 'delivered' && fixture.parcel.workerId === null && fixture.model.workers[1].heldId === null,
         'one theft must consume exactly its parcel and release the held item');
       boundaries.push({ value, outcome: outcome(fixture), calls });
-      if(expected === 'caught') {
-        ensure(fixture.model.score === 500 && !fixture.model.ended, 'catch costs 500 points without ending');
-        const timer = fixture.encounter.timer; timer.remove(false); timer.callback.apply(timer.callbackScope,timer.args);
-        ensure(!fixture.model.paused && fixture.encounter.stage === 'done' && fixture.callbacks.finish === 1 && fixture.callbacks.caught === 1, 'caught timer resumes exactly once');
-      }
       fixture.dispose();
     }
 
