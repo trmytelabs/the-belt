@@ -177,6 +177,9 @@ export class DrivingView {
 
   private terminal(s: number, name: string, subtitle: string, color: number): void {
     const p = roadPoint(s), end = s > 0 ? -1 : 1;
+    const apron = new THREE.Mesh(new THREE.PlaneGeometry(42, 26), standard(0x454d50, 0.95));
+    apron.rotation.x = -Math.PI / 2; apron.position.set(p.x, -0.02, p.z + end * 12);
+    this.scene.add(apron);
     const building = new THREE.Mesh(new THREE.BoxGeometry(34, 8, 10), standard(color, 0.9));
     building.position.set(p.x, 4, p.z + end * 29);
     const sign = textPlane([name, subtitle], 17, 3, { width: 720, height: 128, background: '#26333b', color: '#f3d292' });
