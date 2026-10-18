@@ -4,8 +4,8 @@ import * as THREE from 'three';
 import { ROUTE_INFO, type Route } from '../game/slice/ShiftModel';
 
 /**
- * ShiftModel works in the 2D depot's pixel space. The 3D world keeps those
- * rules untouched and maps one model pixel to 1/32 of a world unit (metre):
+ * The current 3D model uses the depot's pixel coordinates. Its world maps
+ * one model pixel to 1/32 of a world unit (metre):
  * model x runs east (+X), model y runs south (+Z), height is +Y.
  */
 export const WORLD_SCALE = 1 / 32;
@@ -41,7 +41,7 @@ export function actorSurfaceAt(x: number, y: number): number {
   return Math.max(0, Math.min(1, climb)) * PLATFORM_HEIGHT;
 }
 
-/** Every destination's colour; letters and names always accompany it. */
+/** Neutral destination styling; street ranges and district names identify drops. */
 export const ROUTE_COLORS = Object.fromEntries(Object.values(ROUTE_INFO).map((info) => [info.route, info.color])) as Record<Route, string>;
 
 export const PALETTE = {

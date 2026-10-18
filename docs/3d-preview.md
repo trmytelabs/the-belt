@@ -15,15 +15,16 @@ routines, set pieces, then touch controls and the default switch.
 ## How it works
 
 `src/main.ts` loads one engine per mode: Phaser for the 2D game, Three.js for
-`?mode=3d`. The 3D preview runs the unchanged `ShiftModel`, so belt timing,
-freight order, Brian's five, scoring, grades and failure rules are identical.
-Model pixels map to world metres at 1/32 (`src/three/space.ts`), so the ten
-truck positions, docks, drop areas and worker lanes keep their original
-layout.
+`?mode=3d`. `ShiftModel3D` extends the shared shift engine with the current
+3D-only layout, intake cadence, truck loading, coworker bulk restriction and
+wrong-drop penalty. The legacy model retains its behavior. Model pixels map to
+world metres at 1/32 (`src/three/space.ts`); `src/three/layout.ts` defines the
+rear platform, outward side stairs, truck interiors and lower-floor drops.
 
 - `world.ts` builds the warehouse: lit concrete floor, the belt with a moving
-  tread, receiving feeders and trailers, the ten named trucks, A/B/C drop areas,
-  the bulk cage, the recovery tray, the resident crew and their props.
+  tread, receiving feeders and trailers, named trucks with player cargo shelves,
+  floor street ranges, the bulk cage, the recovery tray, pallet drops, the
+  resident crew and their props.
 - `characters.ts` builds every person in code at real proportions (about
   1.78 m, a head about a seventh of the height): a shaped torso and hips,
   tapered limbs with elbows and knees, hands with a thumb, shoes, and faces
