@@ -193,6 +193,7 @@ try {
     m.workers[1].heldId=null;
     m.activeIndex=0; m.score=1000; m.damaged=0; m.breakagePenalty=0; m.paused=false; m.random=()=>0.299999; m.spawnElapsedMs=0; m.nextSpawnIntervalMs=2000; m.pendingIntake=null;
     app.state='playing';
+    if (mode === '3d') app.overlay.clearCenter();
   });
   await page.keyboard.press('KeyF');
   await wait(mode => (mode==='3d'?window.fixtureApp:window.fixtureGame.scene.getScene('DepotScene')).model.damaged===1);

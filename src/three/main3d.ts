@@ -784,7 +784,11 @@ export class Belt3d {
     } else if (event.type === 'sort' || event.type === 'damage') {
       this.hint = 'Approach the belt · read the street address';
     }
-    if (event.type === 'phase' || event.type === 'miss') this.overlay.showToast(event.message);
+    if (event.type === 'phase') {
+      const caption = this.model.phase === 'flow' ? 'STEADY FLOW · read the street ranges · coworker loading'
+        : this.model.phase === 'rush' ? 'LAST PUSH · freight every 2 seconds' : event.message;
+      this.overlay.showToast(caption);
+    } else if (event.type === 'miss') this.overlay.showToast(event.message);
 
     this.crew.onEvent(event, this.model);
   }
