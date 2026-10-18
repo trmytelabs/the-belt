@@ -498,7 +498,15 @@ try {
   await restart();
   await arrangeMesa(0.5);
   await press('KeyY');
-  await page.waitForFunction(() => window.fixtureGame.scene.isActive('MesaDreamScene'));
+  // Capture the complete queued transition in one browser turn. On a busy
+  // runner, separate protocol round trips can consume the short dream before
+  // its paused warehouse is inspected. Resume real frames after the assertions.
+  await page.waitForFunction(() => {
+    const game = window.fixtureGame;
+    if (!game.scene.isActive('MesaDreamScene') || !game.scene.isPaused('DepotScene')) return false;
+    game.loop.sleep();
+    return true;
+  });
   assert.equal(await read(() => window.fixtureGame.scene.isPaused('DepotScene')), true);
   // Emit the same browser focus lifecycle event consumed by production Phaser;
   // do not mutate the scene's focus flag or resume it directly.
@@ -510,6 +518,7 @@ try {
     return found;
   });
   for (const label of ['BULK RULES', 'PAYTMAN SUCKS', 'NO REPEATS', 'BUILT THE BELT', 'MESA BOOGIE', 'LUMINES', 'PS3']) assert.ok(dreamCopy.includes(label));
+  await read(() => window.fixtureGame.loop.wake());
   await page.waitForFunction(() => window.fixtureGame.scene.getScene('MesaDreamScene').cameras.main.fadeEffect.progress >= 1);
   await screenshot('after-mesa-dream-fixture.png');
   await page.waitForFunction(() => window.fixtureGame.scene.isActive('DepotScene') && !window.fixtureGame.scene.isActive('MesaDreamScene'));
