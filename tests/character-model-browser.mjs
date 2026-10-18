@@ -60,6 +60,7 @@ try {
   console.log('PASS a listed model replaces both workers\' procedural figures');
 
   // Start the night, skip the story with ENTER, then walk: the model's arms swing with the walk cycle.
+  await page.evaluate(() => window.fixtureApp.forceStory({ breakAtMs: 1e12 }));
   await page.keyboard.press('Enter');
   for (let guard = 0; guard < 8 && await page.evaluate(() => window.fixtureApp.state !== 'playing'); guard += 1) {
     await page.keyboard.press('Enter', { delay: 40 });
@@ -69,12 +70,24 @@ try {
   const standing = (await modelState()).termite.arm;
   // Models are posed when a frame is drawn, and software renderers on CI draw
   // about once a second, so wait for drawn frames rather than a fixed time.
-  await page.keyboard.down('KeyD');
-  await page.waitForFunction((rest) => {
-    const arm = window.fixtureApp.workers.termite.root.getObjectByName('mixamorigRightArm');
-    return Math.abs(arm.quaternion.toArray().reduce((sum, value, index) => sum + value * rest[index], 0)) < 0.9999;
-  }, standing, { timeout: 30_000 });
-  await page.keyboard.up('KeyD');
+  // W walks up the open lane beside the belt; D stops at the belt edge in a step.
+  const walker = () => page.evaluate(() => {
+    const worker = window.fixtureApp.workers.termite;
+    return { at: worker.root.position.toArray().map((value) => +value.toFixed(2)), walkPhase: +worker.walkPhase.toFixed(2), state: window.fixtureApp.state };
+  });
+  const start = await walker();
+  await page.keyboard.down('KeyW');
+  try {
+    await page.waitForFunction((rest) => {
+      const arm = window.fixtureApp.workers.termite.root.getObjectByName('mixamorigRightArm');
+      return Math.abs(arm.quaternion.toArray().reduce((sum, value, index) => sum + value * rest[index], 0)) < 0.9999;
+    }, standing, { timeout: 30_000 });
+  } catch (error) {
+    console.log('Termite before and after walking:', JSON.stringify([start, await walker()]));
+    throw error;
+  } finally {
+    await page.keyboard.up('KeyW');
+  }
   console.log('PASS the model follows the walk cycle during the shift');
   await page.screenshot({ path: process.env.BELT_MODEL_SCREENSHOT ?? 'node_modules/.cache/character-model.png' });
   assert.deepEqual(errors, [], 'no page errors');
