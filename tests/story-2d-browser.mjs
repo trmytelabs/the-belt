@@ -57,11 +57,20 @@ try {
   await press('Enter');
   await wait(`${S}.cutscene?.scene.id === 'opener-2'`);
   await wait(`${S}.storyView.speechBubble !== null`);
+  // The line on screen is read once the story is paused: Windows CI can take
+  // seconds to deliver ESCAPE, long enough for a line read earlier to end.
+  // A pause that lands between lines is resumed and tried again.
+  for (let attempt = 0; ; attempt += 1) {
+    await press('Escape');
+    await wait(`${S}.state === 'paused'`);
+    if (await read(`${S}.storyView.speechBubble !== null`)) break;
+    assert.ok(attempt < 4, 'a pause lands while a line is on screen');
+    await press('Escape');
+    await wait(`${S}.state === 'story' && ${S}.storyView.speechBubble !== null`);
+  }
   await read(`window.fixtureSpeech = ${S}.storyView.speechBubble`);
   assert.equal(await read(`${S}.storyView.speechBubble.parentContainer === ${S}.storyView.stage`), true,
     'the current speech bubble belongs to the story stage');
-  await press('Escape');
-  await wait(`${S}.state === 'paused'`);
   await page.waitForTimeout(2600);
   assert.equal(await read('window.fixtureSpeech.active'), true, 'pause keeps the current line visible');
   await press('Escape');
