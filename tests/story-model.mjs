@@ -420,6 +420,14 @@ test('a cutscene auto-advances, reports each beat once, and skipping lands on it
   cutscene.next();
   cutscene.update(100_000);
   assert.equal(cutscene.index, OPENERS[0].beats.length - 1);
+  // A player's NEXT never skips a beat that has not been shown yet.
+  const guarded = new Cutscene(SCRUM);
+  guarded.userNext();
+  assert.equal(guarded.index, 0, 'NEXT waits until the first beat is on screen');
+  guarded.takeEntered();
+  guarded.userNext();
+  guarded.userNext();
+  assert.equal(guarded.index, 1, 'a double press moves one shown beat at a time');
   for (const scene of [...OPENERS, SCRUM]) {
     const run = new Cutscene(scene);
     let guard = 0;

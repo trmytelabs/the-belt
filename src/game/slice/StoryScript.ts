@@ -220,7 +220,7 @@ export const DRIVERS = {
   engineStaggerMs: 650,
   otherEnginesAt: 160_200,
   /** Approved: a nearby worker, coughing. */
-  coughLine: { speaker: 'doris' as StoryActor, line: "Could've waited five minutes.", at: 158_400 },
+  coughLine: { speaker: 'aj' as StoryActor, line: "Could've waited five minutes.", at: 158_400 },
   /** Approved: Shan, unmoved. */
   shanLine: { line: "Belt's still moving.", at: 165_400 },
   /** The original four cough lines, alternating Hussan and Doris, around the approved lines. */

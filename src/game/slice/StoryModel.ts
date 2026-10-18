@@ -59,6 +59,15 @@ export class Cutscene {
     if (this.elapsedMs >= this.beat.ms) this.next();
   }
 
+  /**
+   * The player's NEXT: moves on only from a beat that has been shown, so a quick
+   * double press can never skip a line unseen. (Use skip() to end the scene.)
+   */
+  public userNext(): void {
+    if (!this.entered.has(this.index)) return;
+    this.next();
+  }
+
   public next(): void {
     if (this.done) return;
     if (this.index >= this.scene.beats.length - 1) {

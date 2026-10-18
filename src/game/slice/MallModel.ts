@@ -47,6 +47,8 @@ export const MALL_RULES = {
   skankyRadius: 12,
   cartSize: { w: 36, h: 26 },
   cartOffset: 30,
+  /** Added to the night total for each signature; the warehouse grade is unchanged. */
+  pointsPerSignature: 50,
 } as const;
 
 export type StoreState = 'waiting' | 'dropped' | 'signed';
