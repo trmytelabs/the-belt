@@ -258,8 +258,8 @@ export const DRIVE_TO_MALL: StoryScene = {
   beats: [
     { direction: 'Skanky pulls the five-ton out of the UPS yard.', cue: 'depart', sound: 'engine', caption: '[FIVE-TON ENGINE]', ms: 2600 },
     { speaker: 'skanky', line: 'No air conditioning. No radio. Love it.', ms: 2600 },
-    { direction: 'Empty roads, orange streetlights, one red light he runs anyway.', cue: 'cruise', ms: 2600 },
-    { direction: 'The five-ton backs up to the mall loading dock.', cue: 'arrive', sound: 'truck', caption: '[BACKUP BEEPER]', ms: 2400 },
+    { direction: 'Empty roads, orange streetlights down 111 Street, one red light he runs anyway.', cue: 'cruise', ms: 2600 },
+    { direction: 'Past the LRT overpass, the five-ton backs up to the mall loading dock.', cue: 'arrive', sound: 'truck', caption: '[BACKUP BEEPER]', ms: 2400 },
   ],
 };
 

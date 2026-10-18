@@ -121,6 +121,34 @@ whether the five-ton was returned).
 
 ## The mall run
 
+The mall is an original 3D approximation of a south Edmonton enclosed mall,
+modelled on Southgate Centre (111 Street and 51 Avenue, by Whitemud Drive).
+It is built entirely in code in `src/three/mall.ts`, with no real logos, store
+branding or downloaded assets:
+
+- A skylit barrel-vault concourse over two levels, with stone-clad columns, a
+  cream terrazzo-style floor and a darker diagonal-tile centre runner.
+- Six 3D storefronts with glazing, mullions, door jambs, fascias, lit name
+  signs and store interiors (the game's parody stores keep their names).
+- A food-court gallery upstairs, with original stall names, and shuttered shops
+  on the other side.
+- A railed centre-court atrium looking down on lower-level bleacher seating,
+  a nod to the redeveloped former anchor's three-level atrium.
+- A shuttered anchor portal at the east end, and a bench pod around a mall
+  directory that maps this concourse.
+- The receiving dock where the five-ton backs in. Outside it are 111 Street,
+  an LRT station with a train, the pedestrian overpass into the mall's upper
+  level, spruce on the berm, and 51 Avenue and Whitemud Drive beyond.
+
+The intro opens on two establishing shots, one from 111 Street and one down
+the concourse. Gameplay then uses a cutaway: tall south-side walls, the upper
+level on that side, roofs and door headers are hidden, leaving 1.1 m stubs with
+dark caps. Ceilings and the skylight face down only, so they vanish from above.
+Skanky, the cart and every doorway stay in view. Each store shows its run
+status on a lit 3D board: on the fascia for north stores, and on an angled
+window plaque for the cut-away south stores. The in-game name is still
+MALLWOOD CENTRE; whether to call it Southgate is the owner's decision.
+
 Skanky's five-ton is backed up to the loading dock with six labelled store
 bundles inside. The run order is shuffled each night (every shuffle is valid:
 all stores are reachable and every store gets exactly one bundle).
@@ -129,8 +157,9 @@ all stores are reachable and every store gets exactly one bundle).
 2. Take a bundle from the truck (**Space** beside its slot). Only this run's
    two stores can be taken; later ones say which run they belong to.
 3. Load it onto the cart (**Space** beside the cart). The cart holds two.
-4. Push the cart through the concourse, around the planter, bench and
-   fountain, to each store's doorway.
+4. Push the cart through the concourse, around the planter island, the
+   centre-court atrium railing and the directory bench pod, to each store's
+   doorway.
 5. **Space** drops that store's boxes (only if they are on the cart), then
    **Space** again gets the signature. Nothing is credited twice.
 6. Back at the truck, the next run's bundles become available.

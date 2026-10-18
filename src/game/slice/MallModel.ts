@@ -17,11 +17,17 @@ export const MALL_LAYOUT = {
     { x: 240, y: 350, w: 60, h: 100 },
     { x: 280, y: 280, w: 980, h: 240 },
   ] as readonly Rect[],
-  /** Things in the concourse the cart has to go around. */
+  /**
+   * Things in the concourse the cart has to go around: a raised planter with
+   * bench seats, the railed centre-court atrium over the lower level's
+   * bleacher seating, and a bench pod around the mall directory. They stay
+   * between the clear north and south rows (y 336-464) and clear of the
+   * store doorways, so every store is reachable with the cart.
+   */
   obstacles: [
-    { x: 545, y: 368, w: 70, h: 64, label: 'PLANTER' },
-    { x: 845, y: 368, w: 70, h: 64, label: 'BENCH' },
-    { x: 1112, y: 356, w: 84, h: 88, label: 'FOUNTAIN' },
+    { x: 545, y: 360, w: 90, h: 80, label: 'PLANTER' },
+    { x: 800, y: 350, w: 160, h: 100, label: 'ATRIUM' },
+    { x: 1104, y: 356, w: 96, h: 88, label: 'BENCH' },
   ] as readonly (Rect & { label: string })[],
   /** The five-ton's body sits outside the dock doors; its tailgate opens onto the dock. */
   truck: { x: -190, y: 330, w: 220, h: 140 },
