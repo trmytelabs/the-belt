@@ -56,13 +56,13 @@ export class SetPieces {
     this.gunman = crew.addActor('gunman', createCharacter({ name: 'GUNMAN', skin: 0xb88462, shirt: 0x30383f, pants: 0x1f2328, hair: 0x2c2b2b, hairStyle: 'bald', headwear: 'beanie' }));
     this.paula = crew.addActor('paula', createCharacter({ name: 'PAULA ABDUL', skin: 0xb78363, shirt: 0xb85a94, pants: 0x2b2a33, hair: 0x543344, hairStyle: 'long', necklace: true }));
     // The comic pistol, with a muzzle flash for each shot.
-    const pistol = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.1, 0.22), standard(0x1a1a1a, 0.4, 0.6));
-    pistol.position.set(0, -0.66, 0.1);
-    this.gunman.character.rightArm.add(pistol);
+    const pistol = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.22, 0.1), standard(0x1a1a1a, 0.4, 0.6));
+    pistol.position.set(0, -0.15, 0.04);
+    this.gunman.character.rightHand.add(pistol);
     this.muzzle = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 8), new THREE.MeshStandardMaterial({ color: 0xffd36b, emissive: 0xffa030, emissiveIntensity: 5 }));
-    this.muzzle.position.set(0, -0.68, 0.32);
+    this.muzzle.position.set(0, -0.32, 0.04);
     this.muzzle.visible = false;
-    this.gunman.character.rightArm.add(this.muzzle);
+    this.gunman.character.rightHand.add(this.muzzle);
 
     this.ralphBox = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.42, 0.5), standard(0xb8875a, 0.9));
     this.ralphBox.castShadow = true;

@@ -17,6 +17,9 @@ const BEN_END = 92_500;
 const BEN_CAST = new Set(['ben', 'gunman', 'demon', 'paula']);
 
 /** The original warehouse's people and running jokes, staged outside the sort lanes. */
+/** Shan's breakage visit, in shift milliseconds: arrive, yell, leave. */
+const SHAN_VISIT = { walk: 1200, leave: 4800, total: 6000 } as const;
+
 export class DepotLife {
   public readonly history: string[] = [];
   private readonly cast = new Map<string, DepotColleague>();
@@ -39,7 +42,8 @@ export class DepotLife {
   private rantIndex = 1;
   private celebrationMs = 0;
   private breakageIndex = 0;
-  private shanVisit: { until: number; x: number; y: number } | null = null;
+  /** Shan walking over to a breakage, yelling, and walking back, on the shift clock (as in 3D). */
+  private shanVisit: { start: number; line: string; spoken: boolean; from: { x: number; y: number }; to: { x: number; y: number } } | null = null;
   /** Shan's breakage reactions so far, for the checks. */
   public readonly breakageLines: string[] = [];
   private readonly depot: DepotArt;
@@ -164,11 +168,9 @@ export class DepotLife {
     this.once('brian-response', 64600, () => this.say(this.model.activeWorker.id, 'YOU ARE SERIOUSLY SENDING 5 DOWN TO BULK?', 4700, 1));
     if (this.benCompleted) this.cast.get('ben')!.art.setVisible(false);
     this.updateButtonIncident(time);
-    if (this.shanVisit && time < this.shanVisit.until) {
-      this.cast.get('shan')!.art.setVisible(true).setPosition(this.shanVisit.x, this.shanVisit.y).setData('ranting', true);
-    }
+    const visiting = this.updateShanVisit(time);
     const shan = this.cast.get('shan')!.art;
-    shan.setData('ranting', time < this.shanUntil);
+    if (!visiting) shan.setData('ranting', time < this.shanUntil);
     updateColleagueArt(shan, this.reducedMotion ? 0 : time);
     // Near the end of the shift: drivers arrive, one engine starts, its exhaust
     // drifts in and the loaders nearby cough, then the rest start. The belt keeps running.
@@ -437,9 +439,37 @@ export class DepotLife {
     this.breakageIndex += 1;
     this.breakageLines.push(line.split('\n').join(' '));
     const time = this.model.elapsedMs;
-    this.shanVisit = { until: time + 4800, x: worker.x + (worker.side === 'left' ? 30 : -30), y: worker.y - 40 };
-    this.shanUntil = Math.max(this.shanUntil, time + 4800);
-    this.say('shan', line, 3400, 1);
+    // Already on his way over: the next breakage just gets another line.
+    if (this.shanVisit && time < this.shanVisit.start + SHAN_VISIT.total) {
+      this.shanUntil = Math.max(this.shanUntil, time + 3400);
+      this.say('shan', line, 3400, 1);
+      return;
+    }
+    const laneX = worker.side === 'left' ? 365 : 595;
+    const top = worker.y > 784 ? 790 : Math.max(-10, worker.y - 150);
+    this.shanVisit = {
+      start: time, line, spoken: false,
+      from: { x: laneX, y: top },
+      to: { x: worker.x + (worker.side === 'left' ? 30 : -30), y: worker.y - 40 },
+    };
+    this.shanUntil = Math.max(this.shanUntil, time + SHAN_VISIT.total);
+  }
+
+  /** Walks Shan over, has him yell once he arrives, then walks him back. */
+  private updateShanVisit(time: number): boolean {
+    const visit = this.shanVisit;
+    if (!visit || time >= visit.start + SHAN_VISIT.total) return false;
+    const e = time - visit.start;
+    const p = e < SHAN_VISIT.walk ? e / SHAN_VISIT.walk : e < SHAN_VISIT.leave ? 1 : 1 - (e - SHAN_VISIT.leave) / (SHAN_VISIT.total - SHAN_VISIT.leave);
+    const yelling = e >= SHAN_VISIT.walk && e < SHAN_VISIT.leave;
+    if (yelling && !visit.spoken) {
+      visit.spoken = true;
+      this.say('shan', visit.line, 3400, 1);
+    }
+    this.cast.get('shan')!.art.setVisible(true)
+      .setPosition(Phaser.Math.Linear(visit.from.x, visit.to.x, p), Phaser.Math.Linear(visit.from.y, visit.to.y, p))
+      .setData('ranting', yelling);
+    return true;
   }
 
   /** The scrum at the head of the belt and Shan catching Skanky at clock-out, on the depot floor. */

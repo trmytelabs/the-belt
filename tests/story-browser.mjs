@@ -119,8 +119,29 @@ try {
   await shot('opener-3');
   for (const beat of OPENERS[2].beats.filter((item) => item.line)) await spoken(`${name(beat.speaker)}: ${beat.line}`);
   await wait(() => window.fixtureApp.cutscene?.scene.id === 'scrum', null, 120_000);
+  // The on-screen buttons by keyboard: each does only its own action.
+  await page.waitForTimeout(400);
+  const beatBefore = await read(() => window.fixtureApp.cutscene.index);
+  await page.locator('.b3d-storykeys [data-story="next"]').focus();
+  await page.keyboard.press('Enter');
+  await wait((index) => window.fixtureApp.cutscene?.index > index, beatBefore);
+  assert.deepEqual(await read(() => [window.fixtureApp.cutscene?.scene.id, window.fixtureApp.cutscene?.index]), ['scrum', beatBefore + 1],
+    'Enter on NEXT shows the next line; it does not skip the scene');
+  // Touch has no Escape: the story bar has its own PAUSE.
+  await page.locator('.b3d-storykeys [data-story="pause"]').click();
+  await wait(() => window.fixtureApp.state === 'paused');
+  assert.match(await page.locator('.b3d-panel').innerText(), /STORY PAUSED/);
+  await page.locator('.b3d-panel button').click();
+  await wait(() => window.fixtureApp.state === 'story');
+  await page.locator('.b3d-storykeys [data-story="skip"]').focus();
+  await page.keyboard.press('Space');
+  await wait(() => window.fixtureApp.cutscene?.scene.id !== 'scrum');
+  // Leaving the story lets go of the button's focus, so Enter starts the next night again.
+  await wait(() => window.fixtureApp.state !== 'story');
+  assert.equal(await read(() => document.querySelector('.b3d-storykeys').contains(document.activeElement)), false,
+    'no story button keeps keyboard focus outside a story scene');
   assert.deepEqual(errors, []);
-  console.log('PASS 3D story: three openers reach the scrum (stepped, skipped and unattended), approved scrum lines in order, countdown into playable sorting; no script errors');
+  console.log('PASS 3D story: three openers reach the scrum (stepped, skipped and unattended), approved scrum lines in order, NEXT/SKIP/PAUSE buttons by keyboard and click, countdown into playable sorting; no script errors');
 
   // ---- Scene 4-5: every break variant, once per shift, with the shift and freight preserved.
   const breaks = [];
@@ -225,12 +246,15 @@ try {
   // The belt is cleared and intake held so these presses can only reach the broken parcel.
   await clearFreight();
   await read(() => { window.fixtureApp.model.eventStopped = true; Object.assign(window.fixtureApp.model.workers[0], { x: 369, y: 532 }); });
+  const snapshot = () => read(() => ({ score: window.fixtureApp.model.score, damaged: window.fixtureApp.model.damaged, sorted: window.fixtureApp.model.sorted }));
+  const beforeRepeat = await snapshot();
   for (let i = 0; i < 3; i += 1) { await page.keyboard.press('Space'); await page.keyboard.press('KeyF'); }
   await page.waitForTimeout(400);
+  // Snapshot before intake resumes, so only the repeated inputs can have changed anything.
+  const settled = await snapshot();
   await read(() => { window.fixtureApp.model.eventStopped = false; window.fixtureApp.model.random = () => 0.99; });
-  const settled = await read(() => ({ score: window.fixtureApp.model.score, damaged: window.fixtureApp.model.damaged, sorted: window.fixtureApp.model.sorted }));
   assert.deepEqual({ damaged: settled.damaged, sorted: settled.sorted }, { damaged: 1, sorted: 1 }, 'a broken parcel is never credited or penalized twice');
-  assert.ok(settled.score <= 850, 'repeat contact cannot restore or re-deduct points');
+  assert.equal(settled.score, beforeRepeat.score, 'repeat contact neither restores nor re-deducts points');
   // Carrying still works, down the real stairs to the lower floor.
   await read(() => { const m = window.fixtureApp.model; m.workers[0].heldId = null; for (const p of m.packages) if (p.state === 'held') p.state = 'delivered'; });
   const floorId = await holdFor('T', 'smallbox', { x: 380, y: 640 });

@@ -203,6 +203,7 @@ export class Belt3d {
     });
     this.overlay.onStoryButton((action) => {
       if (this.state !== 'story' || !this.cutscene) return;
+      if (action === 'pause') { if (this.canPause()) this.pause(); return; }
       if (action === 'next') this.cutscene.userNext();
       else this.cutscene.skip();
     });

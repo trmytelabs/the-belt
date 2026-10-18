@@ -6,7 +6,7 @@ import {
 import { DRIVERS, SHAN_BREAKAGE_LINES } from '../game/slice/StoryScript';
 import type { Parcel, ShiftEvent, ShiftModel } from '../game/slice/ShiftModel';
 import { audioSystem } from '../game/systems/AudioSystem';
-import { animateCharacter, createCharacter, mergeCharacter, type Character } from './characters';
+import { animateCharacter, bendElbows, bendKnees, createCharacter, mergeCharacter, type Character } from './characters';
 import { createParcelView, type ParcelView } from './parcels';
 import { BELT_HEIGHT, actorSurfaceAt, setFromModel, standard, textSprite, toWorld } from './space';
 import { SKIN, VISITORS, type DepotWorld } from './world';
@@ -79,82 +79,108 @@ export function applyPose(c: Character, pose: Pose, t: number, still: boolean): 
     case 'shout':
       c.leftArm.rotation.set(-2.9 + wave(14, 0.15), 0, 0.35);
       c.rightArm.rotation.set(-2.9 - wave(14, 0.15), 0, -0.35);
+      bendElbows(c, -0.35 + wave(14, 0.2), -0.35 - wave(14, 0.2));
       c.head.rotation.x = -0.25;
       break;
     case 'crouch':
-      c.body.position.y = -0.32;
-      c.leftLeg.rotation.x = c.rightLeg.rotation.x = -1.0;
-      c.body.rotation.x = 0.35;
-      c.leftArm.rotation.set(-1.0, 0, 0.1);
-      c.rightArm.rotation.set(-1.4 + wave(10, 0.3), 0, -0.1);
+      // Squatting: thighs forward, shins folded back under the hips.
+      c.body.position.y = -0.4;
+      c.leftLeg.rotation.x = c.rightLeg.rotation.x = -1.3;
+      bendKnees(c, 2.0);
+      c.body.rotation.x = 0.3;
+      c.leftArm.rotation.set(-0.9, 0, 0.1);
+      c.rightArm.rotation.set(-1.2 + wave(10, 0.3), 0, -0.1);
+      bendElbows(c, -0.5, -0.4);
       break;
     case 'massage':
       c.body.rotation.x = 0.32;
-      c.leftArm.rotation.set(-1.25 + wave(9, 0.28), 0, 0.12);
-      c.rightArm.rotation.set(-1.25 - wave(9, 0.28), 0, -0.12);
+      c.leftArm.rotation.set(-0.95 + wave(9, 0.22), 0, 0.12);
+      c.rightArm.rotation.set(-0.95 - wave(9, 0.22), 0, -0.12);
+      bendElbows(c, -0.55 - wave(9, 0.25), -0.55 + wave(9, 0.25));
       break;
     case 'dance':
       c.body.rotation.z = wave(11, 0.16);
       c.body.position.y = Math.abs(wave(14, 0.12));
       c.leftArm.rotation.set(-2.6 + wave(13, 0.5), 0, 0.3);
       c.rightArm.rotation.set(-2.6 - wave(13, 0.5), 0, -0.3);
+      bendElbows(c, -0.6 + wave(13, 0.4), -0.6 - wave(13, 0.4));
+      bendKnees(c, 0.25 + Math.abs(wave(14, 0.25)));
       break;
     case 'cheer':
       c.body.position.y = Math.abs(wave(9, 0.1));
       c.body.rotation.z = wave(7, 0.08);
       c.leftArm.rotation.set(-2.8 + wave(9, 0.35), 0, 0.25);
       c.rightArm.rotation.set(-2.8 - wave(9, 0.35), 0, -0.25);
+      bendElbows(c, -0.3);
       break;
     case 'swear':
-      c.leftArm.rotation.set(-0.4, 0, 0.9 + wave(16, 0.25));
-      c.rightArm.rotation.set(-0.4, 0, -0.9 - wave(16, 0.25));
+      // Fists up at chest height, shaking.
+      c.leftArm.rotation.set(-0.5, 0, 0.75 + wave(16, 0.2));
+      c.rightArm.rotation.set(-0.5, 0, -0.75 - wave(16, 0.2));
+      bendElbows(c, -1.5 + wave(16, 0.2), -1.5 - wave(16, 0.2));
       c.head.rotation.y = wave(12, 0.35);
       c.body.rotation.x = -0.12;
       break;
     case 'cough':
+      // Doubled over with a hand to the mouth.
       c.body.rotation.x = 0.38 + Math.abs(wave(15, 0.12));
-      c.rightArm.rotation.set(-2.2, 0, -0.35);
+      c.rightArm.rotation.set(-1.1, -0.5, -0.6);
       c.leftArm.rotation.set(-0.5, 0, 0.1);
+      bendElbows(c, -0.7, -2.1);
       break;
     case 'announce':
-      c.rightArm.rotation.set(-2.2 + wave(5, 0.25), 0, -0.2);
-      c.leftArm.rotation.set(-1.1, 0, 0.3);
+      c.rightArm.rotation.set(-2.1 + wave(5, 0.25), 0, -0.2);
+      c.leftArm.rotation.set(-0.7, 0, 0.3);
+      bendElbows(c, -1.2, -0.35);
       break;
     case 'push':
       c.body.rotation.x = 0.18;
-      c.leftArm.rotation.set(-1.45, 0, 0.05);
-      c.rightArm.rotation.set(-1.45, 0, -0.05);
+      c.leftArm.rotation.set(-1.15, 0, 0.05);
+      c.rightArm.rotation.set(-1.15, 0, -0.05);
+      bendElbows(c, -0.55);
       break;
     case 'phone':
-      c.rightArm.rotation.set(-2.4, 0, -0.25);
-      c.leftArm.rotation.set(-0.9 + wave(2.4, 0.35), 0, 0.4 + wave(1.7, 0.2));
+      // The phone held to the ear, the other hand gesturing.
+      c.rightArm.rotation.set(-1.65, -0.5, 0.3);
+      c.leftArm.rotation.set(-0.7 + wave(2.4, 0.3), 0, 0.3 + wave(1.7, 0.15));
+      bendElbows(c, -0.9 + wave(2.4, 0.25), -2.3);
       break;
     case 'aim':
       c.rightArm.rotation.set(-1.55, 0, -0.05);
-      c.leftArm.rotation.set(-1.4, 0, 0.35);
+      c.leftArm.rotation.set(-1.3, 0, 0.45);
+      bendElbows(c, -0.35, -0.05);
       break;
     case 'press':
-      c.rightArm.rotation.set(-1.2 + wave(6, 0.15), 0, -0.2);
+      c.rightArm.rotation.set(-1.0 + wave(6, 0.12), 0, -0.2);
+      bendElbows(c, -0.12, -0.45);
       break;
     case 'carry':
-      c.leftArm.rotation.set(-1.25, 0, -0.18);
-      c.rightArm.rotation.set(-1.25, 0, 0.18);
+      c.leftArm.rotation.set(-0.62, 0, -0.2);
+      c.rightArm.rotation.set(-0.62, 0, 0.2);
+      bendElbows(c, -1.0);
       break;
     case 'keys':
-      c.rightArm.rotation.set(-1.5 + wave(8, 0.08), 0, -0.1);
+      c.rightArm.rotation.set(-1.0 + wave(8, 0.08), 0, -0.1);
+      bendElbows(c, -0.12, -0.6);
       break;
     case 'handup':
       c.rightArm.rotation.set(-3.0 + wave(6, 0.05), 0, -0.15);
+      bendElbows(c, -0.12, -0.15);
       break;
     case 'sit':
-      c.leftLeg.rotation.x = c.rightLeg.rotation.x = -1.45;
-      c.body.position.y = -0.42;
-      c.leftArm.rotation.set(-1.0, 0, 0.1);
-      c.rightArm.rotation.set(-1.0, 0, -0.1);
+      c.leftLeg.rotation.x = c.rightLeg.rotation.x = -1.5;
+      bendKnees(c, 1.5);
+      c.body.position.y = -0.41;
+      c.leftArm.rotation.set(-0.5, 0, 0.1);
+      c.rightArm.rotation.set(-0.5, 0, -0.1);
+      bendElbows(c, -0.9);
       break;
     case 'shrug':
-      c.leftArm.rotation.set(-0.3, 0, 0.7);
-      c.rightArm.rotation.set(-0.3, 0, -0.7);
+      c.leftArm.rotation.set(-0.15, 0, 0.35);
+      c.rightArm.rotation.set(-0.15, 0, -0.35);
+      // Forearms out to the sides, palms up.
+      c.leftForearm.rotation.set(-1.3, 0, -0.5);
+      c.rightForearm.rotation.set(-1.3, 0, 0.5);
       c.head.rotation.z = wave(3, 0.08);
       break;
     case 'none':
@@ -214,8 +240,8 @@ export class CrewLife {
     }
     // Kylie carries an (empty) coffee cup on her search.
     const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.045, 0.16, 12), standard(0xc23a2e, 0.6));
-    cup.position.set(0, -0.62, 0.06);
-    this.actor('kylie').character.rightArm.add(cup);
+    cup.position.set(0, -0.085, 0.05);
+    this.actor('kylie').character.rightHand.add(cup);
 
     this.towel = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.06, 0.7), standard(0xf2efe6, 0.95));
     this.towel.visible = false;
@@ -247,8 +273,8 @@ export class CrewLife {
       const driver = createCharacter({ name: 'DRIVER', skin: SKIN.tan, shirt: 0x34506a, pants: 0x262a30, hair: 0x2a1d14, hairStyle: 'short', headwear: 'beanie' });
       driver.nameTag.visible = false;
       const keys = new THREE.Mesh(new THREE.TorusGeometry(0.035, 0.012, 6, 12), standard(0xe8c25a, 0.25, 0.9));
-      keys.position.set(0, -0.66, 0.08);
-      driver.rightArm.add(keys);
+      keys.position.set(0, -0.12, 0.035);
+      driver.rightHand.add(keys);
       driver.root.visible = false;
       world.scene.add(driver.root);
       this.drivers.push(new Actor(driver));

@@ -206,6 +206,16 @@ test('throw targets explain carry-only cases and only allow a reachable correct 
   const fragile = holding('B', 'makeup');
   Object.assign(fragile.activeWorker, { x: 580, y: 400 });
   assert.equal(fragile.throwTarget().breakChance, THROWING.breakChance.fragile);
+  // The foot of the stairs is already the lower floor: no throwing back up from it,
+  // even where walking against the retaining wall leaves the worker exactly there.
+  for (const y of [SHIFT_LAYOUT.lowerFloor.top, SHIFT_LAYOUT.lowerFloor.top + 30]) {
+    const below = holding('A');
+    Object.assign(below.activeWorker, { x: 380, y });
+    assert.match(below.throwTarget().reason, /CAN'T THROW UP/, `no throw up onto the platform from y=${y}`);
+  }
+  const lastStep = holding('A');
+  Object.assign(lastStep.activeWorker, { x: 380, y: SHIFT_LAYOUT.lowerFloor.top - 1 });
+  assert.doesNotMatch(lastStep.throwTarget().reason, /CAN'T THROW UP/, 'still on the stairs one pixel above the floor');
 });
 
 test('a clean throw delivers with normal credit and keeps the streak, while the belt keeps moving', () => {

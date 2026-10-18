@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 
-import { createCharacter, mergeCharacter, type Character } from './characters';
+import { BODY, bendElbows, bendKnees, createCharacter, mergeCharacter, type Character } from './characters';
 import { shadowed, standard, textPlane } from './space';
 
 /**
@@ -16,6 +16,9 @@ export const DREAM_FADE_MS = 450;
 
 const rounded = (w: number, h: number, d: number, material: THREE.Material, r = 0.04): THREE.Mesh =>
   new THREE.Mesh(new RoundedBoxGeometry(w, h, d, 2, Math.min(r, w / 2, h / 2, d / 2)), material);
+
+/** Seat height of the stool and armchair cushion. */
+const SEAT_HEIGHT = 0.48;
 
 export class MesaDream {
   public readonly scene = new THREE.Scene();
@@ -59,8 +62,12 @@ export class MesaDream {
     this.trmyte = createCharacter({ name: 'TRMYTE', skin: 0xe2b088, shirt: 0x2f5f8f, pants: 0x2a3f5c, overalls: 0x2a3f5c, hair: 0x5a3a20, hairStyle: 'short', headwear: 'termiteHat', beard: true });
     this.seat(this.trmyte, new THREE.Vector3(0.75, 0.05, 0.55), -2.7);
     const controller = rounded(0.24, 0.06, 0.12, standard(0x161616, 0.4), 0.03);
-    controller.position.set(0.31, 0.92, 0.42);
+    // Held in both hands in the lap.
+    controller.position.set(0, 1.12, 0.36);
     this.trmyte.body.add(controller);
+    this.trmyte.leftArm.rotation.set(-0.2, 0, 0.35);
+    this.trmyte.rightArm.rotation.set(-0.2, 0, -0.35);
+    bendElbows(this.trmyte, -1.3);
     mergeCharacter(this.trmyte);
     const armchair = new THREE.Group();
     const seatMat = standard(0x56604a, 0.9);
@@ -114,12 +121,13 @@ export class MesaDream {
     this.resetLumines();
   }
 
-  /** Seats a character: hips on the seat, legs forward. */
+  /** Seats a character: hips on the seat, thighs forward, shins down. */
   private seat(c: Character, at: THREE.Vector3, yaw: number): void {
     c.root.position.copy(at);
     c.root.rotation.y = yaw;
-    c.body.position.y = -0.24;
+    c.body.position.y = SEAT_HEIGHT - BODY.hipY;
     c.leftLeg.rotation.x = c.rightLeg.rotation.x = -1.45;
+    bendKnees(c, 1.45);
   }
 
   private buildRoom(): void {
@@ -334,13 +342,14 @@ export class MesaDream {
     headstock.position.set(0.95, 0.2, 0);
     headstock.rotation.z = 0.2;
     this.guitar.add(body, upper, guard, neck, headstock);
-    this.guitar.position.set(-0.05, 0.92, 0.25);
+    this.guitar.position.set(-0.05, 1.1, 0.25);
     this.guitar.rotation.set(0, 0, 0.15);
     shadowed(this.guitar);
     // The rig's "right" arm sits on the character's left: it frets the neck,
     // and the other arm strums across the body.
     this.skanky.rightArm.rotation.set(-1.15, 0, 0.55);
     this.skanky.leftArm.rotation.set(-0.95, 0, 0.55);
+    bendElbows(this.skanky, -0.7, -0.45);
   }
 
   private resetLumines(): void {
@@ -428,8 +437,8 @@ export class MesaDream {
       const s = t / 1000;
       this.skanky.leftArm.rotation.x = -0.95 + Math.sin(s * 16) * 0.22;
       this.skanky.head.rotation.x = 0.15 + Math.sin(s * 8) * 0.12;
-      this.trmyte.leftArm.rotation.set(-1.35 + Math.sin(s * 11) * 0.05, 0, 0.35);
-      this.trmyte.rightArm.rotation.set(-1.35 + Math.cos(s * 13) * 0.05, 0, -0.35);
+      this.trmyte.leftArm.rotation.set(-0.2 + Math.sin(s * 11) * 0.04, 0, 0.35);
+      this.trmyte.rightArm.rotation.set(-0.2 + Math.cos(s * 13) * 0.04, 0, -0.35);
       this.trmyte.head.rotation.y = Math.sin(s * 0.7) * 0.1;
     }
     return t >= DREAM_MS + DREAM_FADE_MS;
