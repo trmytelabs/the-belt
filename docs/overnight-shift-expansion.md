@@ -148,8 +148,9 @@ level on that side, roofs and door headers are hidden, leaving 1.1 m stubs with
 dark caps. Ceilings and the skylight face down only, so they vanish from above.
 Skanky, the cart and every doorway stay in view. Each store shows its run
 status on a lit 3D board: on the fascia for north stores, and on an angled
-window plaque for the cut-away south stores. The in-game name is still
-MALLWOOD CENTRE; whether to call it Southgate is the owner's decision.
+window plaque for the cut-away south stores. At the owner's request, the 3D
+destination is named Southgate Mall. The legacy versions retain their original
+mall title.
 
 Skanky's five-ton is backed up to the loading dock with six labelled store
 bundles inside. The run order is shuffled each night (every shuffle is valid:

@@ -443,9 +443,13 @@ try {
   assert.match(recovered,/SHIFT COMPLETE \/ GRADE S/);
   assert.match(recovered,/98% of freight dispatched · 16 recovered and dispatched/);
   assert.match(recovered,/1 left behind · 0 wrong drops · GRADE 98\.2%/);
-  assert.match(recovered,/NIGHT TOTAL 06250.*OUTSTANDING SHIFT/);
+  const driveTotals = await read(() => ({ penalty: window.fixtureApp.drivingPenalty,
+    bumps: window.fixtureApp.drivingCollisions, redLights: window.fixtureApp.drivingRedLights }));
+  assert.equal(driveTotals.penalty, (driveTotals.bumps + driveTotals.redLights) * 5, 'road incidents retain their separate five-point deduction');
+  const expectedNightTotal = String(Math.max(0, 6250 - driveTotals.penalty)).padStart(5, '0');
+  assert.match(recovered, new RegExp(`NIGHT TOTAL ${expectedNightTotal}.*OUTSTANDING SHIFT`));
   await shot('recovered-s-rank');
-  console.log('PASS 56 of 57 dispatched, recovered freight and the completed mall run render S rank, an explicit grade breakdown and the correct 6250 night total');
+  console.log(`PASS 56 of 57 dispatched, recovered freight and the completed mall run render S rank, an explicit grade breakdown and the correct ${expectedNightTotal} night total after driving deductions`);
 
   // ---- Restart and replay start clean.
   await page.keyboard.press('Enter');
