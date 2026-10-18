@@ -583,7 +583,7 @@ export class CrewLife {
     });
     const preview = model.intakePreview;
     const dockhand = this.dockhand;
-    dockhand.place(430, (preview?.y ?? 127) + 12);
+    dockhand.place(416, (preview?.y ?? 127) + 12);
     dockhand.faceAngle = Math.PI / 2;
     dockhand.animate(dt, wallTime, this.reducedMotion);
     // Flies circle his head; a green haze follows him.
