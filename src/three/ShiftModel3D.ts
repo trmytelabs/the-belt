@@ -178,6 +178,7 @@ export class ShiftModel3D extends ShiftModel {
     const targetTruck = truckInteriorAt(target);
     const laneX = worker.side === 'left' ? this.layout.leftLane.maxX : this.layout.rightLane.minX;
     if (inside && inside !== targetTruck) return { x: laneX, y: this.layout.playerTrucks[inside].y };
+    if (inside && inside === targetTruck) return target;
     if (targetTruck && !inside && Math.abs(worker.y - this.layout.playerTrucks[targetTruck].y) > 12) {
       return { x: laneX, y: this.layout.playerTrucks[targetTruck].y };
     }

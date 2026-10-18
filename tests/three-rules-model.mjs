@@ -109,6 +109,50 @@ test('3D coworker carries ordinary freight down either side flight and returns t
   }
 });
 
+test('the coworker enters and loads all four trucks without routing toward the stairs from inside', () => {
+  for (const [route, activeIndex] of [['A', 1], ['D', 1], ['B', 0], ['E', 0]]) {
+    const m = new ShiftModel3D();
+    m.activeIndex = activeIndex; m.eventStopped = true;
+    const worker = m.workers[1 - activeIndex], parcel = m.packages[0];
+    Object.assign(parcel, { route, kind: 'smallbox', size: 'normal', state: 'held', workerId: worker.id });
+    worker.heldId = parcel.id;
+    for (let tick = 0; tick < 2000 && parcel.state !== 'delivered'; tick++) m.update(10);
+    assert.equal(parcel.state, 'delivered', `${worker.id} completes ${route}: ${JSON.stringify(worker)}`);
+    assert.equal(m.truckLoads.get(parcel.id).route, route);
+    assert.equal(m.sorted, 1);
+  }
+});
+
+test('the wider 3D depot completes a winning shift with route-restricted pickup and ordinary movement', () => {
+  const m = new ShiftModel3D({ freightRandom: () => 0 });
+  for (let tick = 0; tick < 10000 && !m.ended; tick++) {
+    let target;
+    const held = m.heldPackage;
+    if (held) {
+      target = held.route === 'C' ? m.activeIndex === 0 ? L.bulkLeft : L.bulkRight
+        : L[{ A:'dockA', B:'dockB', D:'dockD', E:'dockE', T:'floorT', S:'floorS' }[held.route]];
+      if (m.currentDock() === held.route) m.action();
+    } else {
+      const parcel = m.packages.filter(p => ['belt', 'floor', 'missed'].includes(p.state)).sort((a,b) => b.y-a.y)[0];
+      if (parcel) {
+        const intended = parcel.route === 'C' ? m.activeIndex : ['B', 'E', 'S'].includes(parcel.route) ? 1 : 0;
+        if (m.activeIndex !== intended) m.switchWorker();
+        if (m.nearestPackage()) m.action();
+        target = { x: m.activeIndex === 0 ? 400 : 560, y: parcel.y };
+      }
+    }
+    if (target) target = m.navigationTarget(target);
+    const dx = target ? target.x-m.activeWorker.x : 0, dy = target ? target.y-m.activeWorker.y : 0;
+    const length = Math.hypot(dx,dy);
+    m.update(20, { x: length>3 ? dx/length : 0, y: length>3 ? dy/length : 0 });
+  }
+  assert.equal(m.ended, true);
+  assert.equal(m.won, true);
+  assert.ok(m.sorted >= m.goal);
+  assert.equal(m.pileup, 0);
+  for (const route of ['A', 'B', 'C', 'D', 'E', 'T', 'S']) assert.ok(m.routeSorted[route] > 0, `${route} is served during the complete shift`);
+});
+
 test('wrong 3D drops and intact wrong throws cost ten points per attempt, capped at the remaining score', () => {
   const m = new ShiftModel3D({ autonomousCoworker: false, random: () => 0.99 });
   m.eventStopped = true; m.score = 100;
