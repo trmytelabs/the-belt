@@ -25,15 +25,11 @@ rear platform, outward side stairs, truck interiors and lower-floor drops.
   tread, receiving feeders and trailers, named trucks with player cargo shelves,
   floor street ranges, the bulk cage, the recovery tray, pallet drops, the
   resident crew and their props.
-- `characters.ts` builds every person in code at real proportions (about
-  1.78 m, a head about a seventh of the height): a shaped torso and hips,
-  tapered limbs with elbows and knees, hands with a thumb, shoes, and faces
-  with eyes, irises, brows, ears, nose and lips, plus each cast member's hair,
-  beard, glasses, hat, tie, overalls or vest. Held props go in `rightHand`.
-  The walk bends the knees and swings the arms; poses in `crew.ts` set the
-  elbows and knees too. Cloth, skin and hair share one surface finish, so the
-  merge draws each rigid body part in a single call: a full depot uses fewer
-  draw calls than the earlier box figures, with about a quarter more triangles.
+- `characters.ts` builds the pose pivots and procedural fallback figures at
+  about 1.78 m. `characterModels.ts` loads the 23 rigged Rocketbox people from
+  `rocketboxCast.ts`, then drives their bones from those pivots. The existing
+  walk, carrying, gestures, attached props and story poses continue to work.
+  See [character models](character-models.md) for the cast and MIT provenance.
 - `setpieces.ts` stages Vic and Shan's belt buttons, Ralph's five-ton and
   Ben's robbery. `mesa.ts` runs the Mesa choice, and `dream.ts` is Skanky's
   bedroom.
@@ -51,7 +47,8 @@ rear platform, outward side stairs, truck interiors and lower-floor drops.
 Rendering uses ACES tone mapping, soft shadows, a room environment for
 reflections and a bloom pass that only catches real light sources. On a
 software WebGL renderer (SwiftShader/llvmpipe), the preview switches to low
-quality: no shadow maps or bloom, fewer lights and a reduced render resolution.
+quality: procedural figures without model downloads, no shadow maps or bloom,
+fewer lights and a reduced render resolution.
 It also spaces out its draws, so the shift clock, input and bubbles keep running
 at full rate even when a single draw takes longer than a frame. Without WebGL it explains
 the requirement and links to the 2D game.

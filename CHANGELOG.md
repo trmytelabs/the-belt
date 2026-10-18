@@ -2,6 +2,8 @@
 
 ## 0.1.0 — development snapshot
 
+- Combine the 3D gameplay with 23 rigged Microsoft Rocketbox characters,
+  preserving their animations, attached props and software-renderer fallback.
 - Sort street addresses against city district ranges, including Mill Woods for
   Termite, with neutral signs and no visible routing letters or answer guidance.
 - Let the uncontrolled coworker collect and deliver freight automatically.

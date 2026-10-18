@@ -155,9 +155,18 @@ own licences, so check each one. Never commit a model whose licence is unknown.
 `tests/character-cast.mjs` checks every committed crew model: one file per
 cast entry and no extras, at most 1.5 MB each, one skinned mesh with the
 expected bones, a head material, JPEG textures and real character names.
-`tests/character-models.mjs` and `tests/character-model-browser.mjs` use a
-synthetic humanoid built in code (`tests/fixtures/humanoid.mjs`), not a
-third-party model. They check loading, side matching, the rest pose, posed
+`tests/character-models.mjs` and `tests/character-model-browser.mjs` first use a
+synthetic humanoid built in code (`tests/fixtures/humanoid.mjs`). They check loading, side matching, the rest pose, posed
 limbs, held props, lying down, skin tint, per-copy materials, fallback and
 removal, and that the shipped game swaps the workers' figures and animates
 the model during play.
+
+The browser check also decodes and attaches all 23 shipped models in controlled
+depot, story, mall and dream scenes. The 3D run of
+`tests/gameplay-adjustments-browser.mjs` explicitly loads the real Termite,
+Skanky and Shan even on software graphics. It measures actual worker torso
+clearance for 14 parcel forms in four directions on both workers, then checks
+truck entry, roof transparency, persistent shelf positions, capacity, overflow,
+restart and Shan's breakage reaction. Cargo and late-game states are synthetic;
+inputs and the production renderer are real. The ordinary software fallback is
+still checked separately.

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { chromium } from 'playwright';
 import { preview } from 'vite';
+import { ROCKETBOX_CAST } from '../src/three/rocketboxCast.ts';
 
 const mode = process.argv[2] ?? '3d';
 const server = await preview({ preview: { host: '127.0.0.1', port: 0 }, logLevel: 'silent' });
@@ -30,6 +31,14 @@ try {
   const wait = (fn, options = {}) => page.waitForFunction(fn, mode, { polling: 10, timeout: 90_000, ...options });
   if(mode === '2d') await page.waitForFunction(() => window.fixtureGame?.scene.isActive('DepotScene'));
   await wait(mode => (mode === '3d' ? window.fixtureApp : window.fixtureGame?.scene.getScene('DepotScene'))?.state === 'briefing');
+  if (mode === '3d') {
+    // Force the shipped workers and Shan even on software graphics. The normal
+    // fallback is checked separately; this run checks real bodies with cargo.
+    const cast = ROCKETBOX_CAST.filter(({ file }) => ['termite', 'skanky', 'shan'].includes(file))
+      .map(({ names, file }) => ({ names, url: `/models/characters/${file}.glb` }));
+    await read(entries => window.fixtureApp.useCharacterModels(entries.map(entry => ({ ...entry, skinMaterial: /head/i }))), cast);
+    await wait(() => Object.values(window.fixtureApp.workers).every(worker => worker.root.getObjectByName('character-model')));
+  }
   if(mode === '2d') await page.waitForFunction(() => window.fixtureGame.loop.frame >= 3);
   await read(mode => (mode === '3d' ? window.fixtureApp : window.fixtureGame.scene.getScene('DepotScene')).forceStory({breakAtMs:1e12}));
   if(mode === '2d') {
@@ -77,6 +86,27 @@ try {
       return {millwoods:texts.includes('MILL WOODS'), ranges:texts.filter(copy=>/^\d+–\d+ ST$/.test(copy)).length};
     }
     const samples=[];
+    const bodyFront = Object.fromEntries(Object.entries(app.workers).map(([id, character]) => {
+      character.root.updateMatrixWorld(true);
+      const inverse = character.root.matrixWorld.clone().invert();
+      let front = -Infinity;
+      character.root.getObjectByName('character-model').traverseVisible(mesh => {
+        if (!mesh.isSkinnedMesh) return;
+        // Hands can touch a box; chest vertices must remain behind it.
+        const { position, skinIndex, skinWeight } = mesh.geometry.attributes;
+        for (let vertex = 0; vertex < position.count; vertex++) {
+          let torsoWeight = 0;
+          for (let component = 0; component < 4; component++) {
+            const index = skinIndex.getComponent(vertex, component);
+            if (/pelvis|spine/i.test(mesh.skeleton.bones[index].name)) torsoWeight += skinWeight.getComponent(vertex, component);
+          }
+          if (torsoWeight < 0.75) continue;
+          const point = mesh.getVertexPosition(vertex, character.root.position.clone()).applyMatrix4(mesh.matrixWorld).applyMatrix4(inverse);
+          front = Math.max(front, point.z);
+        }
+      });
+      return [id, front];
+    }));
     let id=1000;
     for(const side of [0,1]) for(const kind of ['envelope','smallbox','standard','bigbox','longbox','mallwood','goji','lobsters','duck','makeup','mesa','panchetters','atv','snakes']) for(const facing of ['up','down','left','right']) {
       const worker=m.workers[side];
@@ -100,13 +130,16 @@ try {
           rear=Math.min(rear,point.z);
         }
       });
-      samples.push({kind,side,facing,clearance:rear});
+      samples.push({kind,side,facing,clearance:rear,bodyFront:bodyFront[worker.id]});
     }
     return {samples};
   });
   if(mode === '3d') {
     assert.equal(visual.samples.length,112);
-    for(const sample of visual.samples) assert.ok(sample.clearance>=0.319,JSON.stringify(sample));
+    for(const sample of visual.samples) {
+      assert.ok(Number.isFinite(sample.bodyFront), 'measure the actual imported worker torso');
+      assert.ok(sample.clearance >= Math.max(0.319, sample.bodyFront + 0.02), JSON.stringify(sample));
+    }
   } else {
     assert.equal(visual.millwoods,true);
     assert.ok(visual.ranges>=10, 'truck and floor signs display street ranges');

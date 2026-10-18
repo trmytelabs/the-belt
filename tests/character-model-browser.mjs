@@ -2,10 +2,11 @@ import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 import { preview } from 'vite';
 import { syntheticHumanoid, toGlb } from './fixtures/humanoid.mjs';
+import { ROCKETBOX_CAST } from '../src/three/rocketboxCast.ts';
 
 // The production bundle loads a listed character model, swaps it in for the
-// procedural workers and drives it through real play. The model is the
-// synthetic humanoid fixture, served on a route; no third-party model is used.
+// procedural workers and drives it through real play. First use a synthetic
+// humanoid served on a route, then check the actual shipped cast in each stage.
 const glb = await toGlb(syntheticHumanoid());
 const server = await preview({ preview: { host: '127.0.0.1', port: 0 }, logLevel: 'silent' });
 const url = server.resolvedUrls.local[0];
@@ -94,6 +95,50 @@ try {
   }
   console.log('PASS the model follows the walk cycle during the shift');
   await page.screenshot({ path: process.env.BELT_MODEL_SCREENSHOT ?? 'node_modules/.cache/character-model.png' });
+
+  // Decode and attach every shipped model too. Controlled scene fixtures show
+  // the normally hidden cast, including the mall clerks and Mesa dream copies.
+  // Gameplay with the real workers is covered by gameplay-adjustments-browser.
+  await page.evaluate(() => { window.fixtureApp.state = 'paused'; window.fixtureApp.pausedFrom = 'playing'; });
+  const cast = ROCKETBOX_CAST.map(({ file, names }) => ({ names, url: `/models/characters/${file}.glb` }));
+  await page.evaluate(entries => window.fixtureApp.useCharacterModels(entries.map(entry => ({ ...entry, skinMaterial: /head/i }))), cast);
+  const shipped = await page.evaluate(entries => {
+    const app = window.fixtureApp;
+    const names = new Set(entries.flatMap(entry => entry.names));
+    const results = [];
+    const reveal = scene => scene.traverse(object => { if (names.has(object.name)) object.visible = true; });
+    const inspect = scene => scene.traverse(object => {
+      if (!names.has(object.name)) return;
+      const model = object.getObjectByName('character-model');
+      let vertices = 0;
+      let shownFigure = 0;
+      object.traverse(child => {
+        if (child.isSkinnedMesh) vertices += child.geometry.attributes.position.count;
+        if (child.userData.figure && child.visible) shownFigure += 1;
+      });
+      results.push({ name: object.name, model: Boolean(model), vertices, shownFigure });
+    });
+    reveal(app.world.scene);
+    app.lastRender = -Infinity; app.draw(); inspect(app.world.scene);
+    for (const id of ['lot', 'store', 'coffee', 'mall']) {
+      const stage = app.stage.stage(id);
+      app.stage.active = id; app.pausedFrom = 'mall'; reveal(stage.scene);
+      app.lastRender = -Infinity; app.draw(); inspect(stage.scene);
+    }
+    app.state = 'dream'; reveal(app.dream.scene);
+    app.lastRender = -Infinity; app.draw(); inspect(app.dream.scene);
+    app.state = 'paused'; app.pausedFrom = 'playing'; app.stage.end();
+    return results;
+  }, cast);
+  for (const { file, names } of ROCKETBOX_CAST) {
+    assert.ok(shipped.some(result => names.includes(result.name)), `${file} is present in a real game scene`);
+  }
+  assert.equal(shipped.filter(result => result.name === 'CLERK').length, 6, 'all six mall clerks use the cast model');
+  for (const result of shipped) {
+    assert.ok(result.model && result.vertices > 1000, `${result.name} attaches its actual shipped skinned mesh`);
+    assert.equal(result.shownFigure, 0, `${result.name} hides only its procedural figure`);
+  }
+  console.log(`PASS all ${ROCKETBOX_CAST.length} shipped character models decode and attach across depot, story, mall and dream scenes`);
   assert.deepEqual(errors, [], 'no page errors');
   console.log('PASS no page errors with imported character models');
 } finally {

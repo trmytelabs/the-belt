@@ -26,8 +26,9 @@ night shift in a lit Three.js warehouse, with every original reference event and
 speech bubbles anchored to whoever is speaking. On touch screens it shows a
 movement stick and GRAB / DELIVER, SWITCH, BRAKE, VIEW and PAUSE buttons. It needs
 WebGL; without it the page links to the 2D depot. See
-[the 3D depot](docs/3d-preview.md). People can be shown with imported character models (GLB, for example
-made in MakeHuman); see [imported character models](docs/character-models.md).
+[the 3D depot](docs/3d-preview.md). The crew uses 23 rigged Microsoft Rocketbox
+characters, with procedural figures on software graphics. Their animation,
+props and provenance are covered in [character models](docs/character-models.md).
 
 The legacy **2D Night Shift / Depot 07** is at `?mode=2d`. The current 3D game
 plays a whole night: one of three random

@@ -92,6 +92,8 @@ are legacy modes; new 3D layout and scoring are isolated from their rules.
 
 Regression coverage includes the range boundaries, varied freight and contact
 spacing, coworker stair navigation and switching, all 3D parcel forms in four
-directions, the exact stair risk boundary, wrong throws, Shan's visible visit,
-Mesa's keyboard/touch outcomes and clean restart. Fixtures are synthetic.
+directions against both actual Rocketbox worker torsos, the exact stair risk
+boundary, wrong throws, Shan's visible visit, Mesa's keyboard/touch outcomes and
+clean restart. Cargo and clock fixtures are synthetic; the shipped character
+models and production rendering are exercised directly.
 Physical touch-device usability and audible sound still need manual checks.

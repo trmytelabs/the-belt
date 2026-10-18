@@ -85,7 +85,7 @@ function specFor(id: string): CharacterSpec {
   if (id === 'termite') return TERMITE_SPEC;
   if (id === 'skanky') return SKANKY_SPEC;
   if (id === 'cashier') return CASHIER;
-  if (id === 'clerk') return CLERK;
+  if (id === 'clerk' || id.startsWith('clerk-')) return CLERK;
   return RESIDENT_SPECS[id] ?? VISITORS[id] ?? { name: id.toUpperCase(), skin: SKIN.light, shirt: 0x667788, pants: 0x333333, hair: 0x222222, hairStyle: 'short' };
 }
 
