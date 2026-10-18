@@ -182,7 +182,9 @@ export class Overlay {
     this.storybar = this.div('b3d-storybar', this.root);
     this.subtitleBox = this.div('b3d-subtitle', this.root);
     this.storykeys = this.div('b3d-storykeys', this.root);
-    this.storykeys.innerHTML = '<button type="button" data-story="next">NEXT ▸ <small>SPACE</small></button>'
+    // PAUSE is here too: touch players have no keyboard Escape during story scenes.
+    this.storykeys.innerHTML = '<button type="button" data-story="pause" aria-label="Pause">PAUSE <small>ESC</small></button>'
+      + '<button type="button" data-story="next">NEXT ▸ <small>SPACE</small></button>'
       + '<button type="button" class="skip" data-story="skip">SKIP SCENE ⏭ <small>ENTER</small></button>';
     this.chapterhud = this.div('b3d-chapterhud', this.root);
   }
@@ -206,13 +208,23 @@ export class Overlay {
     }
   }
 
-  public onStoryButton(handler: (action: 'next' | 'skip') => void): void {
+  public onStoryButton(handler: (action: 'next' | 'skip' | 'pause') => void): void {
     for (const button of this.storykeys.querySelectorAll<HTMLButtonElement>('button')) {
-      const action = button.dataset.story as 'next' | 'skip';
-      // A press acts at once; a click with no press (assistive tech, keyboard) acts too.
+      const action = button.dataset.story as 'next' | 'skip' | 'pause';
+      // A press acts at once; a click with no press (assistive tech) acts too.
       let pressed = false;
       button.addEventListener('pointerdown', (event) => { event.preventDefault(); event.stopPropagation(); pressed = true; handler(action); });
       button.addEventListener('click', (event) => { event.stopPropagation(); if (!pressed) handler(action); pressed = false; });
+      // Enter or Space on a focused button does that button's action only: the game's
+      // own Enter (skip) and Space (next) keys must not also see the press.
+      button.addEventListener('keydown', (event) => {
+        if (event.code !== 'Enter' && event.code !== 'NumpadEnter' && event.code !== 'Space') return;
+        event.preventDefault();
+        event.stopPropagation();
+        if (event.repeat) return;
+        pressed = true;
+        handler(action);
+      });
     }
   }
 

@@ -304,6 +304,11 @@ export interface ShiftOptions {
   random?: () => number;
 }
 
+/** True from the foot of the stairs down: the same boundary walkBounds() uses. */
+export function onLowerFloor(point: { y: number }): boolean {
+  return point.y >= SHIFT_LAYOUT.lowerFloor.top;
+}
+
 export class ShiftModel {
   public readonly workers: Worker[] = [
     { id: 'termite', x: 382, y: 500, side: 'left', heldId: null, facing: 'right', moving: false },
@@ -458,7 +463,7 @@ export class ShiftModel {
       if (parcel.state !== 'belt' && parcel.state !== 'floor' && parcel.state !== 'missed') continue;
       if (parcel.state === 'floor' && (worker.side === 'left' ? parcel.x > 440 : parcel.x < 520)) continue;
       // The platform's retaining wall separates the lower floor from the belt end.
-      if (parcel.state !== 'floor' && worker.y > SHIFT_LAYOUT.stairs.bottom) continue;
+      if (parcel.state !== 'floor' && onLowerFloor(worker)) continue;
       const separation = distance(worker, parcel);
       if (separation < nearestDistance) {
         nearestDistance = separation;
@@ -552,7 +557,7 @@ export class ShiftModel {
       result.reason = 'TOO HEAVY TO THROW · carry it';
     } else if (this.currentDock(worker) === route) {
       result.reason = 'ALREADY AT THE DROP · press SPACE';
-    } else if (worker.y > SHIFT_LAYOUT.stairs.bottom && info.kind !== 'floor') {
+    } else if (onLowerFloor(worker) && info.kind !== 'floor') {
       result.reason = "CAN'T THROW UP ONTO THE PLATFORM · carry it";
     } else if (separation > THROWING.rangePx) {
       result.reason = `TOO FAR TO THROW · ${Math.ceil((separation - THROWING.rangePx) / 32)} m closer, or carry it`;
