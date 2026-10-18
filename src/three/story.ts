@@ -88,6 +88,39 @@ function specFor(id: string): CharacterSpec {
   return RESIDENT_SPECS[id] ?? VISITORS[id] ?? { name: id.toUpperCase(), skin: SKIN.light, shirt: 0x667788, pants: 0x333333, hair: 0x222222, hairStyle: 'short' };
 }
 
+/**
+ * Height of a car seat above the car's origin. The body hides the seated
+ * legs, and a seated head stays under the roof (inside 1.52 m).
+ */
+const SEAT_Y = 0.06;
+
+/**
+ * Where a car is along a path of waypoints at progress t (0..1), and which
+ * way its nose points. Heading turns smoothly into each new leg.
+ */
+function alongPath(points: [number, number][], t: number): { x: number; z: number; h: number } {
+  const legs = points.slice(1).map((p, i) => Math.hypot(p[0] - points[i][0], p[1] - points[i][1]));
+  const total = legs.reduce((sum, leg) => sum + leg, 0);
+  let distance = THREE.MathUtils.clamp(t, 0, 1) * total;
+  const heading = (i: number): number => Math.atan2(-(points[i + 1][1] - points[i][1]), points[i + 1][0] - points[i][0]);
+  for (let i = 0; i < legs.length; i += 1) {
+    if (distance <= legs[i] || i === legs.length - 1) {
+      const f = legs[i] > 0 ? Math.min(1, distance / legs[i]) : 1;
+      const [x0, z0] = points[i];
+      const [x1, z1] = points[i + 1];
+      let h = heading(i);
+      if (i > 0) {
+        const previous = heading(i - 1);
+        const turn = Math.atan2(Math.sin(h - previous), Math.cos(h - previous));
+        h = previous + turn * Math.min(1, f / 0.35);
+      }
+      return { x: mix(x0, x1, f), z: mix(z0, z1, f), h };
+    }
+    distance -= legs[i];
+  }
+  return { x: points[0][0], z: points[0][1], h: heading(0) };
+}
+
 /** A small car whose nose points along local +X. */
 function createCar(color: number): THREE.Group {
   const car = new THREE.Group();
@@ -866,8 +899,8 @@ export class StoryStage {
       const run = ease(cueProgress(cutscene, 'pair-run'));
       const inside = ease(cueProgress(cutscene, 'walk-in'));
       if (run <= 0) {
-        this.seat(a('skanky'), car, new THREE.Vector3(-0.3, 0.32, 0.36));
-        this.seat(a('termite'), car, new THREE.Vector3(-0.3, 0.32, -0.36));
+        this.seat(a('skanky'), car, new THREE.Vector3(-0.3, SEAT_Y, 0.36));
+        this.seat(a('termite'), car, new THREE.Vector3(-0.3, SEAT_Y, -0.36));
       } else {
         for (const [who, offset] of [['skanky', -0.5], ['termite', 0.5]] as const) {
           const actor = a(who);
@@ -891,15 +924,20 @@ export class StoryStage {
     gate.position.x = 6.3 * open;
     gate.getObjectByName('lock')!.visible = open < 0.2;
     const drive = ease(cueProgress(cutscene, 'walk-in'));
-    const queue: [string, string, number, number][] = id === 'opener-3'
-      ? [['car-skanky', 'skanky', 0, 5.2], ['car-brian', 'brian', -6.5, 6.5], ['car-fruitloop', 'fruitloop', 6.5, 6.5], ['car-doris', 'doris', -12.5, 7.2]]
-      : [['car-skanky', 'skanky', 0, 5.2], ['car-doris', 'doris', -6.5, 6.5], ['car-hussan', 'hussan', 6.5, 6.5]];
-    queue.forEach(([name, driver, x, z], index) => {
+    // [car, driver, waiting spot x/z, parking stall x]
+    const queue: [string, string, number, number, number][] = id === 'opener-3'
+      ? [['car-skanky', 'skanky', 0, 5.2, 2.5], ['car-brian', 'brian', -6.5, 6.5, -3.5], ['car-fruitloop', 'fruitloop', 6.5, 6.5, 5.5], ['car-doris', 'doris', -12.5, 7.2, -6.5]]
+      : [['car-skanky', 'skanky', 0, 5.2, 2.5], ['car-doris', 'doris', -6.5, 6.5, -3.5], ['car-hussan', 'hussan', 6.5, 6.5, 5.5]];
+    queue.forEach(([name, driver, x, z, stall], index) => {
       const car = props[name];
-      const go = Math.max(0, Math.min(1, drive * 1.6 - index * 0.25));
-      this.placeCar(car, mix(x, x * 0.3, go), mix(z, -4 - index * 0.3, go), toGate);
-      this.seat(a(driver), car, new THREE.Vector3(-0.3, 0.32, 0.36));
-      if (name === 'car-skanky') this.seat(a('termite'), car, new THREE.Vector3(-0.3, 0.32, -0.36));
+      // One at a time: out to the gate line, straight through, then into a stall.
+      const go = THREE.MathUtils.clamp((drive - 0.3 - index * 0.16) / 0.36, 0, 1);
+      const path: [number, number][] = x === 0 ? [[x, z], [0, -1.2], [stall, -2.6], [stall, -5.2]]
+        : [[x, z], [x * 0.25, 3.8], [0, 2.6], [0, -1.2], [stall, -2.6], [stall, -5.2]];
+      const at = go <= 0 ? { x, z, h: toGate } : alongPath(path, ease(go));
+      this.placeCar(car, at.x, at.z, at.h);
+      this.seat(a(driver), car, new THREE.Vector3(-0.3, SEAT_Y, 0.36));
+      if (name === 'car-skanky') this.seat(a('termite'), car, new THREE.Vector3(-0.3, SEAT_Y, -0.36));
     });
     if (id === 'opener-1') {
       a('doris').setPose(cueProgress(cutscene, 'doris-smoke') > 0 ? 'phone' : 'sit', time);
@@ -926,7 +964,11 @@ export class StoryStage {
     const walk = ease(cueProgress(cutscene, 'shan-at-gate'));
     shan.root.visible = walk > 0;
     shan.pose = 'none';
-    shan.at(mix(9.5, -1.2, walk) + mix(0, 2.5, drive), mix(9.0, 1.0, walk) + mix(0, -6, drive));
+    // Through the gate first and over toward the dispatch door, clear of the cars.
+    const inside = Math.min(1, drive / 0.3);
+    // From his car round the front of the waiting car beside it, to the gate.
+    const toGatePath = alongPath([[9.5, 9.0], [8.6, 2.0], [-1.2, 1.0]], walk);
+    shan.at(toGatePath.x + mix(0, 7.4, inside), toGatePath.z + mix(0, -9.6, inside));
     shan.faceAngle = walk >= 1 && drive <= 0 ? Math.PI : null;
     if (walk >= 1 && open <= 0) shan.setPose('press', time);
     props.shanCoffee.visible = id === 'opener-3' && walk > 0;
@@ -987,12 +1029,12 @@ export class StoryStage {
     props.stain.visible = false;
     if (variant === 'timhortons-2') {
       // Everyone is in the car; the donut box is on Skanky's lap.
-      this.seat(a('skanky'), car, new THREE.Vector3(0.2, 0.32, 0.36));
-      this.seat(a('termite'), car, new THREE.Vector3(0.2, 0.32, -0.36));
-      this.seat(a('doris'), car, new THREE.Vector3(-0.8, 0.32, 0.36));
-      this.seat(a('brian'), car, new THREE.Vector3(-0.8, 0.32, -0.36));
+      this.seat(a('skanky'), car, new THREE.Vector3(0.2, SEAT_Y, 0.36));
+      this.seat(a('termite'), car, new THREE.Vector3(0.2, SEAT_Y, -0.36));
+      this.seat(a('doris'), car, new THREE.Vector3(-0.8, SEAT_Y, 0.36));
+      this.seat(a('brian'), car, new THREE.Vector3(-0.8, SEAT_Y, -0.36));
       props.tray.visible = false;
-      props.donutBox.position.copy(car.localToWorld(new THREE.Vector3(0.45, 0.85, 0.36)));
+      props.donutBox.position.copy(car.localToWorld(new THREE.Vector3(0.5, 1.0, 0.36)));
       props.lid.rotation.x = -1.6;
       a('brian').character.head.rotation.x = Math.sin(time * 9) * 0.08;
       const back = cueProgress(cutscene, 'back-seat');
@@ -1059,23 +1101,29 @@ export class StoryStage {
     props.gate.position.x = 6.3;
     props.gate.getObjectByName('lock')!.visible = false;
     this.placeCar(props.fiveTon, lotX(330), lotZ(360), 0);
+    // Skanky's car is in the stall past the five-ton. He walks round the truck
+    // to it, backs out, and leaves through the open gate.
     const car = props['car-skanky'];
     const walk = ease(cueProgress(cutscene, 'car'));
     const leave = ease(cueProgress(cutscene, 'drive-home'));
-    const path = leave < 0.5 ? { x: mix(-6, 0, leave * 2), z: mix(-5.4, 2, leave * 2), h: mix(Math.PI / 2, -Math.PI / 2, leave * 2) }
-      : { x: mix(0, -30, leave * 2 - 1), z: mix(2, 9, leave * 2 - 1), h: Math.PI };
-    this.placeCar(car, path.x, path.z, path.h);
+    const stall = { x: -9.5, z: -5.2 };
+    const backedOut = { x: -10.6, z: -1.6 };
+    const at = leave < 0.25
+      ? { x: mix(stall.x, backedOut.x, leave / 0.25), z: mix(stall.z, backedOut.z, leave / 0.25), h: mix(Math.PI / 2, 0, leave / 0.25) }
+      : alongPath([[backedOut.x, backedOut.z], [-2, -1.6], [0, 0.6], [-1.5, 4], [-30, 8.5]], (leave - 0.25) / 0.75);
+    this.placeCar(car, at.x, at.z, at.h);
     if (walk < 1) {
       skanky.root.visible = true;
       skanky.pose = 'none';
       skanky.faceAngle = null;
-      skanky.at(mix(9.5, -6, walk), mix(-12.8, -3.9, walk));
-    } else this.seat(skanky, car, new THREE.Vector3(-0.3, 0.32, 0.36));
+      const step = alongPath([[9.5, -12.8], [0.5, -3.0], [-8.3, -3.0], [-8.3, -4.9]], walk);
+      skanky.at(step.x, step.z);
+    } else this.seat(skanky, car, new THREE.Vector3(-0.3, SEAT_Y, 0.36));
     const phone = props.phoneGlow as THREE.PointLight;
     const phoneOn = cueProgress(cutscene, 'phone') > 0 && leave <= 0;
     phone.intensity = phoneOn ? 4 + Math.sin(time * 6) : 0;
     phone.position.copy(skanky.root.position).add(new THREE.Vector3(0, 1.3, 0));
-    this.cameraTo(new THREE.Vector3(3, 6, 12), new THREE.Vector3(-3, 1, -4), this.frameDt, cutscene.index === 0 && cutscene.elapsedMs < 50);
+    this.cameraTo(new THREE.Vector3(2, 6.5, 12), new THREE.Vector3(-4.5, 1, -4), this.frameDt, cutscene.index === 0 && cutscene.elapsedMs < 50);
   }
 
   // ------------------------------------------------------------------ mall and lot gameplay
@@ -1193,7 +1241,7 @@ export class StoryStage {
     for (const [name, prop] of Object.entries(stage.props)) if (name.startsWith('car-') || name.startsWith('park-')) prop.visible = false;
     stage.props.gate.position.x = 6.3;
     stage.props.gate.getObjectByName('lock')!.visible = false;
-    this.placeCar(stage.props['car-skanky'], -6, -5.4, Math.PI / 2);
+    this.placeCar(stage.props['car-skanky'], -9.5, -5.2, Math.PI / 2);
     const truck = stage.props.fiveTon;
     truck.visible = true;
     truck.position.set(lotX(LOT_LAYOUT.truck.x + LOT_LAYOUT.truck.w / 2), 0, lotZ(LOT_LAYOUT.truck.y + LOT_LAYOUT.truck.h / 2));
@@ -1288,7 +1336,8 @@ export function directDepot(cast: DepotCast, cutscene: Cutscene, dt: number, tim
   const catches = ease(cueProgress(cutscene, 'shan-catches'));
   placeWorker('skanky', 560, 650, face([560, 650], [500, 640]), 'none');
   placeWorker('termite', mix(410, 365, leaves), mix(650, 900, leaves), leaves > 0 ? 0 : face([410, 650], [500, 640]), 'none');
-  shan.place(mix(480, 506, catches), mix(560, 640, catches));
+  // Down the east side of the bulk pallet, never through it.
+  shan.place(mix(532, 526, catches), mix(560, 652, catches));
   shan.faceAngle = Math.PI / 2;
   shan.setPoseAt(cutscene.beat.speaker === 'shan' ? 'announce' : 'none', time);
   crew.animateActors(dt, time, new Set(['shan']));
