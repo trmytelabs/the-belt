@@ -1,4 +1,4 @@
-import { CITY, CITY_BUILDINGS, CITY_SIGNALS, DESTINATIONS, SPAWNS, angleDelta, cityRoute, nearestRoad, separation, signalColor, trafficPose,
+import { CITY, CITY_BUILDINGS, CITY_SIGNALS, DESTINATIONS, SPAWNS, TERMINALS, angleDelta, inLoadingYard, nearestRoad, separation, signalColor, trafficPose,
   type CityAxis, type CityPoint, type CityPose, type CitySignal } from './drivingCity.ts';
 
 export type DriveDestination = 'mall' | 'ups';
@@ -8,7 +8,7 @@ export type DriveEvent = { type: 'collision'; kind: 'car' | 'cone' | 'building';
 const clamp = (n: number, a: number, b: number): number => Math.max(a, Math.min(b, n));
 export const DRIVING = {
   maxSpeed: 18, acceleration: 9, braking: 20, coast: 2, reverseSpeed: 4,
-  collisionPoints: 5, collisionCooldown: 1.5, slowdownSeconds: 0.8,
+  collisionPoints: 100, collisionCooldown: 1.5, slowdownSeconds: 0.8,
   parkingApproach: 24, parkingDistance: 6, parkingSpeed: 1.8, turnRate: 1.65,
 } as const;
 
@@ -60,8 +60,8 @@ export class DrivingModel {
     this.obstacles = [
       ...[30, 36, 42, 48, 54, 60].map((x, i): RoadObstacle => ({ id: `cone-${i}`, kind: 'cone', x, z: -45.7,
         heading: 0, speed: 0, travel: 0, route: 0, hit: false })),
-      ...Array.from({ length: 16 }, (_, i): RoadObstacle => {
-        const route = i % 3, speed = (i % 2 ? -1 : 1) * (7 + i % 3), travel = i === 10 ? 642 : i === 4 ? 310 : i === 12 ? 700 : 42 + i * 47;
+      ...Array.from({ length: 28 }, (_, i): RoadObstacle => {
+        const route = i % 3, speed = (i % 2 ? -1 : 1) * (7 + i % 3), travel = 42 + i * 47;
         const pose = trafficPose(route, travel, speed < 0);
         return { id: `car-${i}`, kind: 'car', ...pose, speed, travel, route, hit: false };
       }),
@@ -71,8 +71,8 @@ export class DrivingModel {
   public get goal(): CityPoint { return DESTINATIONS[this.destination]; }
   public get remaining(): number { return separation(this, this.goal); }
   public get pose(): CityPose { return { x: this.x, z: this.z, heading: this.heading, tx: Math.cos(this.heading), tz: -Math.sin(this.heading) }; }
-  public get offRoad(): boolean { return nearestRoad(this).distance > CITY.roadHalfWidth + 3; }
-  public get canPark(): boolean { return !this.parked && this.remaining <= DRIVING.parkingDistance && Math.abs(this.speed) <= DRIVING.parkingSpeed; }
+  public get offRoad(): boolean { return !inLoadingYard(this) && nearestRoad(this).distance > CITY.roadHalfWidth + 3; }
+  public get canPark(): boolean { return !this.parked && inLoadingYard(this, this.destination) && this.remaining <= DRIVING.parkingDistance && Math.abs(this.speed) <= DRIVING.parkingSpeed; }
   private get axis(): CityAxis { return Math.abs(Math.cos(this.heading)) < Math.abs(Math.sin(this.heading)) ? 'ns' : 'ew'; }
   public signalColor(signal: CitySignal, axis = this.axis): 'red' | 'amber' | 'green' { return signalColor(signal, this.elapsed, axis); }
   public signalDistance(signal: CitySignal): number {
@@ -85,12 +85,11 @@ export class DrivingModel {
       return along > 10 && along < 50 && Math.abs(dx * -p.tz + dz * p.tx) < 6;
     }).sort((a, b) => this.signalDistance(a) - this.signalDistance(b))[0];
   }
-  public get navigation(): { angle: number; target: CityPoint; route: CityPoint[]; instruction: string } {
-    const route = cityRoute(this, this.goal, this.heading);
-    const target = this.remaining < 16 ? this.goal : route.slice(1).find(p => separation(p, this) > 9) ?? this.goal;
+  public get navigation(): { angle: number; target: CityPoint; instruction: string } {
+    const target = this.goal;
     const angle = angleDelta(this.heading - Math.atan2(-(target.z - this.z), target.x - this.x));
-    const instruction = this.canPark ? 'PARK IN THE LIT BAY' : Math.abs(angle) > 2.3 ? 'TURN AROUND' : angle < -0.35 ? 'LEFT AT THE NEXT STREET' : angle > 0.35 ? 'RIGHT AT THE NEXT STREET' : 'STRAIGHT TO THE NEXT TURN';
-    return { angle, target, route, instruction };
+    const instruction = this.canPark ? 'PARK IN THE LIT BAY' : Math.abs(angle) > 2.3 ? 'DESTINATION BEHIND YOU' : angle < -0.35 ? 'DESTINATION TO YOUR LEFT' : angle > 0.35 ? 'DESTINATION TO YOUR RIGHT' : 'DESTINATION AHEAD';
+    return { angle, target, instruction };
   }
   public get objective(): string {
     if (this.canPark) return 'SPACE to park · cargo safe';
@@ -98,7 +97,7 @@ export class DrivingModel {
     if (this.slowdown > 0) return 'Easy does it · cargo safe · keep driving';
     const signal = this.nextSignal;
     if (signal && this.signalDistance(signal) < 22 && this.signalColor(signal) !== 'green') return `${this.signalColor(signal).toUpperCase()} LIGHT · S / ↓ brake before the line`;
-    return this.speed < -0.1 ? 'REVERSING · W / ↑ to drive forward' : this.offRoad ? 'Soft verge · follow the arrow back to a street' : 'Take any street · follow the yellow arrow to the bay';
+    return this.speed < -0.1 ? 'REVERSING · W / ↑ to drive forward' : this.offRoad ? 'Soft verge · steer back onto a street' : 'Green arrow points to the destination · choose your streets';
   }
   public park(): boolean {
     if (this.paused || !this.canPark) return false;
@@ -136,7 +135,8 @@ export class DrivingModel {
     this.x += p.tx * this.speed * dt; this.z += p.tz * this.speed * dt;
     if (this.x < CITY.minX + 3 || this.x > CITY.maxX - 3) { this.x = clamp(this.x, CITY.minX + 3, CITY.maxX - 3); this.heading = angleDelta(Math.PI - this.heading); this.speed *= 0.6; }
     if (this.z < CITY.minZ + 3 || this.z > CITY.maxZ - 3) { this.z = clamp(this.z, CITY.minZ + 3, CITY.maxZ - 3); this.heading = -this.heading; this.speed *= 0.6; }
-    const solids = [...CITY_BUILDINGS, { x: 0, z: 49, width: 34, depth: 10 }, { x: 120, z: -249, width: 34, depth: 10 }];
+    const solids = [...CITY_BUILDINGS, { x: TERMINALS.ups.x, z: TERMINALS.ups.z + 29, width: 34, depth: 10 },
+      { x: TERMINALS.mall.x, z: TERMINALS.mall.z - 29, width: 34, depth: 10 }];
     for (const [index, building] of solids.entries()) {
       const push = penetration({ ...this, length: 6, width: 2.4 }, { ...building, heading: 0, length: building.width, width: building.depth });
       if (!push) continue;
@@ -161,6 +161,12 @@ export class DrivingModel {
           if (signalColor(signal, this.elapsed, Math.abs(old.tx) < Math.abs(old.tz) ? 'ns' : 'ew') === 'green') continue;
           const dx = signal.x - old.x, dz = signal.z - old.z, along = dx * old.tx + dz * old.tz;
           if (Math.abs(dx * -old.tz + dz * old.tx) < 6 && along >= 11 && along - move < 11) move = Math.max(0, along - 11);
+        }
+        for (const other of this.obstacles) {
+          if (other === obstacle || other.kind !== 'car') continue;
+          const alignment = old.tx * Math.cos(other.heading) - old.tz * Math.sin(other.heading);
+          const dx = other.x - old.x, dz = other.z - old.z, ahead = dx * old.tx + dz * old.tz;
+          if (alignment > 0.7 && ahead > 0 && ahead < 9 && Math.abs(dx * -old.tz + dz * old.tx) < 2.2) move = Math.min(move, Math.max(0, ahead - 7));
         }
         obstacle.travel += Math.sign(obstacle.speed) * move;
         Object.assign(obstacle, trafficPose(obstacle.route, obstacle.travel, obstacle.speed < 0));

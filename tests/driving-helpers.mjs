@@ -71,7 +71,7 @@ export async function driveJourney(page, destination) {
   const keys = await driveToBay(page);
   assert.ok((keys.has('ArrowLeft') || keys.has('ArrowRight')) && keys.has('ArrowDown'), 'real steering and braking reach the destination');
   const elapsed = await page.evaluate(() => window.fixtureApp.driving.elapsed);
-  assert.ok(elapsed >= 20 && elapsed <= 30, `drive to ${destination}: ${elapsed.toFixed(2)} simulation seconds`);
+  assert.ok(elapsed >= 35 && elapsed <= 70, `drive to ${destination}: ${elapsed.toFixed(2)} simulation seconds`);
   await page.keyboard.press('Space');
   await page.waitForFunction(target => target === 'mall' ? window.fixtureApp.cutscene?.scene.id === 'mall-intro' : window.fixtureApp.state === 'lot', destination, { polling: 10, timeout: 30_000 });
   assert.equal(await page.evaluate(() => window.fixtureApp.driving.parked), true);

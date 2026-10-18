@@ -406,11 +406,11 @@ export class Belt3d {
   private showBriefing(): void {
     if (this.practiceDestination) {
       this.overlay.setMode('chapter');
-      this.overlay.storyTitle('TRY THE FIVE-TON', 'DRIVING PRACTICE', '~25 SECONDS');
+      this.overlay.storyTitle('TRY THE FIVE-TON', 'DRIVING PRACTICE', 'EXPLORE THE CITY');
       this.overlay.showPanel(`<div class="kicker">THE BELT · 3D DRIVING PRACTICE</div><h1>TAKE THE FIVE-TON FOR A SPIN.</h1>
-        <p>Explore the city or drive straight to the mall. Real intersections, alternate routes and no time limit. The direct trip is about 25 seconds.</p>
+        <p>Explore the expanded city or drive straight to Southgate Mall. Real intersections, alternate routes and no time limit. Direct trips take around 45 seconds.</p>
         <p>${this.touch.enabled ? 'The stick steers. Hold GAS to accelerate and BRAKE to slow. Tap PARK in the lit bay.' : 'W / ↑ accelerates. A D / ← → steers. S / ↓ brakes. SPACE parks in the lit bay.'}</p>
-        <p>The yellow arrow guides you to your destination and updates when you take another turn. Brake at red lights. Hold BRAKE / S to reverse. ESC / PAUSE holds the road; M / MUTE controls sound.</p>
+        <p>The green 3D compass points directly toward your destination. Choose streets that head that way. Bumps and red lights cost 100 points. Hold BRAKE / S to reverse. ESC / PAUSE holds the road; M / MUTE controls sound.</p>
         <button type="button">START DRIVE  ↵</button><a href="${window.location.pathname}?mode=3d">PLAY THE FULL NIGHT</a>`, () => this.startNight());
       return;
     }
@@ -433,7 +433,7 @@ export class Belt3d {
       <p>F throws toward the nearest drop. At the top of the stairs, throw down with a 30% break risk. E brakes. V overview.</p>
       <p>Story scenes: SPACE next line, ENTER skips the scene, ESC pauses.</p>`}
       <button type="button">START THE NIGHT  ↵</button>
-      <a href="${window.location.pathname}?mode=3d&amp;drive=mall">TRY JUST THE DRIVE · ~25 SECONDS</a>
+      <a href="${window.location.pathname}?mode=3d&amp;drive=mall">TRY JUST THE DRIVE · EXPLORE THE CITY</a>
       <a href="${window.location.pathname}?mode=2d">PLAY THE 2D DEPOT</a>
       <a href="${window.location.pathname}?mode=classic">PLAY THE ORIGINAL FULL SHIFT</a>`, () => this.startNight());
   }
@@ -571,7 +571,7 @@ export class Belt3d {
     this.overlay.setMode('chapter');
     this.overlay.storyTitle(destination === 'mall' ? 'UPS → SOUTHGATE MALL' : 'SOUTHGATE MALL → UPS',
       'SKANKY · FIVE-TON · FREE DRIVE', destination === 'mall' ? '5:05 AM' : '6:10 AM');
-    this.overlay.showToast(this.touch.enabled ? 'Take any street · follow the yellow arrow · hold GAS · BRAKE / reverse' : 'Take any street · W / ↑ GAS · A D / ← → STEER · S / ↓ BRAKE / reverse', 4500);
+    this.overlay.showToast(this.touch.enabled ? 'Green compass points to the bay · hold GAS · BRAKE / reverse' : 'Green compass points to the bay · W / ↑ GAS · A D / ← → STEER · S / ↓ BRAKE / reverse', 4500);
     audioSystem.startMusic('game');
   }
 

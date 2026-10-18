@@ -40,7 +40,8 @@ const CSS = `
 .b3d.touch.driving .b3d-chapterhud .objective { grid-column: 1 / -1; min-width: 0; font-size: 12px; }
 .b3d.touch.driving .b3d-toast { top: 310px; width: max-content; max-width: calc(100% - 32px); box-sizing: border-box; }
 @media (max-height: 520px) {
-  .b3d.touch.chapter.driving .b3d-chapterhud { top: 100px; }
+  .b3d.touch.chapter.driving .b3d-chapterhud { top: 108px; }
+  .b3d.touch.chapter.driving .b3d-corner { top: 174px; }
   .b3d.touch.driving .b3d-toast { top: 212px; }
 }
 .b3d-actions button.down, .b3d-corner button.down { background: #edba6d; color: #10232a; }

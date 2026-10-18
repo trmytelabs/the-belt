@@ -100,14 +100,15 @@ const CSS = `
 .b3d-chapterhud .stat b { font: 800 20px 'Segoe UI', Arial, sans-serif; }
 .b3d-chapterhud .objective { flex: 1; min-width: 200px; font-weight: 700; font-size: 14px; color: #f3e6c6; }
 .b3d-chapterhud .keys { color: #8eaaae; font-size: 11px; letter-spacing: 1px; }
-.b3d-drive-nav { position: absolute; z-index: 3; top: 98px; left: 50%; transform: translateX(-50%); width: 210px; text-align: center; pointer-events: none; text-shadow: 0 2px 6px #000; }
+.b3d-drive-nav { position: absolute; z-index: 3; top: 118px; left: 50%; transform: translateX(-50%); width: 210px; text-align: center; pointer-events: none; text-shadow: 0 2px 6px #000; }
 .b3d-drive-nav[hidden] { display: none; }
 .b3d-drive-nav b, .b3d-drive-nav small { display: block; width: max-content; max-width: 100%; margin: 2px auto 0; background: #0b171cdd; border-radius: 4px; padding: 3px 7px; }
-.b3d-drive-nav b { color: #ffda7e; font-size: 12px; letter-spacing: 1px; }
+.b3d-drive-nav b { color: #adf176; font-size: 12px; letter-spacing: 1px; }
 .b3d-drive-nav small { color: #f0eddb; font-size: 10px; }
-.b3d.driving .b3d-toast { top: 146px; }
+.b3d.driving .b3d-toast { top: 178px; }
 @media (max-width: 600px) { .b3d.touch.driving .b3d-drive-nav { top: 240px; left: auto; right: 10px; transform: none; width: 164px; } .b3d.touch.driving .b3d-toast { top: 310px; } }
-@media (max-height: 520px) { .b3d-drive-nav { top: 60px; width: 180px; } .b3d-drive-nav b { font-size: 10px; } .b3d-drive-nav small { font-size: 8px; padding: 1px 4px; } }
+@media (max-width: 600px) { .b3d.touch.driving .b3d-drive-nav b { font-size: 11px; letter-spacing: .5px; } }
+@media (max-height: 520px) { .b3d-drive-nav { top: 66px; width: 180px; } .b3d-drive-nav b { font-size: 10px; } .b3d-drive-nav small { font-size: 8px; padding: 1px 4px; } }
 .b3d-routes { color: #8eaaae; font-size: 11px; letter-spacing: 1px; white-space: nowrap; }
 .b3d-routes i { font-style: normal; font-weight: 800; padding: 0 3px; border-radius: 3px; color: #12232a; }
 @media (max-width: 1180px) { .b3d-routes { display: none; } }

@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { chromium } from 'playwright';
 import { preview } from 'vite';
 import { driveJourney, driveToBay, touchDriveToBay } from './driving-helpers.mjs';
+import { SPAWNS, DESTINATIONS } from '../src/three/drivingCity.ts';
 
 const server = await preview({ preview: { host: '127.0.0.1', port: 0 }, logLevel: 'silent' });
 const browser = await chromium.launch({ headless: true,
@@ -55,8 +56,8 @@ try {
   assert.ok(await page.evaluate(() => {
     const view = window.fixtureApp.drivingView, pointer = view.navigation.pointer;
     pointer.geometry.computeBoundingBox();
-    return pointer.geometry.type === 'ExtrudeGeometry' && pointer.geometry.boundingBox.max.z - pointer.geometry.boundingBox.min.z > 0.35
-      && view.scene.children.filter(c => c.name === 'city-building').length >= 50;
+    return pointer.geometry.type === 'ExtrudeGeometry' && pointer.geometry.boundingBox.max.y - pointer.geometry.boundingBox.min.y > 0.35
+      && view.scene.children.filter(c => c.name === 'city-building').length >= 120;
   }), 'the larger city has a solid three-dimensional navigation arrow');
   assert.match(await page.locator('.b3d-drive-nav').innerText(), /SOUTHGATE MALL/);
   await page.keyboard.press('Enter');
@@ -81,8 +82,8 @@ try {
   await page.keyboard.down('KeyW');
   await page.waitForFunction(() => window.fixtureApp.driving.collisions === 1, null, { polling: 10 });
   await page.keyboard.up('KeyW');
-  assert.equal(await page.evaluate(() => window.fixtureApp.drivingPenalty), 5);
-  assert.match(await page.locator('.b3d-chapterhud').innerText(), /995|SAFE/);
+  assert.equal(await page.evaluate(() => window.fixtureApp.drivingPenalty), 100);
+  assert.match(await page.locator('.b3d-chapterhud').innerText(), /900|SAFE/);
   const beforePause = await page.evaluate(() => ({ elapsed: window.fixtureApp.driving.elapsed, distance: window.fixtureApp.driving.distance }));
   await page.keyboard.press('Escape');
   await page.waitForFunction(() => window.fixtureApp.state === 'paused', null, { polling: 10 });
@@ -99,9 +100,11 @@ try {
   await page.waitForFunction(() => window.fixtureApp.cutscene?.scene.id === 'mall-intro', null, { polling: 10 });
   await page.keyboard.press('Enter');
   await page.waitForFunction(() => window.fixtureApp.state === 'mall', null, { polling: 10 });
-  assert.deepEqual(await page.evaluate(() => ({ bundles: window.fixtureApp.mall.truckBundles.length, delivered: window.fixtureApp.mall.delivered, signed: window.fixtureApp.mall.signatures, penalty: window.fixtureApp.drivingPenalty })),
-    { bundles: 6, delivered: 0, signed: 0, penalty: 5 });
-  console.log('PASS keyboard gas/steer/brake, explicit parking, collision/slowdown, five-point deduction, paused inputs and intact mall cargo');
+  assert.deepEqual(await page.evaluate(() => ({ bundles: window.fixtureApp.mall.truckBundles.length, delivered: window.fixtureApp.mall.delivered, signed: window.fixtureApp.mall.signatures })),
+    { bundles: 6, delivered: 0, signed: 0 });
+  assert.ok(await page.evaluate(() => window.fixtureApp.drivingPenalty >= 100 && window.fixtureApp.drivingPenalty === window.fixtureApp.driving.penalty));
+  assert.ok(await page.evaluate(() => window.fixtureApp.driving.z < -291), 'the mall truck parks in the loading yard beyond the public road');
+  console.log('PASS keyboard gas/steer/brake, loading-yard parking, collision/slowdown, 100-point deductions, paused inputs and intact mall cargo');
 
   // The full story suite delivers and signs all six bundles; this isolates the return road.
   await page.evaluate(() => window.fixtureApp.beginDriving('ups'));
@@ -109,12 +112,13 @@ try {
   assert.equal(await page.evaluate(() => window.fixtureApp.lot.done), false, 'the drive still requires returning the keys');
   const roadBefore = await page.evaluate(() => window.fixtureApp.drivingView.scene.children.length);
   const deductions = await page.evaluate(() => ({ bumps: window.fixtureApp.drivingCollisions, red: window.fixtureApp.drivingRedLights, penalty: window.fixtureApp.drivingPenalty }));
-  assert.equal(deductions.penalty, (deductions.bumps + deductions.red) * 5, 'each traffic incident charges exactly once');
+  assert.equal(deductions.penalty, (deductions.bumps + deductions.red) * 100, 'each traffic incident charges exactly once');
+  assert.ok(await page.evaluate(() => window.fixtureApp.driving.z > 91), 'UPS parking is inside its own loading yard');
   await page.evaluate(() => window.fixtureApp.showResults());
   const results = await page.locator('.b3d-panel').innerText();
   assert.ok(results.includes(`DRIVING · ${deductions.bumps} bumps`));
   assert.ok(results.includes(`−${deductions.penalty} points · cargo safe`));
-  assert.ok(results.includes(`NIGHT TOTAL ${String(1000 - deductions.penalty).padStart(5, '0')}`));
+  assert.ok(results.includes(`NIGHT TOTAL ${String(Math.max(0, 1000 - deductions.penalty)).padStart(5, '0')}`));
   assert.equal(await page.evaluate(() => window.fixtureApp.model.score), 1000, 'driving leaves warehouse scoring and grade inputs intact');
   await page.evaluate(() => window.fixtureApp.restart());
   assert.deepEqual(await page.evaluate(() => ({ state: window.fixtureApp.state, drive: window.fixtureApp.driving, penalty: window.fixtureApp.drivingPenalty, bumps: window.fixtureApp.drivingCollisions, gas: window.fixtureApp.touch.pedals.throttle })),
@@ -174,16 +178,17 @@ try {
   await practice.goto(`${server.resolvedUrls.local[0]}?mode=3d&drive=mall`);
   await practice.getByRole('button', { name: 'START DRIVE', exact: false }).click();
   await practice.waitForFunction(() => window.fixtureApp?.state === 'driving', null, { timeout: 90_000 });
-  const via = [{ x: 2.6, z: 20 }, { x: -60, z: 20 }, { x: -60, z: -100 }, { x: 60, z: -100 }, { x: 60, z: -220 }, { x: 122.6, z: -220 }];
+  const via = [SPAWNS.mall, { x: -60, z: 80 }, { x: -120, z: 80 }, { x: -120, z: -100 }, { x: 0, z: -100 }, { x: 0, z: -280 }, { x: 180, z: -280 }, DESTINATIONS.mall];
   const used = await driveToBay(practice, via);
   assert.ok(used.has('ArrowLeft') && used.has('ArrowRight'), 'a real alternative route turns both ways');
-  assert.ok(await practice.evaluate(() => window.fixtureApp.driving.distance > 450 && window.fixtureApp.driving.elapsed > 30), 'exploration has no forced time limit or road rail');
+  const explored = await practice.evaluate(() => ({ distance: window.fixtureApp.driving.distance, elapsed: window.fixtureApp.driving.elapsed }));
+  assert.ok(explored.distance > 700 && explored.elapsed > 45, `exploration has no forced time limit or road rail: ${JSON.stringify(explored)}`);
   assert.ok(await practice.evaluate(() => {
     const { driving: m, drivingView: v } = window.fixtureApp;
     const target = v.navigation.root.userData.target, direction = v.camera.getWorldDirection(v.look.clone());
     const cameraHeading = Math.atan2(-direction.z, direction.x), targetHeading = Math.atan2(-(target.z - m.z), target.x - m.x);
     const expected = Math.atan2(Math.sin(cameraHeading - targetHeading), Math.cos(cameraHeading - targetHeading));
-    return Math.abs(expected + v.navigation.pointer.rotation.z) < 0.02 && Math.hypot(target.x - m.goal.x, target.z - m.goal.z) < 0.01;
+    return Math.abs(expected + v.navigation.pointer.rotation.y) < 0.02 && Math.hypot(target.x - m.goal.x, target.z - m.goal.z) < 0.01;
   }), 'the 3D arrow accounts for camera lag and points accurately at the final bay');
   await practice.keyboard.press('Space');
   await practice.getByRole('heading', { name: 'TRUCK PARKED. NICE.', exact: true }).waitFor();

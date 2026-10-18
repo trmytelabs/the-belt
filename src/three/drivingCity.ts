@@ -6,17 +6,32 @@ export interface CitySignal extends CityPoint { id: string; phase: number }
 export interface CityBuilding extends CityPoint { width: number; depth: number; height: number; variant: number }
 
 export const CITY = {
-  streetsX: [-60, 0, 60, 120], streetsZ: [20, -40, -100, -160, -220],
-  minX: -105, maxX: 165, minZ: -275, maxZ: 75, roadHalfWidth: 7,
-  groundWidth: 420, groundDepth: 600,
+  streetsX: [-120, -60, 0, 60, 120, 180], streetsZ: [80, 20, -40, -100, -160, -220, -280],
+  minX: -170, maxX: 230, minZ: -335, maxZ: 137.5, roadHalfWidth: 7,
+  groundWidth: 600, groundDepth: 840,
 } as const;
-export const DESTINATIONS = { ups: { x: -2.6, z: 20 }, mall: { x: 122.6, z: -220 } } as const;
-export const SPAWNS = { mall: { x: 2.6, z: 20, heading: Math.PI / 2 }, ups: { x: 117.4, z: -220, heading: -Math.PI / 2 } } as const;
+export const TERMINALS = { ups: { x: -60, z: 80 }, mall: { x: 180, z: -280 } } as const;
+export const streetExtent = (x: number): { minZ: number; maxZ: number } => ({
+  minZ: x === TERMINALS.mall.x ? TERMINALS.mall.z - 3 : CITY.minZ,
+  maxZ: x === TERMINALS.ups.x ? TERMINALS.ups.z + 3 : CITY.maxZ,
+});
+export const DESTINATIONS = { ups: { x: -60, z: 98 }, mall: { x: 180, z: -298 } } as const;
+export const SPAWNS = { mall: { x: -60, z: 88, heading: Math.PI / 2 }, ups: { x: 180, z: -288, heading: -Math.PI / 2 } } as const;
+/** The paved part of a loading yard beyond the public street and sidewalk. */
+export function inLoadingYard(point: CityPoint, destination?: 'ups' | 'mall'): boolean {
+  return (destination ? [destination] : ['ups', 'mall'] as const).some(id => {
+    const terminal = TERMINALS[id], end = id === 'ups' ? 1 : -1, depth = (point.z - terminal.z) * end;
+    return Math.abs(point.x - terminal.x) <= 21 && depth >= 9 && depth <= 25;
+  });
+}
 export const CITY_SIGNALS: CitySignal[] = [
   { id: 'depot-crossing', x: 0, z: -40, phase: 0 },
   { id: 'market-crossing', x: 60, z: -100, phase: 6 },
   { id: 'coffee-crossing', x: 0, z: -160, phase: 3 },
   { id: 'mall-crossing', x: 120, z: -160, phase: 10 },
+  { id: 'north-gate', x: -60, z: 20, phase: 0 },
+  { id: 'library-crossing', x: -60, z: -100, phase: 3 },
+  { id: 'southgate-crossing', x: 180, z: -220, phase: 10 },
 ];
 
 export const CITY_BUILDINGS: CityBuilding[] = [];
@@ -39,7 +54,7 @@ for (let col = 0; col < CITY.streetsX.length - 1; col++) for (let row = 0; row <
       width: variant === 4 ? 17 : 15, depth: 16, height, variant });
   }
 }
-for (const x of [-82, 142]) for (const [index, z] of [-10, -70, -130, -190].entries()) {
+for (const x of [-142, 202]) for (const [index, z] of [50, -10, -70, -130, -190, -250].entries()) {
   const variant = index === 2 ? 1 : 4;
   CITY_BUILDINGS.push({ x, z, width: 17, depth: 18, height: variant === 1 ? 24 : 5 + index * 2, variant });
 }
@@ -47,10 +62,15 @@ for (const x of [-82, 142]) for (const [index, z] of [-10, -70, -130, -190].entr
 export const angleDelta = (angle: number): number => Math.atan2(Math.sin(angle), Math.cos(angle));
 export const separation = (a: CityPoint, b: CityPoint): number => Math.hypot(a.x - b.x, a.z - b.z);
 export function nearestRoad(p: CityPoint): { point: CityPoint; distance: number; axis: CityAxis } {
-  const x = CITY.streetsX.reduce<number>((a, b) => Math.abs(p.x - a) < Math.abs(p.x - b) ? a : b, CITY.streetsX[0]);
-  const z = CITY.streetsZ.reduce<number>((a, b) => Math.abs(p.z - a) < Math.abs(p.z - b) ? a : b, CITY.streetsZ[0]);
-  return Math.abs(p.x - x) < Math.abs(p.z - z) ? { point: { x, z: p.z }, distance: Math.abs(p.x - x), axis: 'ns' }
-    : { point: { x: p.x, z }, distance: Math.abs(p.z - z), axis: 'ew' };
+  const options: { point: CityPoint; distance: number; axis: CityAxis }[] = CITY.streetsX.map(x => {
+    const extent = streetExtent(x), point = { x, z: Math.max(extent.minZ, Math.min(extent.maxZ, p.z)) };
+    return { point, distance: separation(p, point), axis: 'ns' as CityAxis };
+  });
+  options.push(...CITY.streetsZ.map(z => {
+    const point = { x: Math.max(CITY.minX, Math.min(CITY.maxX, p.x)), z };
+    return { point, distance: separation(p, point), axis: 'ew' as CityAxis };
+  }));
+  return options.sort((a, b) => a.distance - b.distance)[0];
 }
 export function signalColor(signal: CitySignal, elapsed: number, axis: CityAxis): 'red' | 'amber' | 'green' {
   const phase = (elapsed + signal.phase) % 12;
@@ -130,16 +150,52 @@ export function roundedRoute(points: readonly CityPoint[], radius = 10): CityPoi
 }
 
 export const TRAFFIC_ROUTES: readonly CityPoint[][] = [
-  [{ x: -60, z: 20 }, { x: -60, z: -220 }, { x: 120, z: -220 }, { x: 120, z: 20 }],
-  [{ x: 0, z: 20 }, { x: 0, z: -160 }, { x: 60, z: -160 }, { x: 60, z: 20 }],
-  [{ x: -60, z: -40 }, { x: 120, z: -40 }, { x: 120, z: -100 }, { x: -60, z: -100 }],
+  [{ x: -120, z: 80 }, { x: -120, z: -280 }, { x: 180, z: -280 }, { x: 180, z: 80 }],
+  [{ x: -60, z: 80 }, { x: -60, z: -160 }, { x: 60, z: -160 }, { x: 60, z: 80 }],
+  [{ x: -120, z: -40 }, { x: 180, z: -40 }, { x: 180, z: -100 }, { x: -120, z: -100 }],
 ];
+
+type LaneSegment = { kind: 'line'; start: CityPoint; end: CityPoint; length: number }
+  | { kind: 'arc'; centre: CityPoint; radius: number; angle: number; turn: number; length: number };
+const trafficLanes = TRAFFIC_ROUTES.map(points => [false, true].map(reverse => {
+  const radius = 10, offset = reverse ? -2.7 : 2.7;
+  const corners = points.map((b, i) => {
+    const a = points[(i + points.length - 1) % points.length], c = points[(i + 1) % points.length];
+    const before = separation(a, b), after = separation(b, c);
+    const u = { x: (b.x - a.x) / before, z: (b.z - a.z) / before }, v = { x: (c.x - b.x) / after, z: (c.z - b.z) / after };
+    const turn = Math.sign(u.x * v.z - u.z * v.x);
+    const entry = { x: b.x - u.x * radius - u.z * offset, z: b.z - u.z * radius + u.x * offset };
+    const exit = { x: b.x + v.x * radius - v.z * offset, z: b.z + v.z * radius + v.x * offset };
+    return { entry, exit, turn, radius: radius - offset * turn,
+      centre: { x: b.x - u.x * radius + v.x * radius, z: b.z - u.z * radius + v.z * radius } };
+  });
+  const segments: LaneSegment[] = [];
+  for (const [i, corner] of corners.entries()) {
+    const r = corner.radius;
+    segments.push({ kind: 'arc', centre: corner.centre, radius: r, turn: corner.turn,
+      angle: Math.atan2(corner.entry.z - corner.centre.z, corner.entry.x - corner.centre.x), length: Math.PI * r / 2 });
+    const next = corners[(i + 1) % corners.length];
+    segments.push({ kind: 'line', start: corner.exit, end: next.entry, length: separation(corner.exit, next.entry) });
+  }
+  return { segments, length: segments.reduce((sum, segment) => sum + segment.length, 0) };
+}));
+
+/** Position and tangent are continuous through every curved junction and loop seam. */
 export function trafficPose(route: number, travel: number, reverse = false): CityPose {
-  const points = TRAFFIC_ROUTES[route], lengths = points.map((p, i) => separation(p, points[(i + 1) % points.length]));
-  const total = lengths.reduce((a, b) => a + b, 0), sign = reverse ? -1 : 1;
-  let distance = (travel % total + total) % total, index = 0;
-  while (distance > lengths[index] && index < points.length - 1) distance -= lengths[index++];
-  const a = points[index], b = points[(index + 1) % points.length], t = distance / lengths[index];
-  const tx = (b.x - a.x) / lengths[index] * sign, tz = (b.z - a.z) / lengths[index] * sign;
-  return { x: a.x + (b.x - a.x) * t - tz * 2.7, z: a.z + (b.z - a.z) * t + tx * 2.7, tx, tz, heading: Math.atan2(-tz, tx) };
+  const lane = trafficLanes[route][reverse ? 1 : 0], sign = reverse ? -1 : 1;
+  let distance = (travel % lane.length + lane.length) % lane.length, segment = lane.segments[0];
+  for (const candidate of lane.segments) {
+    segment = candidate;
+    if (distance <= candidate.length) break;
+    distance -= candidate.length;
+  }
+  if (segment.kind === 'arc') {
+    const angle = segment.angle + segment.turn * distance / segment.radius;
+    const tx = -Math.sin(angle) * segment.turn * sign, tz = Math.cos(angle) * segment.turn * sign;
+    return { x: segment.centre.x + Math.cos(angle) * segment.radius, z: segment.centre.z + Math.sin(angle) * segment.radius,
+      tx, tz, heading: Math.atan2(-tz, tx) };
+  }
+  const t = distance / segment.length, tx = (segment.end.x - segment.start.x) / segment.length * sign, tz = (segment.end.z - segment.start.z) / segment.length * sign;
+  return { x: segment.start.x + (segment.end.x - segment.start.x) * t, z: segment.start.z + (segment.end.z - segment.start.z) * t,
+    tx, tz, heading: Math.atan2(-tz, tx) };
 }

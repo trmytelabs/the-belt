@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { DrivingModel, type DriveDestination } from './DrivingModel';
-import { CITY, CITY_BUILDINGS, CITY_SIGNALS, DESTINATIONS, signalColor, type CityAxis, type CityPoint, type CitySignal } from './drivingCity';
+import { CITY, CITY_BUILDINGS, CITY_SIGNALS, DESTINATIONS, TERMINALS, signalColor, streetExtent, type CityAxis, type CityPoint, type CitySignal } from './drivingCity';
 import { createTruck } from './world';
 import { createCar } from './story';
 import { standard, textPlane } from './space';
@@ -45,9 +45,10 @@ export class DrivingView {
     ground.rotation.x = -Math.PI / 2; ground.position.set(30, -0.04, -100); scene.add(ground);
     const asphalt = standard(0x343e47, 0.95), sidewalk = standard(0x737974, 1), stripe = standard(0xe9e5ce, 0.9), yellow = standard(0xe9bd64, 0.9);
     for (const x of CITY.streetsX) {
-      this.pavement(x, -100, 18, CITY.maxZ - CITY.minZ, sidewalk, -0.01);
-      this.pavement(x, -100, 14, CITY.maxZ - CITY.minZ, asphalt, 0.005);
-      for (let z = CITY.minZ + 3; z < CITY.maxZ; z += 8) {
+      const extent = streetExtent(x), centre = (extent.minZ + extent.maxZ) / 2, length = extent.maxZ - extent.minZ;
+      this.pavement(x, centre, 18, length, sidewalk, -0.01);
+      this.pavement(x, centre, 14, length, asphalt, 0.005);
+      for (let z = extent.minZ + 3; z < extent.maxZ; z += 8) {
         if (CITY.streetsZ.some(crossing => Math.abs(z - crossing) < 11)) continue;
         this.pavement(x, z, 0.12, 3.5, yellow, 0.025);
         for (const side of [-1, 1]) this.pavement(x + side * 6.7, z, 0.1, 7.8, stripe, 0.025);
@@ -73,12 +74,12 @@ export class DrivingView {
       const pool = new THREE.Mesh(new THREE.CircleGeometry(7, 18), new THREE.MeshBasicMaterial({ color: 0xffce8a, transparent: true, opacity: 0.035, depthWrite: false }));
       pool.rotation.x = -Math.PI / 2; pool.position.set(x - Math.sin(heading) * 3, 0.03, z - Math.cos(heading) * 3); scene.add(pool);
     };
-    for (const x of CITY.streetsX) for (let z = -235; z < 45; z += 30) {
+    for (const x of CITY.streetsX) for (let z = -295; z < 105; z += 30) {
       if (CITY.streetsZ.some(row => Math.abs(z - row) < 12)) continue;
       const side = Math.floor(z / 30) % 2 ? -1 : 1;
       lamp(x + side * 8.5, z, side * Math.PI / 2);
     }
-    for (const z of CITY.streetsZ) for (let x = -75; x < 145; x += 30) {
+    for (const z of CITY.streetsZ) for (let x = -135; x < 205; x += 30) {
       if (CITY.streetsX.some(col => Math.abs(x - col) < 12)) continue;
       const side = Math.floor(x / 30) % 2 ? -1 : 1;
       lamp(x, z + side * 8.5, side > 0 ? 0 : Math.PI);
@@ -99,12 +100,12 @@ export class DrivingView {
         sign.position.set(0, 3.3, depth / 2 + 0.03); slot.add(sign);
       }
     }
-    this.terminal({ x: 0, z: 20 }, 'UPS', 'DEPOT 07', 0x443b32, 1);
-    this.terminal({ x: 120, z: -220 }, 'SOUTHGATE MALL', 'LOADING DOCK', 0x4d5354, -1);
+    this.terminal(TERMINALS.ups, 'UPS', 'DEPOT 07', 0x443b32, 1);
+    this.terminal(TERMINALS.mall, 'SOUTHGATE MALL', 'LOADING DOCK', 0x4d5354, -1);
     for (const destination of ['mall', 'ups'] as const) {
       const p = DESTINATIONS[destination];
       this.pavement(p.x, p.z, 7, 12, new THREE.MeshStandardMaterial({ color: 0x829b6d, emissive: 0x496d4f, emissiveIntensity: 0.35 }), 0.035);
-      const label = textPlane(['P', destination === 'mall' ? 'MALL' : 'UPS'], 3.3, 3, { width: 180, height: 160, background: '#526c51', color: '#f3ebc7' });
+      const label = textPlane(['P', 'LOADING BAY'], 3.3, 3, { width: 256, height: 160, background: '#526c51', color: '#f3ebc7' });
       label.rotation.x = -Math.PI / 2; label.position.set(p.x, 0.045, p.z); scene.add(label);
       const beacon = new THREE.Group(); beacon.userData.keep = true; beacon.position.set(p.x, 0, p.z);
       const ring = new THREE.Mesh(new THREE.RingGeometry(5.5, 5.9, 40), new THREE.MeshBasicMaterial({ color: 0xffd77b, transparent: true, opacity: 0.85, side: THREE.DoubleSide }));
@@ -176,15 +177,32 @@ export class DrivingView {
     const apron = new THREE.Mesh(new THREE.PlaneGeometry(42, 26), standard(0x454d50, 0.95));
     apron.rotation.x = -Math.PI / 2; apron.position.set(p.x, -0.02, p.z + end * 12);
     this.scene.add(apron);
+    const paint = standard(0xe5c88a, 0.9);
+    for (const side of [-1, 1]) {
+      this.pavement(p.x + side * 20.5, p.z + end * 14, 0.15, 21, paint, 0.035);
+      const entrySign = textPlane(['LOADING ONLY', 'PULL INTO YARD'], 5, 1.2, { width: 384, height: 96, background: '#344938', color: '#f4e8c1' });
+      entrySign.position.set(p.x + side * 16.5, 2.5, p.z + end * 8);
+      entrySign.rotation.y = end > 0 ? Math.PI : 0; this.scene.add(entrySign);
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 2.5, 7), standard(0x60716d, 0.7));
+      post.position.set(entrySign.position.x, 1.25, entrySign.position.z); this.scene.add(post);
+    }
+    this.pavement(p.x, p.z + end * 24, 41, 0.15, paint, 0.035);
     const building = new THREE.Mesh(new THREE.BoxGeometry(34, 8, 10), standard(color, 0.9));
     building.position.set(p.x, 4, p.z + end * 29);
-    const sign = textPlane([name, subtitle], 17, 3, { width: 720, height: 128, background: '#26333b', color: '#f3d292' });
-    sign.position.set(p.x, 5.5, building.position.z - end * 5.01);
+    const sign = textPlane([name, subtitle], 17, 2, { width: 720, height: 128, background: '#26333b', color: '#f3d292' });
+    sign.position.set(p.x, 7, building.position.z - end * 5.01);
     sign.rotation.y = end < 0 ? 0 : Math.PI;
     this.scene.add(building, sign);
-    for (const x of [-11, -5, 5, 11]) {
-      const door = new THREE.Mesh(new THREE.BoxGeometry(4, 3.4, 0.1), standard(0x16242b, 0.8));
-      door.position.set(p.x + x, 1.7, sign.position.z);
+    const dockLight = new THREE.PointLight(0xffd9a3, 65, 35, 1.5);
+    dockLight.position.set(p.x, 7, p.z + end * 20); this.scene.add(dockLight);
+    const canopy = new THREE.Mesh(new THREE.BoxGeometry(20, 0.2, 3), standard(0x566369, 0.8));
+    canopy.position.set(p.x, 6, p.z + end * 23); this.scene.add(canopy);
+    const strip = new THREE.Mesh(new THREE.BoxGeometry(15, 0.08, 0.15), new THREE.MeshStandardMaterial({
+      color: 0xffe0a5, emissive: 0xffd79a, emissiveIntensity: 2.4 }));
+    strip.position.set(p.x, 5.85, p.z + end * 21.6); this.scene.add(strip);
+    for (const x of [-11, 0, 11]) {
+      const door = new THREE.Mesh(new THREE.BoxGeometry(x === 0 ? 6 : 4, x === 0 ? 4.6 : 3.4, 0.1), standard(0x16242b, 0.8));
+      door.position.set(p.x + x, x === 0 ? 2.3 : 1.7, sign.position.z);
       this.scene.add(door);
     }
   }

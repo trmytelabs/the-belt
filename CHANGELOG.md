@@ -2,13 +2,15 @@
 
 ## 0.1.0 — development snapshot
 
-- Add a driving-only practice start and freely connected streets with 20 real
-  intersections, twice the city area, 51 buildings from small shops to apartments
-  and a 68-metre tower, 16 cars and locally served Kenney models. Rename the 3D
-  destination Southgate Mall. A solid 3D arrow recalculates after turns and uses
-  the chase camera's bearing. Direct journeys take 20–30 seconds; detours have no
-  deadline. Brake at working lights and hold BRAKE to reverse; bumps and red
-  crossings cost five points while cargo stays safe.
+- Add a driving-only practice start and freely connected streets with 42 real
+  intersections, twice the previous playable area, 127 buildings from small shops
+  to apartments and a 68-metre tower, 28 cars and locally served Kenney models.
+  Rename the 3D destination Southgate Mall. A large green compass turns in 3D
+  toward the actual destination, accounting for the chase camera's bearing.
+  Traffic steers through continuous curves and queues behind other cars.
+  Longer drives end inside separate lit loading yards at UPS and Southgate.
+  Brake at working lights and hold BRAKE to reverse; bumps and red crossings
+  cost 100 points while cargo stays safe. Detours have no deadline.
 - Match 3D receiving collisions to its angled feeder guards and head drive,
   leaving a clear crossing and keeping the workers apart around the belt top.
 - Start the 3D lo-fi at START THE NIGHT and resume it after pausing the opening.

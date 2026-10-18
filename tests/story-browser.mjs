@@ -445,7 +445,7 @@ try {
   assert.match(recovered,/1 left behind · 0 wrong drops · GRADE 98\.2%/);
   const driveTotals = await read(() => ({ penalty: window.fixtureApp.drivingPenalty,
     bumps: window.fixtureApp.drivingCollisions, redLights: window.fixtureApp.drivingRedLights }));
-  assert.equal(driveTotals.penalty, (driveTotals.bumps + driveTotals.redLights) * 5, 'road incidents retain their separate five-point deduction');
+  assert.equal(driveTotals.penalty, (driveTotals.bumps + driveTotals.redLights) * 100, 'road incidents retain their separate 100-point deduction');
   const expectedNightTotal = String(Math.max(0, 6250 - driveTotals.penalty)).padStart(5, '0');
   assert.match(recovered, new RegExp(`NIGHT TOTAL ${expectedNightTotal}.*OUTSTANDING SHIFT`));
   await shot('recovered-s-rank');
