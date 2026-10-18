@@ -1,0 +1,242 @@
+# The overnight shift expansion
+
+This expansion turns one warehouse shift into a whole night: arrival outside UPS,
+the morning scrum, the sort (with a mid-shift break and the drivers firing up
+their trucks), Skanky's mall run in the five-ton, returning the truck, and home.
+It extends the existing 3D and 2D depots. The original full shift
+(`?mode=classic`) is unchanged.
+
+Everything already in the depots is kept: the crew and their props, every
+original line and reference, the A/B trucks, the shared **C · BULK** pile and
+its rules, Ralph's five loads, Brian's five-to-bulk burst, Ben's robbery, the
+Mesa choice and dream, Vic and Shan's buttons, United Way, the coughs and the
+clock-out departures.
+
+## The night, chapter by chapter
+
+| Chapter | What happens | Where it lives |
+| --- | --- | --- |
+| Arrival | One of three openers, chosen at random (see below). | `StoryScript.ts` `OPENERS` |
+| Morning scrum | The crew gathers at the head of the belt; Shan's three approved lines and the crew's two approved reactions. | `SCRUM` |
+| Countdown | The original **3, 2, 1, SORT!** | unchanged |
+| Shift | The existing shift, plus the new destinations, throwing and breakage. | `ShiftModel.ts` |
+| Break | Once per shift, between 46 and 56 s of shift time: Tim Hortons or 7-Eleven at random, one of three approved exchanges. The shift, belt and every parcel freeze until the crew is back. | `BREAK_SCENES`, `StoryModel.ts` |
+| Drivers | From 153 s: drivers bring keys, one engine starts, its exhaust drifts onto the platform, loaders cough, the other trucks start one by one, Shan: "Belt's still moving." | `DRIVERS` |
+| Clock-out | The existing celebration and truck departures. | unchanged |
+| Assignment | Shan gives Skanky the mall run; Termite goes home. | `MALL_ASSIGNMENT` |
+| To the mall | A short drive in the five-ton (a travel scene, not a driving game). | `DRIVE_TO_MALL` |
+| Mall run | Playable: three cart runs, two stores each, six drops, six signatures. | `MallModel.ts` |
+| Back to UPS | The drive back, then walk the keys to the KEY DROP. | `DRIVE_TO_UPS`, `KeyReturnModel` |
+| Home | Skanky drives home at dawn; then the results. | `GO_HOME` |
+
+Story scenes advance by themselves. **Space** (or a click, or NEXT) moves to
+the next line; **Enter** (or SKIP SCENE) skips the scene; **Escape** pauses. A
+skipped scene lands on its final staging and runs the same transitions, so
+nothing is left uninitialized. NEXT never skips a line that has not been shown.
+
+## The warehouse layout
+
+The belt, both worker lanes, the bulk pile and the recovery tray stand on a
+raised loading platform (1.1 m in 3D). Every truck backs against the platform
+edge with its roll-up rear door open at deck height. Two stair flights at the
+end of the belt, one in each worker's lane, lead down to the lower floor.
+Workers cannot step off the platform anywhere else: from the lower floor the
+only way up is the stairs. Walking speed is unchanged everywhere; the stairs
+only make the route longer. In 2D the platform is lighter with a lit edge and
+a cast shadow, the stairs are banded treads, and the lower floor is darker.
+
+Each worker now has two trucks and a lower-floor drop:
+
+| Letter | Destination | Worker | Where |
+| --- | --- | --- | --- |
+| A | HERES UR SOVICE | Termite | existing truck, now flush with the platform edge |
+| D | DOWNTOWN *(provisional name)* | Termite | new truck, row below the bulk pile |
+| T | TERMITE FLOOR DROP | Termite | lower floor, down the west stairs |
+| B | PAYTMAN | Skanky | existing truck, now flush with the platform edge |
+| E | EASTSIDE *(provisional name)* | Skanky | new truck, row below the bulk pile |
+| S | SKANKY FLOOR DROP | Skanky | lower floor, down the east stairs |
+| C | BULK | both | unchanged shared pile at the belt end |
+
+Every destination shows its letter and name on the floor, on the truck and on
+each parcel, so colour is never the only cue. Floor drops pile parcels in a
+grid that leaves the painted name clear, with a tall sign above the pile.
+Heavy freight never goes to the floor drops. The first six parcels still
+teach A, B and C; D, E, T and S follow, each announced the first time it
+appears. Names live in `ROUTE_INFO` in `ShiftModel.ts` and can be renamed there.
+
+Layout changes made to fit this:
+
+- The two player trucks moved 24 px outward so their rear doors are flush with
+  the platform edge, like the crew trucks. Their drop zones now reach the door
+  (A and B are wider; they still accept the whole reachable lane).
+- Ralph's five-ton now backs into the empty west bay beside the bulk pile
+  instead of the east outer bay, which the new E truck row would have crossed.
+  His five trips to the pile and his departure are unchanged.
+- Paytman's fish tank moved into the empty east bay beside his truck.
+- The outer-bay crew climb short steps in the aisles between trucks to reach
+  the platform for their freight trips.
+
+## Throwing and breakage
+
+Holding a parcel, press **F** (or THROW on touch) to throw it straight to its
+own destination instead of walking it there. The arc and landing ring (3D) or
+the dotted arc and risk label (2D) show where it will land and the break risk.
+Carrying is unchanged and never breaks anything.
+
+- Heavy freight (bulk crates, the Mesa amp, the ATV, big and long boxes,
+  Mallwood) must be carried. Light bulk freight can be thrown onto the pile.
+- A throw must be within range and from the worker's own side; from the lower
+  floor you cannot throw up onto the platform.
+- A clean throw delivers with normal points and keeps the streak.
+- A broken parcel earns no delivery credit and costs points **once**. It stays
+  visibly crushed with a BROKEN tag for a few seconds and can never be picked
+  up, delivered or penalized again. Shan walks over and yells (his reaction
+  lines are provisional) while the belt keeps running.
+
+Tuning (`THROWING` in `ShiftModel.ts`):
+
+| Value | Default | Meaning |
+| --- | --- | --- |
+| `rangePx` | 300 (about 9.4 m) | Farthest throw |
+| `breakChance.ordinary` | 0.15 | Break chance for ordinary freight |
+| `breakChance.fragile` | 0.55 | Break chance for fragile freight |
+| `fragileKinds` | makeup, duck, mesa, lobsters | The fragile list (a simple two-level distinction) |
+| `breakPenalty` | 150 points | Charged once per broken parcel, never below zero |
+| `gradeForgivenBreaks` | 1 | Breakages beyond this count as errors in the grade |
+| `heavyThrowable` | false | Whether heavy freight can be thrown |
+
+The makeup lotion's own leak on the belt is unchanged and is never penalized.
+
+## Scoring and results
+
+The warehouse score, grade thresholds and quotes are unchanged. Delivery points
+stay at 100 for trucks and floor drops and 120 for bulk (`DELIVERY_POINTS`).
+Breakages subtract their penalty and, after the first, count as grade errors,
+so one accident cannot ruin a run but repeated ones lower the grade. The mall
+run adds 50 points per signature (`MALL_RULES.pointsPerSignature`) to a
+separate **night total**; it does not change the warehouse grade. The results
+keep every existing category and add: deliveries per destination, clean
+throws, breakages and their penalty, and the mall run (deliveries, signatures,
+whether the five-ton was returned).
+
+## The mall run
+
+Skanky's five-ton is backed up to the loading dock with six labelled store
+bundles inside. The run order is shuffled each night (every shuffle is valid:
+all stores are reachable and every store gets exactly one bundle).
+
+1. Park the cart by the tailgate (**E** takes or releases its handle).
+2. Take a bundle from the truck (**Space** beside its slot). Only this run's
+   two stores can be taken; later ones say which run they belong to.
+3. Load it onto the cart (**Space** beside the cart). The cart holds two.
+4. Push the cart through the concourse, around the planter, bench and
+   fountain, to each store's doorway.
+5. **Space** drops that store's boxes (only if they are on the cart), then
+   **Space** again gets the signature. Nothing is credited twice.
+6. Back at the truck, the next run's bundles become available.
+7. After six signatures, bring the cart back to the truck and press **Space**
+   at the tailgate. The run is not over at the last signature.
+
+At UPS, Skanky walks the keys to the **KEY DROP** by the dispatch door. Only
+then does the trip home, and the results, follow.
+
+## Review list: provisional copy
+
+Approved lines are used verbatim: the scrum (Shan's three lines, "You've got to
+be fucking kidding me.", "They just started!"), all six break exchanges, and
+the drivers ("Could've waited five minutes.", "Belt's still moving."). The
+following were written for review and are easy to change in `StoryScript.ts`:
+
+- The three openers (below).
+- Who says unattributed lines: Doris and Hussan in the scrum; Bannerman and the
+  cashier at 7-Eleven; Kylie, Doris and Brian at Tim Hortons; AJ coughing at the
+  drivers.
+- Shan's breakage reactions (`SHAN_BREAKAGE_LINES`).
+- The mall assignment, the drives, the mall intro, the store clerks, the key
+  return and the trip home.
+- The new truck names DOWNTOWN and EASTSIDE, the mall MALLWOOD CENTRE and its
+  stores (built from the game's own references: TIMMY HORTANS, MESA MUSIC,
+  LE DUCK, GOJI HUT, GLAMOUR LOTION, PANCHETTERS).
+
+### Opener 1, "LOCKED OUT" (Shan is late) · 1:30 AM, shift started 1:00 AM
+
+> *The UPS gate is chained shut. Cars idle outside with their lights on.*
+> **SKANKY:** Half an hour. We could have slept in.
+> **TERMITE:** You said be early. *(He does not look up from his hat.)*
+> **DORIS:** Clock doesn't start till he shows. We're out here for free. *(Smoke out of her window.)*
+> **HUSSAN:** He's not answering. Again. *(Holds up his phone.)*
+> *Headlights sweep the lot. Shan pulls up to the gate.*
+> **SHAN O'MAC:** Traffic.
+> **SKANKY:** It's half past one in the morning.
+> **SHAN O'MAC:** Lot of traffic. *(Unlocks the gate and swings it open.)*
+> *Everyone files inside.*
+
+### Opener 2, "RUNNING LATE" (Termite and Skanky are late) · 2:30 AM, shift started 2:00 AM
+
+> *The gate is open and the lot is full. The belt is already humming inside.*
+> *Skanky's car swings in and stops across two spaces.*
+> **SKANKY:** Nobody counts the first half hour.
+> **TERMITE:** Shan counts everything. *(They jog for the door. Termite catches his hat.)*
+> **SKANKY:** Walk normal. Act like we've been here.
+> **TERMITE:** We're in the parking lot.
+> **VIC:** Shan's been asking where you are. *(Holding the door.)*
+> **SKANKY:** Bathroom.
+> **VIC:** Both of you?
+> **TERMITE:** Big bathroom. *(They slip past him inside.)*
+
+### Opener 3, "NOBODY HAS THE KEY" (Shan is late) · 2:47 AM, shift started 2:15 AM
+
+> *The gate is still locked. Fruit Loop is asleep on his steering wheel.*
+> **BRIAN:** Thirty-two minutes! *(Leans on his horn.)*
+> **SKANKY:** Brian, rolling your window down made it worse.
+> **TERMITE:** Are we getting paid for this?
+> **SKANKY:** Nope.
+> *Shan rolls up slowly with a large coffee.*
+> **SHAN O'MAC:** What are you all doing out here?
+> **SKANKY:** Waiting for you. You've got the key.
+> *Shan pats every pocket, then finds the key.*
+> **SHAN O'MAC:** Right. *(The gate rattles open.)*
+> *Everyone files inside.*
+
+## Decisions to review
+
+- **United Way appears twice.** The scrum now has the approved announcement.
+  The existing mid-shift moment (134 s: Shan's original line and the whole
+  floor swearing with the original swear pool) is kept as a callback, so no
+  original line is lost. It could be removed if one mention is preferred.
+- **Drivers moved from 114 s to 153 s** so they arrive near the end, after the
+  break and after United Way; the original four cough lines are kept around
+  the two approved lines.
+- **Shan's name** is shown as SHAN O'MAC everywhere in both depots. The Mesa
+  text (`1 IN 5 SHAN O MAC CATCHES YOU BOTH`, `BUSTED BY SHAN O MAC`) is the
+  original game's verbatim copy and is checked against the original source, so
+  it keeps its original spelling; the classic mode is unchanged.
+- **Gamepad.** None of the depots had gamepad support before this change, so
+  there was none to preserve; every new interaction works with keyboard, mouse
+  and the touch controls.
+- **Brand names** (UPS, Tim Hortons, 7-Eleven) appear only as plain text signs,
+  as the brief describes them; no logos are reproduced.
+
+## Checks
+
+- `npm run test:model` adds `tests/story-model.mjs`: destinations and zones,
+  platform/stairs heights and walls, speed on stairs, floor piles, every throw
+  rule, exactly-once breakage, grade forgiveness, pause mid-throw, story
+  choices and once-only break, verbatim approved lines, cutscene skip/next, a
+  full mall run with three reloads, mall anti-exploit cases, mall collision,
+  and the key return.
+- `tests/story-browser.mjs` (3D) and `tests/story-2d-browser.mjs` (2D) play the
+  story through the real app with real keys: all three openers reach the scrum
+  (stepped, skipped and unattended), the scrum lines in order, the countdown
+  into play, all six break exchanges once each with freight preserved, F
+  throws (clean, broken with Shan while the belt runs, no repeat penalty),
+  carrying down and up the stairs to a floor pile, the full mall run with no
+  early or duplicate credit, the key return, home, results and a clean restart.
+- The existing suites now skip the two opening scenes with ENTER (or SKIP on
+  touch) and hold the break out of their way; their assertions are otherwise
+  unchanged except where the layout or timing above changed (truck bays,
+  Ralph's bay, driver count and time, Shan's name, the sound-effect count).
+
+What is not verified automatically: physical phones and tablets, audible sound
+quality, and how the new story feels on replay. Those still need a hands-on
+check.
