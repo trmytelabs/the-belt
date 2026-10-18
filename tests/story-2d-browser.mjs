@@ -129,10 +129,13 @@ try {
   await wait(`${S}.life.breakageLines.length === 1`);
   assert.deepEqual(await read(`({ score: ${S}.model.score, damaged: ${S}.model.damaged, sorted: ${S}.model.sorted })`), { score: 850, damaged: 1, sorted: 1 });
   assert.ok(await read(`${S}.model.beltTravel > ${travel} && ${S}.state === 'playing'`), 'the belt keeps moving while Shan yells');
-  assert.ok((await read(`${S}.life.history`)).some((line) => line.startsWith("SHAN O'MAC: WHAT DID I SAY")));
+  // Shan walks over on the shift clock, then yells once he arrives.
+  await wait(`${S}.life.history.some((line) => line.startsWith("SHAN O'MAC: WHAT DID I SAY"))`);
+  assert.ok(await read(`${S}.model.beltTravel > ${travel} && ${S}.state === 'playing'`), 'the belt is still moving when he arrives');
   await read(`(() => { const m = ${S}.model; m.eventStopped = true; Object.assign(m.workers[0], { x: 369, y: 532 }); })()`);
+  const beforeRepeat = await read(`${S}.model.score`);
   for (let i = 0; i < 3; i += 1) { await press('Space'); await press('KeyF'); }
-  assert.deepEqual(await read(`({ damaged: ${S}.model.damaged, sorted: ${S}.model.sorted })`), { damaged: 1, sorted: 1 }, 'no second penalty or credit');
+  assert.deepEqual(await read(`({ damaged: ${S}.model.damaged, sorted: ${S}.model.sorted, score: ${S}.model.score })`), { damaged: 1, sorted: 1, score: beforeRepeat }, 'no second penalty or credit');
   await read(`(() => { ${S}.model.eventStopped = false; ${S}.model.random = () => 0.99; })()`);
   const floorId = await hold('T', 'smallbox', 380, 640);
   await page.keyboard.down('KeyS');
