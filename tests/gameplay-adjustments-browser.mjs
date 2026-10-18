@@ -77,10 +77,13 @@ try {
       const app = window.fixtureApp, m = app.model, template = { ...m.packages[0] };
       m.eventStopped = true; m.autonomousCoworker = false; m.activeIndex = 0;
       m.packages.splice(0, m.packages.length,
-        { ...template, id: 9901, route: 'B', state: 'belt', x: 480, y: 500, workerId: null },
-        { ...template, id: 9902, route: 'A', state: 'belt', x: 480, y: 485, workerId: null });
+        { ...template, id: 9901, route: 'B', state: 'belt', x: 480, y: 500, beltOffset: 500 - m.beltTravel, workerId: null },
+        { ...template, id: 9902, route: 'A', state: 'belt', x: 480, y: 485, beltOffset: 485 - m.beltTravel, workerId: null });
       Object.assign(m.workers[0], { x: 400, y: 500, heldId: null });
       Object.assign(m.workers[1], { x: 560, y: 500, heldId: null });
+      // Belt parcels derive their position from travel every tick, even when
+      // stopped. Advance once so a fast machine also checks the settled fixture.
+      m.update(10);
       app.syncParcels(0); app.syncWorkers(1);
     });
     assert.equal(await read(() => window.fixtureApp.model.nearestPackage()?.id), 9902, 'Termite skips the closer Skanky parcel');
