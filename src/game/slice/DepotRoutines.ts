@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { createParcelArt, type DepotArt } from './DepotArt';
 import { createDriverArt, createRalphTruckArt, setRalphTruckLoad } from './DepotProps';
 import { SHIFT_LAYOUT, type ShiftModel } from './ShiftModel';
+import { DRIVERS } from './StoryScript';
 import { audioSystem } from '../systems/AudioSystem';
 
 export type DepotColleague = {
@@ -11,6 +12,12 @@ export type DepotColleague = {
 type Speaker = (id: string, text: string, duration: number, priority?: number) => void;
 const RESIDENTS = ['hussan', 'aj', 'ben', 'bannerman', 'fruitloop', 'doris', 'brian', 'donna'];
 const mix = (a: number, b: number, t: number) => Phaser.Math.Linear(a, b, Phaser.Math.Clamp(t, 0, 1));
+/** Ralph's five-ton backs into the empty west bay beside the bulk pile. */
+const RALPH_BAY = { x: 244, y: 628, from: -120 };
+/** One engine first (Hussan's truck), then the rest in turn. */
+export function engineStartAt(index: number): number {
+  return index === 0 ? DRIVERS.firstEngineAt : DRIVERS.otherEnginesAt + (index - 1) * DRIVERS.engineStaggerMs;
+}
 
 /** Original coworker freight routines and special cargo events, on the source floor plan. */
 export class DepotRoutines {
@@ -51,14 +58,17 @@ export class DepotRoutines {
       fontFamily: 'Arial', fontSize: '9px', fontStyle: 'bold', color: '#f2dfac', stroke: '#19343b', strokeThickness: 3,
     }).setOrigin(0.5);
     this.cell.add(this.cellCaption);
-    this.ralphTruck = createRalphTruckArt(scene).setPosition(1040, 606).setDepth(16).setVisible(false);
+    this.ralphTruck = createRalphTruckArt(scene, 'left').setPosition(RALPH_BAY.from, RALPH_BAY.y).setDepth(16).setVisible(false);
     this.ralphBox = createParcelArt(scene, 'C').setScale(0.48).setDepth(18).setVisible(false);
     this.exhaust = scene.add.graphics().setDepth(12);
     // Crew points mark the inward loading doors. Cab doors are 132px outward.
     this.driverPoints = [...RESIDENTS.map(id => {
       const rear = depot.crewTruckPoints[id];
       return { x: rear.x + (rear.x < 480 ? -132 : 132), y: rear.y };
-    }), { x: 216, y: 532 }, { x: 744, y: 532 }];
+    }), ...(['A', 'B', 'D', 'E'] as const).map((route) => {
+      const truck = SHIFT_LAYOUT.playerTrucks[route];
+      return { x: truck.x < 480 ? truck.x - 52 : truck.x + 52, y: truck.y };
+    })];
     this.drivers = this.driverPoints.map(() => createDriverArt(scene).setScale(0.48).setDepth(18).setVisible(false));
   }
 
@@ -149,10 +159,10 @@ export class DepotRoutines {
     if (this.ralphState === 'waiting' || this.ralphState === 'done') { ralph.setVisible(false); return; }
     const elapsed = time - this.ralphStart;
     if (elapsed < 1800) {
-      this.ralphTruck.x = mix(1040, 840, elapsed / 1800);
+      this.ralphTruck.x = mix(RALPH_BAY.from, RALPH_BAY.x, elapsed / 1800);
       ralph.setVisible(false); return;
     }
-    this.ralphTruck.x = 840;
+    this.ralphTruck.x = RALPH_BAY.x;
     if (this.ralphState === 'entering') {
       this.ralphState = 'loading';
       this.say('ralph', 'I NEED TO HURRY UP\nAND GET BACK TO MY\n3 SETS OF TRIPLETS!', 4900, 1);
@@ -167,36 +177,39 @@ export class DepotRoutines {
       setRalphTruckLoad(this.ralphTruck, loaded);
       ralph.setVisible(true);
       // The parcel is anchored to his right hand (+9,-4): at pickup that hand
-      // meets the shared pile, and at delivery the truck's rear (760,606).
+      // meets the shared pile, and at delivery the flatbed backed against the platform.
       const pickupX = SHIFT_LAYOUT.bulkPile.x - 9;
       const pickupY = SHIFT_LAYOUT.bulkPile.y + 4;
-      if (trip < 1300) ralph.setPosition(mix(751, pickupX, trip / 1300), mix(610, pickupY, trip / 1300));
+      const doorX = SHIFT_LAYOUT.platform.left + 12;
+      if (trip < 1300) ralph.setPosition(mix(doorX, pickupX, trip / 1300), mix(RALPH_BAY.y, pickupY, trip / 1300));
       else if (trip < 1600) ralph.setPosition(pickupX, pickupY);
-      else ralph.setPosition(mix(pickupX, 751, (trip - 1600) / 1400), mix(pickupY, 610, (trip - 1600) / 1400));
+      else ralph.setPosition(mix(pickupX, doorX, (trip - 1600) / 1400), mix(pickupY, RALPH_BAY.y, (trip - 1600) / 1400));
       this.ralphBox.setVisible(trip >= 1600).setPosition(ralph.x + 9, ralph.y - 4);
     } else {
       this.ralphState = 'leaving'; this.ralphLoaded = 5; this.ralphLifted = 5;
       setRalphTruckLoad(this.ralphTruck, 5);
       this.ralphBox.setVisible(false); ralph.setVisible(false);
-      this.ralphTruck.x = mix(840, 1060, (loading - 15000) / 2200);
+      this.ralphTruck.x = mix(RALPH_BAY.x, RALPH_BAY.from - 40, (loading - 15000) / 2200);
       if (loading >= 17200) { this.ralphState = 'done'; this.ralphTruck.setVisible(false); }
     }
   }
 
   private updateExhaust(time: number): void {
-    const active = time >= 114000 && time < this.model.durationMs;
+    // Near the end of the shift: drivers bring keys, one engine starts, then the rest.
+    const active = time >= DRIVERS.firstEngineAt && time < this.model.durationMs;
     this.exhaust.clear();
-    this.driversVisible = active && time < 119200;
+    this.driversVisible = time >= DRIVERS.arriveAt && time < DRIVERS.arriveAt + 5200;
     this.drivers.forEach((driver, index) => {
       const point = this.driverPoints[index];
       driver.setVisible(this.driversVisible);
-      driver.setPosition(point.x, point.y + mix(48, 21, (time - 114000 - index * 70) / 2200));
+      driver.setPosition(point.x, point.y + mix(48, 21, (time - DRIVERS.arriveAt - index * 70) / 2200));
     });
     if (!active) return;
     for (let index = 0; index < this.driverPoints.length; index++) {
+      if (time < engineStartAt(index)) continue;
       const point = this.driverPoints[index];
       for (let puff = 0; puff < 3; puff++) {
-        const phase = ((time - 114000) / 2600 + puff / 3 + index / 7) % 1;
+        const phase = ((time - engineStartAt(index)) / 2600 + puff / 3 + index / 7) % 1;
         const direction = point.x < 480 ? 1 : -1;
         this.exhaust.fillStyle(0x71837c, 0.19 * (1 - phase)).fillEllipse(
           point.x + direction * (122 + phase * 34), point.y + 30 - phase * 18,

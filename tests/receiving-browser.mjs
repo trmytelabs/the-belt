@@ -3,6 +3,8 @@ import { join } from 'node:path';
 import { chromium } from 'playwright';
 import { preview } from 'vite';
 
+import { holdBreak, skipOpening } from './night-helpers.mjs';
+
 // Isolated timing and camera-position fixtures inspect the actual receiving
 // render and Scene.update handoff. Organic keyboard travel is in camera-browser.
 const server = await preview({ preview: { host: '127.0.0.1', port: 0 }, logLevel: 'silent' });
@@ -28,8 +30,9 @@ try {
   });
   await page.goto(`${server.resolvedUrls.local[0]}?mode=2d`);
   await page.waitForFunction(() => window.fixtureGame?.scene.isActive('DepotScene'));
+  await holdBreak(page);
   await page.keyboard.press('Enter');
-  await page.waitForFunction(() => window.fixtureGame.scene.getScene('DepotScene').state === 'playing');
+  await skipOpening(page);
   await page.keyboard.press('KeyM');
   await page.evaluate(() => window.fixtureGame.loop.sleep());
   await page.evaluate(() => {

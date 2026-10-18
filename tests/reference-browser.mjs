@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { chromium } from 'playwright';
 import { preview } from 'vite';
+
+import { finishNight, holdBreak, skipOpening } from './night-helpers.mjs';
 import { KYLIE_QUOTES, SHAN_RANTS, WORKER_SWEARS, COUGH_LINES, SHOT_WORDS, CLOCK_OUT_LINES } from '../src/game/slice/DepotReferences.ts';
 
 // These are isolated clock/cargo fixtures, not claims of organic play. The
@@ -46,7 +48,14 @@ try {
     await page.screenshot({ path: join(process.env.BELT_SCREENSHOT_DIR, name) });
   };
   console.log(`Reference renderer: ${await read(() => window.fixtureGame.renderer.type === 2 ? 'WebGL' : 'Canvas')}`);
+  await holdBreak(page);
   await press('Enter');
+  // The night opens with the arrival and the scrum; ENTER skips each.
+  await page.waitForFunction(() => window.fixtureGame.scene.getScene('DepotScene').cutscene?.scene.id.startsWith('opener'));
+  await press('Enter');
+  await page.waitForFunction(() => window.fixtureGame.scene.getScene('DepotScene').cutscene?.scene.id === 'scrum');
+  await press('Enter');
+  await page.waitForFunction(() => window.fixtureGame.scene.getScene('DepotScene').state === 'countdown');
   const workerAtCountdown = await read(() => ({ ...window.fixtureGame.scene.getScene('DepotScene').model.activeWorker }));
   await page.keyboard.down('ArrowUp');
   await press('Space');
@@ -75,7 +84,7 @@ try {
       scaleX: object.scaleX, scaleY: object.scaleY,
     }));
   });
-  assert.equal(truckLayout.length, 11, 'both player trucks, eight crew trucks and Ralph must use the same renderer');
+  assert.equal(truckLayout.length, 13, 'four player trucks, eight crew trucks and Ralph must use the same renderer');
   for (const truck of truckLayout) {
     assert.deepEqual(truck.footprint, { width: 148, height: 84 }, truck.name);
     assert.deepEqual([truck.width, truck.height, truck.scaleX, truck.scaleY], [148, 84, 1, 1], `${truck.name} must render at the common size`);
@@ -83,7 +92,7 @@ try {
   for (const [name, x, y] of [
     ['HUSSAN', 244, 148], ['AJ', 244, 244], ['PAULA ABDUL', 244, 340], ['BANNERMAN', 244, 436],
     ['FRUIT LOOP', 716, 148], ['DORIS', 716, 244], ['BRIAN', 716, 340], ['DONNA', 716, 436],
-    ['HERES UR SOVICE', 268, 532], ['PAYTMAN', 692, 532],
+    ['HERES UR SOVICE', 244, 532], ['PAYTMAN', 716, 532], ['DOWNTOWN', 244, 740], ['EASTSIDE', 716, 740],
   ]) {
     const truck = truckLayout.find(truck => truck.name === name);
     assert.deepEqual([truck?.x, truck?.y], [x, y], `${name} must occupy its original truck bay`);
@@ -310,7 +319,7 @@ try {
   assert.equal(ralphArriving.stock, 5);
   await advance(92_000);
   assert.equal((await snapshot()).ralphState, 'loading');
-  assert.ok((await snapshot()).ralphTruckX < ralphArriving.ralphTruckX, 'Ralph truck must drive into the depot');
+  assert.ok(Math.abs((await snapshot()).ralphTruckX - 244) < Math.abs(ralphArriving.ralphTruckX - 244), 'Ralph truck must drive into its bay');
   await advance(92_700);
   assert.equal((await snapshot()).paula, false);
   const firstPickup = await read(() => window.fixtureGame.scene.getScene('DepotScene').life.routines.ralphStart + 3400);
@@ -321,7 +330,7 @@ try {
       truck: { x: r.ralphTruck.x, y: r.ralphTruck.y } };
   });
   assert.deepEqual(bulkContact.box, { x: 480, y: 610, visible: true }, 'Ralph must lift from the same central bulk pile used for C deliveries');
-  assert.deepEqual(bulkContact.truck, { x: 840, y: 606 }, 'Ralph must park clear of Paytman and the loading lanes');
+  assert.deepEqual(bulkContact.truck, { x: 244, y: 628 }, 'Ralph backs into the empty west bay beside the bulk pile');
   for (let trip = 0; trip < 5; trip++) {
     await advance(93_600 + trip * 3000);
     const lifted = await snapshot();
@@ -361,20 +370,24 @@ try {
   assert.equal((await snapshot()).ralphState, 'done');
   assert.equal((await snapshot()).ralphTruckVisible, false);
   assert.equal((await snapshot()).eventStopped, false);
-  await advance(115_000);
-  assert.equal((await snapshot()).drivers, 10, 'all original truck drivers must appear with the exhaust event');
-  assert.ok((await snapshot()).exhaustCommands > 0);
-  await advance(120_000);
-  assert.equal((await snapshot()).drivers, 0);
-  assert.ok((await snapshot()).exhaustCommands > 0, 'exhaust continues after drivers get back into their trucks');
   await advance(130_000);
   await advance(149_500);
+  // Near the end, the drivers arrive; one engine starts, then the rest.
+  await advance(155_000);
+  assert.equal((await snapshot()).drivers, 12, 'all truck drivers, the new trucks included, appear with the exhaust event');
+  await advance(156_000);
+  assert.ok((await snapshot()).exhaustCommands > 0, "the first engine's exhaust drifts in");
+  await advance(160_000);
+  assert.equal((await snapshot()).drivers, 0);
+  await advance(172_000);
+  assert.ok((await snapshot()).exhaustCommands > 0, 'exhaust continues after drivers get back into their trucks');
+  assert.ok(await read(() => window.fixtureGame.scene.getScene('DepotScene').model.beltSpeed > 0), 'the belt keeps moving through the exhaust');
   const renderedLabels = await read(() => [...window.renderedFreightLabels]);
   for (const name of ['MALLWOOD RD EAST', 'GOJI BERRIES', 'LIVE LOBSTERS', 'LE DUCK', 'MAKEUP LOTION', 'MESA BOOGIE', 'PANCHETTERS', 'SMALL ATV']) {
     assert.ok(renderedLabels.includes(name), `${name} must appear in full on spawned freight, not only in the HUD or model`);
   }
   const dialogueWindows = await read(() => Object.values(window.referenceWindows).flat());
-  for (const copy of [...COUGH_LINES, ...WORKER_SWEARS]) {
+  for (const copy of [...COUGH_LINES, ...WORKER_SWEARS, "Could've waited five minutes.", "Belt's still moving."]) {
     const window = dialogueWindows.find(record => record.copy === copy.replace(/\n/g, ' '));
     assert.ok(window && window.end - window.start >= 2500, `${copy} must receive a readable visible window`);
   }
@@ -404,6 +417,9 @@ try {
     while (s.state === 'celebrating') s.update(s.time.now, 100);
     window.fixtureGame.loop.wake();
   });
+  // The warehouse is done; Skanky's mall run and the trip home come before the results.
+  assert.equal(await read(() => window.fixtureGame.scene.getScene('DepotScene').cutscene?.scene.id), 'mall-assignment');
+  await finishNight(page);
   assert.equal(await read(() => window.fixtureGame.scene.getScene('DepotScene').state), 'results');
 
   // Each encounter uses a fresh scene, real choice controls and an isolated
@@ -412,7 +428,7 @@ try {
     await read(() => { window.fixtureGame.loop.wake(); window.fixtureGame.scene.getScene('DepotScene').scene.restart(); });
     await page.waitForFunction(() => window.fixtureGame.scene.getScene('DepotScene').state === 'briefing');
     await press('Enter');
-    await page.waitForFunction(() => window.fixtureGame.scene.getScene('DepotScene').state === 'playing');
+    await skipOpening(page);
   };
   await restart();
   await read(() => {
@@ -441,7 +457,7 @@ try {
     await page.waitForFunction(() => window.fixtureGame.scene.getScene('DepotScene').model.brakeRemainingMs > 0, undefined, { timeout: 5000 });
     await advance(await read(() => window.fixtureGame.scene.getScene('DepotScene').model.elapsedMs + 4100));
   }
-  const rants = await read(() => Object.values(window.referenceWindows).flat().filter(record => record.name === 'SHAN O MACK'));
+  const rants = await read(() => Object.values(window.referenceWindows).flat().filter(record => record.name === "SHAN O'MAC"));
   for (const quote of SHAN_RANTS) {
     assert.ok(rants.some(record => record.copy === quote.replace(/\n/g, ' ') && record.end - record.start >= 3500),
       `actual brake controls must expose the complete readable rant: ${quote}`);

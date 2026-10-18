@@ -3,6 +3,8 @@ import { join } from 'node:path';
 import { chromium } from 'playwright';
 import { preview } from 'vite';
 
+import { holdBreak, skipOpening } from './night-helpers.mjs';
+
 // Real keyboard/touch travel verifies framing and screen-space hit targets.
 // The late joke alone uses an isolated clock fixture; it is not organic play.
 const server = await preview({ preview: { host: '127.0.0.1', port: 0 }, logLevel: 'silent' });
@@ -87,8 +89,9 @@ try {
   const desktop = await createPage({ viewport: { width: 1200, height: 900 } });
   const { page } = desktop;
   const press = key => page.keyboard.press(key, { delay: 40 });
+  await holdBreak(page);
   await press('Enter');
-  await page.waitForFunction(() => window.fixtureGame.scene.getScene('DepotScene').state === 'playing');
+  await skipOpening(page);
   await page.waitForFunction(() => window.fixtureGame.scene.getScene('DepotScene').view.world.zoom > 1.4);
   const start = await measure(page);
   assert.deepEqual(start.worldViewport, { x: 0, y: 126, width: 960, height: 494 });
@@ -189,8 +192,9 @@ try {
   const mobile = await createPage({ viewport: { width: 430, height: 932 }, isMobile: true, hasTouch: true });
   const touch = mobile.page;
   const startPoint = await canvasPoint(touch, 480, 495);
+  await holdBreak(touch);
   await touch.touchscreen.tap(startPoint.x, startPoint.y);
-  await touch.waitForFunction(() => window.fixtureGame.scene.getScene('DepotScene').state === 'playing');
+  await skipOpening(touch, { touch: true });
   await touch.waitForFunction(() => window.fixtureGame.scene.getScene('DepotScene').view.world.zoom > 1.4);
   const stick = await touch.locator('.depot-stick').boundingBox();
   const session = await mobile.context.newCDPSession(touch);
