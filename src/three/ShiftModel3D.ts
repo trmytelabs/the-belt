@@ -27,6 +27,7 @@ export class ShiftModel3D extends ShiftModel {
   private canPickup(worker: Worker, parcel: Parcel): boolean {
     if (!['belt', 'floor', 'missed'].includes(parcel.state)) return false;
     if (parcel.route === 'C' && worker !== this.activeWorker) return false;
+    if (parcel.route !== 'C' && ROUTE_INFO[parcel.route].side !== worker.side) return false;
     if (stairAt(worker.x, worker.y) || !this.clearForCarry(worker.x, worker.y, worker.side)) return false;
     if (parcel.state === 'floor') {
       if (worker.side === 'left' ? parcel.x > 440 : parcel.x < 520) return false;

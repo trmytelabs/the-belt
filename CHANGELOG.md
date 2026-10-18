@@ -4,6 +4,9 @@
 
 - Combine the 3D gameplay with 23 rigged Microsoft Rocketbox characters,
   preserving their animations, attached props and software-renderer fallback.
+- Spread truck rows apart and stage crew events between them, keeping loading
+  doors clear and the bulk platform and left/right stairs at the back.
+- Restrict 3D package selection to the controlled worker's own routes and bulk.
 - Sort street addresses against city district ranges, including Mill Woods for
   Termite, with neutral signs and no visible routing letters or answer guidance.
 - Let the uncontrolled coworker collect and deliver freight automatically.

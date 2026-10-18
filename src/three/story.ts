@@ -11,6 +11,7 @@ import { buildSouthgateMall, mallX, mallZ, type SouthgateMall } from './mall';
 import { mergeStatic } from './merge';
 import { actorSurfaceAt, setFromModel, shadowed, standard, textPlane, textSprite, toWorld } from './space';
 import { RESIDENT_SPECS, SKANKY_SPEC, SKIN, TERMITE_SPEC, VISITORS, createTruck } from './world';
+import { DEPOT_3D_LAYOUT as DEPOT } from './layout';
 
 /**
  * The story's locations away from the depot floor (the UPS lot, the break
@@ -1274,13 +1275,14 @@ export function directDepot(cast: DepotCast, cutscene: Cutscene, dt: number, tim
   // Clock-out: Shan catches Skanky at the belt end; Termite heads down the stairs.
   const leaves = ease(cueProgress(cutscene, 'termite-leaves'));
   const catches = ease(cueProgress(cutscene, 'shan-catches'));
-  placeWorker('skanky', 560, 650, face([560, 650], [500, 640]), 'none');
-  const exit = alongPath([[400, 650], [365, 830], [200, 830]], leaves);
-  placeWorker('termite', exit.x, exit.z, leaves > 0 ? exit.h : face([400, 650], [500, 640]), 'none', leaves > 0 && leaves < 1);
+  const endY = DEPOT.dockD.y + 22;
+  placeWorker('skanky', 560, endY, face([560, endY], [500, endY - 10]), 'none');
+  const exit = alongPath([[400, endY], [365, DEPOT.stairs.centerY], [200, DEPOT.stairs.centerY]], leaves);
+  placeWorker('termite', exit.x, exit.z, leaves > 0 ? exit.h : face([400, endY], [500, endY - 10]), 'none', leaves > 0 && leaves < 1);
   // Down the east side of the bulk pallet, never through it.
-  shan.place(mix(532, 526, catches), mix(560, 652, catches));
+  shan.place(mix(532, 526, catches), mix(endY - 90, endY + 2, catches));
   shan.faceAngle = Math.PI / 2;
   shan.setPoseAt(cutscene.beat.speaker === 'shan' ? 'announce' : 'none', time);
   crew.animateActors(dt, time, new Set(['shan']));
-  return { position: toWorld({ x: 600, y: 820 }, 6.0), look: toWorld({ x: 490, y: 650 }, 1.6) };
+  return { position: toWorld({ x: 600, y: DEPOT.stairs.centerY - 10 }, 6.0), look: toWorld({ x: 490, y: endY }, 1.6) };
 }

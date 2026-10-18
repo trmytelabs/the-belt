@@ -339,7 +339,7 @@ export class Belt3d {
       <h1>ANOTHER NIGHT ON THE BELT.</h1>
       <p><b>Get in, survive the scrum, dispatch 24 parcels, then Skanky still has a mall run.</b></p>
       <p>Read each parcel's street address and compare it with the ranges posted on the trucks. Termite covers Mill Woods, Downtown and Westmount; Skanky covers Bonnie Doon, West End and Northside. Oversize freight goes to BULK.</p>
-      <p>A steadier intake. Your other worker sorts their own addresses; only the worker you control picks up bulk. Wrong drops cost 10 points. Read the signs: there are no painted safe zones or aiming guides.</p>
+      <p>You can only grab packages for your worker's routes, plus bulk. Your other worker sorts their own addresses; only the worker you control picks up bulk. Wrong drops cost 10 points. Read the signs: there are no painted safe zones or aiming guides.</p>
       <p>Carry each truck parcel through its open rear door and press SPACE inside to load it. Face a shelf and load near where you stand. Packages stay on those shelves; full trucks overflow through the rear. The roof turns transparent while you are inside.</p>
       <p>The bulk platform is at the back. The stairs descend left and right to Westmount and Northside.</p>
       ${this.touch.enabled ? `
@@ -1067,20 +1067,20 @@ export class Belt3d {
     const state = this.state === 'paused' ? this.pausedFrom : this.state;
     if (state === 'interlude') {
       // Frame the whole outer bay: gunman, Ben, the gate and the demon.
-      look = new THREE.Vector3(toWorldX(95), 1.0, toWorldZ(400));
+      look = new THREE.Vector3(toWorldX(210), 1.0, toWorldZ(SHIFT_LAYOUT.eventBays.ben.y));
       position = look.clone().add(portrait ? new THREE.Vector3(2, 11, 9) : new THREE.Vector3(3.2, 6.6, 7.6));
     } else if (state === 'story' && this.depotShot) {
       look = this.depotShot.look;
       position = this.depotShot.position.clone();
       if (portrait) position.add(new THREE.Vector3(0, 4, 3));
     } else if (this.overview || this.state === 'briefing' || this.state === 'celebrating') {
-      look = new THREE.Vector3(0, 0, toWorldZ(420));
-      position = look.clone().add(portrait ? new THREE.Vector3(0, 64, 30) : new THREE.Vector3(0, 44, 21));
+      look = new THREE.Vector3(0, 0, toWorldZ((SHIFT_LAYOUT.worldTop + SHIFT_LAYOUT.worldBottom) / 2));
+      position = look.clone().add(portrait ? new THREE.Vector3(0, 84, 39) : new THREE.Vector3(0, 58, 27));
     } else {
       const worker = this.workers[this.model.activeWorker.id].root.position;
       const insideTruck = truckInteriorAt(this.model.activeWorker);
       // Follow the worker inside so the transparent roof reveals the shelves.
-      const terminal = THREE.MathUtils.smoothstep(worker.z, toWorldZ(700), toWorldZ(790));
+      const terminal = THREE.MathUtils.smoothstep(worker.z, toWorldZ(SHIFT_LAYOUT.stairs.minY - 80), toWorldZ(SHIFT_LAYOUT.stairs.minY + 10));
       look = new THREE.Vector3(worker.x * (insideTruck ? 1 : 0.5 + 0.5 * terminal), worker.y + 0.4, worker.z - (1 - terminal));
       position = look.clone().add(portrait ? new THREE.Vector3(0, 15, 9) : new THREE.Vector3(worker.x * 0.2 * (1 - terminal), 10.5, 9.4));
       if (insideTruck && !portrait) position = look.clone().add(new THREE.Vector3(0, 9, 5.5));

@@ -19,8 +19,9 @@ export const BEN_START = 68_000;
 export const BEN_END = 92_500;
 export const BEN_CAST = new Set(['ben', 'gunman', 'paula']);
 const SHOT_TIMES = [78_500, 78_760, 79_180, 79_500, 80_020];
-const GATE = { x: 56, y: 392 };
-const FALLEN = { x: 112, y: 394 };
+const BEN_BAY = SHIFT_LAYOUT.eventBays.ben;
+const GATE = { x: 152, y: BEN_BAY.y };
+const FALLEN = { x: 210, y: BEN_BAY.y + 2 };
 
 export class SetPieces {
   public ralphState: 'waiting' | 'entering' | 'loading' | 'leaving' | 'done' = 'waiting';
@@ -332,7 +333,7 @@ export class SetPieces {
     // The gunman comes in along the outer wall and threatens the floor.
     gunman.root.visible = t >= 68_000 && t < 81_700;
     if (gunman.root.visible) {
-      gunman.place(40, t < 69_500 ? mix(520, 420, (t - 68_000) / 1500) : t < 80_500 ? 420 : mix(420, 520, (t - 80_500) / 1200));
+      gunman.place(t < 69_500 ? mix(40, 112, (t - 68_000) / 1500) : t < 80_500 ? 112 : mix(112, 40, (t - 80_500) / 1200), BEN_BAY.y);
       const aiming = t >= 69_500 && t < 80_500;
       gunman.faceAngle = aiming
         ? Math.atan2(ben.root.position.x - gunman.root.position.x, ben.root.position.z - gunman.root.position.z) : null;
@@ -346,13 +347,13 @@ export class SetPieces {
     ben.root.visible = t < 85_600;
     ben.character.nameTag.visible = t < 80_020;
     if (t < 77_200) {
-      ben.place(150, 390);
+      ben.place(BEN_BAY.x, BEN_BAY.y);
       ben.faceAngle = -Math.PI / 2;
       ben.pose = t >= 72_000 && t < 77_200 ? 'announce' : 'none';
       ben.root.rotation.x = 0;
     } else if (t < 80_020) {
       if (this.benStage === 'boast') this.benStage = 'dodge';
-      ben.place(150 - (150 - FALLEN.x) * dodge + Math.sin(dodge * Math.PI * 4) * 16, 390 + Math.sin(dodge * Math.PI * 3) * 14);
+      ben.place(BEN_BAY.x - (BEN_BAY.x - FALLEN.x) * dodge + Math.sin(dodge * Math.PI * 4) * 16, BEN_BAY.y + Math.sin(dodge * Math.PI * 3) * 14);
       ben.faceAngle = this.reducedMotion ? -Math.PI / 2 : -Math.PI / 2 + Math.sin(t / 90) * 0.9;
       ben.pose = 'crouch';
     } else if (t < 81_700 || t >= 85_600) {
@@ -420,7 +421,7 @@ export class SetPieces {
         this.crew.benGone = true;
         ben.root.visible = false;
       }
-      paula.place(t < 86_400 ? mix(10, 104, (t - 85_600) / 800) : t < 91_600 ? 104 : mix(104, 10, (t - 91_600) / 900), 404);
+      paula.place(t < 86_400 ? mix(10, 210, (t - 85_600) / 800) : t < 91_600 ? 210 : mix(210, 10, (t - 91_600) / 900), BEN_BAY.y + 10);
       paula.faceAngle = t >= 86_400 && t < 91_600 ? Math.PI / 2 : null;
       paula.pose = t >= 86_400 && t < 91_600 ? 'swear' : 'none';
     }

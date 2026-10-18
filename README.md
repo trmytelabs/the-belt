@@ -74,6 +74,7 @@ SORT!** countdown starts the shift.
 - Walk up past the first truck row to see the receiving dock: two incoming
   semis, unloaders and a smelly dockhand feeding the next real parcel onto the belt.
 - Original named crew bays are preserved above the two player truck rows.
+  Rows are spread apart, with crew events and props between the trucks.
   Incoming articulated semis occupy the receiving area above those rows.
 - Pick up missed freight near the belt exit to recover it for half base points.
 

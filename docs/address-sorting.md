@@ -27,6 +27,10 @@ and records a sorting error without revealing the correct destination. In 3D,
 each wrong delivery attempt costs **10 points**, capped at the remaining score.
 An intact throw to a wrong drop also costs 10 points once at landing.
 
+Selection and pickup only allow the controlled worker's own truck and floor
+routes, plus bulk. The marker skips the other worker's parcels, even when they
+are closer. This applies on the belt, on the floor and in recovery.
+
 The worker you are not controlling walks to ordinary freight for their side,
 picks it up and carries it to the correct drop. **Only the currently controlled
 worker picks up bulk**, including missed or loose bulk. Switching away from a
@@ -48,7 +52,12 @@ Held 3D freight is placed in front of the worker using the actual scaled parcel
 depth. Its transform follows the worker's turn directly, preventing interpolation
 through the torso.
 
-The two truck rows come before the rear bulk platform. Stairs descend outward
+Truck rows are five metres apart, leaving at least two metres between their
+bodies. Crew stations, the massage table, LEGO, Ben's robbery and demon scene,
+Donna's computer and the fish tank occupy the gaps between rows. Loading doors
+and the central walking lanes remain clear. The warehouse and belt extend to
+fit the wider spacing; receiving stays at the front, and the two player truck
+rows come before the rear bulk platform. Stairs descend outward
 to the left and right. Both floor drops and all walking space remain in front
 of the final rear wall. No painted safe zones, lane guides, throw arc or landing
 ring identify where to stand. Street ranges appear on the floor and physical

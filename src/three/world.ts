@@ -40,7 +40,7 @@ export const VISITORS: Record<string, CharacterSpec & { x: number; y: number }> 
   kylie: { name: 'KYLIE', x: 850, y: 400, skin: SKIN.pale, shirt: 0xb24a6a, pants: 0x2b2f3a, hair: 0x83569a, hairStyle: 'bun' },
   john: { name: 'JOHN RUSHTON', x: 77, y: 397, skin: 0xbf9672, shirt: 0x2f4f64, pants: 0x2b3038, hair: 0x3a2a19, hairStyle: 'short', scale: 0.92 },
   vic: { name: 'VIC', x: 132, y: 286, skin: 0xc29c7a, shirt: 0x727f83, pants: 0x34383d, hair: 0xb4b4a1, hairStyle: 'short', moustache: true },
-  shan: { name: SHAN_NAME, dynamicSkin: true, x: 880, y: 395, skin: SKIN.light, shirt: 0xe9e4d6, pants: 0x30343c, hair: 0x8b8b88, hairStyle: 'bald', tie: 0x8a2630 },
+  shan: { name: SHAN_NAME, dynamicSkin: true, x: 752, y: SHIFT_LAYOUT.eventBays.brian.y, skin: SKIN.light, shirt: 0xe9e4d6, pants: 0x30343c, hair: 0x8b8b88, hairStyle: 'bald', tie: 0x8a2630 },
 };
 
 export const TERMITE_SPEC: CharacterSpec = { name: 'TERMITE', skin: 0xe2b088, shirt: 0x2f5f8f, pants: 0x2a3f5c, overalls: 0x2a3f5c, hair: 0x5a3a20, hairStyle: 'short', headwear: 'termiteHat', beard: true };
@@ -61,6 +61,7 @@ export class DepotWorld {
   public readonly scene = new THREE.Scene();
   public readonly tread: THREE.Texture;
   public readonly residents = new Map<string, Resident>();
+  public readonly eventProps = new Map<string, THREE.Object3D>();
   public readonly puffs: PuffField;
   public readonly bulkStack = new THREE.Group();
   public platformDeck!: THREE.Mesh;
@@ -142,7 +143,7 @@ export class DepotWorld {
 
     // Sodium work lights make warm pools over each working area, including the lower floor.
     const pools: [number, number, number, number][] = [
-      [480, 150, 0xffc07a, 70], [480, 420, 0xffc07a, 76], [480, 700, 0xffcf96, 72], [480, 830, 0xffc98c, 72],
+      [480, 150, 0xffc07a, 70], [480, 480, 0xffc07a, 76], [480, 820, 0xffcf96, 72], [480, SHIFT_LAYOUT.stairs.centerY, 0xffc98c, 72],
       [244, 260, 0xffb26a, 40], [716, 260, 0xffb26a, 40], [480, -120, 0x8fc4ff, 55],
       [150, 420, 0xffb26a, 26], [810, 420, 0xffb26a, 26],
     ];
@@ -260,7 +261,7 @@ export class DepotWorld {
     // Each truck row faces an open dock bay, so the fleet can drive out at
     // clock-out. Solid corrugated wall covers receiving and the far end.
     const bayTop = toWorldZ(100);
-    const bayBottom = toWorldZ(796);
+    const bayBottom = toWorldZ(SHIFT_LAYOUT.ralphBay.y + 56);
     const pillar = standard(0x2c3c43, 0.6, 0.3);
     const outside = new THREE.Mesh(new THREE.PlaneGeometry(30, groundEnd - groundTop), standard(0x101619, 0.95));
     outside.rotation.x = -Math.PI / 2;
@@ -284,14 +285,14 @@ export class DepotWorld {
       const lintel = new THREE.Mesh(new THREE.BoxGeometry(0.4, 3.0, bayBottom - bayTop), wall);
       lintel.position.set(side * 15.4, 5.9, (bayTop + bayBottom) / 2);
       scene.add(lintel);
-      for (const y of [100, 196, 292, 388, 484, 580, 676, 796]) {
+      for (const y of [100, 228, 388, 548, 708, 868, 1004, SHIFT_LAYOUT.ralphBay.y + 56]) {
         const post = rounded(0.36, 4.4, 0.3, pillar, 0.04);
         post.position.set(side * 15.4, 2.2, toWorldZ(y));
         const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.38, 1.0, 0.32), standard(PALETTE.safety, 0.6));
         stripe.position.set(side * 15.4, 0.5, toWorldZ(y));
         scene.add(shadowed(post), stripe);
       }
-      for (const y of [148, 244, 340, 436, 532, 628, 740]) {
+      for (const y of [...SHIFT_LAYOUT.crewTruckRows, SHIFT_LAYOUT.dockA.y, SHIFT_LAYOUT.dockD.y, SHIFT_LAYOUT.ralphBay.y]) {
         // Rolled-up shutter drums above each open bay.
         const drum = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 2.7, 14), standard(0x56656b, 0.5, 0.5));
         drum.rotation.x = Math.PI / 2;
@@ -416,7 +417,7 @@ export class DepotWorld {
 
     // Short crew steps in the aisles between parked trucks: the outer-bay crew
     // climb them to reach the belt and their trucks' rear doors.
-    for (const y of [196, 292, 388, 484]) {
+    for (const y of [228, 388, 548, 708]) {
       for (const side of [-1, 1]) {
         for (let i = 0; i < 3; i += 1) {
           const height = PLATFORM_HEIGHT * (i + 1) / 3;
@@ -810,11 +811,12 @@ export class DepotWorld {
   }
 
   private addTrucks(): void {
+    const [first, second, third, fourth] = SHIFT_LAYOUT.crewTruckRows;
     const crew: [string, number, number, 'left' | 'right', number, number?][] = [
-      ['HUSSAN', 244, 148, 'left', 0xa9875b], ['AJ', 244, 244, 'left', 0xb59a6e],
-      ['PAULA ABDUL', 244, 340, 'left', 0x7d4d9c, 0x6a3f86], ['BANNERMAN', 244, 436, 'left', 0xa58457],
-      ['FRUIT LOOP', 716, 148, 'right', 0xb08b5d], ['DORIS', 716, 244, 'right', 0xa98a63],
-      ['BRIAN', 716, 340, 'right', 0x9f7e52], ['DONNA', 716, 436, 'right', 0xb1916a],
+      ['HUSSAN', 244, first, 'left', 0xa9875b], ['AJ', 244, second, 'left', 0xb59a6e],
+      ['PAULA ABDUL', 244, third, 'left', 0x7d4d9c, 0x6a3f86], ['BANNERMAN', 244, fourth, 'left', 0xa58457],
+      ['FRUIT LOOP', 716, first, 'right', 0xb08b5d], ['DORIS', 716, second, 'right', 0xa98a63],
+      ['BRIAN', 716, third, 'right', 0x9f7e52], ['DONNA', 716, fourth, 'right', 0xb1916a],
     ];
     for (const [name, x, y, side, color, cabColor] of crew) this.placeTruck(name, x, y, side, color, cabColor ?? 0xd4cbb4);
     // Termite's and Skanky's four trucks back flush against the platform edge.
@@ -845,7 +847,8 @@ export class DepotWorld {
   }
 
   private addResidents(): void {
-    for (const [id, x, y, spec] of RESIDENTS) {
+    for (const [id, , , spec] of RESIDENTS) {
+      const { x, y } = SHIFT_LAYOUT.eventBays[id as keyof typeof SHIFT_LAYOUT.eventBays];
       const character = createCharacter(spec);
       const home = toWorld({ x, y });
       character.root.position.copy(home);
@@ -879,7 +882,9 @@ export class DepotWorld {
         leg.position.set(sx * 0.32, 0.37, sz * 0.85);
         table.add(leg);
       }
-      table.position.copy(at(100, 300));
+      table.position.copy(toWorld(SHIFT_LAYOUT.eventProps.massage));
+      table.userData.keep = true;
+      this.eventProps.set('massage', table);
       this.scene.add(shadowed(table));
     } else if (id === 'ben') {
       // Ben's literal small purple shoulder demon.
@@ -903,6 +908,9 @@ export class DepotWorld {
       demon.position.set(0.3, 1.5, 0);
       character.body.add(demon);
     } else if (id === 'bannerman') {
+      const bricks = new THREE.Group();
+      bricks.position.copy(toWorld(SHIFT_LAYOUT.eventProps.lego));
+      bricks.userData.keep = true;
       const colors = [0xd8352a, 0x2b6fd0, 0xf2c230, 0x3aa04a, 0xf2f2f2];
       for (let i = 0; i < 9; i += 1) {
         const brick = new THREE.Group();
@@ -914,10 +922,14 @@ export class DepotWorld {
           stud.position.set(-0.12 + s * 0.08, 0.075, 0);
           brick.add(stud);
         }
-        brick.position.copy(at(108 + (i % 3) * 12, 470 + Math.floor(i / 3) * 8)).add(new THREE.Vector3(0, 0.06 + Math.floor(i / 4) * 0.12, 0));
+        brick.position.copy(at(SHIFT_LAYOUT.eventProps.lego.x - 12 + (i % 3) * 12, SHIFT_LAYOUT.eventProps.lego.y - 8 + Math.floor(i / 3) * 8)).add(new THREE.Vector3(0, 0.06 + Math.floor(i / 4) * 0.12, 0));
+        brick.position.sub(bricks.position);
         brick.rotation.y = i * 0.7;
-        this.scene.add(shadowed(brick));
+        bricks.add(shadowed(brick));
       }
+      mergeStatic(bricks);
+      this.eventProps.set('lego', bricks);
+      this.scene.add(bricks);
     } else if (id === 'doris') {
       const cigarette = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.12, 6), standard(0xf3efe6, 0.6));
       cigarette.rotation.x = Math.PI / 2;
@@ -968,8 +980,10 @@ export class DepotWorld {
     const chair = rounded(0.5, 0.08, 0.5, standard(0x2c2f34, 0.6), 0.03);
     chair.position.set(0, 0.42, 0.68);
     desk.add(chair, husband.root);
-    desk.position.copy(toWorld({ x: 905, y: 520 }));
+    desk.position.copy(toWorld(SHIFT_LAYOUT.eventProps.computer));
     desk.rotation.y = -0.5;
+    desk.userData.keep = true;
+    this.eventProps.set('computer', desk);
     this.scene.add(shadowed(desk));
     return screenTexture;
   }
@@ -1020,6 +1034,8 @@ export class DepotWorld {
     }
     // In the empty bay beside Paytman's truck, where no truck drives through.
     tank.position.copy(toWorld(SHIFT_LAYOUT.fishTank));
+    tank.userData.keep = true;
+    this.eventProps.set('fish', tank);
     this.scene.add(shadowed(tank));
   }
 

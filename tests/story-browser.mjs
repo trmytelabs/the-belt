@@ -4,6 +4,7 @@ import { chromium } from 'playwright';
 import { preview } from 'vite';
 
 import { BREAK_SCENES, OPENERS, SCRUM } from '../src/game/slice/StoryScript.ts';
+import { DEPOT_3D_LAYOUT as L } from '../src/three/layout.ts';
 
 // The overnight story in the 3D depot, played through the real app with real
 // keys. Synthetic fixtures only move the shift clock, place a parcel in hand,
@@ -232,7 +233,7 @@ try {
   await clearFreight();
   await read(() => { window.fixtureApp.model.workers[0].heldId = null; for (const p of window.fixtureApp.model.packages) if (p.state === 'held') p.state = 'delivered'; });
   // A clean throw down the left stair; truck freight must be carried inside.
-  const cleanId = await holdFor('T', 'smallbox', { x: 330, y: 830 });
+  const cleanId = await holdFor('T', 'smallbox', { x: 330, y: L.stairs.centerY });
   await read(() => { window.fixtureApp.model.random = () => 0.99; });
   await page.waitForTimeout(150);
   assert.match(await page.locator('.b3d-hint').innerText(), /\[F\] THROW DOWN STAIRS · 30% BREAK RISK/);
@@ -243,7 +244,7 @@ try {
   assert.equal(await read(() => window.fixtureApp.model.score - 0), scoreBefore + 100);
   assert.equal(await read(() => window.fixtureApp.model.thrownDeliveries), 1);
   // A broken throw: no credit, one penalty, Shan comes over, the belt keeps moving.
-  const brokenId = await holdFor('T', 'makeup', { x: 330, y: 830 });
+  const brokenId = await holdFor('T', 'makeup', { x: 330, y: L.stairs.centerY });
   await read(() => { window.fixtureApp.model.random = () => 0; window.fixtureApp.model.score = 1000; });
   const travel = await read(() => window.fixtureApp.model.beltTravel);
   await page.keyboard.press('KeyF');
@@ -258,7 +259,7 @@ try {
   // Touching it again, standing in the dock, throwing again: nothing changes.
   // The belt is cleared and intake held so these presses can only reach the broken parcel.
   await clearFreight();
-  await read(() => { window.fixtureApp.model.eventStopped = true; Object.assign(window.fixtureApp.model.workers[0], { x: 369, y: 532 }); });
+  await read(() => { window.fixtureApp.model.eventStopped = true; Object.assign(window.fixtureApp.model.workers[0], { x: 369, y: window.fixtureApp.model.layout.dockA.y }); });
   const snapshot = () => read(() => ({ score: window.fixtureApp.model.score, damaged: window.fixtureApp.model.damaged, sorted: window.fixtureApp.model.sorted }));
   const beforeRepeat = await snapshot();
   for (let i = 0; i < 3; i += 1) { await page.keyboard.press('Space'); await page.keyboard.press('KeyF'); }
@@ -270,7 +271,7 @@ try {
   assert.equal(settled.score, beforeRepeat.score, 'repeat contact neither restores nor re-deducts points');
   // Carrying still works, down the real stairs to the lower floor.
   await read(() => { const m = window.fixtureApp.model; m.workers[0].heldId = null; for (const p of m.packages) if (p.state === 'held') p.state = 'delivered'; });
-  const floorId = await holdFor('T', 'smallbox', { x: 380, y: 830 });
+  const floorId = await holdFor('T', 'smallbox', { x: 380, y: L.stairs.centerY });
   const surface = () => read(() => window.fixtureApp.workers.termite.root.position.y);
   assert.ok(Math.abs(await surface() - 1.1) < 0.01, 'Termite stands on the raised platform');
   await page.keyboard.down('KeyA');

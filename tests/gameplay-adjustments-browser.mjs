@@ -72,6 +72,28 @@ try {
   }), {x:382,y:500}, 'coworker autonomy never moves the player-controlled worker');
   console.log(`PASS ${mode} default intake and autonomous coworker with real start inputs`);
 
+  if (mode === '3d') {
+    await read(() => {
+      const app = window.fixtureApp, m = app.model, template = { ...m.packages[0] };
+      m.eventStopped = true; m.autonomousCoworker = false; m.activeIndex = 0;
+      m.packages.splice(0, m.packages.length,
+        { ...template, id: 9901, route: 'B', state: 'belt', x: 480, y: 500, workerId: null },
+        { ...template, id: 9902, route: 'A', state: 'belt', x: 480, y: 485, workerId: null });
+      Object.assign(m.workers[0], { x: 400, y: 500, heldId: null });
+      Object.assign(m.workers[1], { x: 560, y: 500, heldId: null });
+      app.syncParcels(0); app.syncWorkers(1);
+    });
+    assert.equal(await read(() => window.fixtureApp.model.nearestPackage()?.id), 9902, 'Termite skips the closer Skanky parcel');
+    assert.equal(await read(() => window.fixtureApp.marker.position.z === window.fixtureApp.parcels.get(9902).root.position.z), true,
+      'the visible selection marker follows the eligible parcel');
+    await page.keyboard.press('Space');
+    assert.equal(await read(() => window.fixtureApp.model.heldPackage?.id), 9902);
+    await page.keyboard.press('Tab');
+    await page.keyboard.press('Space');
+    assert.equal(await read(() => window.fixtureApp.model.heldPackage?.id), 9901, 'switching workers enables their own route');
+    console.log('PASS 3D route-restricted selection marker and real-key pickup for both workers');
+  }
+
   const visual = await read(mode => {
     const app = mode === '3d' ? window.fixtureApp : window.fixtureGame.scene.getScene('DepotScene');
     app.state = 'paused';
@@ -132,13 +154,41 @@ try {
       });
       samples.push({kind,side,facing,clearance:rear,bodyFront:bodyFront[worker.id]});
     }
-    return {samples};
+    const bounds = root => {
+      root.updateWorldMatrix(true, true);
+      let minY = Infinity, maxY = -Infinity;
+      root.traverseVisible(mesh => {
+        const positions = mesh.isMesh && mesh.geometry?.attributes.position;
+        if (!positions) return;
+        for (let vertex = 0; vertex < positions.count; vertex++) {
+          const point = app.camera.position.clone();
+          if (mesh.isSkinnedMesh) mesh.getVertexPosition(vertex, point);
+          else point.fromBufferAttribute(positions, vertex);
+          const y = point.applyMatrix4(mesh.matrixWorld).z * 32 + 340;
+          minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+        }
+      });
+      return { minY, maxY };
+    };
+    const trucks = app.world.trucks.map(truck => ({ x: truck.homeX, y: truck.group.position.z * 32 + 340, ...bounds(truck.group) }));
+    const eventAreas = [...app.world.eventProps].map(([name, root]) => {
+      const area = bounds(root);
+      const sameSide = trucks.filter(truck => Math.sign(truck.x) === Math.sign(root.position.x));
+      const before = sameSide.filter(truck => truck.y < area.minY).sort((a,b) => b.y-a.y)[0];
+      const after = sameSide.filter(truck => truck.y > area.maxY).sort((a,b) => a.y-b.y)[0];
+      return { name, ...area, previousEdge: before?.maxY, nextEdge: after?.minY };
+    });
+    return {samples,eventAreas};
   });
   if(mode === '3d') {
     assert.equal(visual.samples.length,112);
     for(const sample of visual.samples) {
       assert.ok(Number.isFinite(sample.bodyFront), 'measure the actual imported worker torso');
       assert.ok(sample.clearance >= Math.max(0.319, sample.bodyFront + 0.02), JSON.stringify(sample));
+    }
+    assert.equal(visual.eventAreas.length, 4);
+    for (const area of visual.eventAreas) {
+      assert.ok(area.minY > area.previousEdge + 4 && area.maxY < area.nextEdge - 4, `real event geometry fits between truck bodies: ${JSON.stringify(area)}`);
     }
   } else {
     assert.equal(visual.millwoods,true);
@@ -152,7 +202,7 @@ try {
       const parcel = { ...m.packages[0], id: 9100, route: 'A', label: 'BOOKS', kind: 'smallbox', street: 27,
         address: '2417 27 ST', size: 'normal', state: 'held', workerId: 'termite', flight: null };
       m.packages.splice(0, m.packages.length, parcel);
-      Object.assign(m.workers[0], { x: 330, y: 532, facing: 'left', heldId: parcel.id });
+      Object.assign(m.workers[0], { x: 330, y: m.layout.dockA.y, facing: 'left', heldId: parcel.id });
       m.workers[1].heldId = null; app.state = 'playing'; m.paused = false;
     });
     await page.keyboard.press('Space');
@@ -222,7 +272,7 @@ try {
     const m=app.model;
     const parcel={...m.packages[0],id:9001,kind:'smallbox',label:'BOOKS',route:'T',street:119,address:'2417 119 ST',size:'normal',state:'held',workerId:'termite',flight:null};
     m.packages.splice(0,m.packages.length,parcel);
-    Object.assign(m.workers[0],mode === '3d' ? {x:330,y:830,heldId:parcel.id,facing:'left'} : {x:380,y:784,heldId:parcel.id,facing:'down'});
+    Object.assign(m.workers[0],mode === '3d' ? {x:330,y:m.layout.stairs.centerY,heldId:parcel.id,facing:'left'} : {x:380,y:784,heldId:parcel.id,facing:'down'});
     m.workers[1].heldId=null;
     m.activeIndex=0; m.score=1000; m.damaged=0; m.breakagePenalty=0; m.paused=false; m.random=()=>0.299999; m.spawnElapsedMs=0; m.nextSpawnIntervalMs=2000; m.pendingIntake=null;
     app.state='playing';

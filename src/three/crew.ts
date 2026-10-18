@@ -10,6 +10,7 @@ import { animateCharacter, bendElbows, bendKnees, createCharacter, mergeCharacte
 import { createParcelView, type ParcelView } from './parcels';
 import { BELT_HEIGHT, actorSurfaceAt, setFromModel, standard, textSprite, toWorld } from './space';
 import { SKIN, VISITORS, type DepotWorld } from './world';
+import { DEPOT_3D_LAYOUT as DEPOT } from './layout';
 
 /**
  * The crew's routines and gags, on the 2D depot's authored schedule
@@ -21,10 +22,10 @@ export type Pose = 'none' | 'shout' | 'crouch' | 'massage' | 'dance' | 'swear' |
 
 const RESIDENT_IDS = ['hussan', 'aj', 'ben', 'bannerman', 'fruitloop', 'doris', 'brian', 'donna'] as const;
 const TRUCK_DOORS: Record<string, { x: number; y: number }> = {
-  hussan: { x: 324, y: 148 }, aj: { x: 324, y: 244 }, ben: { x: 324, y: 340 }, bannerman: { x: 324, y: 436 },
-  fruitloop: { x: 636, y: 148 }, doris: { x: 636, y: 244 }, brian: { x: 636, y: 340 }, donna: { x: 636, y: 436 },
+  hussan: { x: 324, y: DEPOT.crewTruckRows[0] }, aj: { x: 324, y: DEPOT.crewTruckRows[1] }, ben: { x: 324, y: DEPOT.crewTruckRows[2] }, bannerman: { x: 324, y: DEPOT.crewTruckRows[3] },
+  fruitloop: { x: 636, y: DEPOT.crewTruckRows[0] }, doris: { x: 636, y: DEPOT.crewTruckRows[1] }, brian: { x: 636, y: DEPOT.crewTruckRows[2] }, donna: { x: 636, y: DEPOT.crewTruckRows[3] },
 };
-const MASSAGE_TABLE = { x: 100, y: 300 };
+const MASSAGE_TABLE = DEPOT.eventProps.massage;
 export const mix = (a: number, b: number, t: number): number => a + (b - a) * THREE.MathUtils.clamp(t, 0, 1);
 
 /** A character placed in model space, facing the way it last moved. */
@@ -403,8 +404,8 @@ export class CrewLife {
     const kylie = this.actor('kylie');
     kylie.root.visible = t > 1800 && t < 15500;
     kylie.place(
-      t < 4500 ? mix(986, 863, (t - 1800) / 2700) : t < 12300 ? 863 + Math.sin(t / 900) * 20 : mix(863, 985, (t - 12300) / 3200),
-      t < 12300 ? 400 + Math.cos(t / 1300) * 26 : mix(400, 361, (t - 12300) / 850),
+      t < 4500 ? mix(950, 754, (t - 1800) / 2700) : t < 12300 ? 754 + Math.sin(t / 900) * 20 : mix(754, 950, (t - 12300) / 3200),
+      DEPOT.eventBays.brian.y + Math.cos(t / 1300) * 12,
     );
     kylie.character.rightArm.rotation.x = -0.9;
 
@@ -414,7 +415,7 @@ export class CrewLife {
     john.root.visible = t < this.johnUntil;
     if (john.root.visible) {
       const e = 4600 - (this.johnUntil - t);
-      john.place(e < 600 ? mix(10, 77, e / 600) : e < 3950 ? 77 : mix(77, 10, (e - 3950) / 650), 397);
+      john.place(e < 600 ? mix(10, 200, e / 600) : e < 3950 ? 200 : mix(200, 10, (e - 3950) / 650), DEPOT.eventBays.ben.y);
       john.faceAngle = e >= 600 && e < 3950 ? Math.PI / 2 : null;
       const pose: Pose = e < 600 || e >= 3950 ? 'none' : e < 2100 ? 'shout' : 'crouch';
       if (pose !== john.pose) { john.pose = pose; john.poseStart = wallTime; }
@@ -529,15 +530,16 @@ export class CrewLife {
     vic.faceAngle = null;
     vic.place(t < 23700 ? mix(10, MASSAGE_TABLE.x - 22, (t - 21000) / 2700)
       : t < 30800 ? MASSAGE_TABLE.x - 22 : mix(MASSAGE_TABLE.x - 22, 10, (t - 30800) / 2700), MASSAGE_TABLE.y + 30);
-    aj.place(t < 30800 ? mix(150, MASSAGE_TABLE.x + 22, (t - 21000) / 1200) : mix(MASSAGE_TABLE.x + 22, 150, (t - 30800) / 1200),
-      t < 30800 ? mix(294, MASSAGE_TABLE.y + 4, (t - 21000) / 1200) : mix(MASSAGE_TABLE.y + 4, 294, (t - 30800) / 1200));
+    const home = DEPOT.eventBays.aj;
+    aj.place(t < 30800 ? mix(home.x, MASSAGE_TABLE.x + 22, (t - 21000) / 1200) : mix(MASSAGE_TABLE.x + 22, home.x, (t - 30800) / 1200),
+      t < 30800 ? mix(home.y, MASSAGE_TABLE.y + 4, (t - 21000) / 1200) : mix(MASSAGE_TABLE.y + 4, home.y, (t - 30800) / 1200));
     aj.faceAngle = null;
     aj.pose = 'none';
   }
 
   private updateCell(t: number, wallTime: number, model: ShiftModel, reserved: Set<string>): void {
     const hussan = this.actor('hussan');
-    const home = { x: 150, y: 198 };
+    const home = DEPOT.eventBays.hussan;
     const intakeClear = !model.packages.some((parcel) => parcel.state === 'belt' && Math.abs(parcel.y - 164) < 70);
     if (t >= 40000 && this.snakeState === 'waiting' && intakeClear) {
       this.snakeState = 'belt';
@@ -571,6 +573,8 @@ export class CrewLife {
     }
     if (this.snakeState === 'dancing') {
       const elapsed = t - this.cellTime;
+      const returnToBay = Math.min(1, elapsed / 450);
+      hussan.place(mix(392, home.x, returnToBay), mix(186, home.y, returnToBay));
       hussan.carrying = false;
       hussan.pose = 'dance';
       hussan.faceAngle = Math.PI / 2 + (this.reducedMotion ? 0 : Math.sin(elapsed / 220) * 0.6);
@@ -587,8 +591,7 @@ export class CrewLife {
       }
     }
     if (this.snakeState === 'done' && t < this.cellTime + 1600) {
-      const r = (t - this.cellTime) / 1600;
-      hussan.place(r < 0.25 ? mix(392, 350, r / 0.25) : mix(350, home.x, (r - 0.25) / 0.75), r < 0.25 ? mix(186, home.y, r / 0.25) : home.y);
+      hussan.place(home.x, home.y);
     } else if (this.snakeState === 'done' && hussan.pose === 'none') {
       hussan.pose = 'phone';
     }
@@ -723,7 +726,7 @@ export class CrewLife {
       return;
     }
     const laneX = worker.side === 'left' ? 365 : 595;
-    const top = worker.y > 784 ? 790 : Math.max(-10, worker.y - 150);
+    const top = worker.y > DEPOT.stairs.minY ? DEPOT.stairs.minY + 10 : Math.max(-10, worker.y - 150);
     this.shanVisit = {
       start: time, line, spoken: false,
       from: { x: laneX, y: top },

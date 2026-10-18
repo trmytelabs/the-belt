@@ -127,7 +127,7 @@ try {
   const held = await read(() => window.fixtureApp.model.heldPackage && { label: window.fixtureApp.model.heldPackage.label, route: window.fixtureApp.model.heldPackage.route });
   assert.deepEqual(held, { label: 'MALLWOOD RD EAST', route: 'A' });
   // Align with the open rear door, then enter using real movement input.
-  await read(() => { window.fixtureApp.model.activeWorker.y = 532; });
+  await read(() => { window.fixtureApp.model.activeWorker.y = window.fixtureApp.model.layout.dockA.y; });
   await page.keyboard.down('KeyA');
   await page.waitForFunction(() => window.fixtureApp.model.activeWorker.x < 302);
   await page.keyboard.up('KeyA');
@@ -216,6 +216,10 @@ try {
   await page.waitForFunction(() => window.fixtureApp.crew.massageStage === 'lying');
   assert.equal(await crew(() => window.fixtureApp.crew.actors.get('aj').pose), 'massage', 'AJ massages Vic');
   assert.equal(await crew(() => window.fixtureApp.crew.towel.visible), true, 'Vic lies under a towel');
+  assert.equal(await crew(() => {
+    const app = window.fixtureApp, y = app.crew.towel.position.z * 32 + 340;
+    return y > app.model.layout.crewTruckRows[1] + 36 && y < app.model.layout.crewTruckRows[2] - 36;
+  }), true, 'the massage plays in the space between truck rows');
 
   // Mesa: keyboard N leaves it on the belt and the shift resumes.
   await clearFreight();
@@ -249,12 +253,21 @@ try {
   const frozen = await read(() => ({ t: window.fixtureApp.model.elapsedMs, travel: window.fixtureApp.model.beltTravel }));
   // The story is sampled every 10 ms, so brief stages cannot be missed.
   await read(() => {
-    window.storySeen = { stages: [], marker: false, gateAndDemon: false };
+    window.storySeen = { stages: [], marker: false, gateAndDemon: false, outsideBay: [] };
     const timer = setInterval(() => {
       const pieces = window.fixtureApp.setPieces;
       if (window.storySeen.stages.at(-1) !== pieces.benStage) window.storySeen.stages.push(pieces.benStage);
       window.storySeen.marker ||= pieces.deadMarker.visible;
       window.storySeen.gateAndDemon ||= pieces.gate.visible && pieces.demon.visible;
+      const app = window.fixtureApp;
+      for (const id of ['ben', 'gunman', 'paula']) {
+        const root = app.crew.actors.get(id).root;
+        if (!root.visible) continue;
+        const y = root.position.z * 32 + 340;
+        if (y < app.model.layout.crewTruckRows[2] + 48 || y > app.model.layout.crewTruckRows[3] - 48) {
+          if (!window.storySeen.outsideBay.includes(id)) window.storySeen.outsideBay.push(id);
+        }
+      }
       if (window.fixtureApp.state !== 'interlude' && window.fixtureApp.state !== 'paused') clearInterval(timer);
     }, 10);
   });
@@ -292,6 +305,7 @@ try {
   const seen = await read(() => window.storySeen);
   assert.ok(seen.marker, 'Ben falls with X_X');
   assert.ok(seen.gateAndDemon, 'the gate opens and the demon rises');
+  assert.deepEqual(seen.outsideBay, [], 'the entire robbery, dodge, drag and Paula scene stays between parked trucks');
   const order = ['threat', 'boast', 'dodge', 'demon', 'drag', 'sink', 'paula'];
   assert.deepEqual(seen.stages.filter((stage) => order.includes(stage)).filter((stage, index, list) => list.indexOf(stage) === index), order,
     'the story stages play in their original order');
@@ -524,7 +538,7 @@ console: ${touchConsole.slice(-10).join(' | ')}`); });
     }, 5);
   }));
   assert.equal(await readTouch(() => window.fixtureApp.model.heldPackage?.label), 'MALLWOOD RD EAST', 'GRAB picks up the parcel');
-  await readTouch(() => { window.fixtureApp.model.activeWorker.y = 532; });
+  await readTouch(() => { window.fixtureApp.model.activeWorker.y = window.fixtureApp.model.layout.dockA.y; });
   await touchSession.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [centre] });
   await touchSession.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: stick.x + 4, y: centre.y }] });
   await waitTouch(() => window.fixtureApp.model.activeWorker.x < 302);
