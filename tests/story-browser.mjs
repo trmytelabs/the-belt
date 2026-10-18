@@ -298,7 +298,7 @@ try {
   await wait(x => window.fixtureApp.model.activeWorker.x >= x + 20, L.platform.left);
   await page.keyboard.up('KeyD');
   assert.ok(Math.abs(await surface() - 1.1) < 0.01, 'and back up to the platform');
-  assert.ok(await read(y => window.fixtureApp.model.activeWorker.y < y, SHIFT_LAYOUT.bulkRearWall.y - SHIFT_LAYOUT.bulkRearWall.height / 2),
+  assert.ok(await read(y => window.fixtureApp.model.activeWorker.y < y, L.bulkRearWall.y - L.bulkRearWall.height / 2),
     'the whole stair route stays in front of the final back wall');
   assert.deepEqual(errors, []);
   console.log('PASS 3D throwing: heavy freight carry-only, clean F throw without aiming guides and with credit, broken throw with one penalty and Shan while the belt runs, no repeat penalty, carry down and up the real stairs to a floor-drop pile; no script errors');
