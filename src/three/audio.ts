@@ -165,7 +165,7 @@ export class DepotAudio extends AudioSystem {
     noise.onended = () => { noise.disconnect(); cleanup(); };
     hum.onended = () => { hum.disconnect(); cleanup(); };
     this.idleGain = gain; this.idleSources = [noise, hum];
-    this.fade(gain, 0.03, 1.2);
+    this.fade(gain, 0.024, 1.2);
     noise.start(); hum.start();
   }
 }
