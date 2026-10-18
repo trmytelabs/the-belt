@@ -6,7 +6,7 @@ import { audioSystem } from '../game/systems/AudioSystem';
 import { createCharacter } from './characters';
 import { mix, type Actor, type CrewLife, type Say } from './crew';
 import { setFromModel, standard, textSprite, toWorld, toWorldX } from './space';
-import type { DepotWorld } from './world';
+import { RALPH_BAY, type DepotWorld } from './world';
 
 /**
  * The 2D depot's big set pieces, on its authored clocks
@@ -268,10 +268,10 @@ export class SetPieces {
     const elapsed = t - this.ralphStart;
     const truck = this.world.ralphTruck;
     if (elapsed < 1800) {
-      truck.position.x = toWorldX(mix(1040, 840, elapsed / 1800));
+      truck.position.x = toWorldX(mix(RALPH_BAY.from, RALPH_BAY.x, elapsed / 1800));
       return;
     }
-    truck.position.x = toWorldX(840);
+    truck.position.x = toWorldX(RALPH_BAY.x);
     if (this.ralphState === 'entering') {
       this.ralphState = 'loading';
       ralph.root.visible = true;
@@ -286,17 +286,18 @@ export class SetPieces {
       this.ralphLoaded = loaded;
       this.ralphLifted = Math.min(5, loaded + Number(trip >= 1600));
       this.world.setRalphLoad(loaded);
-      const door = { x: 752, y: 648 };
-      const pile = { x: SHIFT_LAYOUT.bulkPile.x + 46, y: SHIFT_LAYOUT.bulkPile.y + 8 };
+      // From the flatbed, backed against the platform edge, to the shared pile.
+      const door = { x: 330, y: RALPH_BAY.y };
+      const pile = { x: SHIFT_LAYOUT.bulkPile.x - 46, y: SHIFT_LAYOUT.bulkPile.y + 8 };
       if (trip < 1300) ralph.place(mix(door.x, pile.x, trip / 1300), mix(door.y, pile.y, trip / 1300));
       else if (trip < 1600) ralph.place(pile.x, pile.y);
       else ralph.place(mix(pile.x, door.x, (trip - 1600) / 1400), mix(pile.y, door.y, (trip - 1600) / 1400));
-      ralph.faceAngle = trip >= 1300 && trip < 1600 ? -Math.PI / 2 : null;
+      ralph.faceAngle = trip >= 1300 && trip < 1600 ? Math.PI / 2 : null;
       ralph.pose = trip >= 1600 ? 'carry' : 'none';
       this.ralphBox.visible = trip >= 1600;
       if (this.ralphBox.visible) {
         const forward = new THREE.Vector3(Math.sin(ralph.root.rotation.y), 0, Math.cos(ralph.root.rotation.y));
-        this.ralphBox.position.copy(ralph.root.position).addScaledVector(forward, 0.45).setY(1.0);
+        this.ralphBox.position.copy(ralph.root.position).addScaledVector(forward, 0.45).setY(ralph.root.position.y + 1.0);
         this.ralphBox.rotation.y = ralph.root.rotation.y;
       }
     } else {
@@ -306,7 +307,7 @@ export class SetPieces {
       this.world.setRalphLoad(5);
       this.ralphBox.visible = false;
       ralph.root.visible = false;
-      truck.position.x = toWorldX(mix(840, 1080, (loading - 15_000) / 2200));
+      truck.position.x = toWorldX(mix(RALPH_BAY.x, RALPH_BAY.from - 40, (loading - 15_000) / 2200));
       if (loading >= 17_200) {
         this.ralphState = 'done';
         truck.visible = false;

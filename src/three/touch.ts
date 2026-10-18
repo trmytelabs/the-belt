@@ -17,7 +17,11 @@ const CSS = `
   background: #14262dd9; font: 800 12px 'Segoe UI', Arial, sans-serif; letter-spacing: 1px; border-radius: 14px;
   -webkit-tap-highlight-color: transparent; box-shadow: 0 6px 18px #0008; }
 .b3d-actions .grab { grid-row: 1 / span 2; grid-column: 2; width: 104px; height: 104px; border-radius: 50%; background: #a6cc9a; color: #10232a; font-size: 13px; }
-.b3d-actions .switch, .b3d-actions .brake { width: 82px; height: 47px; }
+.b3d-actions .switch, .b3d-actions .brake, .b3d-actions .throw { width: 82px; height: 47px; }
+.b3d-actions { grid-template-rows: auto auto auto; }
+.b3d-actions .grab { grid-row: 1 / span 3; }
+.b3d-actions .throw { background: #6d4a7a; }
+.b3d-touch.chapter .switch, .b3d-touch.chapter .throw, .b3d-touch.chapter .b3d-corner [data-touch="view"] { display: none; }
 .b3d-actions button.down, .b3d-corner button.down { background: #edba6d; color: #10232a; }
 .b3d-actions .brake[disabled] { opacity: .55; }
 .b3d-corner { position: absolute; left: max(12px, env(safe-area-inset-left)); top: 96px; display: flex; gap: 8px; }
@@ -33,12 +37,12 @@ const CSS = `
   .b3d-knob { width: 44px; height: 44px; margin: -22px 0 0 -22px; }
   .b3d-actions { right: max(12px, env(safe-area-inset-right)); gap: 8px; }
   .b3d-actions .grab { width: 84px; height: 84px; font-size: 11px; }
-  .b3d-actions .switch, .b3d-actions .brake { width: 66px; height: 38px; font-size: 11px; }
+  .b3d-actions .switch, .b3d-actions .brake, .b3d-actions .throw { width: 66px; height: 38px; font-size: 11px; }
 }
 @media (orientation: landscape) and (max-height: 520px) {
   .b3d-stick { width: 104px; height: 104px; }
   .b3d-actions .grab { width: 88px; height: 88px; }
-  .b3d-actions .switch, .b3d-actions .brake { width: 72px; height: 40px; }
+  .b3d-actions .switch, .b3d-actions .brake, .b3d-actions .throw { width: 72px; height: 36px; }
   .b3d-corner { top: 92px; }
   .b3d.touch .b3d-bottom { top: 50px; }
 }
@@ -48,6 +52,7 @@ export interface TouchHandlers {
   action(): void;
   switchWorker(): void;
   brake(): void;
+  throwParcel(): void;
   overview(): void;
   pause(): void;
 }
@@ -75,6 +80,7 @@ export class TouchControls {
         <button type="button" class="switch" data-touch="switch">SWITCH</button>
         <button type="button" class="grab" data-touch="grab">GRAB /<br>DELIVER</button>
         <button type="button" class="brake" data-touch="brake">BRAKE</button>
+        <button type="button" class="throw" data-touch="throw">THROW</button>
       </div>
       <div class="b3d-corner">
         <button type="button" data-touch="view">VIEW</button>
@@ -85,7 +91,7 @@ export class TouchControls {
     this.brakeButton = this.root.querySelector('.brake')!;
 
     const actions: Record<string, () => void> = {
-      grab: handlers.action, switch: handlers.switchWorker, brake: handlers.brake, view: handlers.overview, pause: handlers.pause,
+      grab: handlers.action, switch: handlers.switchWorker, brake: handlers.brake, throw: handlers.throwParcel, view: handlers.overview, pause: handlers.pause,
     };
     for (const button of this.root.querySelectorAll<HTMLButtonElement>('button')) {
       // Pointer presses act at once, for responsive play. A click with no
@@ -146,9 +152,17 @@ export class TouchControls {
     stick.addEventListener('pointercancel', end);
   }
 
-  /** Shows the controls while the shift is playable; releases the stick otherwise. */
-  public setLive(live: boolean, brakeLabel: string, brakeReady: boolean): void {
+  /**
+   * Shows the controls while something is playable: the shift, or the mall and
+   * lot chapters (where GRAB acts, BRAKE takes the cart and SWITCH, THROW and
+   * VIEW are hidden). Releases the stick otherwise.
+   */
+  public setLive(live: boolean, brakeLabel: string, brakeReady: boolean, chapter = false): void {
     this.root.classList.toggle('live', live);
+    this.root.classList.toggle('chapter', chapter);
+    const grab = this.root.querySelector<HTMLButtonElement>('.grab')!;
+    const grabLabel = chapter ? 'ACT' : 'GRAB /<br>DELIVER';
+    if (grab.innerHTML !== grabLabel) grab.innerHTML = grabLabel;
     if (!live && this.stickPointer === null) this.reset();
     if (this.brakeButton.textContent !== brakeLabel) this.brakeButton.textContent = brakeLabel;
     this.brakeButton.disabled = !brakeReady;

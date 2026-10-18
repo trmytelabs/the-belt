@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-import { ROUTE_INFO, SHIFT_LAYOUT, type Route } from '../game/slice/ShiftModel';
+import { ROUTE_INFO, SHIFT_LAYOUT, platformLevelAt, type Route } from '../game/slice/ShiftModel';
 
 /**
  * ShiftModel works in the 2D depot's pixel space. The 3D world keeps those
@@ -17,8 +17,28 @@ export const toWorld = (point: { x: number; y: number }, height = 0): THREE.Vect
 export const setFromModel = (target: THREE.Vector3, point: { x: number; y: number }, height = target.y): THREE.Vector3 =>
   target.set(toWorldX(point.x), height, toWorldZ(point.y));
 
-export const BELT_HEIGHT = 0.78;
+/** The loading platform's deck: truck cargo floors line up with it. */
+export const PLATFORM_HEIGHT = 1.1;
+/** The belt's working height above the platform deck. */
+export const BELT_WORK_HEIGHT = 0.78;
+/** The belt surface, in world height above the lower floor. */
+export const BELT_HEIGHT = PLATFORM_HEIGHT + BELT_WORK_HEIGHT;
 export const BELT_WIDTH = 64 * WORLD_SCALE;
+
+/** Walking surface height at a model point: platform, stairs or lower floor. */
+export const surfaceAt = (x: number, y: number): number => platformLevelAt(x, y) * PLATFORM_HEIGHT;
+
+/**
+ * Crew who live in the outer bays climb the short steps in the aisles between
+ * parked trucks; this eases them up and down the platform edge.
+ */
+export function actorSurfaceAt(x: number, y: number): number {
+  const level = platformLevelAt(x, y);
+  if (level > 0 || y < 100 || y > SHIFT_LAYOUT.platform.bottom) return level * PLATFORM_HEIGHT;
+  const { left, right } = SHIFT_LAYOUT.platform;
+  const climb = x < 480 ? (x - (left - 20)) / 20 : ((right + 20) - x) / 20;
+  return Math.max(0, Math.min(1, climb)) * PLATFORM_HEIGHT;
+}
 
 /** Every destination's colour; letters and names always accompany it. */
 export const ROUTE_COLORS = Object.fromEntries(Object.values(ROUTE_INFO).map((info) => [info.route, info.color])) as Record<Route, string>;

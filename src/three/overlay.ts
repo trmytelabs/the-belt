@@ -61,6 +61,42 @@ const CSS = `
 .b3d-count { font: 900 120px "Segoe UI", Arial, sans-serif; color: #f0dfb3; text-shadow: 0 8px 30px #000; }
 .b3d-toast { position: absolute; top: 92px; left: 50%; transform: translateX(-50%); background: #10232ae6; border: 1px solid #3b5a62;
   padding: 8px 16px; border-radius: 6px; font-weight: 700; font-size: 14px; transition: opacity .3s; }
+/* Story chapters: subtitles, scene title, controls; the shift HUD steps aside. */
+.b3d.story .b3d-hud, .b3d.chapter .b3d-hud { display: none; }
+.b3d-subtitle { position: absolute; left: 50%; bottom: 74px; transform: translateX(-50%); width: min(760px, calc(100vw - 32px));
+  text-align: center; pointer-events: none; display: none; }
+.b3d.story .b3d-subtitle { display: block; }
+.b3d-subtitle .line { display: inline-block; background: #0b171ce6; border: 1px solid #3b5a62; border-radius: 8px; padding: 8px 14px;
+  font: 700 17px/1.35 'Segoe UI', Arial, sans-serif; color: #f3e6c6; }
+.b3d-subtitle .line b { color: #edb765; letter-spacing: 1px; margin-right: 8px; }
+.b3d-subtitle .direction { display: block; margin-top: 6px; font: italic 600 14px/1.35 'Segoe UI', Arial, sans-serif; color: #c9d8d8;
+  text-shadow: 0 2px 6px #000; }
+.b3d-subtitle .caption { color: #a6cc9a; font-style: normal; letter-spacing: 1px; }
+.b3d-storybar { position: absolute; top: 14px; left: 18px; right: 18px; display: none; justify-content: space-between; align-items: flex-start;
+  pointer-events: none; gap: 12px; }
+.b3d.story .b3d-storybar, .b3d.chapter .b3d-storybar { display: flex; }
+.b3d-storybar .title { border-left: 4px solid #e8b765; padding-left: 10px; font: 800 20px/1.1 'Segoe UI', Arial, sans-serif; text-shadow: 0 2px 8px #000; }
+.b3d-storybar .title small { display: block; font-size: 11px; letter-spacing: 2px; color: #9fb4b4; margin-top: 4px; }
+.b3d-storybar .clock { font: 800 18px 'Segoe UI', Arial, sans-serif; color: #edb765; text-align: right; background: #0b171cc8; padding: 6px 10px; border-radius: 6px; }
+.b3d-storykeys { position: absolute; right: 18px; bottom: 18px; display: none; gap: 8px; z-index: 5; }
+.b3d.story .b3d-storykeys { display: flex; }
+.b3d-storykeys button { pointer-events: auto; border: 1px solid #ffffff3a; color: #edf0de; background: #14262dd9; border-radius: 10px;
+  font: 800 13px 'Segoe UI', Arial, sans-serif; letter-spacing: 1px; padding: 10px 14px; cursor: pointer; min-height: 44px; }
+.b3d-storykeys button small { opacity: .7; font-size: 10px; }
+.b3d-storykeys button.skip { background: #edb765; color: #1a2226; }
+.b3d-chapterhud { position: absolute; left: 0; bottom: 0; right: 0; display: none; gap: 18px; align-items: center;
+  background: linear-gradient(#0b171c00, #0b171ce8); padding: 12px 22px; pointer-events: none; flex-wrap: wrap; }
+.b3d.chapter .b3d-chapterhud { display: flex; }
+.b3d-chapterhud .stat { display: flex; flex-direction: column; }
+.b3d-chapterhud .stat small { font-size: 10px; letter-spacing: 2px; color: #8eaaae; }
+.b3d-chapterhud .stat b { font: 800 20px 'Segoe UI', Arial, sans-serif; }
+.b3d-chapterhud .objective { flex: 1; min-width: 200px; font-weight: 700; font-size: 14px; color: #f3e6c6; }
+.b3d-chapterhud .keys { color: #8eaaae; font-size: 11px; letter-spacing: 1px; }
+.b3d-routes { color: #8eaaae; font-size: 11px; letter-spacing: 1px; white-space: nowrap; }
+.b3d-routes i { font-style: normal; font-weight: 800; padding: 0 3px; border-radius: 3px; color: #12232a; }
+@media (max-width: 1180px) { .b3d-routes { display: none; } }
+.b3d.touch .b3d-chapterhud .keys { display: none; }
+.b3d.touch.chapter .b3d-chapterhud { bottom: auto; top: 54px; background: #0b171cc8; }
 /* Phones: one compact row of stats; the brand gives way to the numbers. */
 @media (max-width: 720px), (max-height: 520px) {
   .b3d-top { gap: 14px; padding: 8px 12px; flex-wrap: nowrap; }
@@ -85,7 +121,7 @@ const CSS = `
 
 export interface HudState {
   sorted: number; goal: number; score: number; timeLeftMs: number; backlog: number; capacity: number;
-  phase: string; combo: number; worker: 'termite' | 'skanky'; hint: string; brake: string; overview: boolean;
+  phase: string; combo: number; worker: 'termite' | 'skanky'; hint: string; brake: string; overview: boolean; routes?: string;
 }
 
 interface Bubble {
@@ -134,7 +170,8 @@ export class Overlay {
         <div class="b3d-worker" data-f="worker"></div>
         <div class="b3d-hint" data-f="hint"></div>
         <div class="b3d-brake" data-f="brake"></div>
-        <div class="b3d-keys">WASD MOVE · TAB SWITCH · SPACE GRAB/DELIVER · E BRAKE · V <span data-f="view"></span> · ESC PAUSE · M SOUND</div>
+        <div class="b3d-routes" data-f="routes"></div>
+        <div class="b3d-keys">WASD MOVE · TAB SWITCH · SPACE GRAB/DELIVER · F THROW · E BRAKE · V <span data-f="view"></span> · ESC PAUSE · M SOUND</div>
       </div>`;
     this.hud.querySelectorAll<HTMLElement>('[data-f]').forEach((element) => { this.fields[element.dataset.f!] = element; });
     this.bubbles = this.div('b3d-bubbles', this.root);
@@ -142,6 +179,91 @@ export class Overlay {
     this.toast = this.div('b3d-toast', this.root);
     this.toast.style.opacity = '0';
     this.center = this.div('b3d-center', this.root);
+    this.storybar = this.div('b3d-storybar', this.root);
+    this.subtitleBox = this.div('b3d-subtitle', this.root);
+    this.storykeys = this.div('b3d-storykeys', this.root);
+    this.storykeys.innerHTML = '<button type="button" data-story="next">NEXT ▸ <small>SPACE</small></button>'
+      + '<button type="button" class="skip" data-story="skip">SKIP SCENE ⏭ <small>ENTER</small></button>';
+    this.chapterhud = this.div('b3d-chapterhud', this.root);
+  }
+
+  private readonly storybar: HTMLDivElement;
+  private readonly subtitleBox: HTMLDivElement;
+  private readonly storykeys: HTMLDivElement;
+  private readonly chapterhud: HTMLDivElement;
+  /** Every subtitle direction or caption shown, for the checks. */
+  public readonly subtitles: string[] = [];
+
+  /** 'shift' shows the sorting HUD; 'story' a cutscene; 'chapter' the mall or lot HUD. */
+  public setMode(mode: 'shift' | 'story' | 'chapter'): void {
+    this.root.classList.toggle('story', mode === 'story');
+    this.root.classList.toggle('chapter', mode === 'chapter');
+    if (mode !== 'story') this.subtitle(null);
+  }
+
+  public onStoryButton(handler: (action: 'next' | 'skip') => void): void {
+    for (const button of this.storykeys.querySelectorAll<HTMLButtonElement>('button')) {
+      const action = button.dataset.story as 'next' | 'skip';
+      // A press acts at once; a click with no press (assistive tech, keyboard) acts too.
+      let pressed = false;
+      button.addEventListener('pointerdown', (event) => { event.preventDefault(); event.stopPropagation(); pressed = true; handler(action); });
+      button.addEventListener('click', (event) => { event.stopPropagation(); if (!pressed) handler(action); pressed = false; });
+    }
+  }
+
+  public storyTitle(title: string, kicker: string, clock = ''): void {
+    this.storybar.innerHTML = '';
+    const left = document.createElement('div');
+    left.className = 'title';
+    left.textContent = title;
+    const small = document.createElement('small');
+    small.textContent = kicker;
+    left.append(small);
+    this.storybar.append(left);
+    if (clock) {
+      const right = document.createElement('div');
+      right.className = 'clock';
+      right.textContent = clock;
+      this.storybar.append(right);
+    }
+  }
+
+  /** The current spoken line with its speaker, plus any stage direction and sound caption. */
+  public subtitle(beat: { speaker?: string; line?: string; direction?: string; caption?: string } | null): void {
+    this.subtitleBox.innerHTML = '';
+    if (!beat) return;
+    if (beat.line) {
+      const line = document.createElement('span');
+      line.className = 'line';
+      const who = document.createElement('b');
+      who.textContent = beat.speaker ?? '';
+      line.append(who, document.createTextNode(beat.line));
+      this.subtitleBox.append(line);
+    }
+    if (beat.caption || beat.direction) {
+      const direction = document.createElement('span');
+      direction.className = 'direction';
+      if (beat.caption) {
+        const caption = document.createElement('span');
+        caption.className = 'caption';
+        caption.textContent = beat.caption + ' ';
+        direction.append(caption);
+      }
+      if (beat.direction) direction.append(document.createTextNode(beat.direction));
+      this.subtitleBox.append(direction);
+      this.subtitles.push([beat.caption, beat.direction].filter(Boolean).join(' '));
+    }
+  }
+
+  public chapterHud(stats: [string, string][], objective: string, keys: string): void {
+    const html = stats.map(([label, value]) => '<div class="stat"><small>' + label + '</small><b>' + value + '</b></div>').join('')
+      + '<div class="objective"></div><div class="keys"></div>';
+    if (this.chapterhud.dataset.html !== html) {
+      this.chapterhud.innerHTML = html;
+      this.chapterhud.dataset.html = html;
+    }
+    (this.chapterhud.querySelector('.objective') as HTMLElement).textContent = objective;
+    (this.chapterhud.querySelector('.keys') as HTMLElement).textContent = keys;
   }
 
   private div(className: string, parent: HTMLElement): HTMLDivElement {
@@ -167,6 +289,7 @@ export class Overlay {
     f.hint.textContent = state.hint;
     f.brake.textContent = state.brake;
     f.view.textContent = state.overview ? 'CLOSE VIEW' : 'OVERVIEW';
+    if (state.routes !== undefined && f.routes.innerHTML !== state.routes) f.routes.innerHTML = state.routes;
   }
 
   /** A speech bubble anchored to a point in the world, above its speaker. */
