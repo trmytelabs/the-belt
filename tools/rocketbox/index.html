@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Rocketbox converter</title>
+    <style>
+      body { margin: 0; padding: 16px; background: #14262d; color: #f0e7cf; font: 14px/1.4 system-ui, sans-serif; }
+      button { padding: 8px 16px; font: inherit; font-weight: bold; background: #edb765; border: 0; border-radius: 6px; cursor: pointer; }
+      button:disabled { opacity: 0.5; cursor: default; }
+      table { border-collapse: collapse; margin-top: 12px; }
+      td, th { padding: 3px 10px; text-align: left; border-bottom: 1px solid #2c4650; }
+      .done { color: #9fd49a; }
+      .failed { color: #f08a7a; }
+    </style>
+  </head>
+  <body>
+    <h1>Rocketbox crew converter</h1>
+    <p>Converts each avatar in <code>src/three/rocketboxCast.ts</code> into <code>public/models/characters/&lt;file&gt;.glb</code>.</p>
+    <button id="convert" type="button">CONVERT</button>
+    <table>
+      <thead><tr><th>File</th><th>Source</th><th>Status</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <script type="module" src="./convert.js"></script>
+  </body>
+</html>
