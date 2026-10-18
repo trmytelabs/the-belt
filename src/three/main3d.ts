@@ -1,5 +1,6 @@
 import { DEPOT_3D_LAYOUT as SHIFT_LAYOUT, floorPileSlot, truckInteriorAt } from './layout';
 import { ShiftModel3D } from './ShiftModel3D';
+import { pathLength, platformWalkPath, walkPath, type WalkPoint } from './walking';
 import * as THREE from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
@@ -120,6 +121,8 @@ export class Belt3d {
   private hint = 'Approach the belt · read the street address';
   private chapterHint = '';
   private countdownMs = 0;
+  private countdownStartedAt = 0;
+  private readonly workerWalks = new Map<WorkerId, WalkPoint[]>();
   private time = 0;
   private lastFrame = performance.now();
   private lastRender = 0;
@@ -417,6 +420,13 @@ export class Belt3d {
     audioSystem.play('countdown');
     this.state = 'countdown';
     this.countdownMs = 0;
+    this.countdownStartedAt = this.time;
+    this.crew.beginWorkWalk();
+    this.workerWalks.clear();
+    for (const worker of this.model.workers) {
+      const root = this.workers[worker.id].root;
+      this.workerWalks.set(worker.id, platformWalkPath({ x: root.position.x * 32 + 480, y: root.position.z * 32 + 340 }, worker));
+    }
     this.overlay.showCount('3');
     this.syncWorkers(0);
     this.snapCamera();
@@ -552,6 +562,7 @@ export class Belt3d {
     this.depotShot = null;
     this.banter.clear();
     this.crew.reset();
+    this.workerWalks.clear();
     this.overlay.clearSpeech();
     this.keys.clear();
     this.touch.reset();
@@ -576,6 +587,7 @@ export class Belt3d {
     this.lastFrame = now;
     this.time += dt;
     const m = this.model;
+    let dispersed = false;
 
     if (this.state === 'story' && this.cutscene) {
       const cutscene = this.cutscene;
@@ -590,8 +602,11 @@ export class Belt3d {
       if (cutscene.done) this.finishScene();
     }
     if (this.state === 'countdown') {
+      const step = Math.min(dt, this.time - this.countdownStartedAt);
+      this.crew.disperse(step, this.time);
+      dispersed = true;
       const before = this.countdownMs;
-      this.countdownMs += dt * 1000;
+      this.countdownMs += step * 1000;
       ['2', '1', 'SORT!'].forEach((copy, index) => {
         const at = (index + 1) * 1000;
         if (before < at && this.countdownMs >= at) {
@@ -616,7 +631,7 @@ export class Belt3d {
       m.update(dt * 1000, this.movement());
       for (const event of m.drainEvents()) this.handleEvent(event);
       this.updateBanter();
-      this.crew.update(dt, m, this.time);
+      this.crew.update(dispersed ? 0 : dt, m, this.time);
       this.setPieces.update(dt, m, this.time);
       if (m.ended && m.won) {
         this.state = 'celebrating';
@@ -671,7 +686,7 @@ export class Belt3d {
     if (this.state === 'playing') this.crew.updateReceiving(m, dt, this.time);
     this.world.update(running ? dt : 0, this.time, m.beltTravel, this.reducedMotion);
     const depotStory = this.state === 'story' && this.cutscene?.scene.location === 'depot';
-    if (!depotStory) this.syncWorkers(running ? dt : 0);
+    if (!depotStory) this.syncWorkers(running || this.state === 'countdown' ? dt : 0);
     this.syncParcels(running ? dt : 0);
     this.world.updateTruckInterior(m.activeWorker);
     this.updateCamera(dt);
@@ -735,6 +750,8 @@ export class Belt3d {
     const stageScene = this.usesStage() ? this.stage.scene : null;
     const scene = stageScene ?? this.world.scene;
     const camera = stageScene ? this.stage.camera : this.camera;
+    if (!stageScene && this.state !== 'dream') this.world.truckCutaway.update(camera,
+      [...Object.values(this.workers).map(worker => worker.root), ...[...this.crew.actors.values()].map(actor => actor.root)]);
     syncCharacterModels(this.state === 'dream' ? this.dream.scene : scene);
     if (this.state === 'dream') this.renderer.render(this.dream.scene, this.dream.camera);
     else if (this.composer && this.renderPass) {
@@ -795,7 +812,7 @@ export class Belt3d {
     }
     if (event.type === 'phase') {
       const caption = this.model.phase === 'flow' ? 'STEADY FLOW · read the street ranges · coworker loading'
-        : this.model.phase === 'rush' ? 'LAST PUSH · freight every 2 seconds' : event.message;
+        : this.model.phase === 'rush' ? 'LAST PUSH · freight every 2.4 seconds' : event.message;
       this.overlay.showToast(caption);
     } else if (event.type === 'miss') this.overlay.showToast(event.message);
 
@@ -847,12 +864,15 @@ export class Belt3d {
     const m = this.model;
     for (const worker of m.workers) {
       const character = this.workers[worker.id];
-      setFromModel(character.root.position, worker, surfaceAt(worker.x, worker.y));
-      const targetAngle = FACING_ANGLE[worker.facing];
+      const route = this.state === 'countdown' ? this.workerWalks.get(worker.id) : undefined;
+      const walk = route ? walkPath(route, pathLength(route) * Math.min(1, this.countdownMs / 3200)) : null;
+      const point = walk ?? worker;
+      setFromModel(character.root.position, point, surfaceAt(point.x, point.y));
+      const targetAngle = walk?.heading ?? FACING_ANGLE[worker.facing];
       let delta = targetAngle - character.root.rotation.y;
       delta = Math.atan2(Math.sin(delta), Math.cos(delta));
       character.root.rotation.y += delta * Math.min(1, dt * 12);
-      animateCharacter(character, dt, { moving: worker.moving, carrying: worker.heldId !== null, time: this.time, reducedMotion: this.reducedMotion });
+      animateCharacter(character, dt, { moving: walk ? !walk.done : worker.moving, carrying: worker.heldId !== null, time: this.time, reducedMotion: this.reducedMotion });
       if (this.state === 'celebrating' && !this.reducedMotion) {
         // Termite and Skanky celebrate with the crew.
         const beat = this.time * 9 + (worker.id === 'skanky' ? 1.3 : 0);

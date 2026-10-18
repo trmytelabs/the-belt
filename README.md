@@ -50,6 +50,9 @@ SORT!** countdown starts the shift.
 - Inside a truck the roof turns transparent. Face a shelf and load near where
   you stand; the actual parcels remain on the shelves. Full shelves overflow
   through the rear opening. The roof returns when you leave.
+- Rear doorways gently guide an off-centre approach into the aisle. A soft
+  circular cutaway follows people beside trucks so the bodies cannot hide them
+  or their packages; the rest of each truck stays solid.
 - F (or THROW) throws toward the nearest drop. At the top of the stairs it
   throws to the lower-floor drop with a 30% break chance. A break earns nothing,
   costs up to 150 points once, and Shan runs over yelling.
@@ -62,8 +65,8 @@ SORT!** countdown starts the shift.
   freight goes to shared bulk. These are synthetic game districts.
 - The other worker automatically loads their own address ranges. Only the worker
   you control collects bulk. Random everyday freight mixes with the original
-  joke parcels. Arrivals run at half the previous triple-intake rate: every
-  4 seconds initially, 2⅔ seconds in flow and 2 seconds in rush.
+  joke parcels. Arrivals allow more breathing room: every 4.8 seconds initially,
+  3.2 seconds in flow and 2.4 seconds in rush.
 - Read street numbers painted on the floor and on physical signs. There are
   no safe-zone outlines or aiming guides. A wrong drop costs up to 10 points.
   See [address sorting and loading](docs/address-sorting.md).
@@ -76,6 +79,9 @@ SORT!** countdown starts the shift.
 - Original named crew bays are preserved above the two player truck rows.
   Rows are spread apart, with crew events and props between the trucks.
   Incoming articulated semis occupy the receiving area above those rows.
+- After the morning scrum, the same crew walk to their stations. They stay
+  mostly on the platform, collecting and loading parcels on short work cycles;
+  the original gags remain brief interruptions. Shan stays visible between reactions.
 - Pick up missed freight near the belt exit to recover it for half base points.
 
 Touch devices have a movement stick and Switch, Grab / Deliver, and Brake

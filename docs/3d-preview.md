@@ -37,7 +37,11 @@ rear platform, outward side stairs, truck interiors and lower-floor drops.
 - `crew.ts` runs the crew's routines and gags on the 2D depot's authored
   schedule and lines (`DepotLife`, `DepotRoutines`, `DepotReceiving`), with
   poses for yelling, crouching, massage, dancing, swearing, coughing and
-  cheering.
+  cheering. The crew walk out of the scrum to platform work stations, then
+  spend most of their time collecting and loading parcels. `walking.ts`
+  keeps cross-lane departures around the belt head.
+- `truckCutaway.ts` opens soft circular windows in foreground truck shells
+  and shelf boards around nearby people. Delivered cargo remains visible.
 - `parcels.ts` builds each named freight type with its full shipping tag.
 - `overlay.ts` holds the HUD, the briefing/countdown/results panels and the
   speech bubbles. Each bubble is anchored above its speaker. If the speaker is

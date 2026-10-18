@@ -3,6 +3,7 @@ import test from 'node:test';
 import { ShiftModel, SHIFT_LAYOUT } from '../src/game/slice/ShiftModel.ts';
 import { ShiftModel3D, WRONG_DROP_PENALTY } from '../src/three/ShiftModel3D.ts';
 import { DEPOT_3D_LAYOUT as L, platformLevelAt, onLowerFloor, truckInteriorAt } from '../src/three/layout.ts';
+import { platformWalkPath, pathLength, walkPath } from '../src/three/walking.ts';
 
 const advance = (m, ms) => { for (let t = 0; t < ms; t += 10) m.update(10); };
 const hold = (m, route, at) => {
@@ -225,15 +226,56 @@ test('both side stair throws use the exact 30 percent threshold and never reveal
   }
 });
 
-test('3D arrivals are half the previous rate while the legacy intake retains its cadence', () => {
+test('3D arrivals leave a little more breathing room while legacy intake retains its cadence', () => {
   const m = new ShiftModel3D({ autonomousCoworker: false });
-  advance(m, 4000);
+  advance(m, 4700);
+  assert.equal(m.packages.length, 1);
+  advance(m, 100);
   assert.equal(m.packages.length, 2);
   advance(m, 2000);
   assert.equal(m.packages.length, 2);
   const legacy = new ShiftModel({ autonomousCoworker: false });
   advance(legacy, 4000);
   assert.equal(legacy.packages.length, 3);
+});
+
+test('all four truck doors guide off-centre carrying approaches into the aisle at walking speed', () => {
+  for (const [route, activeIndex] of [['A', 0], ['D', 0], ['B', 1], ['E', 1]]) for (const offset of [-48, -30, 30, 48]) for (const strength of [0.25, 1]) {
+    const m = new ShiftModel3D({ autonomousCoworker: false });
+    m.activeIndex = activeIndex; m.eventStopped = true;
+    const worker = m.activeWorker, row = L.playerTrucks[route].y;
+    const parcel = hold(m, route, { x: activeIndex === 0 ? 330 : 630, y: row + offset });
+    const direction = activeIndex === 0 ? -1 : 1;
+    for (let step = 0; step < 400 && m.currentDock() !== route; step++) {
+      const before = { x: worker.x, y: worker.y };
+      m.update(10, { x: direction * strength, y: strength === 1 ? Math.sign(offset) : 0 });
+      assert.ok(Math.hypot(worker.x - before.x, worker.y - before.y) <= 2.35 * strength + 1e-8, 'door assistance never teleports or increases keyboard or partial-stick speed');
+      assert.ok(m.walkable(worker.side, worker.x, worker.y));
+    }
+    assert.equal(m.currentDock(), route, `${route} accepts an approach ${offset}px off centre`);
+    assert.ok(Math.abs(worker.y - row) <= 3);
+    m.action(); assert.equal(parcel.state, 'delivered');
+    for (let step = 0; step < 130; step++) m.update(10, { x: -direction, y: Math.sign(offset) });
+    assert.ok(activeIndex === 0 ? worker.x >= 330 : worker.x <= 630, 'a diagonal exit slides clear of the shelves and door frame');
+  }
+});
+
+test('walks from the scrum reach both work lanes continuously without crossing the running belt', () => {
+  for (const [from, to] of [[{ x:366,y:214 },{ x:382,y:500 }], [{ x:418,y:214 },{ x:578,y:500 }],
+    [{ x:402,y:292 },{ x:610,y:708 }], [{ x:342,y:252 },{ x:350,y:228 }]]) {
+    const path = platformWalkPath(from, to), length = pathLength(path);
+    let previous = walkPath(path, 0);
+    assert.deepEqual({ x:previous.x,y:previous.y }, from);
+    for (let distance = 2; distance <= length + 2; distance += 2) {
+      const point = walkPath(path, distance);
+      assert.ok(Math.hypot(point.x - previous.x, point.y - previous.y) <= 2.000001);
+      assert.ok(point.x < 448 || point.x > 512 || point.y < L.beltTop - 12, 'cross lanes around the belt head');
+      assert.ok(point.x >= L.platform.left && point.x <= L.platform.right);
+      previous = point;
+    }
+    assert.deepEqual({ x:previous.x,y:previous.y }, to);
+    assert.equal(previous.done, true);
+  }
 });
 
 test('shelf placement follows position and facing; eighteen ordinary shelf slots fill before rear overflow', () => {

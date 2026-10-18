@@ -5,7 +5,7 @@ import {
 import { DEPOT_3D_LAYOUT, platformLevelAt, onLowerFloor, floorPileSlot, stairAt, truckInteriorAt, TRUCK_ROUTES, type TruckRoute } from './layout.ts';
 
 export const WRONG_DROP_PENALTY = 10;
-export const ARRIVALS_3D = { lessonMs: 4_000, flowMs: 8_000 / 3, rushMs: 2_000, brianMs: 2_000 } as const;
+export const ARRIVALS_3D = { lessonMs: 4_800, flowMs: 3_200, rushMs: 2_400, brianMs: 2_400 } as const;
 export interface TruckLoad { route: TruckRoute; x: number; y: number; height: number; layer: number; column: number; row: number; cells: number; parcelHeight: number; overflow: boolean }
 // Conservative dimensions in model pixels for the actual parcel forms at their
 // normal render scale. Long boxes lie along the cargo bay, occupying two slots.
@@ -112,12 +112,20 @@ export class ShiftModel3D extends ShiftModel {
 
   protected override moveWorker(deltaMs: number, move: { x: number; y: number }, worker: Worker = this.activeWorker): void {
     const x = Number.isFinite(move.x) ? clamp(move.x, -1, 1) : 0;
-    const y = Number.isFinite(move.y) ? clamp(move.y, -1, 1) : 0;
+    let y = Number.isFinite(move.y) ? clamp(move.y, -1, 1) : 0;
+    const requestedSpeed = Math.min(1, Math.hypot(x, y));
+    // A shallow funnel at each rear door guides a walking approach into the
+    // shelf aisle. It uses normal movement speed, including with a heavy box.
+    const entering = worker.side === 'left' ? x < 0 && worker.x >= 306 && worker.x <= 380
+      : x > 0 && worker.x >= 580 && worker.x <= 654;
+    const doorway = entering ? TRUCK_ROUTES.find(route => ROUTE_INFO[route].side === worker.side
+      && Math.abs(worker.y - this.layout.playerTrucks[route].y) <= 52) : undefined;
+    if (doorway) y = clamp((this.layout.playerTrucks[doorway].y - worker.y) / 16, -1, 1);
     const magnitude = Math.hypot(x, y);
     worker.moving = false;
     if (!magnitude) return;
     const held = this.packages.find(parcel => parcel.id === worker.heldId);
-    const speed = 235 * (held ? CARRY_MULTIPLIER[held.kind] : 1) * deltaMs / 1000 / Math.max(1, magnitude);
+    const speed = 235 * (held ? CARRY_MULTIPLIER[held.kind] : 1) * deltaMs / 1000 * requestedSpeed / magnitude;
     const previousX = worker.x, previousY = worker.y;
     const maxY = held ? this.layout.stairs.maxY - this.layout.carriedClearance : this.layout.workerMaxY;
     let nextY = clamp(worker.y + y * speed, this.layout.workerMinY, maxY);
@@ -127,12 +135,12 @@ export class ShiftModel3D extends ShiftModel {
     if (!this.walkable(worker.side, nextX, nextY)) nextY = previousY;
     worker.x = nextX; worker.y = nextY;
     worker.moving = nextX !== previousX || nextY !== previousY;
-    worker.facing = Math.abs(x) > Math.abs(y) ? x > 0 ? 'right' : 'left' : y > 0 ? 'down' : 'up';
+    worker.facing = doorway || Math.abs(x) > Math.abs(y) ? x > 0 ? 'right' : 'left' : y > 0 ? 'down' : 'up';
   }
 
   public override walkBounds(side: 'left' | 'right', y: number): { minX: number; maxX: number } {
     const lane = side === 'left' ? this.layout.leftLane : this.layout.rightLane;
-    if (TRUCK_ROUTES.some(route => ROUTE_INFO[route].side === side && Math.abs(y - this.layout.playerTrucks[route].y) <= 20)) {
+    if (TRUCK_ROUTES.some(route => ROUTE_INFO[route].side === side && Math.abs(y - this.layout.playerTrucks[route].y) <= 32)) {
       return side === 'left' ? { minX: 224, maxX: lane.maxX } : { minX: lane.minX, maxX: 736 };
     }
     const floor = this.layout.lowerFloor, radius = this.layout.workerRadius;
@@ -148,10 +156,11 @@ export class ShiftModel3D extends ShiftModel {
     const lane = side === 'left' ? this.layout.leftLane : this.layout.rightLane;
     const floor = lowerFloor[side];
     const truck = TRUCK_ROUTES.some(route => ROUTE_INFO[route].side === side
-      && Math.abs(y - this.layout.playerTrucks[route].y) <= 20
+      && Math.abs(y - this.layout.playerTrucks[route].y) <= 32
       && (side === 'left' ? x >= 224 && x <= lane.minX : x >= lane.maxX && x <= 736));
     if (truck && (side === 'left' ? x < 306 : x > 654)
-      && Math.abs(y - this.layout.playerTrucks[truckInteriorAt({ x, y })!].y) > 3) return false;
+      && Math.abs(y - this.layout.playerTrucks[truckInteriorAt({ x, y })!].y)
+        > (this.workers.find(worker => worker.side === side)?.heldId == null ? 10 : 3)) return false;
     const deck = x >= lane.minX && x <= lane.maxX;
     const ground = x >= floor.minX + radius && x <= floor.maxX - radius && y >= lowerFloor.top + radius && y <= lowerFloor.bottom - radius;
     const flight = y >= stairs.minY + radius && y <= stairs.maxY - radius

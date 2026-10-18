@@ -55,12 +55,12 @@ try {
     window.flowSample = null;
     const timer = setInterval(() => {
       const m = app.model;
-      if (m.elapsedMs >= 4000 && !window.flowSample) window.flowSample = { count:m.packages.length, elapsed:m.elapsedMs, auto:m.autonomousCoworker };
+      if (m.elapsedMs >= (mode === '3d' ? 4800 : 4000) && !window.flowSample) window.flowSample = { count:m.packages.length, elapsed:m.elapsedMs, auto:m.autonomousCoworker };
       if (window.flowSample) clearInterval(timer);
     },10);
   });
   await wait(() => window.flowSample !== null);
-  assert.equal(await read(() => window.flowSample.count), mode === '3d' ? 2 : 3, '3D arrivals now run at half the previous triple-intake rate');
+  assert.equal(await read(() => window.flowSample.count), mode === '3d' ? 2 : 3, '3D arrivals give the player more breathing room');
   assert.equal(await read(() => window.flowSample.auto), true);
   await wait(mode => {
     const m = (mode === '3d' ? window.fixtureApp : window.fixtureGame.scene.getScene('DepotScene')).model;
@@ -205,14 +205,17 @@ try {
       const parcel = { ...m.packages[0], id: 9100, route: 'A', label: 'BOOKS', kind: 'smallbox', street: 27,
         address: '2417 27 ST', size: 'normal', state: 'held', workerId: 'termite', flight: null };
       m.packages.splice(0, m.packages.length, parcel);
-      Object.assign(m.workers[0], { x: 330, y: m.layout.dockA.y, facing: 'left', heldId: parcel.id });
+      Object.assign(m.workers[0], { x: 330, y: m.layout.dockA.y + 30, facing: 'left', heldId: parcel.id });
       m.workers[1].heldId = null; app.state = 'playing'; m.paused = false;
     });
     await page.keyboard.press('Space');
     assert.equal(await read(() => window.fixtureApp.model.heldPackage?.id), 9100, 'platform delivery is no longer accepted');
     await page.keyboard.down('KeyA');
+    await page.keyboard.down('KeyS');
     await wait(() => window.fixtureApp.model.activeWorker.x < 302);
     await page.keyboard.up('KeyA');
+    await page.keyboard.up('KeyS');
+    assert.ok(await read(() => Math.abs(window.fixtureApp.model.activeWorker.y - window.fixtureApp.model.layout.dockA.y) <= 3), 'the doorway guides a diagonal approach into the shelf aisle');
     await wait(() => window.fixtureApp.world.trucks.find(truck => truck.route === 'A').group.getObjectByName('truck-roof').material.opacity < 0.2);
     assert.equal(await read(() => window.fixtureApp.world.trucks.find(truck => truck.route === 'A').group.getObjectByName('truck-roof-sign').visible), false, 'the roof sign must not hide the shelves');
     const carriedView = await read(() => window.fixtureApp.parcels.get(9100).root.uuid);

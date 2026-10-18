@@ -11,6 +11,7 @@ import { createParcelView, type ParcelView } from './parcels';
 import { BELT_HEIGHT, actorSurfaceAt, setFromModel, standard, textSprite, toWorld } from './space';
 import { SKIN, VISITORS, type DepotWorld } from './world';
 import { DEPOT_3D_LAYOUT as DEPOT } from './layout';
+import { platformWalkPath, walkPath, type WalkPoint } from './walking';
 
 /**
  * The crew's routines and gags, on the 2D depot's authored schedule
@@ -207,6 +208,7 @@ export class CrewLife {
   private readonly cellCaption: THREE.Sprite;
   private readonly crewFreight = new Map<string, ParcelView>();
   private readonly crewEpoch = new Map<string, number>();
+  private readonly workWalks = new Map<string, { points: WalkPoint[]; distance: number }>();
   private readonly drivers: Actor[] = [];
   private readonly unloaders: Actor[] = [];
   private readonly unloaderCrates: THREE.Mesh[] = [];
@@ -341,12 +343,14 @@ export class CrewLife {
     this.actor('ben').root.rotation.set(0, 0, 0);
     this.actor('ben').root.scale.setScalar(1);
     this.crewEpoch.clear();
+    this.workWalks.clear();
     this.cell.root.visible = false;
     this.cellCaption.visible = false;
     this.cell.tag.visible = true;
     if (this.cell.parts.label) this.cell.parts.label.visible = true;
     for (const [id, resident] of this.world.residents) {
       const actor = this.actor(id);
+      actor.root.visible = true;
       actor.root.position.copy(resident.home);
       actor.root.rotation.y = resident.home.x < 0 ? Math.PI / 2 - 0.5 : -Math.PI / 2 + 0.5;
       actor.faceAngle = null;
@@ -394,10 +398,48 @@ export class CrewLife {
     action();
   }
 
+  private workStation(id: string): WalkPoint {
+    const bay = DEPOT.eventBays[id as keyof typeof DEPOT.eventBays];
+    return { x: bay.x < 480 ? 350 : 610, y: bay.y };
+  }
+
+  /** Keep the scrum's actual cast in place, then send everyone to their work. */
+  public beginWorkWalk(): void {
+    for (const id of [...RESIDENT_IDS, 'shan']) {
+      const actor = this.actor(id);
+      const from = { x: actor.root.position.x * 32 + 480, y: actor.root.position.z * 32 + 340 };
+      const to = id === 'shan' ? VISITORS.shan : this.workStation(id);
+      actor.root.visible = true;
+      actor.root.rotation.x = 0;
+      actor.pose = 'none'; actor.carrying = false; actor.faceAngle = null;
+      this.workWalks.set(id, { points: platformWalkPath(from, to), distance: 0 });
+      this.crewEpoch.set(id, 0);
+    }
+  }
+
+  private advanceWorkWalk(dt: number): Set<string> {
+    const walking = new Set<string>();
+    for (const [id, route] of this.workWalks) {
+      const actor = this.actor(id);
+      route.distance += 135 * dt;
+      const point = walkPath(route.points, route.distance);
+      actor.place(point.x, point.y); actor.faceAngle = point.heading;
+      actor.root.visible = true;
+      walking.add(id);
+      if (point.done) this.workWalks.delete(id);
+    }
+    return walking;
+  }
+
+  /** The crew can walk during the countdown while the freight clock waits. */
+  public disperse(dt: number, time: number): void {
+    this.animateActors(dt, time, this.advanceWorkWalk(dt));
+  }
+
   /** Runs only while the shift clock runs. */
   public update(dt: number, model: ShiftModel, wallTime: number): void {
     const t = model.elapsedMs;
-    const reserved = new Set<string>();
+    const reserved = this.advanceWorkWalk(dt);
 
     // Kylie's coffee search crosses the east side.
     KYLIE_QUOTES.forEach((quote, index) => this.once(`coffee-${index}`, t, 2800 + index * 3700, () => this.say('kylie', quote, 3500)));
@@ -431,18 +473,18 @@ export class CrewLife {
     this.updateExhaust(t, dt, wallTime, model);
     this.updateCrewFreight(t, reserved);
 
-    // Shan only appears for his rant, an announcement, or to yell about a broken parcel.
+    // Shan stays on the platform between reactions instead of popping out of view.
     const shan = this.actor('shan');
     const visiting = this.updateShanVisit(t, wallTime);
     const shanVisible = t < this.shanUntil;
-    if (!this.staged.has('shan') && !visiting) shan.root.visible = shanVisible;
-    if (!visiting && (shanVisible || this.staged.has('shan'))) {
+    if (!this.staged.has('shan') && !visiting && !reserved.has('shan')) shan.root.visible = true;
+    if (!visiting && !reserved.has('shan')) {
       if (!this.staged.has('shan')) {
         shan.place(VISITORS.shan.x, VISITORS.shan.y);
         shan.faceAngle = -Math.PI / 2;
       }
       const ranting = this.shanMode === 'rant';
-      shan.pose = ranting ? 'shout' : 'announce';
+      shan.pose = shanVisible ? ranting ? 'shout' : 'announce' : 'none';
       const anger = ranting ? 1 - (this.shanUntil - t) / 4200 : 0;
       shan.character.skinMaterial.color.setHex(0xe8b98f).lerp(new THREE.Color(0xd8453a), Math.min(1, anger * 1.4));
       if (!shanVisible) shan.pose = 'none';
@@ -591,9 +633,8 @@ export class CrewLife {
       }
     }
     if (this.snakeState === 'done' && t < this.cellTime + 1600) {
-      hussan.place(home.x, home.y);
-    } else if (this.snakeState === 'done' && hussan.pose === 'none') {
-      hussan.pose = 'phone';
+      const station = this.workStation('hussan');
+      hussan.place(mix(home.x, station.x, (t - this.cellTime) / 1600), home.y);
     }
   }
 
@@ -763,31 +804,32 @@ export class CrewLife {
         this.crewEpoch.set(id, t + 1000);
         return;
       }
-      const home = this.world.residents.get(id)!;
-      const start = { x: home.home.x / (1 / 32) + 480, y: home.home.z / (1 / 32) + 340 };
-      const period = 18_000;
-      const clock = Math.max(0, t - (this.crewEpoch.get(id) ?? (7500 + index * 1100)));
+      const start = this.workStation(id);
+      const period = 8_000;
+      const clock = Math.max(0, t - (this.crewEpoch.get(id) ?? (700 + index * 250)));
       const cycle = clock % period;
       const door = TRUCK_DOORS[id];
       const pickup = { x: start.x < 480 ? 400 : 560, y: start.y };
-      const corner = { x: door.x, y: start.y };
+      const approach = { x: start.x, y: door.y };
       let from = start; let to = start; let amount = 0;
-      if (clock > 0 && cycle < 2200) { to = pickup; amount = cycle / 2200; }
-      else if (clock > 0 && cycle < 2600) { from = pickup; to = pickup; }
-      else if (clock > 0 && cycle < 4800) { from = pickup; to = door; amount = (cycle - 2600) / 2200; }
-      else if (clock > 0 && cycle < 5300) { from = door; to = door; }
-      else if (clock > 0 && cycle < 6000) { from = door; to = corner; amount = (cycle - 5300) / 700; }
-      else if (clock > 0 && cycle < 7500) { from = corner; to = start; amount = (cycle - 6000) / 1500; }
+      if (clock > 0 && cycle < 900) { to = pickup; amount = cycle / 900; }
+      else if (clock > 0 && cycle < 1300) { from = pickup; to = pickup; }
+      else if (clock > 0 && cycle < 2200) { from = pickup; to = start; amount = (cycle - 1300) / 900; }
+      else if (clock > 0 && cycle < 3500) { from = start; to = approach; amount = (cycle - 2200) / 1300; }
+      else if (clock > 0 && cycle < 4000) { from = approach; to = door; amount = (cycle - 3500) / 500; }
+      else if (clock > 0 && cycle < 4550) { from = door; to = door; }
+      else if (clock > 0 && cycle < 5050) { from = door; to = approach; amount = (cycle - 4550) / 500; }
+      else if (clock > 0 && cycle < 6350) { from = approach; to = start; amount = (cycle - 5050) / 1300; }
       actor.place(mix(from.x, to.x, amount), mix(from.y, to.y, amount));
       const atRest = from === start && to === start;
       actor.faceAngle = atRest ? (start.x < 480 ? Math.PI / 2 - 0.5 : -Math.PI / 2 + 0.5) : null;
-      const carrying = clock > 0 && cycle >= 2600 && cycle < 4900;
+      const carrying = clock > 0 && cycle >= 1300 && cycle < 4300;
       actor.carrying = carrying;
-      if (id === 'hussan' && actor.pose !== 'cough' && actor.pose !== 'swear') actor.pose = atRest ? 'phone' : 'none';
+      if (id === 'hussan' && actor.pose !== 'cough' && actor.pose !== 'swear') actor.pose = atRest && cycle > 7500 ? 'phone' : 'none';
       view.root.visible = carrying;
       if (carrying) {
         const forward = new THREE.Vector3(Math.sin(actor.root.rotation.y), 0, Math.cos(actor.root.rotation.y));
-        view.root.position.copy(actor.root.position).addScaledVector(forward, 0.4).setY(actor.root.position.y + 0.82);
+        view.root.position.copy(actor.root.position).addScaledVector(forward, 0.32 * actor.root.scale.z + view.carryDepth * view.root.scale.z).setY(actor.root.position.y + 0.82);
         view.root.rotation.y = actor.root.rotation.y;
       }
     });

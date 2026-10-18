@@ -11,6 +11,7 @@ import {
   toWorld, toWorldX, toWorldZ,
 } from './space';
 import { SHAN_NAME } from '../game/slice/StoryScript';
+import { TruckCutaway } from './truckCutaway';
 
 const rounded = (w: number, h: number, d: number, material: THREE.Material, r = 0.05): THREE.Mesh =>
   new THREE.Mesh(new RoundedBoxGeometry(w, h, d, 2, Math.min(r, w / 2, h / 2, d / 2)), material);
@@ -40,7 +41,7 @@ export const VISITORS: Record<string, CharacterSpec & { x: number; y: number }> 
   kylie: { name: 'KYLIE', x: 850, y: 400, skin: SKIN.pale, shirt: 0xb24a6a, pants: 0x2b2f3a, hair: 0x83569a, hairStyle: 'bun' },
   john: { name: 'JOHN RUSHTON', x: 77, y: 397, skin: 0xbf9672, shirt: 0x2f4f64, pants: 0x2b3038, hair: 0x3a2a19, hairStyle: 'short', scale: 0.92 },
   vic: { name: 'VIC', x: 132, y: 286, skin: 0xc29c7a, shirt: 0x727f83, pants: 0x34383d, hair: 0xb4b4a1, hairStyle: 'short', moustache: true },
-  shan: { name: SHAN_NAME, dynamicSkin: true, x: 752, y: SHIFT_LAYOUT.eventBays.brian.y, skin: SKIN.light, shirt: 0xe9e4d6, pants: 0x30343c, hair: 0x8b8b88, hairStyle: 'bald', tie: 0x8a2630 },
+  shan: { name: SHAN_NAME, dynamicSkin: true, x: 610, y: SHIFT_LAYOUT.eventBays.brian.y, skin: SKIN.light, shirt: 0xe9e4d6, pants: 0x30343c, hair: 0x8b8b88, hairStyle: 'bald', tie: 0x8a2630 },
 };
 
 export const TERMITE_SPEC: CharacterSpec = { name: 'TERMITE', skin: 0xe2b088, shirt: 0x2f5f8f, pants: 0x2a3f5c, overalls: 0x2a3f5c, hair: 0x5a3a20, hairStyle: 'short', headwear: 'termiteHat', beard: true };
@@ -58,6 +59,7 @@ const PLAYER_TRUCKS: { route: PlayerTruckRoute; body: number; cab: number }[] = 
 ];
 
 export class DepotWorld {
+  public readonly truckCutaway: TruckCutaway;
   public readonly scene = new THREE.Scene();
   public readonly tread: THREE.Texture;
   public readonly residents = new Map<string, Resident>();
@@ -110,6 +112,7 @@ export class DepotWorld {
     this.addBulkCrates();
     this.addRalphTruck();
     this.mergeStaticGeometry();
+    this.truckCutaway = new TruckCutaway(this.trucks);
   }
 
   /** Collapses ~1,300 separate meshes into a few hundred draw calls. */

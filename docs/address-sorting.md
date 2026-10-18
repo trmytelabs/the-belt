@@ -39,12 +39,13 @@ bounds, stairs, carrying speeds, delivery areas and scoring as the player.
 Tab immediately gives you control of that worker. Pausing and story scenes
 freeze both workers. The coworker carries rather than risking throws.
 
-3D arrivals run at half the previous triple-intake rate: every 4 seconds
-during the opening, 2⅔ seconds in flow and 2 seconds during the final rush. Two random
+3D arrivals run every 4.8 seconds during the opening, 3.2 seconds in flow and
+2.4 seconds during the final rush, about 17% fewer arrivals than the preceding
+half-speed setting. Two random
 everyday parcels are interleaved between authored reference parcels. Sixteen
 ordinary labels include documents, books, shoes, clothing, kitchenware, spare
 parts and sports equipment, using five different package forms. Original joke
-freight and Brian's five actual bulk parcels remain. Brian's burst uses two-second
+freight and Brian's five actual bulk parcels remain. Brian's burst uses 2.4-second
 intervals; the shared minimum belt spacing still applies, including speed ramps,
 brakes and blocked receiving.
 
@@ -75,6 +76,14 @@ when no suitable shelf space remains, real parcels protrude through the rear
 opening in visible overflow piles. Leaving and switching workers preserve cargo;
 loaded parcels move with their truck at clock-out. Restart clears the load.
 
+Near a rear door, walking inward gently centres the worker on the cargo aisle,
+including diagonal approaches. The wider mouth slides past the frame at ordinary
+carrying speed, and empty hands allow more movement between shelves. Walls and
+shelves still bound the bay. A soft circular transparent window follows nearby
+people through foreground truck shells, leaving the rest of the truck solid.
+Foreground shelf boards share the cutaway; loaded parcels remain visible, and
+the window closes as people move away.
+
 **F / THROW** targets the nearest physical drop. Truck freight must be carried
 inside and cannot be thrown to bypass loading. Throwing does not automatically find
 the address's correct destination. An intact throw to the wrong drop gets no
@@ -95,6 +104,11 @@ Night exteriors, the warehouse and the bedroom dream have brighter ambient
 lighting; a modest exposure lift keeps faces, paths and freight readable while
 preserving the night sky and warm work lights.
 The scrum gathers from below and walks up toward Shan, facing forward.
+When it finishes, the same residents, Shan and playable pair walk to their work
+areas without disappearing or resetting their positions. Crossing workers use
+the gap before the belt head. Residents spend most of each ordinary work cycle
+collecting visible parcels on the platform and taking them to their rear doors;
+their named gags remain short interruptions. Shan stays on the platform between reactions.
 
 Future gameplay and visual changes target 3D only. The 2D and classic versions
 are legacy modes; new 3D layout and scoring are isolated from their rules.
