@@ -7,6 +7,7 @@ import type { StoryScene } from '../game/slice/StoryScript';
 import { animateCharacter, createCharacter, mergeCharacter, type Character, type CharacterSpec } from './characters';
 import { applyPose, type CrewLife, type Pose } from './crew';
 import { PuffField } from './fx';
+import { buildSouthgateMall, mallX, mallZ, type SouthgateMall } from './mall';
 import { mergeStatic } from './merge';
 import { actorSurfaceAt, setFromModel, shadowed, standard, textPlane, textSprite, toWorld } from './space';
 import { RESIDENT_SPECS, SKANKY_SPEC, SKIN, TERMITE_SPEC, VISITORS, createTruck } from './world';
@@ -145,8 +146,6 @@ interface Stage {
 /** Model pixels in the lot's key-return area map onto the lot stage's metres. */
 const lotX = (x: number): number => (x - 480) / 32;
 const lotZ = (y: number): number => (y - 140) / 32 - 13.5;
-const mallX = (x: number): number => (x - 640) / 32;
-const mallZ = (y: number): number => (y - 400) / 32;
 
 export class StoryStage {
   public readonly camera = new THREE.PerspectiveCamera(42, 1, 0.1, 160);
@@ -159,6 +158,9 @@ export class StoryStage {
   private dawn = 0;
   private roadTravel = 0;
   private mallStoreText = new Map<string, string>();
+  private southgate: SouthgateMall | null = null;
+  private mallIntroBeat = -1;
+  private mallSnap = false;
 
   constructor(quality: 'high' | 'low') {
     this.quality = quality;
@@ -590,113 +592,10 @@ export class StoryStage {
 
   private buildMall(stage: Stage): void {
     const { scene, props } = stage;
-    scene.background = new THREE.Color(0x101820);
-    scene.fog = new THREE.Fog(0x101820, 30, 80);
-    scene.add(new THREE.HemisphereLight(0xe8eef8, 0x403830, 1.0));
-    const key = new THREE.DirectionalLight(0xfff4e0, 0.6);
-    key.position.set(6, 18, 8);
-    scene.add(key);
-    const tile = document.createElement('canvas');
-    tile.width = tile.height = 64;
-    const tctx = tile.getContext('2d')!;
-    tctx.fillStyle = '#c8c0b0'; tctx.fillRect(0, 0, 64, 64);
-    tctx.strokeStyle = '#a89c88'; tctx.lineWidth = 2; tctx.strokeRect(0, 0, 64, 64);
-    const tiles = new THREE.CanvasTexture(tile);
-    tiles.wrapS = tiles.wrapT = THREE.RepeatWrapping;
-    tiles.colorSpace = THREE.SRGBColorSpace;
-    for (const rect of MALL_LAYOUT.walk) {
-      const texture = tiles.clone();
-      texture.repeat.set(rect.w / 32, rect.h / 32);
-      texture.needsUpdate = true;
-      const floor = new THREE.Mesh(new THREE.PlaneGeometry(rect.w / 32, rect.h / 32), new THREE.MeshStandardMaterial({ map: texture, roughness: 0.35, metalness: 0.05 }));
-      floor.rotation.x = -Math.PI / 2;
-      floor.position.set(mallX(rect.x + rect.w / 2), 0, mallZ(rect.y + rect.h / 2));
-      floor.receiveShadow = true;
-      scene.add(floor);
-    }
-    const under = new THREE.Mesh(new THREE.PlaneGeometry(60, 40), standard(0x2a2a2a, 0.9));
-    under.rotation.x = -Math.PI / 2;
-    under.position.y = -0.02;
-    scene.add(under);
-    const wallMaterial = standard(0x6a7078, 0.8);
-    // Low cutaway walls keep Skanky, the cart and every doorway in view from above.
-    const wallSeg = (x0: number, y0: number, x1: number, y1: number, height = 1.1): void => {
-      const w = Math.max(0.2, Math.abs(x1 - x0) / 32);
-      const d = Math.max(0.2, Math.abs(y1 - y0) / 32);
-      const wall = new THREE.Mesh(new THREE.BoxGeometry(w, height, d), wallMaterial);
-      wall.position.set(mallX((x0 + x1) / 2), height / 2, mallZ((y0 + y1) / 2));
-      scene.add(wall);
-    };
-    // The loading dock: walls, the dock door onto the truck, and the service passage.
-    wallSeg(40, 300, 260, 300); wallSeg(40, 500, 260, 500);
-    wallSeg(40, 300, 40, 330); wallSeg(40, 470, 40, 500);
-    wallSeg(260, 300, 260, 350); wallSeg(260, 450, 260, 500);
-    wallSeg(240, 350, 280, 350); wallSeg(240, 450, 280, 450);
-    wallSeg(280, 280, 280, 350); wallSeg(280, 450, 280, 520);
-    wallSeg(1260, 280, 1260, 520); wallSeg(1180, 280, 1260, 280); wallSeg(1180, 520, 1260, 520);
-    const dockSign = textPlane(['LOADING DOCK'], 2.4, 0.4, { width: 240, height: 40, background: '#13252c', color: '#e8c04a' });
-    dockSign.position.set(mallX(150), 2.6, mallZ(302));
-    scene.add(dockSign);
-    // Store fronts: glass, a doorway, a lit name sign, a counter, a state badge.
-    const glass = new THREE.MeshStandardMaterial({ color: 0x9cc8dc, roughness: 0.05, metalness: 0.4, transparent: true, opacity: 0.35 });
-    MALL_LAYOUT.doors.forEach((door, index) => {
-      const north = door.side === 'north';
-      const left = door.x - 150;
-      const right = door.x + 150;
-      const front = door.y;
-      const back = north ? door.y - 200 : door.y + 200;
-      for (const [x0, x1] of [[left, door.x - 56], [door.x + 56, right]]) {
-        const pane = new THREE.Mesh(new THREE.BoxGeometry((x1 - x0) / 32, 1.1, 0.06), glass);
-        pane.position.set(mallX((x0 + x1) / 2), 0.55, mallZ(front));
-        scene.add(pane);
-      }
-      wallSeg(left, back, right, back);
-      wallSeg(left, front, left, back);
-      wallSeg(right, front, right, back);
-      const floor = new THREE.Mesh(new THREE.PlaneGeometry(300 / 32, 200 / 32), standard([0x5a4a3a, 0x3a4a5a, 0x5a3a4a][index % 3], 0.6));
-      floor.rotation.x = -Math.PI / 2;
-      floor.position.set(mallX(door.x), 0.005, mallZ((front + back) / 2));
-      scene.add(floor);
-      const counter = rounded(3, 1, 0.8, standard(0x8a6a4a, 0.6), 0.05);
-      counter.position.set(mallX(door.x), 0.5, mallZ(north ? front - 120 : front + 120));
-      scene.add(counter);
-      const light = new THREE.PointLight([0xffd8a0, 0xc0e0ff, 0xffc0d8][index % 3], this.quality === 'high' ? 10 : 6, 9, 1.6);
-      light.position.set(mallX(door.x), 2.8, mallZ(north ? front - 90 : front + 90));
-      scene.add(light);
-    });
-    // Planters, the bench and the fountain the cart has to go around.
-    for (const rect of MALL_LAYOUT.obstacles) {
-      const x = mallX(rect.x + rect.w / 2);
-      const z = mallZ(rect.y + rect.h / 2);
-      if (rect.label === 'FOUNTAIN') {
-        const basin = new THREE.Mesh(new THREE.CylinderGeometry(rect.w / 64, rect.w / 64 + 0.1, 0.6, 24), standard(0x9aa0a8, 0.4));
-        basin.position.set(x, 0.3, z);
-        const water = new THREE.Mesh(new THREE.CircleGeometry(rect.w / 64 - 0.1, 24), new THREE.MeshStandardMaterial({ color: 0x3a8ac8, emissive: 0x1a5a8a, emissiveIntensity: 0.6 }));
-        water.rotation.x = -Math.PI / 2;
-        water.position.set(x, 0.58, z);
-        scene.add(basin, water);
-      } else if (rect.label === 'BENCH') {
-        const seat = rounded(rect.w / 32, 0.12, rect.h / 64, standard(0x7a5a3a, 0.7), 0.03);
-        seat.position.set(x, 0.45, z);
-        const back = rounded(rect.w / 32, 0.6, 0.1, standard(0x7a5a3a, 0.7), 0.03);
-        back.position.set(x, 0.8, z + rect.h / 128);
-        const base = new THREE.Mesh(new THREE.BoxGeometry(rect.w / 32 - 0.2, 0.45, rect.h / 32 - 0.4), standard(0x404448, 0.6));
-        base.position.set(x, 0.22, z);
-        scene.add(seat, back, base);
-      } else {
-        const pot = rounded(rect.w / 32, 0.7, rect.h / 32, standard(0x8a6a50, 0.8), 0.06);
-        pot.position.set(x, 0.35, z);
-        const bush = new THREE.Mesh(new THREE.SphereGeometry(rect.w / 64, 14, 10), standard(0x3a7a3a, 0.9));
-        bush.position.set(x, 1.0, z);
-        scene.add(pot, bush);
-      }
-    }
-    for (let x = 400; x <= 1150; x += 250) {
-      const light = new THREE.PointLight(0xfff0d8, this.quality === 'high' ? 18 : 12, 14, 1.5);
-      light.position.set(mallX(x), 4, mallZ(400));
-      scene.add(light);
-    }
-    // The five-ton outside the dock door; its tailgate opens onto the dock.
+    this.southgate = buildSouthgateMall(scene, this.quality, createCar);
+    props.mallFull = this.southgate.full;
+    props.mallCut = this.southgate.cut;
+    // The five-ton backed up to the dock door; its tailgate opens onto the dock.
     const truck = createTruck('5 TON', 0x5a4632, 0x4a3a2a, 'left', undefined, true);
     truck.position.set(mallX(40 - 74), 0, mallZ(400));
     scene.add(truck);
@@ -774,6 +673,9 @@ export class StoryStage {
     if (text) {
       const sprite = textSprite([text], 0.32, { width: Math.max(110, text.length * 13 + 20), height: 30, background: color, border: '#9e8452', color: '#2b2116', radius: 5 });
       sprite.name = 'label';
+      // Store tags are gameplay labels: never hidden behind the truck's walls.
+      sprite.material.depthTest = false;
+      sprite.renderOrder = 10;
       sprite.position.y = (group.userData.boxes ?? 2) * 0.3 + 0.35;
       group.add(sprite);
     }
@@ -798,6 +700,7 @@ export class StoryStage {
     this.dawn = scene.id === 'go-home' ? 1 : scene.id === 'drive-to-ups' ? 0.6 : 0;
     this.applySky(stage);
     this.roadTravel = 0;
+    this.mallIntroBeat = -1;
   }
 
   private applySky(stage: Stage): void {
@@ -821,7 +724,7 @@ export class StoryStage {
     else if (id.startsWith('timhortons')) this.directCoffee(stage, cutscene, time);
     else if (id === 'drive-to-mall' || id === 'drive-to-ups') this.directRoad(stage, cutscene, dt);
     else if (id === 'go-home') this.directHome(stage, cutscene, time);
-    else if (id === 'mall-intro') this.cameraTo(new THREE.Vector3(mallX(150) + 5, 7, mallZ(400) + 7), new THREE.Vector3(mallX(150), 0.8, mallZ(400)), dt);
+    else if (id === 'mall-intro') this.directMallIntro(stage, cutscene);
     for (const actor of stage.actors.values()) if (actor.root.visible) actor.animate(dt, time, this.reducedMotion);
     stage.puffs.update(dt);
   }
@@ -1085,12 +988,16 @@ export class StoryStage {
     const stage = this.stage('mall');
     for (const actor of stage.actors.values()) actor.root.visible = false;
     this.mallStoreText.clear();
+    this.mallSnap = true;
   }
 
   /** Mirrors the mall model: Skanky, the cart and its load, the truck's bundles, clerks and store badges. */
   public updateMall(model: MallModel, dt: number, time: number): void {
     const stage = this.stage('mall');
     const { props, actors } = stage;
+    // Play happens in the cutaway: low south walls, no roofs or door headers.
+    props.mallFull.visible = false;
+    props.mallCut.visible = true;
     const skanky = actors.get('skanky')!;
     skanky.root.visible = true;
     skanky.at(mallX(model.skanky.x), mallZ(model.skanky.y));
@@ -1136,20 +1043,12 @@ export class StoryStage {
       clerk.at(mallX(store.door.x + 30), mallZ(north ? store.door.y - 26 : store.door.y + 26));
       clerk.faceAngle = north ? 0 : Math.PI;
       clerk.setPose(store.state === 'dropped' ? 'press' : 'none', time);
-      const text = store.state === 'signed' ? `✓ ${store.name} SIGNED` : store.state === 'dropped' ? `${store.name} · SIGN HERE`
-        : store.run === model.run && !model.runComplete ? `${store.name} · THIS RUN` : `${store.name} · RUN ${store.run + 1}`;
+      // Each storefront's lit status board, angled up to the gameplay camera.
+      const thisRun = store.run === model.run && !model.runComplete;
+      const text = store.state === 'signed' ? '✓ SIGNED' : store.state === 'dropped' ? 'SIGN HERE' : thisRun ? 'THIS RUN · DELIVER' : `RUN ${store.run + 1}`;
       if (this.mallStoreText.get(store.id) !== text) {
         this.mallStoreText.set(store.id, text);
-        const old = props[`sign-${store.id}`];
-        if (old) stage.scene.remove(old);
-        const sign = textSprite([text], 0.5, {
-          width: Math.max(260, text.length * 15 + 30), height: 44, radius: 8, color: '#14232a',
-          background: store.state === 'signed' ? '#8fd18a' : store.state === 'dropped' ? '#f2c14e' : store.run === model.run && !model.runComplete ? '#f0e0b0' : '#9aa4a8',
-        });
-        // Camera-facing, above the doorway, so a sign never turns its back on the player.
-        sign.position.set(mallX(store.door.x), 2.1, mallZ(store.door.y) + (north ? -0.6 : 0.6));
-        stage.scene.add(sign);
-        props[`sign-${store.id}`] = sign;
+        this.southgate?.setStatus(index, text, store.state === 'signed' ? '#8fd18a' : store.state === 'dropped' ? '#f2c14e' : thisRun ? '#f0e0b0' : '#9aa4a8');
       }
       const drop = props[`drop-${store.id}`];
       if (store.state !== 'waiting' && !drop) {
@@ -1161,7 +1060,40 @@ export class StoryStage {
     });
     for (const actor of actors.values()) if (actor.root.visible) actor.animate(dt, time, this.reducedMotion);
     const target = skanky.root.position;
-    this.cameraTo(new THREE.Vector3(target.x + 1.0, 12.5, target.z + 7.0), new THREE.Vector3(target.x, 0.4, target.z - 0.8), dt);
+    // Kept inside the anchor wall at the concourse's east end.
+    const cameraX = Math.min(target.x + 1.0, mallX(1260) - 0.4);
+    this.cameraTo(new THREE.Vector3(cameraX, 11.5, target.z + 7.2), new THREE.Vector3(target.x, 0.5, target.z - 1.0), dt, this.mallSnap);
+    this.mallSnap = false;
+  }
+
+  /**
+   * The mall's establishing shots: a crane down from 111 Street and the LRT
+   * overpass to the five-ton at the receiving dock, then Skanky looking down
+   * the skylit concourse with every wall and roof in place.
+   */
+  private directMallIntro(stage: Stage, cutscene: Cutscene): void {
+    const { props, actors } = stage;
+    props.mallFull.visible = true;
+    props.mallCut.visible = false;
+    const snap = cutscene.index !== this.mallIntroBeat;
+    this.mallIntroBeat = cutscene.index;
+    props.cart.position.set(mallX(MALL_LAYOUT.cartStart.x), 0, mallZ(MALL_LAYOUT.cartStart.y));
+    props.cart.rotation.y = Math.PI / 2;
+    const skanky = actors.get('skanky')!;
+    skanky.root.visible = true;
+    if (cutscene.index === 0) {
+      skanky.at(mallX(MALL_LAYOUT.start.x), mallZ(MALL_LAYOUT.start.y));
+      skanky.faceAngle = -Math.PI / 2;
+      const t = ease(cueProgress(cutscene, 'mall-establish'));
+      this.cameraTo(new THREE.Vector3(mix(-60, -33, t), mix(14, 5.5, t), mix(18, 5, t)),
+        new THREE.Vector3(mix(-38, -19.5, t), mix(4, 1.5, t), mix(-6, 0, t)), this.frameDt, snap);
+    } else {
+      skanky.at(mallX(440), mallZ(415));
+      skanky.faceAngle = Math.PI / 2;
+      const t = ease(Math.min(1, cutscene.elapsedMs / 2400));
+      this.cameraTo(new THREE.Vector3(mix(-11.0, -10.4, t), mix(3.4, 3.6, t), mix(2.2, 2.0, t)),
+        new THREE.Vector3(6, mix(1.6, 2.2, t), -0.6), this.frameDt, snap);
+    }
   }
 
   /** A short "SIGNED" or "DROPPED" pop above a store, for feedback beyond sound. */
@@ -1176,7 +1108,7 @@ export class StoryStage {
     const stage = this.stages.mall;
     if (!stage) return;
     for (const [name, prop] of Object.entries(stage.props)) {
-      if (name.startsWith('drop-') || name.startsWith('sign-')) {
+      if (name.startsWith('drop-')) {
         stage.scene.remove(prop);
         delete stage.props[name];
       }
