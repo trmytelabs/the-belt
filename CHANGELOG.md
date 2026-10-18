@@ -7,12 +7,18 @@
 - Spread truck rows apart and stage crew events between them, keeping loading
   doors clear and the bulk platform and left/right stairs at the back.
 - Restrict 3D package selection to the controlled worker's own routes and bulk.
+- Guide off-centre truck entry into the cargo aisle without increasing walking
+  or touch-stick speed, and allow more empty-handed movement between shelves.
+- Walk the same crew out of the scrum to platform work stations, with frequent
+  parcel collection/loading and brief original gags. Keep Shan visible at work.
+- Reveal people through soft circular cutaways in foreground truck parts,
+  restoring the solid view as they move away.
 - Sort street addresses against city district ranges, including Mill Woods for
   Termite, with neutral signs and no visible routing letters or answer guidance.
 - Let the uncontrolled coworker collect and deliver freight automatically.
   In 3D, bulk remains exclusively for the currently controlled worker.
 - Mix sixteen ordinary package labels with the existing reference freight.
-  Tune 3D arrivals to half the previous triple-intake rate.
+  Ease 3D arrivals to 4.8 seconds initially, 3.2 in flow and 2.4 in rush.
 - Keep carried packages in front of workers, accounting for their scaled depth.
 - Throw down from the stair top with a 30% break risk; breakage costs points
   once and brings Shan over yelling.
