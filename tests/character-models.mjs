@@ -146,6 +146,26 @@ test('skin reddening carries over, and each copy owns its materials', async () =
   assert.ok(skinOf(copy).color.equals(calm), 'other copies are untouched');
 });
 
+test('a skin-material pattern limits reddening to matching materials', async () => {
+  const headUrl = glbDataUrl(await toGlb(syntheticHumanoid({ skinName: 'm018_head' })));
+  await useCharacterModels([{ names: ['HEAD ONLY'], url: headUrl, skinMaterial: /head/i }, { names: ['NO MATCH'], url: humanoidUrl, skinMaterial: /head/i }]);
+  const scene = new THREE.Scene();
+  const head = figure('HEAD ONLY');
+  const body = figure('NO MATCH');
+  scene.add(head.root, body.root);
+  sync(scene);
+  const material = (character) => {
+    let found;
+    character.root.getObjectByName('character-model').traverse((child) => { if (child.isSkinnedMesh) found = child.material; });
+    return found;
+  };
+  const calm = [material(head).color.clone(), material(body).color.clone()];
+  for (const character of [head, body]) character.skinMaterial.color.set(0xff3020);
+  sync(scene);
+  assert.ok(material(head).color.g < calm[0].g * 0.5, 'the head material reddens');
+  assert.ok(material(body).color.equals(calm[1]), 'a material outside the pattern keeps its colour');
+});
+
 test('unusable models leave the procedural figure in place', async () => {
   const warn = console.warn;
   const warnings = [];

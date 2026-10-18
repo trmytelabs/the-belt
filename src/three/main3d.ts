@@ -141,6 +141,8 @@ export class Belt3d {
     const rendererName = debug ? String(gl.getParameter(debug.UNMASKED_RENDERER_WEBGL)) : '';
     this.quality = /swiftshader|llvmpipe|software|basic render/i.test(rendererName) ? 'low' : 'high';
     this.renderer.setPixelRatio(this.quality === 'high' ? Math.min(window.devicePixelRatio, 2) : 0.6);
+    // Software renderers keep the lighter procedural people and download no models.
+    if (this.quality === 'low') void useCharacterModels([]);
     this.renderer.shadowMap.enabled = this.quality === 'high';
     this.renderer.shadowMap.type = this.quality === 'high' ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
