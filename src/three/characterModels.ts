@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
 import type { Character, CharacterSpec } from './characters';
+import { ROCKETBOX_CAST } from './rocketboxCast.ts';
 
 /**
  * Imported character models (glTF/GLB with a humanoid skeleton).
@@ -25,10 +26,18 @@ export interface CharacterModelEntry {
   rotationY?: number;
   /** Standing height in metres before the character's own scale; 1.78 like the figure by default. */
   height?: number;
+  /** Materials that redden with the figure's skin (Shan); `skin` or `body` by default. */
+  skinMaterial?: RegExp;
 }
 
-/** Models the game uses. Add an entry per finished model; the files live in public/models/characters/. */
-export const CHARACTER_MODELS: CharacterModelEntry[] = [];
+/**
+ * Models the game uses; the files live in public/models/characters/. The
+ * crew are Rocketbox people, whose head material holds the face and whose
+ * body material includes the clothes, so only the head reddens.
+ */
+export const CHARACTER_MODELS: CharacterModelEntry[] = ROCKETBOX_CAST.map(({ file, names }) => ({
+  names, url: `/models/characters/${file}.glb`, skinMaterial: /head/i,
+}));
 
 const FIGURE_HEIGHT = 1.78;
 
@@ -164,7 +173,7 @@ function setFigureVisible(character: Character, visible: boolean): void {
  * procedural figure. Returns null, leaving the figure, if the skeleton lacks
  * the head, arms and legs.
  */
-export function attachModel(character: Character, source: THREE.Object3D, entry: Pick<CharacterModelEntry, 'rotationY' | 'height'>, figureSkin: number): ModelRig | null {
+export function attachModel(character: Character, source: THREE.Object3D, entry: Pick<CharacterModelEntry, 'rotationY' | 'height' | 'skinMaterial'>, figureSkin: number): ModelRig | null {
   const model = cloneSkinned(source);
   // The container follows the figure's body (bob, lean, lying down); the
   // inner turn faces the model along the figure's +Z.
@@ -243,7 +252,7 @@ export function attachModel(character: Character, source: THREE.Object3D, entry:
     const cloneMaterial = (material: THREE.Material): THREE.Material => {
       const copy = material.clone();
       const standard = copy as THREE.MeshStandardMaterial;
-      if (standard.isMeshStandardMaterial && /skin|body/i.test(material.name)) skin.push({ material: standard, base: standard.color.clone() });
+      if (standard.isMeshStandardMaterial && (entry.skinMaterial ?? /skin|body/i).test(material.name)) skin.push({ material: standard, base: standard.color.clone() });
       return copy;
     };
     mesh.material = Array.isArray(mesh.material) ? mesh.material.map(cloneMaterial) : cloneMaterial(mesh.material);
