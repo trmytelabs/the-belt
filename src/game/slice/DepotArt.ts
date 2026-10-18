@@ -276,7 +276,9 @@ export class DepotArt {
     for (let x = platform.left; x < platform.right; x += 16) {
       const inStairs = (x >= leftLane.minX && x < leftLane.maxX) || (x >= rightLane.minX && x < rightLane.maxX);
       if (inStairs) continue;
-      g.fillStyle(x / 16 % 2 ? 0xe2b84e : 0x1c1c1c).fillRect(x, platform.bottom - 6, 16, 6);
+      // Count stripes from the platform's edge so yellow and black alternate.
+      const stripe = Math.round((x - platform.left) / 16);
+      g.fillStyle(stripe % 2 === 0 ? 0xe2b84e : 0x1c1c1c).fillRect(x, platform.bottom - 6, 16, 6);
     }
     // Guard rail between the two flights.
     line(g, leftLane.maxX, platform.bottom - 10, rightLane.minX, platform.bottom - 10, 0xe0b23c, 3, 0.9);
