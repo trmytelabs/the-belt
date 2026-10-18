@@ -438,11 +438,19 @@ export class CrewLife {
     for (const id of [...RESIDENT_IDS, 'shan']) {
       const actor = this.actor(id);
       const from = { x: actor.root.position.x * 32 + 480, y: actor.root.position.z * 32 + 340 };
-      const to = id === 'shan' ? VISITORS.shan : this.workStation(id);
+      const to = id === 'shan' ? { x: 590, y: 860 } : this.workStation(id);
       actor.root.visible = true;
       actor.root.rotation.x = 0;
       actor.pose = 'none'; actor.carrying = false; actor.faceAngle = null;
-      this.workWalks.set(id, { points: platformWalkPath(from, to), distance: 0 });
+      const points = platformWalkPath(from, to);
+      if (to.x < 480 && to.y > 450) points.splice(1, 0, { x: 350, y: 430 });
+      // The east crew file past stationary workers and occupied work stations
+      // along a separate corridor, then turn into their own bay.
+      if (to.x > 480) {
+        if (points.length > 2) points.splice(2, 1, { x: 550, y: 128 }, { x: 550, y: to.y });
+        else points.splice(1, 0, { x: 550, y: from.y }, { x: 550, y: to.y });
+      }
+      this.workWalks.set(id, { points, distance: 0 });
       this.crewEpoch.set(id, 0);
     }
   }

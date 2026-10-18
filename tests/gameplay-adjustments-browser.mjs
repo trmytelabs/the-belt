@@ -5,7 +5,7 @@ import { preview } from 'vite';
 import { ROCKETBOX_CAST } from '../src/three/rocketboxCast.ts';
 
 const mode = process.argv[2] ?? '3d';
-const server = await preview({ preview: { host: '127.0.0.1', port: 0 }, logLevel: 'silent' });
+const server = process.env.BELT_TEST_BASE_URL ? null : await preview({ preview: { host: '127.0.0.1', port: 0 }, logLevel: 'silent' });
 let browser;
 try {
   browser = await chromium.launch({ headless: true,
@@ -26,7 +26,7 @@ try {
   });
   await page.route('https://fonts.googleapis.com/**', route => route.fulfill({body:''}));
   await page.route('https://fonts.gstatic.com/**', route => route.fulfill({body:''}));
-  await page.goto(`${server.resolvedUrls.local[0]}?mode=${mode}`);
+  await page.goto(new URL(`?mode=${mode}`, process.env.BELT_TEST_BASE_URL ?? server.resolvedUrls.local[0]).href);
   const read = (fn, arg = mode) => page.evaluate(fn, arg);
   const wait = (fn, options = {}) => page.waitForFunction(fn, mode, { polling: 10, timeout: 90_000, ...options });
   if(mode === '2d') await page.waitForFunction(() => window.fixtureGame?.scene.isActive('DepotScene'));
@@ -297,5 +297,5 @@ try {
   console.log(`PASS ${mode} address signs, carrying clearance, stair throw and single penalty with Shan yelling; no script errors`);
 } finally {
   await browser?.close();
-  await new Promise(resolve=>server.httpServer.close(resolve));
+  if (server) await new Promise(resolve=>server.httpServer.close(resolve));
 }

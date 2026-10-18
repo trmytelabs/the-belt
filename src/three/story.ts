@@ -1283,10 +1283,9 @@ export interface DepotCast {
 // The huddle fills the clear west lane beside the head of the belt, below the
 // receiving feeders, with Shan at its top end facing everyone.
 const SCRUM_SPOTS: Record<string, [number, number]> = {
-  termite: [366, 214], skanky: [418, 214],
-  hussan: [342, 252], aj: [386, 256], ben: [420, 250],
-  donna: [330, 292], doris: [362, 296], brian: [394, 292], bannerman: [426, 288],
-  fruitloop: [384, 330],
+  termite: [366, 214], skanky: [414, 214],
+  hussan: [342, 252], aj: [386, 256], ben: [386, 300], bannerman: [386, 344],
+  brian: [414, 238], fruitloop: [414, 272], doris: [414, 306], donna: [414, 340],
 };
 const SHAN_SPOT: [number, number] = [392, 166];
 

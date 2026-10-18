@@ -997,11 +997,11 @@ export class Belt3d {
   }
 
   private parcelPosition(parcel: Parcel, view: ParcelView, target: THREE.Vector3): THREE.Vector3 {
-    const carryOffset = setParcelCarried(view, parcel.state === 'held');
+    const carryOffset = setParcelCarried(view, parcel.state === 'held', parcel.workerId ? 0.32 * this.workers[parcel.workerId].root.scale.z : 0.32);
     if (parcel.state === 'held' && parcel.workerId) {
       const character = this.workers[parcel.workerId];
       const forward = new THREE.Vector3(Math.sin(character.root.rotation.y), 0, Math.cos(character.root.rotation.y));
-      return target.copy(character.root.position).addScaledVector(forward, carryOffset + 0.12 * character.root.scale.z)
+      return target.copy(character.root.position).addScaledVector(forward, carryOffset)
         .setY(character.root.position.y + 1.05 - view.height * 0.35);
     }
     if (parcel.state === 'missed') {

@@ -4,7 +4,7 @@ import { chromium } from 'playwright';
 import { preview } from 'vite';
 import { writeFile } from 'node:fs/promises';
 
-const server = await preview({ preview: { host:'127.0.0.1', port:0 }, logLevel:'silent' });
+const server = process.env.BELT_TEST_BASE_URL ? null : await preview({ preview: { host:'127.0.0.1', port:0 }, logLevel:'silent' });
 const browser = await chromium.launch({ headless:true,
   ...(process.env.BELT_BROWSER_EXECUTABLE ? { executablePath:process.env.BELT_BROWSER_EXECUTABLE } : { channel:'chromium' }),
   args:process.env.BELT_3D_GPU ? ['--ignore-gpu-blocklist'] : ['--use-angle=swiftshader','--enable-unsafe-swiftshader'],
@@ -17,7 +17,7 @@ try {
   await page.route('https://fonts.googleapis.com/**', route => route.fulfill({ body:'' }));
   await page.route('https://fonts.gstatic.com/**', route => route.fulfill({ body:'' }));
   await page.addInitScript(() => window.addEventListener('belt3d:ready', event => { window.fixtureApp = event.detail; }));
-  await page.goto(server.resolvedUrls.local[0]);
+  await page.goto(process.env.BELT_TEST_BASE_URL ?? server.resolvedUrls.local[0]);
   const read = (fn, arg) => page.evaluate(fn, arg);
   const wait = fn => page.waitForFunction(fn, null, { polling:10, timeout:90_000 });
   await wait(() => window.fixtureApp?.state === 'briefing');
@@ -145,5 +145,5 @@ try {
   console.log('PASS 3D circular truck transparency reveals real character pixels and restores the solid shell; no shader or script errors');
 } finally {
   await browser.close();
-  await server.httpServer.close();
+  await server?.httpServer.close();
 }
