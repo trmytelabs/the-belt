@@ -606,7 +606,8 @@ export class StoryStage {
     // Six labelled bundles in the truck, one per store.
     for (let slot = 0; slot < 6; slot += 1) {
       const bundle = this.bundle(slot % 2 ? 3 : 2);
-      bundle.position.set(mallX(22), 1.1, mallZ(350 + slot * 20));
+      // The slots are squeezed to fit between the truck's side walls; the model's slot rows are unchanged.
+      bundle.position.set(mallX(22), 1.1, mallZ(350 + slot * 20) * 0.62);
       scene.add(bundle);
       props[`slot-${slot}`] = bundle;
     }
@@ -1008,11 +1009,15 @@ export class StoryStage {
     const facing = model.cart.facing;
     // The handle is on the side away from the direction of travel.
     cart.rotation.y = { right: 0, left: Math.PI, up: Math.PI / 2, down: -Math.PI / 2 }[facing];
+    // The northern of the two loads gets the higher tag, so the tags never stack.
+    const raised = facing === 'down' ? 0 : 1;
     for (let i = 0; i < 2; i += 1) {
       const load = props[`cart-${i}`];
       const id = model.cart.load[i];
       load.visible = Boolean(id);
       if (id) this.setLabel(load, model.store(id).name);
+      const tag = load.getObjectByName('label');
+      if (tag) tag.position.y = (load.userData.boxes ?? 2) * 0.3 + 0.35 + (i === raised ? 0.55 : 0);
     }
     model.truckBundles.forEach((id, slot) => {
       const bundle = props[`slot-${slot}`];
@@ -1021,6 +1026,9 @@ export class StoryStage {
         const store = model.store(id);
         const current = store.run === model.run || (model.runComplete && store.run === model.run + 1);
         this.setLabel(bundle, store.name, current ? '#f2c14e' : '#c8c0b0');
+        // Alternate slots' tags sit in two staggered columns over the tailgate.
+        const tag = bundle.getObjectByName('label');
+        if (tag) tag.position.set(slot % 2 ? 0.75 : -0.75, 1.25, 0);
       }
     });
     const nearestSlot = model.nearestSlot();
@@ -1085,7 +1093,7 @@ export class StoryStage {
       skanky.at(mallX(MALL_LAYOUT.start.x), mallZ(MALL_LAYOUT.start.y));
       skanky.faceAngle = -Math.PI / 2;
       const t = ease(cueProgress(cutscene, 'mall-establish'));
-      this.cameraTo(new THREE.Vector3(mix(-60, -33, t), mix(14, 5.5, t), mix(18, 5, t)),
+      this.cameraTo(new THREE.Vector3(mix(-60, -34.5, t), mix(14, 5.5, t), mix(18, 4, t)),
         new THREE.Vector3(mix(-38, -19.5, t), mix(4, 1.5, t), mix(-6, 0, t)), this.frameDt, snap);
     } else {
       skanky.at(mallX(440), mallZ(415));

@@ -374,7 +374,9 @@ export function buildSouthgateMall(scene: THREE.Scene, quality: 'high' | 'low', 
   sign(scene, ['LOWER LEVEL'], 1.6, 0.3, px1 - 0.02, -1.0, (pz0 + pz1) / 2, -Math.PI / 2, { background: '#1b2a33', color: '#f0e6d0', depth: 0.04 });
   // Glass balustrade around the opening.
   const railY = 1.0;
-  const railSides: [number, number, number, number][] = [[ax0, az0, ax1, az0], [ax0, az1, ax1, az1], [ax0, az0, ax0, az1], [ax1, az0, ax1, az1]];
+  // Inset so the curb stays inside the atrium's collision rectangle: a cart pushed against it never clips.
+  const [rx0, rz0, rx1, rz1] = [ax0 + 0.1, az0 + 0.1, ax1 - 0.1, az1 - 0.1];
+  const railSides: [number, number, number, number][] = [[rx0, rz0, rx1, rz0], [rx0, rz1, rx1, rz1], [rx0, rz0, rx0, rz1], [rx1, rz0, rx1, rz1]];
   for (const [x0, z0, x1, z1] of railSides) {
     const horizontal = z0 === z1;
     const length = horizontal ? x1 - x0 : z1 - z0;
@@ -501,7 +503,8 @@ export function buildSouthgateMall(scene: THREE.Scene, quality: 'high' | 'low', 
     const [fz0, fz1] = span2(zf, into(0.35));
     // Columns: stone-clad below, round steel above the gallery.
     for (const x of [...storeEdges, east - 0.35]) {
-      wall(m.stone, [x - 0.35, 0, Math.min(zf - 0.1 * s, into(0.4)), x + 0.35, UPPER, Math.max(zf - 0.1 * s, into(0.4))], cutaway);
+      // Flush with the concourse edge, so a cart pushed against a storefront never clips a column.
+      wall(m.stone, [x - 0.35, 0, Math.min(zf, into(0.5)), x + 0.35, UPPER, Math.max(zf, into(0.5))], cutaway);
       const column = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, SPRING - UPPER, 12), m.white);
       column.position.set(x, (UPPER + SPRING) / 2, zf - 0.05 * s);
       (north ? scene : full).add(column);
@@ -600,9 +603,11 @@ export function buildSouthgateMall(scene: THREE.Scene, quality: 'high' | 'low', 
     scene.add(light);
     // The storefront: kick plates, glazing and mullions, stone door jambs, a fascia and the lit name.
     for (const [g0, g1] of [[x0, cx - DOOR_HALF - 0.3], [cx + DOOR_HALF + 0.3, x1]]) {
-      const [kz0, kz1] = z(-0.05, 0.05);
+      // Everything below the fascia sits behind the concourse edge.
+      const [kz0, kz1] = z(0, 0.1);
       box(scene, m.bronze, [g0, 0, kz0, g1, 0.35, kz1]);
-      wall(m.glass, [g0, 0.35, zf - 0.015, g1, 2.95, zf + 0.015], !north);
+      const [gz0, gz1] = z(0.035, 0.065);
+      wall(m.glass, [g0, 0.35, gz0, g1, 2.95, gz1], !north);
       const bays = Math.max(1, Math.round((g1 - g0) / 1.5));
       for (let i = 0; i <= bays; i += 1) {
         const mx = g0 + (g1 - g0) * i / bays;
@@ -612,7 +617,7 @@ export function buildSouthgateMall(scene: THREE.Scene, quality: 'high' | 'low', 
     }
     for (const side of [-1, 1]) {
       const jx = cx + side * (DOOR_HALF + 0.15);
-      const [jz0, jz1] = z(-0.12, 0.25);
+      const [jz0, jz1] = z(0, 0.37);
       wall(m.stone, [jx - 0.15, 0, jz0, jx + 0.15, 2.95, jz1], !north);
     }
     const [fz0, fz1] = z(-0.12, 0.3);
