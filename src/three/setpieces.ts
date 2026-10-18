@@ -1,12 +1,14 @@
+import { DEPOT_3D_LAYOUT as SHIFT_LAYOUT } from './layout';
 import * as THREE from 'three';
 
 import { SHOT_WORDS } from '../game/slice/DepotReferences';
-import { SHIFT_LAYOUT, type ShiftModel } from '../game/slice/ShiftModel';
-import { audioSystem } from '../game/systems/AudioSystem';
+import { type ShiftModel } from '../game/slice/ShiftModel';
+import { audioSystem } from './audio';
 import { createCharacter } from './characters';
 import { mix, type Actor, type CrewLife, type Say } from './crew';
 import { setFromModel, standard, textSprite, toWorld, toWorldX } from './space';
 import { RALPH_BAY, type DepotWorld } from './world';
+import { DevilModel } from './propModels';
 
 /**
  * The 2D depot's big set pieces, on its authored clocks
@@ -18,10 +20,12 @@ export const BEN_START = 68_000;
 export const BEN_END = 92_500;
 export const BEN_CAST = new Set(['ben', 'gunman', 'paula']);
 const SHOT_TIMES = [78_500, 78_760, 79_180, 79_500, 80_020];
-const GATE = { x: 56, y: 392 };
-const FALLEN = { x: 112, y: 394 };
+const BEN_BAY = SHIFT_LAYOUT.eventBays.ben;
+const GATE = { x: 152, y: BEN_BAY.y };
+const FALLEN = { x: 210, y: BEN_BAY.y + 2 };
 
 export class SetPieces {
+  public readonly devilModel: DevilModel;
   public ralphState: 'waiting' | 'entering' | 'loading' | 'leaving' | 'done' = 'waiting';
   public ralphLoaded = 0;
   public ralphLifted = 0;
@@ -80,6 +84,7 @@ export class SetPieces {
     this.gateLight = new THREE.PointLight(0xff5a1c, 0, 9, 1.6);
     this.buildGate();
     this.buildDemon();
+    this.devilModel = new DevilModel(this.demon);
     this.bang = SHOT_WORDS.map((word) => {
       const sprite = textSprite([word], 0.55, { width: Math.max(120, word.length * 26), height: 56, color: '#f0dfb3', font: '900 SIZEpx Impact, "Arial Black", sans-serif' });
       sprite.material.color.setHex(0xffffff);
@@ -197,6 +202,7 @@ export class SetPieces {
     this.gate.visible = false;
     this.demon.visible = false;
     this.deadMarker.visible = false;
+    this.devilModel.reset();
     for (const sprite of this.bang) sprite.visible = false;
   }
 
@@ -339,7 +345,7 @@ export class SetPieces {
     // The gunman comes in along the outer wall and threatens the floor.
     gunman.root.visible = t >= 68_000 && t < 81_700;
     if (gunman.root.visible) {
-      gunman.place(40, t < 69_500 ? mix(520, 420, (t - 68_000) / 1500) : t < 80_500 ? 420 : mix(420, 520, (t - 80_500) / 1200));
+      gunman.place(t < 69_500 ? mix(40, 112, (t - 68_000) / 1500) : t < 80_500 ? 112 : mix(112, 40, (t - 80_500) / 1200), BEN_BAY.y);
       const aiming = t >= 69_500 && t < 80_500;
       gunman.faceAngle = aiming
         ? Math.atan2(ben.root.position.x - gunman.root.position.x, ben.root.position.z - gunman.root.position.z) : null;
@@ -353,13 +359,13 @@ export class SetPieces {
     ben.root.visible = t < 85_600;
     ben.character.nameTag.visible = t < 80_020;
     if (t < 77_200) {
-      ben.place(150, 390);
+      ben.place(BEN_BAY.x, BEN_BAY.y);
       ben.faceAngle = -Math.PI / 2;
       ben.pose = t >= 72_000 && t < 77_200 ? 'announce' : 'none';
       ben.root.rotation.x = 0;
     } else if (t < 80_020) {
       if (this.benStage === 'boast') this.benStage = 'dodge';
-      ben.place(150 - (150 - FALLEN.x) * dodge + Math.sin(dodge * Math.PI * 4) * 16, 390 + Math.sin(dodge * Math.PI * 3) * 14);
+      ben.place(BEN_BAY.x - (BEN_BAY.x - FALLEN.x) * dodge + Math.sin(dodge * Math.PI * 4) * 16, BEN_BAY.y + Math.sin(dodge * Math.PI * 3) * 14);
       ben.faceAngle = this.reducedMotion ? -Math.PI / 2 : -Math.PI / 2 + Math.sin(t / 90) * 0.9;
       ben.pose = 'crouch';
     } else if (t < 81_700 || t >= 85_600) {
@@ -416,6 +422,7 @@ export class SetPieces {
       ben.root.position.set(mix(ben.root.position.x, gateWorld.x, sink), 0.15 - 1.4 * sink, gateWorld.z);
       ben.root.scale.setScalar(Math.max(0.01, 1 - sink));
     }
+    if (this.demon.visible) this.devilModel.update(this.benStage, dt, this.reducedMotion);
     this.deadMarker.visible = t >= 80_020 && t < 85_600;
     if (this.deadMarker.visible) this.deadMarker.position.copy(ben.root.position).add(new THREE.Vector3(0, 0.9, 0));
 
@@ -427,7 +434,7 @@ export class SetPieces {
         this.crew.benGone = true;
         ben.root.visible = false;
       }
-      paula.place(t < 86_400 ? mix(10, 104, (t - 85_600) / 800) : t < 91_600 ? 104 : mix(104, 10, (t - 91_600) / 900), 404);
+      paula.place(t < 86_400 ? mix(10, 210, (t - 85_600) / 800) : t < 91_600 ? 210 : mix(210, 10, (t - 91_600) / 900), BEN_BAY.y + 10);
       paula.faceAngle = t >= 86_400 && t < 91_600 ? Math.PI / 2 : null;
       paula.pose = t >= 86_400 && t < 91_600 ? 'swear' : 'none';
     }

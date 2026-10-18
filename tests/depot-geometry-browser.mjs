@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 import { preview } from 'vite';
-import { SHIFT_LAYOUT, platformLevelAt } from '../src/game/slice/ShiftModel.ts';
+import { DEPOT_3D_LAYOUT as SHIFT_LAYOUT, platformLevelAt } from '../src/three/layout.ts';
 import { OPENERS, BREAK_SCENES, SCRUM, MALL_ASSIGNMENT, DRIVE_TO_MALL, DRIVE_TO_UPS, GO_HOME } from '../src/game/slice/StoryScript.ts';
 
 // Controlled geometry fixtures complement real-input gameplay in the other suites.
@@ -275,7 +275,7 @@ try {
         const parcel = { id: 9000 + samples, route: side ? 'S' : 'T', kind, label: kind, size: 'normal', x: worker.x, y: worker.y,
           state: 'held', workerId: worker.id, beltOffset: 0, recovered: false, missCounted: false, broken: false, breakY: null };
         app.model.packages.push(parcel); worker.heldId = parcel.id;
-        for (const y of [822, 830]) for (let step = 0; step < layout.stairs.steps; step++) {
+        for (const y of [layout.stairs.minY + layout.carriedClearance, layout.stairs.maxY - layout.carriedClearance]) for (let step = 0; step < layout.stairs.steps; step++) {
           Object.assign(worker, { x: flight.topX + (flight.bottomX - flight.topX) * (step + 0.5) / layout.stairs.steps, y });
           app.syncWorkers(0);
           for (let angle = 0; angle < 360; angle += 15) {
@@ -352,9 +352,6 @@ try {
           for (const dx of [-area.width / 2, area.width / 2]) for (const dy of [-area.height / 2, area.height / 2]) {
             visible(camera.position.clone().set((area.x + dx - 480) / 32, name === 'T' || name === 'S' ? 0 : 1.1, (area.y + dy - 340) / 32), `drop ${name}`);
           }
-        }
-        for (const [name, area] of [['T', layout.floorT], ['S', layout.floorS]]) {
-          for (const dx of [-0.85, 0.85]) visible(camera.position.clone().set((area.x - 480) / 32 + (name === 'T' ? -3.125 : 3.125) + dx, 2.3, (area.y - 340) / 32 + 1), `${name} floor sign`);
         }
       }
       const halfHeight = camera.near * Math.tan(camera.fov * Math.PI / 360);

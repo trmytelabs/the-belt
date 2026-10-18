@@ -1,18 +1,20 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 
-import { ROUTE_INFO, SHIFT_LAYOUT, floorPileSlot, type Route } from '../game/slice/ShiftModel';
+import { ROUTE_INFO, streetRange } from './addresses';
+import { DEPOT_3D_LAYOUT as SHIFT_LAYOUT, floorPileSlot, truckInteriorAt } from './layout';
 import { BODY, bendElbows, bendKnees, createCharacter, mergeCharacter, type Character, type CharacterSpec } from './characters';
 import { mergeStatic } from './merge';
 import { physicalBounds } from './collision3d';
 import { PuffField } from './fx';
 import {
-  BELT_HEIGHT, BELT_WIDTH, BELT_WORK_HEIGHT, PALETTE, PLATFORM_HEIGHT, ROUTE_COLORS, WORLD_SCALE, shadowed, standard, textPlane, textTexture,
+  BELT_HEIGHT, BELT_WIDTH, BELT_WORK_HEIGHT, PALETTE, PLATFORM_HEIGHT, ROUTE_COLORS, WORLD_SCALE, shadowed, standard, textPlane,
   toWorld, toWorldX, toWorldZ,
 } from './space';
 import { SHAN_NAME } from '../game/slice/StoryScript';
+import { TruckCutaway } from './truckCutaway';
 import { DEPOT_DRESSING } from './depotDressing';
-import { placeProp } from './propModels';
+import { DevilModel, placeProp } from './propModels';
 
 const rounded = (w: number, h: number, d: number, material: THREE.Material, r = 0.05): THREE.Mesh =>
   new THREE.Mesh(new RoundedBoxGeometry(w, h, d, 2, Math.min(r, w / 2, h / 2, d / 2)), material);
@@ -28,7 +30,7 @@ export const SKIN = { light: 0xe8b98f, tan: 0xc98d62, brown: 0x8d5a3b, pale: 0xf
 /** Original cast identities: see docs/reference-parity.md, cast table. */
 const RESIDENTS: [string, number, number, CharacterSpec][] = [
   ['hussan', 150, 198, { name: 'HUSSAN', skin: SKIN.olive, shirt: 0x3f78a8, pants: 0x2d3440, hair: 0x1b1612, hairStyle: 'short', beard: true }],
-  ['aj', 150, 294, { name: 'AJ', skin: SKIN.tan, shirt: SKIN.tan, pants: 0x4b5a66, hair: 0x6b4a2c, hairStyle: 'short', barefoot: true }],
+  ['aj', 150, 294, { name: 'AJ', skin: SKIN.light, shirt: 0x687876, pants: 0xb5a083, hair: 0x5b4634, hairStyle: 'bald', glasses: true, glassesDepth: 0.177, glassesHeight: 0.159, longSleeves: true }],
   ['ben', 150, 390, { name: 'BEN', skin: SKIN.pale, shirt: 0x5a6b48, pants: 0x34383d, hair: 0x5a3a22, hairStyle: 'slick' }],
   ['bannerman', 150, 486, { name: 'BANNERMAN', skin: SKIN.light, shirt: 0x8a6a3a, pants: 0x2f3b45, hair: 0x6e4c2e, hairStyle: 'short', glasses: true, moustache: true }],
   ['fruitloop', 810, 198, { name: 'FRUIT LOOP', skin: SKIN.light, shirt: 0x5fae4e, pants: 0x354052, hair: 0x2f2318, hairStyle: 'curly', scale: 0.78 }],
@@ -39,10 +41,10 @@ const RESIDENTS: [string, number, number, CharacterSpec][] = [
 export const RESIDENT_SPECS: Record<string, CharacterSpec> = Object.fromEntries(RESIDENTS.map(([id, , , spec]) => [id, spec]));
 
 export const VISITORS: Record<string, CharacterSpec & { x: number; y: number }> = {
-  kylie: { name: 'KYLIE', x: 850, y: 400, skin: SKIN.pale, shirt: 0xb24a6a, pants: 0x2b2f3a, hair: 0x83569a, hairStyle: 'bun' },
+  kylie: { name: 'KYLIE', x: 850, y: 400, skin: SKIN.light, shirt: 0x8e3232, pants: 0x2b2f3a, hair: 0x171310, hairStyle: 'short', scale: 0.86 },
   john: { name: 'JOHN RUSHTON', x: 77, y: 397, skin: 0xbf9672, shirt: 0x2f4f64, pants: 0x2b3038, hair: 0x3a2a19, hairStyle: 'short', scale: 0.92 },
   vic: { name: 'VIC', x: 132, y: 286, skin: 0xc29c7a, shirt: 0x727f83, pants: 0x34383d, hair: 0xb4b4a1, hairStyle: 'short', moustache: true },
-  shan: { name: SHAN_NAME, dynamicSkin: true, x: 880, y: 395, skin: SKIN.light, shirt: 0xe9e4d6, pants: 0x30343c, hair: 0x8b8b88, hairStyle: 'bald', tie: 0x8a2630 },
+  shan: { name: SHAN_NAME, dynamicSkin: true, x: 610, y: SHIFT_LAYOUT.eventBays.brian.y, skin: SKIN.light, shirt: 0xe9e4d6, pants: 0x30343c, hair: 0x8b8b88, hairStyle: 'bald', tie: 0x8a2630 },
 };
 
 export const TERMITE_SPEC: CharacterSpec = { name: 'TERMITE', skin: 0xe2b088, shirt: 0x2f5f8f, pants: 0x2a3f5c, overalls: 0x2a3f5c, hair: 0x5a3a20, hairStyle: 'short', headwear: 'termiteHat', beard: true };
@@ -60,9 +62,12 @@ const PLAYER_TRUCKS: { route: PlayerTruckRoute; body: number; cab: number }[] = 
 ];
 
 export class DepotWorld {
+  public readonly truckCutaway: TruckCutaway;
+  public shoulderDevil: DevilModel | null = null;
   public readonly scene = new THREE.Scene();
   public readonly tread: THREE.Texture;
   public readonly residents = new Map<string, Resident>();
+  public readonly eventProps = new Map<string, THREE.Object3D>();
   public readonly puffs: PuffField;
   public readonly bulkStack = new THREE.Group();
   public readonly intakeAnchor = new THREE.Group();
@@ -77,7 +82,6 @@ export class DepotWorld {
     cabDoor: { x: number; y: number }; route?: PlayerTruckRoute;
   }[] = [];
   /** Freight visibly stacking up inside each player truck's open rear. */
-  private readonly truckCargo = new Map<PlayerTruckRoute, THREE.Object3D[]>();
   /** Emitters that need per-frame particles: cigarette, stink. */
   private readonly emitters: { anchor: THREE.Object3D; kind: 'smoke' | 'stink'; timer: number }[] = [];
   private readonly lamps: THREE.Mesh[] = [];
@@ -140,6 +144,7 @@ export class DepotWorld {
     this.addRalphTruck();
     if (this.models) this.addDressing();
     this.mergeStaticGeometry();
+    this.truckCutaway = new TruckCutaway(this.trucks);
   }
 
   /** Collapses ~1,300 separate meshes into a few hundred draw calls. */
@@ -158,8 +163,8 @@ export class DepotWorld {
 
   private addLights(quality: 'high' | 'low'): void {
     const scene = this.scene;
-    scene.add(new THREE.HemisphereLight(0x7f9fb8, 0x1c1814, 0.42));
-    const key = new THREE.DirectionalLight(0xcfdcff, 0.95);
+    scene.add(new THREE.HemisphereLight(0xb2c8dc, 0x424b53, 0.95));
+    const key = new THREE.DirectionalLight(0xcfdcff, 1.2);
     key.position.set(9, 20, 9);
     key.target.position.set(0, 0, 0);
     key.castShadow = true;
@@ -173,7 +178,7 @@ export class DepotWorld {
 
     // Sodium work lights make warm pools over each working area, including the lower floor.
     const pools: [number, number, number, number][] = [
-      [480, 150, 0xffc07a, 60], [480, 420, 0xffc07a, 66], [480, 700, 0xffcf96, 62], [480, SHIFT_LAYOUT.bulkPile.y, 0xffc98c, 58],
+      [480, 150, 0xffc07a, 70], [480, 480, 0xffc07a, 76], [480, 820, 0xffcf96, 72], [480, SHIFT_LAYOUT.stairs.centerY, 0xffc98c, 72],
       [SHIFT_LAYOUT.floorT.x, SHIFT_LAYOUT.floorT.y, 0xffc98c, 32], [SHIFT_LAYOUT.floorS.x, SHIFT_LAYOUT.floorS.y, 0xffc98c, 32],
       [244, 260, 0xffb26a, 40], [716, 260, 0xffb26a, 40], [480, -120, 0x8fc4ff, 55],
       [150, 420, 0xffb26a, 26], [810, 420, 0xffb26a, 26],
@@ -300,7 +305,7 @@ export class DepotWorld {
     // Each truck row faces an open dock bay, so the fleet can drive out at
     // clock-out. Solid corrugated wall covers receiving and the far end.
     const bayTop = toWorldZ(100);
-    const bayBottom = toWorldZ(796);
+    const bayBottom = toWorldZ(SHIFT_LAYOUT.ralphBay.y + 56);
     const pillar = standard(0x2c3c43, 0.6, 0.3);
     const outside = new THREE.Mesh(new THREE.PlaneGeometry(30, groundEnd - groundTop), standard(0x101619, 0.95));
     outside.rotation.x = -Math.PI / 2;
@@ -324,14 +329,14 @@ export class DepotWorld {
       const lintel = new THREE.Mesh(new THREE.BoxGeometry(0.4, 3.0, bayBottom - bayTop), wall);
       lintel.position.set(side * 15.4, 5.9, (bayTop + bayBottom) / 2);
       scene.add(lintel);
-      for (const y of [100, 196, 292, 388, 484, 580, 676, 796]) {
+      for (const y of [100, 228, 388, 548, 708, 868, 1004, SHIFT_LAYOUT.ralphBay.y + 56]) {
         const post = rounded(0.36, 4.4, 0.3, pillar, 0.04);
         post.position.set(side * 15.4, 2.2, toWorldZ(y));
         const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.38, 1.0, 0.32), standard(PALETTE.safety, 0.6));
         stripe.position.set(side * 15.4, 0.5, toWorldZ(y));
         scene.add(shadowed(post), stripe);
       }
-      for (const y of [148, 244, 340, 436, 532, 628, 740]) {
+      for (const y of [...SHIFT_LAYOUT.crewTruckRows, SHIFT_LAYOUT.dockA.y, SHIFT_LAYOUT.dockD.y, SHIFT_LAYOUT.ralphBay.y]) {
         // Rolled-up shutter drums above each open bay.
         const drum = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 2.7, 14), standard(0x56656b, 0.5, 0.5));
         drum.rotation.x = Math.PI / 2;
@@ -447,16 +452,18 @@ export class DepotWorld {
           scene.add(post);
         }
       }
-      const sign = textPlane([side === 'left' ? 'T ◀ STAIRS' : 'STAIRS ▶ S', 'LOWER FLOOR'], 1.6, 0.5, {
-        width: 190, height: 60, background: '#13252ce6', color: '#e8c04a', radius: 6,
+      const numbers = textPlane([streetRange(side === 'left' ? 'T' : 'S')], 1.8, 0.5, {
+        width: 300, height: 80, color: '#f2e6c8',
       });
-      sign.position.set(startX - direction * 0.6, PLATFORM_HEIGHT + 1.55, toWorldZ(stairs.minY) - 0.15);
-      scene.add(sign);
+      numbers.rotation.x = -Math.PI / 2;
+      numbers.position.set(startX - direction * 0.9, PLATFORM_HEIGHT + 0.012, toWorldZ(stairs.centerY - 60));
+      numbers.name = 'floor-street-range'; numbers.userData.keep = true;
+      scene.add(numbers);
     }
 
     // Short crew steps in the aisles between parked trucks: the outer-bay crew
     // climb them to reach the belt and their trucks' rear doors.
-    for (const y of [196, 292, 388, 484]) {
+    for (const y of [228, 388, 548, 708]) {
       for (const side of [-1, 1]) {
         for (let i = 0; i < 3; i += 1) {
           const height = PLATFORM_HEIGHT * (i + 1) / 3;
@@ -469,31 +476,6 @@ export class DepotWorld {
       }
     }
 
-    // Painted walkway lines bound the two worker lanes, on the deck.
-    const lineMaterial = new THREE.MeshStandardMaterial({ color: 0xe9c75b, roughness: 0.6 });
-    const laneTop = toWorldZ(SHIFT_LAYOUT.workerMinY);
-    const laneBottom = toWorldZ(486);
-    for (const x of [SHIFT_LAYOUT.leftLane.minX + 4, SHIFT_LAYOUT.rightLane.maxX - 4]) {
-      const line = new THREE.Mesh(new THREE.PlaneGeometry(0.08, laneBottom - laneTop), lineMaterial);
-      line.rotation.x = -Math.PI / 2;
-      line.position.set(toWorldX(x), PLATFORM_HEIGHT + 0.004, (laneTop + laneBottom) / 2);
-      scene.add(line);
-    }
-    // Floor arrows point the freight's way down the belt.
-    const arrow = new THREE.Shape();
-    arrow.moveTo(-0.18, 0); arrow.lineTo(0.18, 0); arrow.lineTo(0.18, 0.3); arrow.lineTo(0.36, 0.3);
-    arrow.lineTo(0, 0.62); arrow.lineTo(-0.36, 0.3); arrow.lineTo(-0.18, 0.3); arrow.closePath();
-    const arrowMaterial = new THREE.MeshStandardMaterial({ color: 0x8aa3aa, roughness: 0.8, transparent: true, opacity: 0.45 });
-    for (const y of [180, 300, 420]) for (const x of [365, 595]) {
-      const mesh = new THREE.Mesh(new THREE.ShapeGeometry(arrow), arrowMaterial);
-      mesh.rotation.x = Math.PI / 2;
-      mesh.position.copy(toWorld({ x, y }, PLATFORM_HEIGHT + 0.005));
-      scene.add(mesh);
-    }
-    const platformSign = textPlane(['LOADING PLATFORM'], 2.6, 0.32, { width: 300, height: 36, background: '#13252cdd', color: '#e8c04a' });
-    platformSign.rotation.x = -Math.PI / 2;
-    platformSign.position.copy(toWorld({ x: 480, y: (SHIFT_LAYOUT.recoveryPile.y + SHIFT_LAYOUT.bulkPile.y) / 2 }, PLATFORM_HEIGHT + 0.01));
-    scene.add(platformSign);
   }
 
   private addBelt(): THREE.Texture {
@@ -609,9 +591,27 @@ export class DepotWorld {
     this.floorPiles[route].count = Math.min(count, this.floorPiles[route].instanceMatrix.count);
   }
 
-  /** Delivered freight stacks up inside each player truck's open rear. */
-  public setTruckLoad(route: PlayerTruckRoute, count: number): void {
-    this.truckCargo.get(route)?.forEach((box, index) => { box.visible = index < count; });
+  public setTruckRunning(index: number, running: boolean): void {
+    const truck = this.trucks[index];
+    if (!running) { truck.group.rotation.x = 0; truck.group.rotation.z = 0; }
+    if (truck.group.userData.engineRunning === running) return;
+    truck.group.userData.engineRunning = running;
+    truck.group.traverse(child => {
+      if (child.name === 'truck-headlight') (child as THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>).material.emissiveIntensity = running ? 2.4 : 0.04;
+    });
+  }
+
+  /** Open the view into the currently occupied truck, restoring its roof on exit. */
+  public updateTruckInterior(worker: { x: number; y: number }): void {
+    const inside = truckInteriorAt(worker);
+    for (const truck of this.trucks) {
+      const roof = truck.group.getObjectByName('truck-roof') as THREE.Mesh<THREE.BoxGeometry, THREE.MeshStandardMaterial> | undefined;
+      if (!roof) continue;
+      roof.material.opacity = truck.route === inside ? 0.12 : 1;
+      roof.material.depthWrite = truck.route !== inside;
+      const sign = truck.group.getObjectByName('truck-roof-sign');
+      if (sign) sign.visible = truck.route !== inside;
+    }
   }
 
   /** Inside the open rear door of a player truck, at deck height. */
@@ -779,42 +779,19 @@ export class DepotWorld {
     scene.add(receivingTag);
   }
 
-  private zone(rect: { x: number; y: number; width: number; height: number }, route: Route, caption: string, height: number, band = false): void {
-    const scene = this.scene;
-    const color = new THREE.Color(ROUTE_COLORS[route]);
-    const w = rect.width * WORLD_SCALE;
-    const h = rect.height * WORLD_SCALE;
-    const center = toWorld(rect, height + 0.006);
-    const fill = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshStandardMaterial({ color, transparent: true, opacity: 0.12, roughness: 0.9 }));
-    fill.rotation.x = -Math.PI / 2;
-    fill.position.copy(center);
-    const edgeMaterial = new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 1.6, roughness: 0.5 });
-    const edges: [number, number, number, number][] = [[0, -h / 2, w, 0.06], [0, h / 2, w, 0.06], [-w / 2, 0, 0.06, h], [w / 2, 0, 0.06, h]];
-    for (const [ex, ez, ew, eh] of edges) {
-      const edge = new THREE.Mesh(new THREE.PlaneGeometry(ew, eh), edgeMaterial);
-      edge.rotation.x = -Math.PI / 2;
-      edge.position.set(center.x + ex, height + 0.008, center.z + ez);
-      scene.add(edge);
-    }
-    // A floor drop keeps its painted name in the far band, which the pile leaves clear.
-    const letter = new THREE.Mesh(new THREE.PlaneGeometry(w * 0.86, h * (band ? 0.3 : 0.86)), new THREE.MeshStandardMaterial({
-      map: band
-        ? textTexture([`${route} · ${caption}`], { width: 256, height: 52, color: ROUTE_COLORS[route], font: '900 SIZEpx "Segoe UI", Arial, sans-serif' })
-        : textTexture([route, caption], { width: 128, height: 144, color: ROUTE_COLORS[route], font: '900 SIZEpx "Segoe UI", Arial, sans-serif' }),
-      transparent: true, opacity: band ? 0.8 : 0.55, roughness: 0.9,
-    }));
-    letter.rotation.x = -Math.PI / 2;
-    letter.position.set(center.x, height + 0.01, center.z + (band ? h * 0.32 : 0));
-    scene.add(fill, letter);
-  }
-
   private addDocks(): void {
     const scene = this.scene;
     const deck = PLATFORM_HEIGHT;
-    for (const route of ['A', 'B', 'D', 'E'] as const) this.zone(SHIFT_LAYOUT.dropAreas[route], route, ROUTE_INFO[route].name.length > 10 ? 'LOAD' : ROUTE_INFO[route].name, deck);
-    this.zone(SHIFT_LAYOUT.dropAreas.bulkLeft, 'C', 'TO BULK', deck);
-    this.zone(SHIFT_LAYOUT.dropAreas.bulkRight, 'C', 'TO BULK', deck);
 
+    // Permanent street lettering is a readable clue, without safe-zone outlines.
+    for (const route of ['A', 'B', 'D', 'E'] as const) {
+      const truck = SHIFT_LAYOUT.playerTrucks[route];
+      const street = textPlane([streetRange(route)], 2.0, 0.62, { width: 320, height: 90, color: '#f2e6c8', font: '900 SIZEpx "Segoe UI", Arial, sans-serif' });
+      street.rotation.x = -Math.PI / 2;
+      street.position.copy(toWorld({ x: truck.x < 480 ? 365 : 595, y: truck.y }, deck + 0.012));
+      street.name = 'floor-street-range'; street.userData.keep = true;
+      scene.add(street);
+    }
     // Shared bulk cage beyond the belt end, on the deck.
     const bulk = toWorld(SHIFT_LAYOUT.bulkPile);
     const pallet = rounded(2.0, 0.16, 2.5, standard(0x8c6a42, 0.9), 0.02);
@@ -827,9 +804,14 @@ export class DepotWorld {
       post.position.set(bulk.x + sx * 0.98, deck + 0.65, bulk.z + sz * 1.23);
       scene.add(post);
     }
-    const bulkSign = textPlane(['BULK'], 1.0, 0.3, { width: 120, height: 36, background: ROUTE_COLORS.C, color: '#1b1f22' });
-    bulkSign.position.set(bulk.x, deck + 1.45, bulk.z - 1.24);
-    scene.add(shadowed(pallet), bulkSign);
+    scene.add(shadowed(pallet));
+    for (const landing of [SHIFT_LAYOUT.bulkLeft, SHIFT_LAYOUT.bulkRight]) {
+      const bulkNumbers = textPlane(['BULK'], 1.2, 0.35, { width: 200, height: 60, color: '#f2e6c8' });
+      bulkNumbers.rotation.x = -Math.PI / 2;
+      bulkNumbers.position.copy(toWorld({ x: landing.x, y: landing.y - 54 }, deck + 0.012));
+      bulkNumbers.name = 'floor-bulk-marker'; bulkNumbers.userData.keep = true;
+      scene.add(bulkNumbers);
+    }
     this.bulkStack.position.set(bulk.x, deck + 0.16, bulk.z);
 
     // Recovery tray for missed freight, hazard-striped.
@@ -860,34 +842,25 @@ export class DepotWorld {
     scene.add(trayTag);
   }
 
-  /** The two lower-floor drops: painted zones, tall signs above any pile, and the piles themselves. */
+  /** The two lower-floor drops: painted street numbers, pallets and tidy piles. */
   private addLowerFloor(): void {
     for (const route of ['T', 'S'] as const) {
       const area = SHIFT_LAYOUT.dropAreas[route];
-      this.zone(area, route, 'FLOOR DROP', 0, true);
       const storage = SHIFT_LAYOUT.floorStorage[route];
-      const storageColor = standard(ROUTE_COLORS[route], 0.9);
-      for (const side of [-1, 1]) {
-        const edge = new THREE.Mesh(new THREE.PlaneGeometry(0.045, storage.height * WORLD_SCALE), storageColor);
-        edge.rotation.x = -Math.PI / 2;
-        edge.position.copy(toWorld({ x: storage.x + side * storage.width / 2, y: storage.y }, 0.012));
-        const end = new THREE.Mesh(new THREE.PlaneGeometry(storage.width * WORLD_SCALE, 0.045), storageColor);
-        end.rotation.x = -Math.PI / 2;
-        end.position.copy(toWorld({ x: storage.x, y: storage.y + side * storage.height / 2 }, 0.012));
-        this.scene.add(edge, end);
+      const pad = new THREE.Mesh(new THREE.BoxGeometry(storage.width / 32 + 0.2, 0.035, storage.height / 32 + 0.06), standard(0x68777a, 0.9));
+      pad.position.copy(toWorld(storage, 0.0175));
+      this.scene.add(pad);
+      const wood = standard(0xa78155, 0.9);
+      for (const offset of [-16, 0, 16]) {
+        const slat = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.09, storage.height / 32 - 0.08), wood);
+        slat.position.copy(toWorld({ x: storage.x + offset, y: storage.y }, 0.08));
+        this.scene.add(shadowed(slat));
       }
-      // A tall sign post keeps the letter and name readable above the pile.
-      const center = toWorld(area);
-      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.4, 8), standard(0x3f4d53, 0.5, 0.4));
-      // The old post sat inside the outer stack slots and eventually pierced
-      // delivered boxes. Stand it outside both storage and the walking aisle.
-      post.position.set(center.x + (route === 'T' ? -3.125 : 3.125), 1.2, center.z + 1.0);
-      const sign = textPlane([`${route} · ${route === 'T' ? 'TERMITE' : 'SKANKY'}`, 'FLOOR DROP'], 1.7, 0.7, {
-        width: 220, height: 90, background: ROUTE_COLORS[route], color: '#14232a', radius: 8,
-      });
-      sign.position.set(post.position.x, 2.3, post.position.z);
-      sign.rotation.y = route === 'T' ? 0.3 : -0.3;
-      this.scene.add(shadowed(post), sign);
+      const street = textPlane([streetRange(route)], 1.5, 0.65, { width: 300, height: 110, color: '#f2e6c8' });
+      street.rotation.x = -Math.PI / 2;
+      street.position.copy(toWorld(area, 0.012));
+      street.name = 'floor-street-range'; street.userData.keep = true;
+      this.scene.add(street);
       // Up to 36 parcels show as a growing, orderly pile.
       const material = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9 });
       const pile = new THREE.InstancedMesh(new THREE.BoxGeometry(0.62, 0.42, 0.5), material, 36);
@@ -895,7 +868,7 @@ export class DepotWorld {
       const tint = new THREE.Color();
       for (let index = 0; index < 36; index += 1) {
         const slot = floorPileSlot(route, index);
-        const position = toWorld(slot, 0.21 + slot.layer * 0.43);
+        const position = toWorld(slot, 0.335 + slot.layer * 0.43);
         matrix.makeRotationY(((index * 0.37) % 0.3) - 0.15).setPosition(position);
         pile.setMatrixAt(index, matrix);
         pile.setColorAt(index, tint.setHex(index % 3 === 0 ? 0xb8875a : index % 3 === 1 ? 0xa47650 : 0xc39f6b));
@@ -909,17 +882,18 @@ export class DepotWorld {
   }
 
   private addTrucks(): void {
+    const [first, second, third, fourth] = SHIFT_LAYOUT.crewTruckRows;
     const crew: [string, number, number, 'left' | 'right', number, number?][] = [
-      ['HUSSAN', 244, 148, 'left', 0xa9875b], ['AJ', 244, 244, 'left', 0xb59a6e],
-      ['PAULA ABDUL', 244, 340, 'left', 0x7d4d9c, 0x6a3f86], ['BANNERMAN', 244, 436, 'left', 0xa58457],
-      ['FRUIT LOOP', 716, 148, 'right', 0xb08b5d], ['DORIS', 716, 244, 'right', 0xa98a63],
-      ['BRIAN', 716, 340, 'right', 0x9f7e52], ['DONNA', 716, 436, 'right', 0xb1916a],
+      ['HUSSAN', 244, first, 'left', 0xa9875b], ['AJ', 244, second, 'left', 0xb59a6e],
+      ['PAULA ABDUL', 244, third, 'left', 0x7d4d9c, 0x6a3f86], ['BANNERMAN', 244, fourth, 'left', 0xa58457],
+      ['FRUIT LOOP', 716, first, 'right', 0xb08b5d], ['DORIS', 716, second, 'right', 0xa98a63],
+      ['BRIAN', 716, third, 'right', 0x9f7e52], ['DONNA', 716, fourth, 'right', 0xb1916a],
     ];
     for (const [name, x, y, side, color, cabColor] of crew) this.placeTruck(name, x, y, side, color, cabColor ?? 0xd4cbb4);
     // Termite's and Skanky's four trucks back flush against the platform edge.
-    for (const { route, body, cab } of PLAYER_TRUCKS) {
+    for (const { route } of PLAYER_TRUCKS) {
       const { x, y } = SHIFT_LAYOUT.playerTrucks[route];
-      this.placeTruck(ROUTE_INFO[route].name, x, y, x < 480 ? 'left' : 'right', body, cab, route);
+      this.placeTruck(ROUTE_INFO[route].name, x, y, x < 480 ? 'left' : 'right', 0x827a67, 0xc2bba4, route);
     }
   }
 
@@ -932,7 +906,6 @@ export class DepotWorld {
       stack: truck.getObjectByName('stack-top')!,
       cabDoor: { x: x + (side === 'left' ? -88 : 88), y }, route,
     });
-    if (route) this.truckCargo.set(route, truck.children.filter((child) => child.name === 'cargo'));
   }
 
   /** Clock-out: every named truck drives forward out through its dock bay. */
@@ -945,7 +918,8 @@ export class DepotWorld {
   }
 
   private addResidents(): void {
-    for (const [id, x, y, spec] of RESIDENTS) {
+    for (const [id, , , spec] of RESIDENTS) {
+      const { x, y } = SHIFT_LAYOUT.eventBays[id as keyof typeof SHIFT_LAYOUT.eventBays];
       const character = createCharacter(spec);
       // Centre each home and crossing on the clear aisle between truck rows.
       const home = toWorld({ x, y: y - 2 });
@@ -980,11 +954,14 @@ export class DepotWorld {
         leg.position.set(sx * 0.32, 0.37, sz * 0.85);
         table.add(leg);
       }
-      table.position.copy(at(100, 300));
+      table.position.copy(toWorld(SHIFT_LAYOUT.eventProps.massage));
+      table.userData.keep = true;
+      this.eventProps.set('massage', table);
       this.scene.add(shadowed(table));
     } else if (id === 'ben') {
       // Ben's literal small purple shoulder demon.
       const demon = new THREE.Group();
+      demon.name = 'shoulder-devil'; demon.userData.keep = true;
       const purple = new THREE.MeshStandardMaterial({ color: 0x8a4fb8, roughness: 0.5, emissive: 0x3a1450, emissiveIntensity: 0.4 });
       const torso = new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 8), purple);
       const head = new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 8), purple);
@@ -1003,7 +980,11 @@ export class DepotWorld {
       }
       demon.position.set(0.3, 1.5, 0);
       character.body.add(demon);
+      this.shoulderDevil = new DevilModel(demon, { height:0.34, width:0.32 });
     } else if (id === 'bannerman') {
+      const bricks = new THREE.Group();
+      bricks.position.copy(toWorld(SHIFT_LAYOUT.eventProps.lego));
+      bricks.userData.keep = true;
       const colors = [0xd8352a, 0x2b6fd0, 0xf2c230, 0x3aa04a, 0xf2f2f2];
       for (let i = 0; i < 9; i += 1) {
         const brick = new THREE.Group();
@@ -1015,10 +996,14 @@ export class DepotWorld {
           stud.position.set(-0.12 + s * 0.08, 0.075, 0);
           brick.add(stud);
         }
-        brick.position.copy(at(108 + (i % 3) * 12, 470 + Math.floor(i / 3) * 8)).add(new THREE.Vector3(0, 0.06 + Math.floor(i / 4) * 0.12, 0));
+        brick.position.copy(at(SHIFT_LAYOUT.eventProps.lego.x - 12 + (i % 3) * 12, SHIFT_LAYOUT.eventProps.lego.y - 8 + Math.floor(i / 3) * 8)).add(new THREE.Vector3(0, 0.06 + Math.floor(i / 4) * 0.12, 0));
+        brick.position.sub(bricks.position);
         brick.rotation.y = i * 0.7;
-        this.scene.add(shadowed(brick));
+        bricks.add(shadowed(brick));
       }
+      mergeStatic(bricks);
+      this.eventProps.set('lego', bricks);
+      this.scene.add(bricks);
     } else if (id === 'doris') {
       const cigarette = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.12, 6), standard(0xf3efe6, 0.6));
       cigarette.rotation.x = Math.PI / 2;
@@ -1081,8 +1066,10 @@ export class DepotWorld {
       void placeProp(chairModel, 'school-chair', { fallback: chair });
       desk.add(deskModel, chairModel);
     }
-    desk.position.copy(toWorld({ x: 905, y: 520 }));
+    desk.position.copy(toWorld(SHIFT_LAYOUT.eventProps.computer));
     desk.rotation.y = -0.5;
+    desk.userData.keep = true;
+    this.eventProps.set('computer', desk);
     this.scene.add(shadowed(desk));
     return screenTexture;
   }
@@ -1143,12 +1130,20 @@ export class DepotWorld {
       tank.add(fish);
       this.fish.push(fish);
     }
-    // In the empty bay beside bulk, clear of the four player truck paths.
+    // In the empty bay beside Paytman's truck, where no truck drives through.
     tank.position.copy(toWorld(SHIFT_LAYOUT.fishTank));
+    tank.userData.keep = true;
+    this.eventProps.set('fish', tank);
     this.scene.add(shadowed(tank));
   }
 
   public update(dt: number, time: number, beltTravel: number, reducedMotion: boolean): void {
+    if (dt > 0) this.trucks.forEach((truck, index) => {
+      const idle = truck.group.userData.engineRunning && !reducedMotion;
+      truck.group.rotation.z = idle ? Math.sin(time * 23 + index * 1.7) * 0.003 : 0;
+      truck.group.rotation.x = idle ? Math.sin(time * 19 + index * 2.3) * 0.0015 : 0;
+    });
+    if (this.residents.get('ben')?.character.root.visible) this.shoulderDevil?.update('Idle', dt, reducedMotion);
     // One texture repeat spans one world unit of belt.
     this.tread.offset.y = beltTravel * WORLD_SCALE;
     for (const roller of this.beltRollers) roller.rotation.x = -beltTravel * WORLD_SCALE / 0.2;
@@ -1191,10 +1186,10 @@ export class DepotWorld {
 export function createTruck(name: string, color: number, cabColor: number, side: 'left' | 'right', route?: PlayerTruckRoute, cutaway = false): THREE.Group {
   const truck = new THREE.Group();
   const length = 148 * WORLD_SCALE;
-  const depth = SHIFT_LAYOUT.truckDepth * WORLD_SCALE;
+  const depth = (route ? SHIFT_LAYOUT.playerTruckDepth : SHIFT_LAYOUT.truckDepth) * WORLD_SCALE;
   const cabLength = 1.15;
   const boxLength = length - cabLength - 0.1;
-  const boxHeight = 2.3;
+  const boxHeight = route ? 2.8 : 2.3;
   const floor = PLATFORM_HEIGHT;
   truck.userData.cargoFloorY = floor;
   const facing = side === 'left' ? 1 : -1; // the rear door faces the platform
@@ -1203,7 +1198,7 @@ export function createTruck(name: string, color: number, cabColor: number, side:
   // The box is an open-backed shell so its rear opening reads as real depth.
   const wall = 0.08;
   const shell: [number, number, number, number, number, number][] = [
-    ...(cutaway ? [] : [[boxX, floor + boxHeight - wall / 2, 0, boxLength, wall, depth] as [number, number, number, number, number, number]]),
+    ...(cutaway || route ? [] : [[boxX, floor + boxHeight - wall / 2, 0, boxLength, wall, depth] as [number, number, number, number, number, number]]),
     [boxX, floor - wall / 2, 0, boxLength, wall, depth],
     [boxX, floor + boxHeight / 2, depth / 2 - wall / 2, boxLength, boxHeight, wall],
     [boxX, floor + boxHeight / 2, -depth / 2 + wall / 2, boxLength, boxHeight, wall],
@@ -1214,12 +1209,39 @@ export function createTruck(name: string, color: number, cabColor: number, side:
     panel.position.set(x, y, z);
     truck.add(panel);
   }
+  if (route) {
+    const roofMaterial = body.clone();
+    roofMaterial.transparent = true;
+    const roof = new THREE.Mesh(new THREE.BoxGeometry(boxLength, wall, depth), roofMaterial);
+    roof.name = 'truck-roof'; roof.userData.keep = true;
+    roof.position.set(boxX, floor + boxHeight - wall / 2, 0);
+    truck.add(roof);
+    const shelves = new THREE.Group();
+    shelves.name = 'truck-shelves'; shelves.userData.keep = true;
+    const shelfMaterial = standard(0x9a7651, 0.8);
+    const frameMaterial = standard(0x77888d, 0.45, 0.4);
+    for (const row of [-1, 1]) {
+      for (let tier = 0; tier < 3; tier++) {
+        const board = new THREE.Mesh(new THREE.BoxGeometry(3, 0.06, 0.72), shelfMaterial);
+        board.position.set(facing * 0.5, floor + 0.06 + tier * 0.875, row * 0.875);
+        shelves.add(board);
+      }
+      for (const x of [-1, 2]) {
+        const post = new THREE.Mesh(new THREE.BoxGeometry(0.045, 2.65, 0.045), frameMaterial);
+        post.position.set(facing * x, floor + 1.325, row * 1.18);
+        shelves.add(post);
+      }
+    }
+    truck.add(shelves);
+  }
   // Dark interior and the cargo floor at deck height.
   const interior = standard(0x161c1f, 0.95);
   const back = new THREE.Mesh(new THREE.PlaneGeometry(depth - wall * 2, boxHeight - wall * 2), interior);
   back.position.set(facing * (length / 2 - boxLength) + facing * (wall + 0.01), floor + boxHeight / 2, 0);
   back.rotation.y = facing * Math.PI / 2;
   const cargoFloor = new THREE.Mesh(new THREE.PlaneGeometry(boxLength - wall, depth - wall * 2), standard(0x4a4f52, 0.7, 0.3));
+  cargoFloor.name = 'cargo-floor';
+  cargoFloor.userData.keep = true;
   cargoFloor.rotation.x = -Math.PI / 2;
   cargoFloor.position.set(boxX, floor + 0.005, 0);
   truck.add(back, cargoFloor);
@@ -1245,7 +1267,7 @@ export function createTruck(name: string, color: number, cabColor: number, side:
   for (let i = 1; i < 9; i += 1) {
     for (const side of [-1, 1]) {
       const rib = new THREE.Mesh(new THREE.BoxGeometry(0.05, boxHeight - 0.2, 0.035), ribMaterial);
-      rib.position.set(facing * (length / 2 - boxLength) + facing * boxLength * i / 9, floor + boxHeight / 2, side * (depth / 2 - 0.012));
+      rib.position.set(facing * (length / 2 - boxLength) + facing * boxLength * i / 9, floor + boxHeight / 2, side * (depth / 2 + 0.02));
       truck.add(rib);
     }
   }
@@ -1284,7 +1306,8 @@ export function createTruck(name: string, color: number, cabColor: number, side:
     }
   }
   for (const sz of [-1, 1]) {
-    const headlight = new THREE.Mesh(new THREE.CircleGeometry(0.1, 12), new THREE.MeshStandardMaterial({ color: 0xfff3c8, emissive: 0xfff0c0, emissiveIntensity: 2.4 }));
+    const headlight = new THREE.Mesh(new THREE.CircleGeometry(0.1, 12), new THREE.MeshStandardMaterial({ color: 0xfff3c8, emissive: 0xfff0c0, emissiveIntensity: 0.04 }));
+    headlight.name = 'truck-headlight'; headlight.userData.keep = true;
     headlight.position.set(-facing * (length / 2 + 0.004), 0.7, sz * (depth / 2 - 0.3));
     headlight.rotation.y = -facing * Math.PI / 2;
     truck.add(headlight);
@@ -1314,29 +1337,13 @@ export function createTruck(name: string, color: number, cabColor: number, side:
       truck.add(wheel);
     }
   }
-  // A player truck shows its loaded freight and its route letter at the open door.
-  if (route) {
-    for (let index = 0; index < 18; index += 1) {
-      const box = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.36, 0.42), standard(index % 2 ? 0xb8875a : 0xa47650, 0.9));
-      const column = index % 3;
-      const layer = Math.floor(index / 6);
-      const row = Math.floor(index / 3) % 2;
-      box.position.set(facing * (length / 2 - boxLength + 0.4 + row * 0.55), floor + 0.18 + layer * 0.37, -0.75 + column * 0.75);
-      box.name = 'cargo';
-      box.visible = false;
-      box.userData.keep = true;
-      truck.add(box);
-    }
-    const doorSign = textPlane([route], 0.5, 0.5, { width: 64, height: 64, background: ROUTE_COLORS[route], color: '#12232a', radius: 10 });
-    doorSign.position.set(facing * (length / 2 + 0.04), floor + boxHeight + 0.3, 0);
-    doorSign.rotation.y = facing * Math.PI / 2;
-    truck.add(doorSign);
-  }
+  // Player destinations are identified by painted floor numbers only.
+  if (route) return shadowed(truck);
   // Nameplates on the roof (overview) and the south side (follow camera).
   const words = name.split(' ');
   const lines = name.length > 10 && words.length > 1 ? [words.slice(0, Math.ceil(words.length / 2)).join(' '), words.slice(Math.ceil(words.length / 2)).join(' ')] : [name];
   const plateOptions = { width: 300, height: 120, background: '#14262d', color: '#d9ccab', border: route ? ROUTE_COLORS[route] : '#a8946a', radius: 10 };
-  const roof = textPlane(route ? [`${route} · ${lines.join(' ')}`] : lines, boxLength * 0.84, depth * 0.62, plateOptions);
+  const roof = textPlane(lines, boxLength * 0.84, depth * 0.62, plateOptions);
   roof.rotation.x = -Math.PI / 2;
   roof.position.set(boxX, floor + boxHeight + 0.011, 0);
   // An open-topped cutaway keeps the freight inside readable from above.

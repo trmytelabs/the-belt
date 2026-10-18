@@ -20,6 +20,9 @@ export interface CharacterSpec {
   scale?: number;
   barefoot?: boolean;
   glasses?: boolean;
+  /** Small model-specific fit adjustments for worn frames. */
+  glassesDepth?: number;
+  glassesHeight?: number;
   moustache?: boolean;
   beard?: boolean;
   tie?: number;
@@ -264,17 +267,22 @@ function buildFace(head: THREE.Group, spec: CharacterSpec, skin: THREE.Material,
     head.add(stache);
   }
   if (spec.glasses) {
+    const glasses = new THREE.Group();
+    glasses.name = 'glasses'; glasses.userData.keep = true;
+    glasses.position.set(0, (spec.glassesHeight ?? 0.141) - 0.141, (spec.glassesDepth ?? 0.107) - 0.107);
+    head.add(glasses);
     const frame = standard(0x1a1a1a, 0.3);
     for (const side of [-1, 1]) {
       const lens = new THREE.Mesh(new THREE.TorusGeometry(0.021, 0.0042, 6, 16), frame);
       lens.position.set(side * 0.037, 0.141, 0.107);
       const temple = box(0.004, 0.004, 0.1, frame, 0.0015);
       temple.position.set(side * 0.09, 0.145, 0.055);
-      head.add(lens, temple);
+      glasses.add(lens, temple);
     }
     const bridge = box(0.03, 0.005, 0.005, frame, 0.002);
     bridge.position.set(0, 0.146, 0.11);
-    head.add(bridge);
+    glasses.add(bridge);
+    glasses.traverse(child => { child.userData.headAccessory = true; });
   }
 }
 
@@ -464,7 +472,7 @@ export function createCharacter(spec: CharacterSpec): Character {
   shadowed(body, true, false);
   // Marks the figure itself, which an imported model hides; props added later stay visible.
   body.traverse((child) => {
-    if ((child as THREE.Mesh).isMesh) child.userData.figure = true;
+    if ((child as THREE.Mesh).isMesh) child.userData.figure = child.userData.headAccessory !== true;
   });
   // A relaxed stance: elbows slightly bent.
   leftArmParts.forearm.rotation.x = rightArmParts.forearm.rotation.x = -0.12;
@@ -535,15 +543,15 @@ export function animateCharacter(character: Character, dt: number, state: {
   character.leftShin.rotation.x = ease(character.leftShin.rotation.x, leftKnee);
   character.rightShin.rotation.x = ease(character.rightShin.rotation.x, rightKnee);
   // Carrying holds the parcel at the waist with bent elbows; otherwise the arms swing.
-  const carryAngle = -0.62;
-  character.leftArm.rotation.x = ease(character.leftArm.rotation.x, carrying ? carryAngle : -swing * 0.42);
-  character.rightArm.rotation.x = ease(character.rightArm.rotation.x, carrying ? carryAngle : swing * 0.42);
+  const carryAngle = -0.3;
+  character.leftArm.rotation.x = ease(character.leftArm.rotation.x, carrying ? carryAngle : -swing * 0.24);
+  character.rightArm.rotation.x = ease(character.rightArm.rotation.x, carrying ? carryAngle : swing * 0.24);
   character.leftArm.rotation.y = ease(character.leftArm.rotation.y, 0);
   character.rightArm.rotation.y = ease(character.rightArm.rotation.y, 0);
-  character.leftArm.rotation.z = ease(character.leftArm.rotation.z, carrying ? -0.2 : -0.07);
-  character.rightArm.rotation.z = ease(character.rightArm.rotation.z, carrying ? 0.2 : 0.07);
-  const elbowLeft = carrying ? -1.0 : walking ? -0.22 - Math.max(0, swing) * 0.35 : -0.12;
-  const elbowRight = carrying ? -1.0 : walking ? -0.22 - Math.max(0, -swing) * 0.35 : -0.12;
+  character.leftArm.rotation.z = ease(character.leftArm.rotation.z, carrying ? -0.12 : -0.1);
+  character.rightArm.rotation.z = ease(character.rightArm.rotation.z, carrying ? 0.12 : 0.1);
+  const elbowLeft = carrying ? -1.25 : walking ? -0.2 - Math.max(0, swing) * 0.12 : -0.12;
+  const elbowRight = carrying ? -1.25 : walking ? -0.2 - Math.max(0, -swing) * 0.12 : -0.12;
   character.leftForearm.rotation.x = ease(character.leftForearm.rotation.x, elbowLeft);
   character.rightForearm.rotation.x = ease(character.rightForearm.rotation.x, elbowRight);
   character.leftForearm.rotation.y = ease(character.leftForearm.rotation.y, 0);

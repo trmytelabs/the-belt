@@ -3,7 +3,7 @@ import { readFileSync, statSync } from 'node:fs';
 import test from 'node:test';
 import * as THREE from 'three';
 import { depotSolidFootprints, overlapsFootprint } from '../src/game/slice/DepotClearance.ts';
-import { SHIFT_LAYOUT } from '../src/game/slice/ShiftModel.ts';
+import { DEPOT_3D_LAYOUT as SHIFT_LAYOUT } from '../src/three/layout.ts';
 import { DEPOT_DRESSING } from '../src/three/depotDressing.ts';
 import { PROP_MODELS } from '../src/three/propModels.ts';
 
@@ -84,7 +84,7 @@ test('every prop model is a small GLB with plain glTF PBR and downsized JPEG tex
 
 test('depot dressing stands in the front corners, clear of the platform, trucks and every route', () => {
   const metres = 1 / 32;
-  const solids = depotSolidFootprints();
+  const solids = depotSolidFootprints(SHIFT_LAYOUT, SHIFT_LAYOUT.crewTruckRows, SHIFT_LAYOUT.playerTruckDepth);
   const sizes = Object.fromEntries(Object.keys(PROP_MODELS).map((id) => [id, modelBounds(readGlb(id)).getSize(new THREE.Vector3())]));
   const footprints = DEPOT_DRESSING.map((item) => {
     // The turned model's axis-aligned footprint, in model pixels.

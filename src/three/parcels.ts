@@ -1,10 +1,11 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 
-import type { Parcel, ParcelKind, Route } from '../game/slice/ShiftModel';
+import type { Parcel, ParcelKind } from '../game/slice/ShiftModel';
+import { parcelAddress } from './addresses';
 import { mergeStatic } from './merge';
 import { physicalBounds } from './collision3d';
-import { PALETTE, ROUTE_COLORS, shadowed, standard, textPlane, textSprite } from './space';
+import { PALETTE, shadowed, standard, textPlane, textSprite } from './space';
 
 const PARCEL_SCALE = 1.3;
 
@@ -15,6 +16,9 @@ export interface ParcelView {
   /** Animated sub-parts (lobster claws, makeup spill) keyed by role. */
   parts: Record<string, THREE.Object3D>;
   height: number;
+  /** Distance from the body origin to its back edge, after parcel scaling. */
+  carryDepth: number;
+  carrySideDepth: number;
   width: number;
   depth: number;
   kind: ParcelKind;
@@ -75,8 +79,8 @@ function crate(w: number, h: number, d: number): THREE.Group {
   return group;
 }
 
-function routeBadge(route: Route): THREE.Mesh {
-  const badge = textPlane([route], 0.2, 0.2, { width: 48, height: 48, background: ROUTE_COLORS[route], color: '#12232a', radius: 10 });
+function addressBadge(parcel: Parcel): THREE.Mesh {
+  const badge = textPlane([parcelAddress(parcel)], parcel.kind === 'longbox' ? 0.3 : 0.42, 0.18, { width: 240, height: 64, background: '#f1e5c4', color: '#12232a', radius: 6 });
   badge.rotation.x = -Math.PI / 2;
   return badge;
 }
@@ -233,35 +237,45 @@ export function createParcelView(parcel: Parcel): ParcelView {
   const { group, height, top } = buildBody(parcel, parts);
   shadowed(group);
   if (parts.spill) parts.spill.castShadow = false;
-  const badge = routeBadge(parcel.route);
+  const badge = addressBadge(parcel);
   badge.position.set(parcel.kind === 'longbox' ? 0 : -0.08, top + 0.012, parcel.kind === 'longbox' ? 0.3 : 0.06);
-  if (parcel.kind === 'mesa' || parcel.kind === 'atv') badge.position.set(0.24, top + 0.012, -0.1);
+  if (parcel.kind === 'mesa' || parcel.kind === 'atv') badge.position.set(0.08, top + 0.012, -0.1);
   group.add(badge);
   const animated = new Set(Object.values(parts));
   mergeStatic(group, (object) => animated.has(object));
   // Freight reads at the 2D depot's scale relative to the workers.
   group.scale.setScalar(PARCEL_SCALE);
+  // Include visible labels and asymmetric parts in both carry orientations.
+  // Hidden damage effects must not enlarge a parcel while it is in the hands.
+  const carryBounds = new THREE.Box3();
+  group.updateMatrixWorld(true);
+  group.traverseVisible(object => {
+    if (!(object instanceof THREE.Mesh)) return;
+    object.geometry.computeBoundingBox();
+    if (object.geometry.boundingBox) carryBounds.union(object.geometry.boundingBox.clone().applyMatrix4(object.matrixWorld));
+  });
+  const carryDepth = Math.max(0, -carryBounds.min.z), carrySideDepth = Math.max(0, carryBounds.max.x);
   root.add(group);
   const size = physicalBounds(group).getSize(new THREE.Vector3());
   // Every named freight shows its full authored name, as in the 2D depot.
-  const lines = parcel.label.length > 11 && parcel.label.includes(' ') ? splitLabel(parcel.label) : [parcel.label];
-  const tag = textSprite(lines, lines.length > 1 ? 0.36 : 0.22, {
+  const lines = [parcelAddress(parcel), ...splitLabel(parcel.label)];
+  const tag = textSprite(lines, 0.52, {
     width: Math.max(90, Math.max(...lines.map((line) => line.length)) * 12 + 20),
-    height: lines.length > 1 ? 52 : 30, background: '#f1e5c4', border: '#9e8452', color: '#2b2116', radius: 5,
+    height: 78, background: '#f1e5c4', border: '#9e8452', color: '#2b2116', radius: 5,
   });
   tag.position.y = Math.max(height * PARCEL_SCALE, size.y) + 0.38;
   tag.center.set(0.5, 0);
   root.add(tag);
-  return { root, body: group, tag, parts, height: size.y, width: size.x, depth: size.z, kind: parcel.kind };
+  return { root, body: group, tag, parts, height: size.y, carryDepth, carrySideDepth, width: size.x, depth: size.z, kind: parcel.kind };
 }
 
 /** Carry the long edge across the hands and keep the back face ahead of the
  * worker's chest. The previous fixed offset put long cartons through torsos.
  */
-export function setParcelCarried(view: ParcelView, carried: boolean): number {
+export function setParcelCarried(view: ParcelView, carried: boolean, clearance = 0.32): number {
   const sideways = carried && view.depth > view.width;
   view.body.rotation.y = sideways ? Math.PI / 2 : 0;
-  return Math.max(0.42, (sideways ? view.width : view.depth) / 2 + 0.2);
+  return Math.max(0.42, (sideways ? view.carrySideDepth : view.carryDepth) + clearance);
 }
 
 /** After rotation/scaling, place the actual visible bottom on a surface.

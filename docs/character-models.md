@@ -36,6 +36,14 @@ Animations from the file (for example Mixamo clips) are not used yet; the
 figure's poses drive the model. Natural walk, idle and carry clips would be a
 later step.
 
+Walking uses a restrained opposite arm swing with relaxed elbow flexion.
+Carrying keeps upper arms beside the ribs and bends primarily at the elbows.
+Angry and celebratory poses keep the hands on their own sides of the torso,
+avoiding the former chest-crossing, clapping motion. Regression checks cover
+complete pose cycles and the actual elbow/wrist positions on all 23 crew rigs.
+The separately loaded devil uses its own animation clips; see
+[prop sources](../public/models/PROP-SOURCES.md).
+
 ## The crew
 
 `src/three/rocketboxCast.ts` lists each character's Rocketbox avatar, and
@@ -47,11 +55,11 @@ hair, beard, clothes and role:
 | Termite (TERMITE, TRMYTE) | Professions/Delivery_Male_01 | `termite.glb` |
 | Skanky | Adults/Male_Adult_06 | `skanky.glb` |
 | Shan O'Mac | Professions/Business_Male_07 | `shan.glb` |
-| Kylie | Adults/Female_Adult_01 | `kylie.glb` |
+| Kylie | Adults/Male_Adult_10 | `kylie.glb` |
 | Vic | Adults/Male_Adult_05 | `vic.glb` |
 | John Rushton | Adults/Male_Adult_08 | `john-rushton.glb` |
 | Hussan | Adults/Male_Adult_17 | `hussan.glb` |
-| AJ | Professions/Sports_Male_01 | `aj.glb` |
+| AJ | Adults/Male_Adult_14 | `aj.glb` |
 | Ben | Adults/Male_Adult_02 | `ben.glb` |
 | Bannerman | Adults/Male_Adult_13 | `bannerman.glb` |
 | Fruit Loop | Adults/Male_Adult_01 | `fruit-loop.glb` |
@@ -74,6 +82,11 @@ licence (November 2020), Copyright (c) 2020 Microsoft; the licence text ships
 beside the models in `public/models/characters/ROCKETBOX-LICENSE.md`. The converted
 files keep the original meshes and skeletons; only formats and texture sizes
 change.
+
+Kylie uses the male avatar at 86% of normal height (about 1.53 m). AJ uses the
+bald, clothed male avatar with glasses fitted in front of the face; the glasses
+remain visible when the procedural figure is hidden. These two recasts replace
+only their own GLBs and retain their existing dialogue, props and animations.
 
 ## Converting Rocketbox avatars
 
@@ -155,9 +168,18 @@ own licences, so check each one. Never commit a model whose licence is unknown.
 `tests/character-cast.mjs` checks every committed crew model: one file per
 cast entry and no extras, at most 1.5 MB each, one skinned mesh with the
 expected bones, a head material, JPEG textures and real character names.
-`tests/character-models.mjs` and `tests/character-model-browser.mjs` use a
-synthetic humanoid built in code (`tests/fixtures/humanoid.mjs`), not a
-third-party model. They check loading, side matching, the rest pose, posed
+`tests/character-models.mjs` and `tests/character-model-browser.mjs` first use a
+synthetic humanoid built in code (`tests/fixtures/humanoid.mjs`). They check loading, side matching, the rest pose, posed
 limbs, held props, lying down, skin tint, per-copy materials, fallback and
 removal, and that the shipped game swaps the workers' figures and animates
 the model during play.
+
+The browser check also decodes and attaches all 23 shipped models in controlled
+depot, story, mall and dream scenes. The 3D run of
+`tests/gameplay-adjustments-browser.mjs` explicitly loads the real Termite,
+Skanky and Shan even on software graphics. It measures actual worker torso
+clearance for 14 parcel forms in four directions on both workers, then checks
+truck entry, roof transparency, persistent shelf positions, capacity, overflow,
+restart and Shan's breakage reaction. Cargo and late-game states are synthetic;
+inputs and the production renderer are real. The ordinary software fallback is
+still checked separately.

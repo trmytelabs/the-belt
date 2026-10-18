@@ -1,10 +1,12 @@
+import { DEPOT_3D_LAYOUT as SHIFT_LAYOUT, platformLevelAt } from './layout';
 import * as THREE from 'three';
 
-import { ROUTE_INFO, SHIFT_LAYOUT, platformLevelAt, type Route } from '../game/slice/ShiftModel';
+import type { Route } from '../game/slice/ShiftModel';
+import { ROUTE_INFO } from './addresses';
 
 /**
- * ShiftModel works in the 2D depot's pixel space. The 3D world keeps those
- * rules untouched and maps one model pixel to 1/32 of a world unit (metre):
+ * The current 3D model uses the depot's pixel coordinates. Its world maps
+ * one model pixel to 1/32 of a world unit (metre):
  * model x runs east (+X), model y runs south (+Z), height is +Y.
  */
 export const WORLD_SCALE = 1 / 32;
@@ -35,14 +37,14 @@ export const surfaceAt = (x: number, y: number): number => platformLevelAt(x, y)
 export function actorSurfaceAt(x: number, y: number): number {
   const level = platformLevelAt(x, y);
   if (level > 0 || y < 100 || y > SHIFT_LAYOUT.platform.bottom) return level * PLATFORM_HEIGHT;
-  if (![196, 292, 388, 484].some((row) => Math.abs(y - row) <= 12)) return 0;
+  if (!Object.values(SHIFT_LAYOUT.eventBays).some(bay => Math.abs(y - bay.y) <= 12)) return 0;
   const { left, right } = SHIFT_LAYOUT.platform;
   const climb = x < 480 ? (x - (left - 20)) / 20 : ((right + 20) - x) / 20;
   if (climb <= 0) return 0;
   return Math.min(1, (Math.floor(climb * 3) + 1) / 3) * PLATFORM_HEIGHT;
 }
 
-/** Every destination's colour; letters and names always accompany it. */
+/** Neutral destination styling; street ranges and district names identify drops. */
 export const ROUTE_COLORS = Object.fromEntries(Object.values(ROUTE_INFO).map((info) => [info.route, info.color])) as Record<Route, string>;
 
 export const PALETTE = {

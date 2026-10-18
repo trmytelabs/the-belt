@@ -4,6 +4,7 @@ const CSS = `
 .b3d { position: fixed; inset: 0; overflow: hidden; background: #0a1317; font-family: "Segoe UI", system-ui, Arial, sans-serif; color: #edf0de; }
 .b3d canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .b3d-hud { position: absolute; inset: 0; pointer-events: none; }
+.b3d-lunch-alert { position: absolute; left: 50%; top: 36%; transform: translate(-50%, -50%); width: min(640px, 85%); box-sizing: border-box; padding: 28px 24px; border: 2px solid #e8b765; border-radius: 14px; background: #14262df2; color: #f3e6c6; text-align: center; font: 900 clamp(24px, 4vw, 40px)/1.15 "Segoe UI", sans-serif; box-shadow: 0 12px 50px #0006; pointer-events: none; }
 .b3d-top { position: absolute; top: 0; left: 0; right: 0; display: flex; align-items: center; gap: 28px; padding: 12px 22px;
   background: linear-gradient(#0b171ce8, #0b171c00); }
 .b3d-brand { display: flex; flex-direction: column; border-left: 4px solid #e8b765; padding-left: 10px; }
@@ -196,12 +197,18 @@ export class Overlay {
       + '<button type="button" data-story="next">NEXT ▸ <small>SPACE</small></button>'
       + '<button type="button" class="skip" data-story="skip">SKIP SCENE ⏭ <small>ENTER</small></button>';
     this.chapterhud = this.div('b3d-chapterhud', this.root);
+    this.lunchAlert = this.div('b3d-lunch-alert', this.root);
+    this.lunchAlert.textContent = '15 MINUTE LUNCH BREAK!';
+    this.lunchAlert.setAttribute('role', 'status');
+    this.lunchAlert.hidden = true;
   }
 
   private readonly storybar: HTMLDivElement;
   private readonly subtitleBox: HTMLDivElement;
   private readonly storykeys: HTMLDivElement;
   private readonly chapterhud: HTMLDivElement;
+  private readonly lunchAlert: HTMLDivElement;
+  public setLunchAlert(visible: boolean): void { this.lunchAlert.hidden = !visible; }
   /** Every subtitle direction or caption shown, for the checks. */
   public readonly subtitles: string[] = [];
 

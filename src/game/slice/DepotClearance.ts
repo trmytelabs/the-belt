@@ -1,4 +1,4 @@
-import { DEPOT_EQUIPMENT_FOOTPRINTS, SHIFT_LAYOUT, stairAt, onLowerFloor } from './ShiftModel.ts';
+import { SHIFT_LAYOUT, type DepotLayout } from './ShiftModel.ts';
 
 export type FootprintPoint = { x: number; y: number };
 export type FootprintCircle = FootprintPoint & { radius: number };
@@ -10,22 +10,25 @@ export const DEPOT_BODY_RADIUS = 12;
 export const DEPOT_CARRY_RADIUS = 12;
 const GAP = 0;
 
-function supportedBounds(point: FootprintPoint, radius: number): StandingBounds {
-  const { platform, stairs, lowerFloor } = SHIFT_LAYOUT;
-  const bounds = { minX: -180, maxX: 1140, minY: SHIFT_LAYOUT.worldTop + radius, maxY: SHIFT_LAYOUT.bulkRearWall.y - SHIFT_LAYOUT.bulkRearWall.height / 2 - radius };
+function supportedBounds(point: FootprintPoint, radius: number, layout: DepotLayout): StandingBounds {
+  const { platform, stairs, lowerFloor } = layout;
+  const bounds = { minX: -180, maxX: 1140, minY: layout.worldTop + radius, maxY: layout.bulkRearWall.y - layout.bulkRearWall.height / 2 - radius };
   // Coworker approach stairs legitimately cross the long platform edges. Once
   // a pose is on the central deck, yielding cannot push it off the raised edge.
   if (point.x >= platform.left && point.x <= platform.right) {
     return { ...bounds, minX: platform.left + radius, maxX: platform.right - radius };
   }
-  const stairSide = stairAt(point.x, point.y);
+  const stairSide = point.y >= stairs.minY && point.y <= stairs.maxY
+    ? point.x > stairs.left.bottomX && point.x < stairs.left.topX ? 'left'
+      : point.x > stairs.right.topX && point.x < stairs.right.bottomX ? 'right' : null : null;
   if (stairSide) {
     const flight = stairs[stairSide];
     return { ...bounds, minX: Math.min(flight.topX, flight.bottomX), maxX: Math.max(flight.topX, flight.bottomX),
       minY: stairs.minY + radius, maxY: stairs.maxY - radius };
   }
-  if (onLowerFloor(point)) {
-    const floor = point.x < SHIFT_LAYOUT.beltX ? lowerFloor.left : lowerFloor.right;
+  if (point.y >= lowerFloor.top && point.y <= lowerFloor.bottom
+    && ((point.x >= lowerFloor.left.minX && point.x <= lowerFloor.left.maxX) || (point.x >= lowerFloor.right.minX && point.x <= lowerFloor.right.maxX))) {
+    const floor = point.x < layout.beltX ? lowerFloor.left : lowerFloor.right;
     return { ...bounds, minX: floor.minX + radius, maxX: floor.maxX - radius, minY: lowerFloor.top + radius };
   }
   return bounds;
@@ -38,13 +41,13 @@ export function overlapsFootprint(point: FootprintPoint, radius: number, rect: F
 }
 
 /** The stationary truck bodies and central equipment shared by both depots. */
-export function depotSolidFootprints(): FootprintRect[] {
+export function depotSolidFootprints(layout: DepotLayout = SHIFT_LAYOUT, crewRows: readonly number[] = [148, 244, 340, 436], playerTruckDepth = layout.truckDepth): FootprintRect[] {
   return [
-    ...[148, 244, 340, 436].flatMap(y => [244, 716].map(x => ({ x, y, width: 148, height: SHIFT_LAYOUT.truckDepth }))),
-    ...Object.values(SHIFT_LAYOUT.playerTrucks).map(truck => ({ ...truck, width: 148, height: SHIFT_LAYOUT.truckDepth })),
-    ...DEPOT_EQUIPMENT_FOOTPRINTS,
-    SHIFT_LAYOUT.floorStorage.T, SHIFT_LAYOUT.floorStorage.S,
-    SHIFT_LAYOUT.fishTank,
+    ...crewRows.flatMap(y => [244, 716].map(x => ({ x, y, width: 148, height: layout.truckDepth }))),
+    ...Object.values(layout.playerTrucks).map(truck => ({ ...truck, width: 148, height: playerTruckDepth })),
+    { x: layout.beltX, y: (layout.beltTop + layout.beltBottom) / 2, width: 104, height: layout.beltBottom - layout.beltTop },
+    { ...layout.bulkPile, width: 116, height: 96 }, { ...layout.recoveryPile, width: 118, height: 52 }, layout.bulkRearWall,
+    layout.floorStorage.T, layout.floorStorage.S, layout.fishTank,
   ];
 }
 
@@ -59,8 +62,9 @@ export function clearDepotFootprint(
   radius: number,
   occupied: readonly FootprintCircle[],
   solids: readonly FootprintRect[],
+  layout: DepotLayout = SHIFT_LAYOUT,
 ): FootprintPoint {
-  const bounds = supportedBounds(intended, radius);
+  const bounds = supportedBounds(intended, radius, layout);
   const constrain = (point: FootprintPoint): FootprintPoint => ({
     x: Math.max(bounds.minX, Math.min(bounds.maxX, point.x)),
     y: Math.max(bounds.minY, Math.min(bounds.maxY, point.y)),

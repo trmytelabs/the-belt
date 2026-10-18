@@ -4,6 +4,12 @@ This is a private development repository. Pull the latest changes, work on a
 focused branch and open a pull request against `main`. The owner reviews and
 merges changes. Describe the behavior changed and the checks you ran.
 
+New gameplay and presentation work targets only the 3D depot, the default game
+and `?mode=3d`. Keep the 2D depot and classic game as legacy versions. Preserve
+their behavior when editing shared code; do not extend them for new 3D requests.
+Carry this scope into future implementation plans and pull requests unless the
+owner explicitly requests another version. See [AGENTS.md](AGENTS.md).
+
 Use Node 24 and the committed npm lockfile:
 
 ```sh

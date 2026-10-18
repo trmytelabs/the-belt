@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { chromium } from 'playwright';
 import { preview } from 'vite';
 import { depotSolidFootprints, overlapsFootprint, DEPOT_BODY_RADIUS } from '../src/game/slice/DepotClearance.ts';
+import { DEPOT_3D_LAYOUT as L } from '../src/three/layout.ts';
 
 // The 3D preview needs WebGL. CI's GPU-free runners provide it through
 // SwiftShader, so this suite requests that explicitly rather than inheriting
@@ -61,7 +62,7 @@ try {
   if (process.env.BELT_SCREENSHOT_DIR) await page.screenshot({ path: join(process.env.BELT_SCREENSHOT_DIR, 'after-3d-briefing.png') });
 
   // These checks cover the preserved shift; the mid-shift break has its own suite.
-  await read(() => window.fixtureApp.forceStory({ breakAtMs: 1e12 }));
+  await read(() => (window.fixtureApp.model.autonomousCoworker = false, window.fixtureApp.forceStory({ breakAtMs: 1e12 })));
   // The night opens outside UPS, then the scrum; ENTER skips each scene.
   await page.keyboard.press('Enter');
   await page.waitForFunction(() => window.fixtureApp.state === 'story' && window.fixtureApp.story.chapter === 'arrival');
@@ -72,6 +73,17 @@ try {
   assert.equal(await read(() => window.fixtureApp.model.elapsedMs), 0, 'the shift clock waits for 3, 2, 1, SORT!');
   await page.waitForFunction(() => window.fixtureApp.state === 'playing', null, { timeout: 90_000 });
   assert.deepEqual(await read(() => window.fixtureCountdown), ['3', '2', '1', 'SORT!'], 'the original countdown is shown in order');
+
+  await page.evaluate(() => {
+    // Keep the extra everyday freight out of the long reference-event fixtures.
+    // The gameplay-adjustments suite exercises the full default workload.
+    window.fixtureEverydayCleanup ??= setInterval(() => {
+      const model = window.fixtureApp?.model ?? window.fixtureGame?.scene.getScene('DepotScene')?.model;
+      if (!model) return;
+      const named = new Set(['MALLWOOD RD EAST','GOJI BERRIES','LIVE LOBSTERS','LE DUCK','MAKEUP LOTION','MESA BOOGIE','PANCHETTERS','SMALL ATV','ENVELOPE','SMALL BOX','PARCEL','BIG BOX','LONG BOX','THE SNAKES CELL']);
+      for (const parcel of model.packages) if (parcel.state === 'belt' && !named.has(parcel.label)) parcel.state = 'delivered';
+    }, 10);
+  });
 
   // Termite steps to the belt edge inside dock A with the real D key, grabs the
   // first parcel as it arrives and delivers it with a real Space press.
@@ -116,6 +128,11 @@ try {
   await page.keyboard.up('KeyD');
   const held = await read(() => window.fixtureApp.model.heldPackage && { label: window.fixtureApp.model.heldPackage.label, route: window.fixtureApp.model.heldPackage.route });
   assert.deepEqual(held, { label: 'MALLWOOD RD EAST', route: 'A' });
+  // Align with the open rear door, then enter using real movement input.
+  await read(() => { window.fixtureApp.model.activeWorker.y = window.fixtureApp.model.layout.dockA.y; });
+  await page.keyboard.down('KeyA');
+  await page.waitForFunction(() => window.fixtureApp.model.activeWorker.x < 302);
+  await page.keyboard.up('KeyA');
   await page.keyboard.press('Space');
   await page.waitForFunction(() => window.fixtureApp.model.sorted === 1);
   assert.deepEqual(await read(() => ({ sorted: window.fixtureApp.model.sorted, score: window.fixtureApp.model.score })), { sorted: 1, score: 100 });
@@ -132,10 +149,10 @@ try {
   if (process.env.BELT_SCREENSHOT_DIR) await page.screenshot({ path: join(process.env.BELT_SCREENSHOT_DIR, 'after-3d-overview.png') });
   await page.keyboard.press('KeyV');
 
-  // John Rushton's scheduled visit follows on the ordinary clock: he yells, then crouches.
+  // John retains the warning and now performs random sets of proper squats.
   await page.waitForFunction(() => window.fixtureApp.overlay.history.includes("JOHN RUSHTON: DON'T STACK BOXES ON BOXES!"), null, { timeout: 120_000 });
   await page.waitForFunction(() => window.fixtureApp.crew.actors.get('john').pose === 'shout');
-  await page.waitForFunction(() => window.fixtureApp.crew.actors.get('john').pose === 'crouch', null, { timeout: 60_000 });
+  await page.waitForFunction(() => window.fixtureApp.crew.actors.get('john').pose === 'squat', null, { timeout: 60_000 });
 
   // A brake brings Shan out for his first original rant. Belt state is sampled
   // every 10 ms from the press, since a slow runner's round trips can outlast
@@ -201,6 +218,10 @@ try {
   await page.waitForFunction(() => window.fixtureApp.crew.massageStage === 'lying');
   assert.equal(await crew(() => window.fixtureApp.crew.actors.get('aj').pose), 'massage', 'AJ massages Vic');
   assert.equal(await crew(() => window.fixtureApp.crew.towel.visible), true, 'Vic lies under a towel');
+  assert.equal(await crew(() => {
+    const app = window.fixtureApp, y = app.crew.towel.position.z * 32 + 340;
+    return y > app.model.layout.crewTruckRows[1] + 36 && y < app.model.layout.crewTruckRows[2] - 36;
+  }), true, 'the massage plays in the space between truck rows');
 
   // Mesa: keyboard N leaves it on the belt and the shift resumes.
   await clearFreight();
@@ -234,12 +255,21 @@ try {
   const frozen = await read(() => ({ t: window.fixtureApp.model.elapsedMs, travel: window.fixtureApp.model.beltTravel }));
   // The story is sampled every 10 ms, so brief stages cannot be missed.
   await read(() => {
-    window.storySeen = { stages: [], marker: false, gateAndDemon: false };
+    window.storySeen = { stages: [], marker: false, gateAndDemon: false, outsideBay: [] };
     const timer = setInterval(() => {
       const pieces = window.fixtureApp.setPieces;
       if (window.storySeen.stages.at(-1) !== pieces.benStage) window.storySeen.stages.push(pieces.benStage);
       window.storySeen.marker ||= pieces.deadMarker.visible;
       window.storySeen.gateAndDemon ||= pieces.gate.visible && pieces.demon.visible;
+      const app = window.fixtureApp;
+      for (const id of ['ben', 'gunman', 'paula']) {
+        const root = app.crew.actors.get(id).root;
+        if (!root.visible) continue;
+        const y = root.position.z * 32 + 340;
+        if (y < app.model.layout.crewTruckRows[2] + 48 || y > app.model.layout.crewTruckRows[3] - 48) {
+          if (!window.storySeen.outsideBay.includes(id)) window.storySeen.outsideBay.push(id);
+        }
+      }
       if (window.fixtureApp.state !== 'interlude' && window.fixtureApp.state !== 'paused') clearInterval(timer);
     }, 10);
   });
@@ -277,6 +307,7 @@ try {
   const seen = await read(() => window.storySeen);
   assert.ok(seen.marker, 'Ben falls with X_X');
   assert.ok(seen.gateAndDemon, 'the gate opens and the demon rises');
+  assert.deepEqual(seen.outsideBay, [], 'the entire robbery, dodge, drag and Paula scene stays between parked trucks');
   const order = ['threat', 'boast', 'dodge', 'demon', 'drag', 'sink', 'paula'];
   assert.deepEqual(seen.stages.filter((stage) => order.includes(stage)).filter((stage, index, list) => list.indexOf(stage) === index), order,
     'the story stages play in their original order');
@@ -348,11 +379,14 @@ try {
   await spoken('BRIAN: WHAT THE FUCK');
 
   // Near the end the drivers arrive: one engine, its exhaust, coughing, the rest, and Shan.
-  await jump(153_100);
+  await read(() => window.fixtureApp.crew.reset());
+  await jump(117_100);
   await page.waitForFunction(() => window.fixtureApp.crew.drivers.filter((driver) => driver.root.visible).length === window.fixtureApp.world.trucks.length);
   assert.equal(await crew(() => window.fixtureApp.world.trucks.length), 12, 'all ten original trucks plus the two new ones');
-  await jump(155_700);
-  await page.waitForFunction(() => window.fixtureApp.crew.runningEngines(window.fixtureApp.model.elapsedMs) === 1);
+  assert.equal(await crew(() => window.fixtureApp.crew.runningEngines(119_999)), 0);
+  assert.equal(await crew(() => window.fixtureApp.crew.runningEngines(120_000)), 1, 'the first engine starts with one minute left');
+  await jump(125_500);
+  await page.waitForFunction(() => window.fixtureApp.crew.runningEngines(window.fixtureApp.model.elapsedMs) === 12);
   for (const [at, line] of [[157_000, 'HUSSAN: COUGH!'], [158_400, "AJ: Could've waited five minutes."], [161_600, 'DORIS: HACK!'],
     [163_300, 'HUSSAN: COUGH COUGH!'], [165_400, "SHAN O'MAC: Belt's still moving."], [168_600, 'DORIS: UGH, EXHAUST!']]) {
     await jump(at - 50);
@@ -368,7 +402,7 @@ try {
     return { x: p.x * 32 + 480, y: p.z * 32 + 340 };
   });
   assert.ok(dockhand.x >= 400 && dockhand.x <= 430, 'the dockhand stands beside the intake');
-  assert.ok(depotSolidFootprints().every(rect => !overlapsFootprint(dockhand, DEPOT_BODY_RADIUS, rect)), 'the dockhand stays clear of the belt casing');
+  assert.ok(depotSolidFootprints(L, L.crewTruckRows, L.playerTruckDepth).every(rect => !overlapsFootprint(dockhand, DEPOT_BODY_RADIUS, rect)), 'the dockhand stays clear of the belt casing');
 
   // A winning clock-out: lines, celebration and every truck departing.
   const truckStart = await crew(() => window.fixtureApp.world.trucks.map((truck) => truck.group.position.x));
@@ -401,6 +435,7 @@ try {
 
   // Mesa steal (touch/click), safe roll: Skanky's thought, the bedroom dream, same shift resumes.
   const begin = async () => {
+    await read(() => { window.fixtureApp.model.autonomousCoworker = false; });
     await page.keyboard.press('Enter');
     await page.waitForFunction(() => window.fixtureApp.state === 'story');
     await page.keyboard.press('Enter');
@@ -434,20 +469,20 @@ try {
   assert.equal(await read(() => window.fixtureApp.model.sorted), sortedBefore, 'stolen freight is not a dispatch');
   assert.equal(await read(() => window.fixtureApp.mesa.rolls), 1);
 
-  // Mesa steal (keyboard Y), caught roll: BUSTED BY SHAN O MAC ends the run.
+  // Mesa caught by Shan: deduct points, resume this same shift.
   await read(() => window.fixtureApp.restart());
   assert.equal(await read(() => window.fixtureApp.crew.actors.get('ben').character.nameTag.visible), true, "a restart restores Ben's name tag");
   await begin();
   await clearFreight();
   await placeMesa(0.1);
+  await read(() => { window.fixtureApp.model.score = 1000; });
   await page.locator('button[data-action="steal"]').waitFor({ timeout: 60_000 });
   await page.keyboard.press('KeyY');
   await page.locator('.b3d-panel h1', { hasText: 'BUSTED BY SHAN O MAC' }).waitFor();
-  await page.waitForFunction(() => window.fixtureApp.state === 'ended', null, { timeout: 60_000 });
-  const caught = await page.locator('.b3d-panel').innerText();
-  assert.match(caught, /SHIFT TERMINATED/);
-  assert.match(caught, /Shan caught you and Vic trying to load the Mesa into the SUV\./);
-  assert.match(caught, /GAME OVER/);
+  assert.match(await page.locator('.b3d-panel').innerText(), /500 POINTS · SHIFT CONTINUES/);
+  await page.waitForFunction(() => window.fixtureApp.state === 'playing', null, { timeout: 60_000 });
+  assert.equal(await read(() => window.fixtureApp.model.score), 500);
+  assert.equal(await read(() => window.fixtureApp.model.ended), false);
   assert.deepEqual(errors, []);
   console.log('PASS 3D Mesa: keyboard leave, click steal into the bedroom dream and same-shift return, keyboard steal caught by Shan; no script errors');
 
@@ -476,7 +511,7 @@ console: ${touchConsole.slice(-10).join(' | ')}`); });
   assert.equal(await touchPage.locator('.b3d-fallback').count(), 0, `touch page fell back to 2D; console: ${touchConsole.slice(-10).join(' | ')}`);
   assert.match(await touchPage.locator('.b3d-panel').innerText(), /The stick moves\. SWITCH changes worker\./, 'touch players get touch instructions');
   assert.equal(await touchPage.locator('.b3d-touch').isVisible(), false, 'controls wait for the shift to start');
-  await readTouch(() => window.fixtureApp.forceStory({ breakAtMs: 1e12 }));
+  await readTouch(() => (window.fixtureApp.model.autonomousCoworker = false, window.fixtureApp.forceStory({ breakAtMs: 1e12 })));
   await touchPage.getByRole('button', { name: /START THE NIGHT/ }).tap();
   // Story scenes are skipped with the on-screen SKIP SCENE button.
   await waitTouch(() => window.fixtureApp.state === 'story');
@@ -512,6 +547,11 @@ console: ${touchConsole.slice(-10).join(' | ')}`); });
     }, 5);
   }));
   assert.equal(await readTouch(() => window.fixtureApp.model.heldPackage?.label), 'MALLWOOD RD EAST', 'GRAB picks up the parcel');
+  await readTouch(() => { window.fixtureApp.model.activeWorker.y = window.fixtureApp.model.layout.dockA.y; });
+  await touchSession.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [centre] });
+  await touchSession.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: stick.x + 4, y: centre.y }] });
+  await waitTouch(() => window.fixtureApp.model.activeWorker.x < 302);
+  await touchSession.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   await touchPage.locator('[data-touch="grab"]').tap();
   await waitTouch(() => window.fixtureApp.model.sorted === 1);
   await touchPage.locator('[data-touch="switch"]').tap();

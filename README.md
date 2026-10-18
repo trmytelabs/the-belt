@@ -1,10 +1,14 @@
 # The Belt
 
 The Belt is a browser game built with Three.js, Phaser, TypeScript and Vite.
+
+Active development targets **the 3D depot only**. The 2D depot and classic game
+are retained as legacy versions; new gameplay requests apply to 3D unless the
+owner explicitly requests another version.
 Players switch between workers, pick up packages and sort them to the appropriate
 dock. The game includes keyboard, mouse and touch controls.
 
-This private repository contains the current development snapshot (`0.0.0`). It
+This private repository contains the current development snapshot (`0.1.0`). It
 has a working production build and a browser smoke suite, with no published
 release. Review playability in the browser when changing game behavior.
 
@@ -22,11 +26,21 @@ night shift in a lit Three.js warehouse, with every original reference event and
 speech bubbles anchored to whoever is speaking. On touch screens it shows a
 movement stick and GRAB / DELIVER, SWITCH, BRAKE, VIEW and PAUSE buttons. It needs
 WebGL; without it the page links to the 2D depot. See
-[the 3D depot](docs/3d-preview.md). People can be shown with imported character models (GLB, for example
-made in MakeHuman); see [imported character models](docs/character-models.md).
+[the 3D depot](docs/3d-preview.md). The crew uses 23 rigged Microsoft Rocketbox
+characters, with procedural figures on software graphics. Their animation,
+props and provenance are covered in [character models](docs/character-models.md).
+Arms stay beside the torso with natural elbow bends during walking, carrying
+and gestures. Cars use two detailed sedan models, and the devil uses an animated
+horned, winged model. These compact CC0 models retain the existing story paths
+and have procedural fallbacks; see [prop sources](public/models/PROP-SOURCES.md).
+Kylie is a short Asian man; AJ is a clothed bald man with fitted glasses.
+The 3D soundtrack is a recorded chill lo-fi instrumental made in Google Flow
+Music, with smooth loop transitions, quieter package foley and music ducking
+under dialogue. M mutes both music and effects. Source details are in
+[music sources](public/audio/MUSIC-SOURCES.md).
 
-The **2D Night Shift / Depot 07** is at `?mode=2d`, and the description below
-applies to both. Both depots now play a whole night: one of three random
+The legacy **2D Night Shift / Depot 07** is at `?mode=2d`. The current 3D game
+plays a whole night: one of three random
 arrivals outside the locked gate, Shan's morning scrum, the warehouse shift
 with a Tim Hortons or 7-Eleven break, then Skanky's mall run in the five-ton
 (a 3D mall inspired by Edmonton's Southgate Centre),
@@ -40,37 +54,64 @@ up to ten seconds to clear remaining freight. Press Enter or tap **START THE NIG
 SORT!** countdown starts the shift.
 
 - WASD / arrows move; Tab or right-click switches workers.
-- After the 36-second warm-up, the inactive worker carries and sorts their own
-  A/D/T or B/E/S freight. Automatic deliveries count toward the team target,
-  but earn no points or combo bonus. Two scanner faults during the shift call
-  for a switch: select that worker and press Space to reset their scanner.
-  Focus on your lane and shared C bulk between those calls. Intake accelerates
-  from one parcel every six seconds to 2.8 seconds, then 2.2 seconds during the rush.
-- Space or left-click grabs, delivers inside a dock, or puts a parcel down.
-- F (or THROW) throws a held parcel to its destination. Throws can break
-  parcels: a breakage earns nothing and costs points once, and Shan yells.
-- The belt and both workers stand on a raised loading platform; trucks back
-  against its edge. Near the end, stairs descend outward from the left and right
-  sides to the T/S ground drops.
-- The A/B truck pair is followed by D/E, then the shared bulk build-up against
-  the warehouse's final rear wall. The stairs and ground drops stay in front
-  of that wall; there is no floor or destination beyond it.
-- Termite sorts A (HERES UR SOVICE), D (DOWNTOWN) and his lower-floor drop T;
-  Skanky sorts B (PAYTMAN), E (EASTSIDE) and his lower-floor drop S. Heavy C
-  freight still goes to the shared bulk pile at the belt's end. Letters, names
-  and colors identify every route.
-- Carry freight into the painted drop zones to deliver. The recovery tray sits between
-  the belt exit and the bulk area, with clear approaches beside both.
+- Space or left-click grabs, loads inside a truck, delivers at a floor drop,
+  or puts a parcel down. Carry truck freight through its open rear door.
+  The parcel Space will grab has a bright halo and a GRAB prompt. Empty button
+  presses stay quiet; incorrect deliveries still sound an error and cost points.
+- Inside a truck the roof turns transparent. Face a shelf and load near where
+  you stand; the actual parcels remain on the shelves. Full shelves overflow
+  through the rear opening. The roof returns when you leave.
+- Rear doorways gently guide an off-centre approach into the aisle. A soft
+  circular cutaway follows people beside trucks so the bodies cannot hide them
+  or their packages; the rest of each truck stays solid.
+- F (or THROW) throws toward the nearest drop. At the top of the stairs it
+  throws to the lower-floor drop with a 30% break chance. A break earns nothing,
+  costs up to 150 points once, and Shan runs over yelling.
+- The raised platform ends at the back wall, behind both player truck rows.
+  Stairs descend outward to the left and right, with tidy pallet drops below.
+- Read parcel street addresses and compare them with the ranges painted on the
+  floor beside each truck. Termite covers Mill Woods (10–49 ST), Downtown (90–109 ST) and the
+  Westmount floor drop (110–129 ST). Skanky covers Bonnie Doon (50–89 ST),
+  West End (130–169 ST) and the Northside floor drop (170–199 ST). Oversize
+  freight goes to shared bulk. These are synthetic game districts.
+- The other worker automatically loads their own address ranges. Only the worker
+  you control collects bulk. Random everyday freight mixes with the original
+  joke parcels. Arrivals allow more breathing room: every 4.8 seconds initially,
+  3.2 seconds in flow and 2.4 seconds in rush.
+- Read street numbers painted on the floor. Floating location signs are removed. There are
+  no safe-zone outlines or aiming guides. A wrong drop costs up to 10 points.
+  See [address sorting and loading](docs/address-sorting.md).
 - E brakes the belt for two seconds, with an eight-second cooldown.
 - Escape pauses; M toggles sound. Losing focus pauses the preview automatically.
 - The closer camera follows your worker up and down the belt and reframes when
   you switch workers. V, or the Overview button, shows the whole warehouse.
 - Walk up past the first truck row to see the receiving dock: two incoming
   semis, unloaders and a smelly dockhand feeding the next real parcel onto the belt.
-- The original named crew bays remain above the two player truck rows. All bay
-  trucks share the same size. The incoming articulated semis occupy the
-  receiving area above those rows.
+- Original named crew bays are preserved above the two player truck rows.
+  Rows are spread apart, with crew events and props between the trucks.
+  Incoming articulated semis occupy the receiving area above those rows.
+- After the morning scrum, the same crew walk to their stations. They stay
+  mostly on the platform, collecting and loading parcels on short work cycles;
+  the original gags remain brief interruptions. Shan stays visible between reactions.
+- John Rushton walks both sides of the belt, crossing around its head and stopping
+  for occasional sets of squats. Shan O'Mack and Vic patrol the loading lanes
+  between their existing scenes. Squeezing past them briefly slows your worker;
+  there is room to step around, and patrols stay clear of the stairs.
 - Pick up missed freight near the belt exit to recover it for half base points.
+- Recovered freight counts as dispatched for the 3D grade. S starts at 95%;
+  freight left behind, wrong drops and excess breakages lower the percentage.
+  Results show the calculation. Recovery still reduces points and breaks a streak.
+- Approaching either stair flight gently aligns the worker with its clear
+  centre, including while carrying bulky freight.
+- With one minute left, the trucks start their engines, illuminate headlights
+  and emit exhaust. Loaders occasionally cough while continuing their work.
+- Lunch starts with a whistle and a short **15 MINUTE LUNCH BREAK!** alert,
+  still inside the warehouse. Only after the alert does the game travel to
+  lunch; the shift and held freight remain paused.
+- In the mall, Space also grabs or parks the cart. Each stop has a labelled bundle
+  of 6–10 cartons; the cart carries two stops per trip. Taking freight highlights
+  an available bundle for the current run and skips empty truck slots. Delivering
+  a stop removes that stop's bundle while the other one stays on the cart.
 
 Touch devices have a movement stick and Switch, Grab / Deliver, and Brake
 buttons. Landscape gives a closer view; portrait reserves room below the game
@@ -96,6 +137,7 @@ Mesa retains its existing paused choice and dream.
 
 Vic's Mesa offer supports Y/N and touch. Leaving keeps the parcel; stealing
 has a fresh 20% catch chance per attempt, so consecutive catches are possible.
+Getting caught costs up to 500 points and resumes the shift.
 A successful theft shows the upgraded bedroom dream: Trmyte plays Lumines on
 the PS3 while long-haired Skanky plays guitar through the Mesa amp. The original
 posters and computer remain in the room. The dream resumes this shift.
@@ -108,7 +150,8 @@ events, is retained. Choose **Play the original full shift** in either depot's
 briefing (keyboard O in the 2D depot), or open the local URL with `?mode=classic`. Its controls
 remain unchanged; it starts with Enter or a title-screen tap.
 
-The 3D and 2D depots run the same shift rules and the same reference events.
+The 3D and legacy 2D depots preserve the same reference events. New loading,
+layout and scoring changes apply to 3D only.
 `?mode=3d` also opens the 3D depot.
 
 Node 24 is recorded in `.node-version` and used by CI. The locked Vite dependency

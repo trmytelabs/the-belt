@@ -5,11 +5,14 @@ import {
 } from '../game/slice/DepotReferences';
 import { DRIVERS, SHAN_BREAKAGE_LINES } from '../game/slice/StoryScript';
 import type { Parcel, ShiftEvent, ShiftModel } from '../game/slice/ShiftModel';
-import { audioSystem } from '../game/systems/AudioSystem';
+import { audioSystem } from './audio';
 import { animateCharacter, bendElbows, bendKnees, createCharacter, mergeCharacter, type Character } from './characters';
 import { createParcelView, type ParcelView } from './parcels';
 import { BELT_HEIGHT, actorSurfaceAt, setFromModel, standard, textSprite, toWorld } from './space';
 import { SKIN, VISITORS, type DepotWorld } from './world';
+import { DEPOT_3D_LAYOUT as DEPOT } from './layout';
+import { platformWalkPath, walkPath, type WalkPoint } from './walking';
+import { CrewPatrols, type PatrolId } from './crewPatrols';
 
 /**
  * The crew's routines and gags, on the 2D depot's authored schedule
@@ -17,14 +20,15 @@ import { SKIN, VISITORS, type DepotWorld } from './world';
  * Times are shift milliseconds unless named otherwise.
  */
 export type Say = (id: string, copy: string, durationMs: number) => void;
-export type Pose = 'none' | 'shout' | 'crouch' | 'massage' | 'dance' | 'swear' | 'cough' | 'cheer' | 'announce' | 'push' | 'phone' | 'keys' | 'aim' | 'carry' | 'press' | 'handup' | 'sit' | 'shrug';
+export type Pose = 'none' | 'shout' | 'crouch' | 'squat' | 'massage' | 'dance' | 'swear' | 'cough' | 'cheer' | 'announce' | 'push' | 'phone' | 'keys' | 'aim' | 'carry' | 'press' | 'handup' | 'sit' | 'shrug';
 
 const RESIDENT_IDS = ['hussan', 'aj', 'ben', 'bannerman', 'fruitloop', 'doris', 'brian', 'donna'] as const;
 const TRUCK_DOORS: Record<string, { x: number; y: number }> = {
-  hussan: { x: 324, y: 148 }, aj: { x: 324, y: 244 }, ben: { x: 324, y: 340 }, bannerman: { x: 324, y: 436 },
-  fruitloop: { x: 636, y: 148 }, doris: { x: 636, y: 244 }, brian: { x: 636, y: 340 }, donna: { x: 636, y: 436 },
+  hussan: { x: 324, y: DEPOT.crewTruckRows[0] }, aj: { x: 324, y: DEPOT.crewTruckRows[1] }, ben: { x: 324, y: DEPOT.crewTruckRows[2] }, bannerman: { x: 324, y: DEPOT.crewTruckRows[3] },
+  fruitloop: { x: 636, y: DEPOT.crewTruckRows[0] }, doris: { x: 636, y: DEPOT.crewTruckRows[1] }, brian: { x: 636, y: DEPOT.crewTruckRows[2] }, donna: { x: 636, y: DEPOT.crewTruckRows[3] },
 };
-const MASSAGE_TABLE = { x: 100, y: 300 };
+const MASSAGE_TABLE = DEPOT.eventProps.massage;
+export const ENGINES_3D = { driversAt: 117_000, firstAt: 120_000, othersAt: 122_000, staggerMs: 300 } as const;
 export const mix = (a: number, b: number, t: number): number => a + (b - a) * THREE.MathUtils.clamp(t, 0, 1);
 
 /** A character placed in model space, facing the way it last moved. */
@@ -76,9 +80,20 @@ export class Actor {
 export function applyPose(c: Character, pose: Pose, t: number, still: boolean): void {
   const wave = (speed: number, amount: number): number => still ? 0 : Math.sin(t * speed) * amount;
   switch (pose) {
+    case 'squat': {
+      const bend = still ? 0.65 : (1 - Math.cos(Math.max(0, t) * Math.PI * 2 / 1.2)) / 2;
+      c.body.position.y = -0.38 * bend;
+      c.body.rotation.x = 0.2 * bend;
+      c.leftLeg.rotation.x = c.rightLeg.rotation.x = -1.25 * bend;
+      bendKnees(c, 2 * bend);
+      c.leftArm.rotation.set(-0.35 - 0.6 * bend, 0, -0.12);
+      c.rightArm.rotation.set(-0.35 - 0.6 * bend, 0, 0.12);
+      bendElbows(c, -0.9);
+      break;
+    }
     case 'shout':
-      c.leftArm.rotation.set(-2.9 + wave(14, 0.15), 0, 0.35);
-      c.rightArm.rotation.set(-2.9 - wave(14, 0.15), 0, -0.35);
+      c.leftArm.rotation.set(-2.9 + wave(6, 0.08), 0, -0.25);
+      c.rightArm.rotation.set(-2.9 - wave(6, 0.08), 0, 0.25);
       bendElbows(c, -0.35 + wave(14, 0.2), -0.35 - wave(14, 0.2));
       c.head.rotation.x = -0.25;
       break;
@@ -101,25 +116,26 @@ export function applyPose(c: Character, pose: Pose, t: number, still: boolean): 
     case 'dance':
       c.body.rotation.z = wave(11, 0.16);
       c.body.position.y = Math.abs(wave(14, 0.12));
-      c.leftArm.rotation.set(-2.6 + wave(13, 0.5), 0, 0.3);
-      c.rightArm.rotation.set(-2.6 - wave(13, 0.5), 0, -0.3);
+      c.leftArm.rotation.set(-2.6 + wave(8, 0.25), 0, -0.3);
+      c.rightArm.rotation.set(-2.6 - wave(8, 0.25), 0, 0.3);
       bendElbows(c, -0.6 + wave(13, 0.4), -0.6 - wave(13, 0.4));
       bendKnees(c, 0.25 + Math.abs(wave(14, 0.25)));
       break;
     case 'cheer':
       c.body.position.y = Math.abs(wave(9, 0.1));
       c.body.rotation.z = wave(7, 0.08);
-      c.leftArm.rotation.set(-2.8 + wave(9, 0.35), 0, 0.25);
-      c.rightArm.rotation.set(-2.8 - wave(9, 0.35), 0, -0.25);
+      c.leftArm.rotation.set(-2.8 + wave(6, 0.2), 0, -0.25);
+      c.rightArm.rotation.set(-2.8 - wave(6, 0.2), 0, 0.25);
       bendElbows(c, -0.3);
       break;
     case 'swear':
-      // Fists up at chest height, shaking.
-      c.leftArm.rotation.set(-0.5, 0, 0.75 + wave(16, 0.2));
-      c.rightArm.rotation.set(-0.5, 0, -0.75 - wave(16, 0.2));
-      bendElbows(c, -1.5 + wave(16, 0.2), -1.5 - wave(16, 0.2));
-      c.head.rotation.y = wave(12, 0.35);
-      c.body.rotation.x = -0.12;
+      // Fists stay apart, with the elbows beside the ribs. Inward shoulder
+      // rolls made the old gesture cross the chest and look like clapping.
+      c.leftArm.rotation.set(-0.4, 0, -0.18 + wave(4, 0.035));
+      c.rightArm.rotation.set(-0.4, 0, 0.18 + wave(4, 0.035));
+      bendElbows(c, -1.35 + wave(4, 0.06), -1.35 - wave(4, 0.06));
+      c.head.rotation.y = wave(3, 0.1);
+      c.body.rotation.x = -0.06;
       break;
     case 'cough':
       // Doubled over with a hand to the mouth.
@@ -129,8 +145,8 @@ export function applyPose(c: Character, pose: Pose, t: number, still: boolean): 
       bendElbows(c, -0.7, -2.1);
       break;
     case 'announce':
-      c.rightArm.rotation.set(-2.1 + wave(5, 0.25), 0, -0.2);
-      c.leftArm.rotation.set(-0.7, 0, 0.3);
+      c.rightArm.rotation.set(-1.0 + wave(3, 0.08), 0, 0.2);
+      c.leftArm.rotation.set(-0.35, 0, -0.12);
       bendElbows(c, -1.2, -0.35);
       break;
     case 'push':
@@ -155,9 +171,9 @@ export function applyPose(c: Character, pose: Pose, t: number, still: boolean): 
       bendElbows(c, -0.12, -0.45);
       break;
     case 'carry':
-      c.leftArm.rotation.set(-0.62, 0, -0.2);
-      c.rightArm.rotation.set(-0.62, 0, 0.2);
-      bendElbows(c, -1.0);
+      c.leftArm.rotation.set(-0.3, 0, -0.12);
+      c.rightArm.rotation.set(-0.3, 0, 0.12);
+      bendElbows(c, -1.25);
       break;
     case 'keys':
       c.rightArm.rotation.set(-1.0 + wave(8, 0.08), 0, -0.1);
@@ -206,6 +222,8 @@ export class CrewLife {
   private readonly cellCaption: THREE.Sprite;
   private readonly crewFreight = new Map<string, ParcelView>();
   private readonly crewEpoch = new Map<string, number>();
+  private readonly workWalks = new Map<string, { points: WalkPoint[]; distance: number; delay: number }>();
+  private readonly patrols = new CrewPatrols();
   private readonly drivers: Actor[] = [];
   private readonly unloaders: Actor[] = [];
   private readonly unloaderCrates: THREE.Mesh[] = [];
@@ -238,7 +256,7 @@ export class CrewLife {
       world.scene.add(character.root);
       this.actors.set(id, new Actor(character));
     }
-    // Kylie carries an (empty) coffee cup on her search.
+    // Kylie carries an (empty) coffee cup on his search.
     const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.045, 0.16, 12), standard(0xc23a2e, 0.6));
     cup.position.set(0, -0.085, 0.05);
     this.actor('kylie').character.rightHand.add(cup);
@@ -344,23 +362,36 @@ export class CrewLife {
     this.actor('ben').root.rotation.set(0, 0, 0);
     this.actor('ben').root.scale.setScalar(1);
     this.crewEpoch.clear();
+    this.workWalks.clear();
+    this.patrols.reset();
+    this.world.shoulderDevil?.reset();
     this.cell.root.visible = false;
     this.cellCaption.visible = false;
     this.cell.tag.visible = true;
     if (this.cell.parts.label) this.cell.parts.label.visible = true;
     for (const [id, resident] of this.world.residents) {
       const actor = this.actor(id);
+      actor.root.visible = true;
       actor.root.position.copy(resident.home);
       actor.root.rotation.y = resident.home.x < 0 ? Math.PI / 2 - 0.5 : -Math.PI / 2 + 0.5;
       actor.faceAngle = null;
       actor.pose = id === 'hussan' ? 'phone' : 'none';
       actor.carrying = false;
     }
-    for (const id of ['kylie', 'shan', 'john', 'vic']) this.actor(id).root.visible = false;
+    for (const id of ['kylie', 'shan', 'john', 'vic']) {
+      const actor = this.actor(id);
+      actor.root.visible = false; actor.pose = 'none'; actor.faceAngle = null; actor.carrying = false;
+      actor.root.rotation.x = 0;
+    }
+    this.actor('john').place(390, 548);
+    this.actor('vic').place(376, 220);
+    this.actor('shan').place(VISITORS.shan.x, VISITORS.shan.y);
     for (const driver of this.drivers) driver.root.visible = false;
     for (const view of this.crewFreight.values()) view.root.visible = false;
     this.towel.visible = false;
     this.world.departTrucks(0);
+    this.world.trucks.forEach((_, index) => this.world.setTruckRunning(index, false));
+    this.exhaustTimer = 0;
   }
 
   public onEvent(event: ShiftEvent, model: ShiftModel): void {
@@ -397,60 +428,123 @@ export class CrewLife {
     action();
   }
 
+  private workStation(id: string): WalkPoint {
+    const bay = DEPOT.eventBays[id as keyof typeof DEPOT.eventBays];
+    return { x: bay.x < 480 ? 350 : 610, y: bay.y };
+  }
+
+  /** Keep the scrum's actual cast in place, then send everyone to their work. */
+  public beginWorkWalk(): void {
+    for (const id of [...RESIDENT_IDS, 'shan']) {
+      const actor = this.actor(id);
+      const from = { x: actor.root.position.x * 32 + 480, y: actor.root.position.z * 32 + 340 };
+      const to = id === 'shan' ? { x: 590, y: 860 } : this.workStation(id);
+      actor.root.visible = true;
+      actor.root.rotation.x = 0;
+      actor.pose = 'none'; actor.carrying = false; actor.faceAngle = null;
+      const points = platformWalkPath(from, to);
+      if (to.x < 480 && to.y > 450) points.splice(1, 0, { x: 350, y: 430 });
+      // The east crew file past stationary workers and occupied work stations
+      // along a separate corridor, then turn into their own bay.
+      if (to.x > 480) {
+        if (points.length > 2) points.splice(2, 1, { x: 550, y: 128 }, { x: 550, y: to.y });
+        else points.splice(1, 0, { x: 550, y: from.y }, { x: 550, y: to.y });
+      }
+      const queueIndex = ['brian', 'fruitloop', 'doris', 'donna'].indexOf(id);
+      this.workWalks.set(id, { points, distance: 0, delay: Math.max(0, queueIndex) * 0.16 });
+      this.crewEpoch.set(id, 0);
+    }
+  }
+
+  private advanceWorkWalk(dt: number): Set<string> {
+    const walking = new Set<string>();
+    for (const [id, route] of this.workWalks) {
+      const actor = this.actor(id);
+      const waiting = Math.min(route.delay, dt);
+      route.delay -= waiting;
+      route.distance += 135 * (dt - waiting);
+      const point = walkPath(route.points, route.distance);
+      actor.place(point.x, point.y); actor.faceAngle = point.heading;
+      actor.root.visible = true;
+      walking.add(id);
+      if (point.done) this.workWalks.delete(id);
+    }
+    return walking;
+  }
+
+  /** The crew can walk during the countdown while the freight clock waits. */
+  public disperse(dt: number, time: number): void {
+    this.animateActors(dt, time, this.advanceWorkWalk(dt));
+  }
+
   /** Runs only while the shift clock runs. */
   public update(dt: number, model: ShiftModel, wallTime: number): void {
     const t = model.elapsedMs;
-    const reserved = new Set<string>();
+    const reserved = this.advanceWorkWalk(dt);
 
     // Kylie's coffee search crosses the east side.
     KYLIE_QUOTES.forEach((quote, index) => this.once(`coffee-${index}`, t, 2800 + index * 3700, () => this.say('kylie', quote, 3500)));
     const kylie = this.actor('kylie');
     kylie.root.visible = t > 1800 && t < 15500;
     kylie.place(
-      t < 4500 ? mix(986, 863, (t - 1800) / 2700) : t < 12300 ? 863 + Math.sin(t / 900) * 20 : mix(863, 985, (t - 12300) / 3200),
-      t < 12300 ? 400 + Math.cos(t / 1300) * 26 : mix(400, 361, (t - 12300) / 850),
+      t < 4500 ? mix(950, 754, (t - 1800) / 2700) : t < 12300 ? 754 + Math.sin(t / 900) * 20 : mix(754, 950, (t - 12300) / 3200),
+      DEPOT.eventBays.brian.y + Math.cos(t / 1300) * 12,
     );
     kylie.character.rightArm.rotation.x = -0.9;
 
-    // John Rushton: walk in, yell with arms raised, crouch, leave.
+    // John patrols both lanes, stops for random squat sets and retains his original warning.
     this.once('john', t, 13000, () => this.john(t));
     const john = this.actor('john');
-    john.root.visible = t < this.johnUntil;
-    if (john.root.visible) {
-      const e = 4600 - (this.johnUntil - t);
-      john.place(e < 600 ? mix(10, 77, e / 600) : e < 3950 ? 77 : mix(77, 10, (e - 3950) / 650), 397);
-      john.faceAngle = e >= 600 && e < 3950 ? Math.PI / 2 : null;
-      const pose: Pose = e < 600 || e >= 3950 ? 'none' : e < 2100 ? 'shout' : 'crouch';
-      if (pose !== john.pose) { john.pose = pose; john.poseStart = wallTime; }
-      if (e >= 600 && !this.johnSpoken) {
+    if (!this.staged.has('john')) {
+      this.patrol('john', dt, wallTime);
+      if (t < this.johnUntil && t >= this.johnUntil - 4600 && !this.johnSpoken) {
         this.johnSpoken = true;
         this.say('john', "DON'T STACK\nBOXES ON BOXES!", 3600);
       }
+      if (t < this.johnUntil - 2800) john.setPoseAt('shout', wallTime);
     }
 
     this.updateMassage(t, wallTime, reserved);
+    if (!this.staged.has('vic') && (t < 21000 || t >= 33500)) this.patrol('vic', dt, wallTime);
     this.updateCell(t, wallTime, model, reserved);
     this.updateUnitedWay(t, wallTime);
     this.updateExhaust(t, dt, wallTime, model);
     this.updateCrewFreight(t, reserved);
 
-    // Shan only appears for his rant, an announcement, or to yell about a broken parcel.
+    // Shan walks the loading lane between his original announcements and breakage reactions.
     const shan = this.actor('shan');
     const visiting = this.updateShanVisit(t, wallTime);
     const shanVisible = t < this.shanUntil;
-    if (!this.staged.has('shan') && !visiting) shan.root.visible = shanVisible;
-    if (!visiting && (shanVisible || this.staged.has('shan'))) {
+    if (!this.staged.has('shan') && !visiting && !reserved.has('shan')) shan.root.visible = true;
+    if (!visiting && !reserved.has('shan')) {
       if (!this.staged.has('shan')) {
-        shan.place(VISITORS.shan.x, VISITORS.shan.y);
-        shan.faceAngle = -Math.PI / 2;
+        this.patrol('shan', dt, wallTime);
       }
       const ranting = this.shanMode === 'rant';
-      shan.pose = ranting ? 'shout' : 'announce';
+      shan.pose = shanVisible ? ranting ? 'shout' : 'announce' : 'none';
       const anger = ranting ? 1 - (this.shanUntil - t) / 4200 : 0;
       shan.character.skinMaterial.color.setHex(0xe8b98f).lerp(new THREE.Color(0xd8453a), Math.min(1, anger * 1.4));
       if (!shanVisible) shan.pose = 'none';
     }
     this.animate(dt, wallTime);
+  }
+
+  private patrol(id: PatrolId, dt: number, time: number): void {
+    const actor = this.actor(id);
+    const point = this.patrols.step(id, { x: actor.root.position.x * 32 + 480, y: actor.root.position.z * 32 + 340 }, dt);
+    actor.root.visible = true; actor.root.rotation.x = 0; actor.faceAngle = null;
+    actor.place(point.x, point.y);
+    actor.setPoseAt(point.squatting ? 'squat' : 'none', time);
+    if (point.squatting) actor.poseStart = time - point.squatTime;
+  }
+
+  /** These walkers cause a brief squeeze in the open lanes, with room to go around. */
+  public get patrolObstacles(): WalkPoint[] {
+    return (['john', 'shan', 'vic'] as const).flatMap(id => {
+      const actor = this.actor(id), x = actor.root.position.x * 32 + 480, y = actor.root.position.z * 32 + 340;
+      return actor.root.visible && !this.staged.has(id) && Math.abs(actor.root.rotation.x) < 0.2
+        && x >= 330 && x <= 630 && y >= 180 && y <= 1030 ? [{ x, y }] : [];
+    });
   }
 
   /** Receiving runs from physical belt travel, so brakes and stops freeze it. */
@@ -479,6 +573,10 @@ export class CrewLife {
         crate.position.copy(toWorld({ x: mix(start.x, end.x, transfer), y: mix(start.y, end.y, transfer) }, BELT_HEIGHT + 0.3));
       }
       crate.visible = cycle < 0.85;
+      const coughClock = model.elapsedMs - ENGINES_3D.firstAt - 9000 - index * 6500;
+      const coughing = coughClock >= 0 && coughClock % 19_000 < 1000 && !carrying;
+      worker.setPoseAt(coughing ? 'cough' : 'none', wallTime);
+      if (coughing) this.once(`unloader-cough-${index}-${Math.floor(coughClock / 19_000)}`, model.elapsedMs, 0, () => audioSystem.play('cough'));
       worker.animate(dt, wallTime, this.reducedMotion);
     });
     const preview = model.intakePreview;
@@ -535,15 +633,16 @@ export class CrewLife {
     vic.faceAngle = null;
     vic.place(t < 23700 ? mix(10, MASSAGE_TABLE.x - 22, (t - 21000) / 2700)
       : t < 30800 ? MASSAGE_TABLE.x - 22 : mix(MASSAGE_TABLE.x - 22, 10, (t - 30800) / 2700), MASSAGE_TABLE.y + 30);
-    aj.place(t < 30800 ? mix(150, MASSAGE_TABLE.x + 22, (t - 21000) / 1200) : mix(MASSAGE_TABLE.x + 22, 150, (t - 30800) / 1200),
-      t < 30800 ? mix(294, MASSAGE_TABLE.y + 4, (t - 21000) / 1200) : mix(MASSAGE_TABLE.y + 4, 294, (t - 30800) / 1200));
+    const home = DEPOT.eventBays.aj;
+    aj.place(t < 30800 ? mix(home.x, MASSAGE_TABLE.x + 22, (t - 21000) / 1200) : mix(MASSAGE_TABLE.x + 22, home.x, (t - 30800) / 1200),
+      t < 30800 ? mix(home.y, MASSAGE_TABLE.y + 4, (t - 21000) / 1200) : mix(MASSAGE_TABLE.y + 4, home.y, (t - 30800) / 1200));
     aj.faceAngle = null;
     aj.pose = 'none';
   }
 
   private updateCell(t: number, wallTime: number, model: ShiftModel, reserved: Set<string>): void {
     const hussan = this.actor('hussan');
-    const home = { x: 150, y: 198 };
+    const home = DEPOT.eventBays.hussan;
     const intakeClear = !model.packages.some((parcel) => parcel.state === 'belt' && Math.abs(parcel.y - 164) < 70);
     if (t >= 40000 && this.snakeState === 'waiting' && intakeClear) {
       this.snakeState = 'belt';
@@ -577,6 +676,8 @@ export class CrewLife {
     }
     if (this.snakeState === 'dancing') {
       const elapsed = t - this.cellTime;
+      const returnToBay = Math.min(1, elapsed / 450);
+      hussan.place(mix(392, home.x, returnToBay), mix(186, home.y, returnToBay));
       hussan.carrying = false;
       hussan.pose = 'dance';
       hussan.faceAngle = Math.PI / 2 + (this.reducedMotion ? 0 : Math.sin(elapsed / 220) * 0.6);
@@ -593,10 +694,8 @@ export class CrewLife {
       }
     }
     if (this.snakeState === 'done' && t < this.cellTime + 1600) {
-      const r = (t - this.cellTime) / 1600;
-      hussan.place(r < 0.25 ? mix(392, 350, r / 0.25) : mix(350, home.x, (r - 0.25) / 0.75), r < 0.25 ? mix(186, home.y, r / 0.25) : home.y);
-    } else if (this.snakeState === 'done' && hussan.pose === 'none') {
-      hussan.pose = 'phone';
+      const station = this.workStation('hussan');
+      hussan.place(mix(home.x, station.x, (t - this.cellTime) / 1600), home.y);
     }
   }
 
@@ -630,9 +729,9 @@ export class CrewLife {
 
   /** When each truck's engine starts (shift ms): one first, then the rest in turn. */
   public engineStartAt(index: number): number {
-    if (index === CrewLife.FIRST_ENGINE) return DRIVERS.firstEngineAt;
+    if (index === CrewLife.FIRST_ENGINE) return ENGINES_3D.firstAt;
     const order = index < CrewLife.FIRST_ENGINE ? index : index - 1;
-    return DRIVERS.otherEnginesAt + order * DRIVERS.engineStaggerMs;
+    return ENGINES_3D.othersAt + order * ENGINES_3D.staggerMs;
   }
 
   /** Trucks whose engines are running at shift time t. */
@@ -642,26 +741,27 @@ export class CrewLife {
 
   private updateExhaust(t: number, dt: number, wallTime: number, model: ShiftModel): void {
     // Near the end of the shift the drivers bring their keys while the belt keeps running.
-    this.once('drivers', t, DRIVERS.arriveAt, () => audioSystem.play('truck'));
-    const driversVisible = t >= DRIVERS.arriveAt && t < DRIVERS.arriveAt + 5200;
+    this.once('drivers', t, ENGINES_3D.driversAt, () => audioSystem.play('truck'));
+    const driversVisible = t >= ENGINES_3D.driversAt && t < ENGINES_3D.driversAt + 5200;
     this.drivers.forEach((driver, index) => {
       const door = this.world.trucks[index].cabDoor;
       driver.root.visible = driversVisible;
       if (!driversVisible) return;
       // Drivers walk up to their cab fronts with the keys.
       const outward = door.x < 480 ? -1 : 1;
-      driver.place(door.x + outward * mix(34, 0, (t - DRIVERS.arriveAt - index * 70) / 2200), door.y);
-      driver.faceAngle = t - DRIVERS.arriveAt > 2200 + index * 70 ? (outward < 0 ? Math.PI / 2 : -Math.PI / 2) : null;
+      driver.place(door.x + outward * mix(34, 0, (t - ENGINES_3D.driversAt - index * 70) / 2200), door.y);
+      driver.faceAngle = t - ENGINES_3D.driversAt > 2200 + index * 70 ? (outward < 0 ? Math.PI / 2 : -Math.PI / 2) : null;
       driver.pose = 'keys';
       driver.animate(dt, wallTime, this.reducedMotion);
     });
     // One engine starts; its exhaust drifts onto the platform; the loaders nearby cough.
-    this.once('engine-first', t, DRIVERS.firstEngineAt, () => {
+    this.once('engine-first', t, ENGINES_3D.firstAt, () => {
       audioSystem.play('engine');
       this.caption('[ONE ENGINE STARTS]');
     });
-    this.once('engine-others', t, DRIVERS.otherEnginesAt, () => this.caption('[MORE ENGINES START]'));
+    this.once('engine-others', t, ENGINES_3D.othersAt, () => this.caption('[MORE ENGINES START]'));
     this.world.trucks.forEach((_, index) => {
+      this.world.setTruckRunning(index, t >= this.engineStartAt(index));
       if (index === CrewLife.FIRST_ENGINE) return;
       this.once(`engine-${index}`, t, this.engineStartAt(index), () => audioSystem.play('engine'));
     });
@@ -685,38 +785,39 @@ export class CrewLife {
     });
     // More of the crew react as the other trucks start: a cough, without a new line.
     (['fruitloop', 'bannerman', 'brian', 'donna'] as const).forEach((id, index) => {
-      const at = DRIVERS.otherEnginesAt + 900 + index * 1100;
+      const at = ENGINES_3D.firstAt + 6500 + index * 9000;
       this.once(`react-${id}`, t, at, () => {
         const actor = this.actor(id);
         actor.pose = 'cough';
         actor.poseStart = wallTime;
+        audioSystem.play('cough');
       });
       if (t >= at + 2200 && t < at + 2300 && this.actor(id).pose === 'cough') this.actor(id).pose = 'none';
     });
-    if (t >= DRIVERS.firstEngineAt && t < model.durationMs) this.emitExhaust(dt, t);
+    if (t >= ENGINES_3D.firstAt && t < model.durationMs) this.emitExhaust(dt, t);
   }
 
   /** Subtitles for sounds; main3d shows them so nothing depends on audio alone. */
   public caption: (text: string) => void = () => undefined;
 
-  /** Restrained exhaust from every running engine, drifting in over the loading platform. */
+  /** Denser, larger exhaust clouds from every running engine. */
   public emitExhaust(dt: number, t = Infinity): void {
     this.exhaustTimer -= dt;
     if (this.exhaustTimer > 0 || dt <= 0) return;
-    this.exhaustTimer = 0.32;
+    this.exhaustTimer = 0.18;
     const at = new THREE.Vector3();
     this.world.trucks.forEach((truck, index) => {
       if (t < this.engineStartAt(index)) return;
       truck.stack.getWorldPosition(at);
       this.world.puffs.emit(at, {
-        color: 0x8a948f, size: 0.28, life: 3.6, opacity: 0.3, grow: 5, spread: 0.08,
-        velocity: new THREE.Vector3(-truck.direction * 0.55, 0.32, 0),
+        color: 0xa2aaa4, size: 0.46, life: 3.2, opacity: 0.46, grow: 4.5, spread: 0.15,
+        velocity: new THREE.Vector3(-truck.direction * 0.55, 0.46, 0),
       });
     });
   }
 
   /**
-   * A thrown parcel broke: Shan walks over to the worker and yells while the
+   * A thrown parcel broke: Shan runs over to the worker and yells while the
    * belt keeps moving. A second break during the visit only adds a new line.
    */
   public shanBreakage(worker: { x: number; y: number; side: 'left' | 'right' }, time: number): void {
@@ -729,7 +830,7 @@ export class CrewLife {
       return;
     }
     const laneX = worker.side === 'left' ? 365 : 595;
-    const top = worker.y > 784 ? 790 : Math.max(-10, worker.y - 150);
+    const top = worker.y > DEPOT.stairs.minY ? DEPOT.stairs.minY + 10 : Math.max(-10, worker.y - 150);
     this.shanVisit = {
       start: time, line, spoken: false,
       from: { x: laneX, y: top },
@@ -743,17 +844,17 @@ export class CrewLife {
     const shan = this.actor('shan');
     const e = t - visit.start;
     shan.root.visible = true;
-    const p = e < 1200 ? e / 1200 : e < 4800 ? 1 : 1 - (e - 4800) / 1200;
+    const p = e < 650 ? e / 650 : e < 4800 ? 1 : 1 - (e - 4800) / 1200;
     shan.place(mix(visit.from.x, visit.to.x, p), mix(visit.from.y, visit.to.y, p));
-    shan.faceAngle = e >= 1200 && e < 4800 ? Math.atan2(0, 1) : null;
-    const yelling = e >= 1200 && e < 4800;
+    shan.faceAngle = e >= 650 && e < 4800 ? Math.atan2(0, 1) : null;
+    const yelling = e >= 650 && e < 4800;
     if (yelling && !visit.spoken) {
       visit.spoken = true;
       this.say('shan', visit.line, 3400);
       shan.poseStart = wallTime;
     }
     shan.pose = yelling ? 'shout' : 'none';
-    shan.character.skinMaterial.color.setHex(0xe8b98f).lerp(new THREE.Color(0xd8453a), yelling ? Math.min(1, (e - 1200) / 1500) : 0);
+    shan.character.skinMaterial.color.setHex(0xe8b98f).lerp(new THREE.Color(0xd8453a), yelling ? Math.min(1, (e - 650) / 1500) : 0);
     return true;
   }
 
@@ -766,31 +867,32 @@ export class CrewLife {
         this.crewEpoch.set(id, t + 1000);
         return;
       }
-      const home = this.world.residents.get(id)!;
-      const start = { x: home.home.x / (1 / 32) + 480, y: home.home.z / (1 / 32) + 340 };
-      const period = 18_000;
-      const clock = Math.max(0, t - (this.crewEpoch.get(id) ?? (7500 + index * 1100)));
+      const start = this.workStation(id);
+      const period = 8_000;
+      const clock = Math.max(0, t - (this.crewEpoch.get(id) ?? (700 + index * 250)));
       const cycle = clock % period;
       const door = TRUCK_DOORS[id];
       const pickup = { x: start.x < 480 ? 400 : 560, y: start.y };
-      const corner = { x: door.x, y: start.y };
+      const approach = { x: start.x, y: door.y };
       let from = start; let to = start; let amount = 0;
-      if (clock > 0 && cycle < 2200) { to = pickup; amount = cycle / 2200; }
-      else if (clock > 0 && cycle < 2600) { from = pickup; to = pickup; }
-      else if (clock > 0 && cycle < 4800) { from = pickup; to = door; amount = (cycle - 2600) / 2200; }
-      else if (clock > 0 && cycle < 5300) { from = door; to = door; }
-      else if (clock > 0 && cycle < 6000) { from = door; to = corner; amount = (cycle - 5300) / 700; }
-      else if (clock > 0 && cycle < 7500) { from = corner; to = start; amount = (cycle - 6000) / 1500; }
+      if (clock > 0 && cycle < 900) { to = pickup; amount = cycle / 900; }
+      else if (clock > 0 && cycle < 1300) { from = pickup; to = pickup; }
+      else if (clock > 0 && cycle < 2200) { from = pickup; to = start; amount = (cycle - 1300) / 900; }
+      else if (clock > 0 && cycle < 3500) { from = start; to = approach; amount = (cycle - 2200) / 1300; }
+      else if (clock > 0 && cycle < 4000) { from = approach; to = door; amount = (cycle - 3500) / 500; }
+      else if (clock > 0 && cycle < 4550) { from = door; to = door; }
+      else if (clock > 0 && cycle < 5050) { from = door; to = approach; amount = (cycle - 4550) / 500; }
+      else if (clock > 0 && cycle < 6350) { from = approach; to = start; amount = (cycle - 5050) / 1300; }
       actor.place(mix(from.x, to.x, amount), mix(from.y, to.y, amount));
       const atRest = from === start && to === start;
       actor.faceAngle = atRest ? (start.x < 480 ? Math.PI / 2 - 0.5 : -Math.PI / 2 + 0.5) : null;
-      const carrying = clock > 0 && cycle >= 2600 && cycle < 4900;
+      const carrying = clock > 0 && cycle >= 1300 && cycle < 4300;
       actor.carrying = carrying;
-      if (id === 'hussan' && actor.pose !== 'cough' && actor.pose !== 'swear') actor.pose = atRest ? 'phone' : 'none';
+      if (id === 'hussan' && actor.pose !== 'cough' && actor.pose !== 'swear') actor.pose = atRest && cycle > 7500 ? 'phone' : 'none';
       view.root.visible = carrying;
       if (carrying) {
         const forward = new THREE.Vector3(Math.sin(actor.root.rotation.y), 0, Math.cos(actor.root.rotation.y));
-        view.root.position.copy(actor.root.position).addScaledVector(forward, 0.4).setY(actor.root.position.y + 0.82);
+        view.root.position.copy(actor.root.position).addScaledVector(forward, 0.32 * actor.root.scale.z + view.carryDepth * view.root.scale.z).setY(actor.root.position.y + 0.82);
         view.root.rotation.y = actor.root.rotation.y;
       }
     });

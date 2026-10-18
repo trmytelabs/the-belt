@@ -1,5 +1,11 @@
 # 3D depot
 
+Active development targets **3D only**. The 2D and classic modes are retained as
+legacy versions. See [current gameplay rules](address-sorting.md) for street
+sorting, the rear platform and side stairs, player-only bulk, the 10-point wrong
+drop penalty and brighter night lighting. New 3D rules use `ShiftModel3D` and
+`layout.ts`; shared model extensions must preserve legacy behavior.
+
 The 3D depot is the default entry. It shows every reference in
 [reference parity](reference-parity.md), as the 2D depot does. The 2D depot is
 kept at `?mode=2d`, the original full shift at `?mode=classic`, and `?mode=3d`
@@ -9,24 +15,21 @@ routines, set pieces, then touch controls and the default switch.
 ## How it works
 
 `src/main.ts` loads one engine per mode: Phaser for the 2D game, Three.js for
-`?mode=3d`. The 3D preview runs the unchanged `ShiftModel`, so belt timing,
-freight order, Brian's five, scoring, grades and failure rules are identical.
-Model pixels map to world metres at 1/32 (`src/three/space.ts`), so the ten
-truck positions, docks, drop areas and worker lanes keep their original
-layout.
+`?mode=3d`. `ShiftModel3D` extends the shared shift engine with the current
+3D-only layout, intake cadence, truck loading, coworker bulk restriction and
+wrong-drop penalty. The legacy model retains its behavior. Model pixels map to
+world metres at 1/32 (`src/three/space.ts`); `src/three/layout.ts` defines the
+rear platform, outward side stairs, truck interiors and lower-floor drops.
 
 - `world.ts` builds the warehouse: lit concrete floor, the belt with a moving
-  tread, receiving feeders and trailers, the ten named trucks, A/B/C drop areas,
-  the bulk cage, the recovery tray, the resident crew and their props.
-- `characters.ts` builds every person in code at real proportions (about
-  1.78 m, a head about a seventh of the height): a shaped torso and hips,
-  tapered limbs with elbows and knees, hands with a thumb, shoes, and faces
-  with eyes, irises, brows, ears, nose and lips, plus each cast member's hair,
-  beard, glasses, hat, tie, overalls or vest. Held props go in `rightHand`.
-  The walk bends the knees and swings the arms; poses in `crew.ts` set the
-  elbows and knees too. Cloth, skin and hair share one surface finish, so the
-  merge draws each rigid body part in a single call: a full depot uses fewer
-  draw calls than the earlier box figures, with about a quarter more triangles.
+  tread, receiving feeders and trailers, named trucks with player cargo shelves,
+  floor street ranges, the bulk cage, the recovery tray, pallet drops, the
+  resident crew and their props.
+- `characters.ts` builds the pose pivots and procedural fallback figures at
+  about 1.78 m. `characterModels.ts` loads the 23 rigged Rocketbox people from
+  `rocketboxCast.ts`, then drives their bones from those pivots. The existing
+  walk, carrying, gestures, attached props and story poses continue to work.
+  See [character models](character-models.md) for the cast and MIT provenance.
 - `setpieces.ts` stages Vic and Shan's belt buttons, Ralph's five-ton and
   Ben's robbery. `mesa.ts` runs the Mesa choice, and `dream.ts` is Skanky's
   bedroom.
@@ -34,7 +37,14 @@ layout.
 - `crew.ts` runs the crew's routines and gags on the 2D depot's authored
   schedule and lines (`DepotLife`, `DepotRoutines`, `DepotReceiving`), with
   poses for yelling, crouching, massage, dancing, swearing, coughing and
-  cheering.
+  cheering. The crew walk out of the scrum to platform work stations, then
+  spend most of their time collecting and loading parcels. `walking.ts`
+  keeps cross-lane departures around the belt head.
+- `truckCutaway.ts` opens soft circular windows in foreground truck shells
+  and shelf boards around nearby people. Delivered cargo remains visible.
+- `propModels.ts` upgrades cars and the devil with compact CC0 Quaternius GLBs,
+  preserving their original driving and story roots and procedural fallbacks.
+  See [asset sources](../public/models/PROP-SOURCES.md).
 - `parcels.ts` builds each named freight type with its full shipping tag.
 - `overlay.ts` holds the HUD, the briefing/countdown/results panels and the
   speech bubbles. Each bubble is anchored above its speaker. If the speaker is
@@ -44,7 +54,8 @@ layout.
 Rendering uses ACES tone mapping, soft shadows, a room environment for
 reflections and a bloom pass that only catches real light sources. On a
 software WebGL renderer (SwiftShader/llvmpipe), the preview switches to low
-quality: no shadow maps or bloom, fewer lights and a reduced render resolution.
+quality: procedural figures without model downloads, no shadow maps or bloom,
+fewer lights and a reduced render resolution.
 It also spaces out its draws, so the shift clock, input and bubbles keep running
 at full rate even when a single draw takes longer than a frame. Without WebGL it explains
 the requirement and links to the 2D game.
@@ -74,23 +85,25 @@ Present in 3D:
   - The Small ATV.
   - Goji berries.
   - Panchetters.
-- Kylie's three Timmy Hortans lines, on her walk.
+- Kylie's three Timmy Hortans lines, on his walk.
 - Shan's seven rants, cycling on each brake, as he reddens.
 - Fruit Loop's `LIVE LOBSTERS?!`.
 - Brian's `SENDING 5 DOWN` and the active worker's reply.
 - The 3-2-1-SORT countdown.
 - The grade quotes and the failure flavour.
 - **Phase 2 crew routines:**
-  - John Rushton: walks in at 13 s and after misses, yells `DON'T STACK BOXES
-    ON BOXES!` with his arms raised, crouches, then leaves.
+  - John Rushton: patrols both belt lanes around the receiving end, stopping for
+    randomly spaced squat sets. At 13 s and after misses he retains his warning
+    `DON'T STACK BOXES ON BOXES!`.
+  - Shan and Vic walk up and down loading lanes between their reference scenes.
+    A player can squeeze past or step around them; patrols avoid stair entrances.
   - Vic and AJ's massage: Vic walks to the table and says `I NEED A QUICK TUNE
     UP`, then lies under a towel while AJ massages him. Both return.
   - THE SNAKES CELL: the case rides the belt and Hussan walks over and
     collects it. Its label becomes `CELL`. He dances with it overhead for
     3.2 s, then returns.
-  - Drivers and exhaust: twelve drivers bring keys to the cab fronts at 153 s
-    (moved from 114 s by the [overnight expansion](overnight-shift-expansion.md)).
-    One engine starts first, then the others one by one; exhaust stacks then
+  - Drivers and exhaust: twelve drivers head for their cabs at 117 s.
+    With one minute left, an engine starts first, then the others one by one; exhaust stacks then
     smoke for the rest of the shift.
   - Coughs: Hussan and Doris cough all four original lines.
   - United Way: Shan's announcement, then the whole floor's swearing reaction
@@ -133,8 +146,8 @@ Present in 3D:
     choice appears with the one-in-five risk. Y/N or a click chooses:
     - Leave: the parcel stays and the shift resumes.
     - Steal: Skanky's `MESA AT HOME` thought, then a fresh 20% roll.
-      - Caught: `BUSTED BY SHAN O MAC` ends the run with the original detail
-        and `GAME OVER`.
+      - Caught: `BUSTED BY SHAN O MAC` deducts up to 500 points, then resumes
+        the same shift.
       - Safe: the 5-second 3D bedroom dream, then the same shift resumes.
         The stolen Mesa is not a dispatch.
   - The bedroom keeps everything from the 2D dream:
@@ -197,7 +210,7 @@ checks:
     restart.
   - Mesa: leave by keyboard; a click steal into the dream and back to the
     same shift, with no dispatch credited; and a keyboard steal caught by
-    Shan, which ends the run.
+    Shan, which costs points and resumes the shift.
 
 `BELT_BROWSER_CPU_RATE=6` throttles the page like the 2D suites, to rehearse
 slow CI runners.

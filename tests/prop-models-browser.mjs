@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 import { preview } from 'vite';
 import { MALL_LAYOUT } from '../src/game/slice/MallModel.ts';
-import { SHIFT_LAYOUT } from '../src/game/slice/ShiftModel.ts';
+import { DEPOT_3D_LAYOUT as SHIFT_LAYOUT } from '../src/three/layout.ts';
 import { DEPOT_DRESSING } from '../src/three/depotDressing.ts';
 
 // Prop models load only on GPU renderers. The app here (software WebGL on CI)
@@ -39,8 +39,9 @@ try {
     console.log('PASS software renderers keep the code-built props and download no models');
   }
 
-  // 16 wall lamps, the husband's desk and chair, and the dressing; the mall's bin.
-  const expected = 16 + 2 + DEPOT_DRESSING.length;
+  // Wall fixtures follow the current depot's length; the desk, chair and dressing also load.
+  const expectedLamps = 2 * (Math.floor((SHIFT_LAYOUT.worldBottom - 24 + 200) / 150) + 1);
+  const expected = expectedLamps + 2 + DEPOT_DRESSING.length;
   await page.evaluate(() => {
     const app = window.fixtureApp;
     window.gpuWorld = new app.world.constructor('high');
@@ -75,7 +76,7 @@ try {
     };
   });
   assert.ok(report.lampsHidden, 'the code-built wall fixtures hide behind their lamps');
-  assert.ok(report.hidden >= 18, `the lamps, desk and chair stand-ins are hidden (${report.hidden})`);
+  assert.ok(report.hidden >= expectedLamps + 2, `the lamps, desk and chair stand-ins are hidden (${report.hidden})`);
   assert.ok(report.scene.max[2] <= report.rearWall[2] + 1e-5, 'no prop reaches behind the final wall');
 
   const frontWall = (SHIFT_LAYOUT.worldTop - 340) / 32;

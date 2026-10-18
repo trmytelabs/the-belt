@@ -1,12 +1,13 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 
-import { LOT_LAYOUT, MALL_LAYOUT, type KeyReturnModel, type MallEvent, type MallModel } from '../game/slice/MallModel';
+import { LOT_LAYOUT, MALL_LAYOUT, type KeyReturnModel, type MallEvent } from '../game/slice/MallModel';
+import type { MallModel3D as MallModel } from './MallModel3D';
 import type { Cutscene } from '../game/slice/StoryModel';
 import type { StoryScene } from '../game/slice/StoryScript';
-import { SHIFT_LAYOUT } from '../game/slice/ShiftModel';
 import { animateCharacter, createCharacter, mergeCharacter, type Character, type CharacterSpec } from './characters';
 import { applyPose, type CrewLife, type Pose } from './crew';
+import { upgradeCar } from './propModels';
 import { PuffField } from './fx';
 import { buildSouthgateMall, mallX, mallZ, type SouthgateMall } from './mall';
 import { mergeStatic } from './merge';
@@ -14,6 +15,7 @@ import { disposeObject3D } from './resources';
 import { physicalBounds } from './collision3d';
 import { actorSurfaceAt, setFromModel, shadowed, standard, textPlane, textSprite, toWorld } from './space';
 import { RESIDENT_SPECS, SKANKY_SPEC, SKIN, TERMITE_SPEC, VISITORS, createTruck } from './world';
+import { DEPOT_3D_LAYOUT as DEPOT } from './layout';
 
 /**
  * The story's locations away from the depot floor (the UPS lot, the break
@@ -94,7 +96,7 @@ function specFor(id: string): CharacterSpec {
   if (id === 'termite') return TERMITE_SPEC;
   if (id === 'skanky') return SKANKY_SPEC;
   if (id === 'cashier') return CASHIER;
-  if (id === 'clerk') return CLERK;
+  if (id === 'clerk' || id.startsWith('clerk-')) return CLERK;
   return RESIDENT_SPECS[id] ?? VISITORS[id] ?? { name: id.toUpperCase(), skin: SKIN.light, shirt: 0x667788, pants: 0x333333, hair: 0x222222, hairStyle: 'short' };
 }
 
@@ -160,6 +162,7 @@ function createCar(color: number): THREE.Group {
     rear.position.set(-2.11, 0.72, z);
     car.add(light, rear);
   }
+  void upgradeCar(car, color);
   return shadowed(car);
 }
 
@@ -297,8 +300,8 @@ export class StoryStage {
   private night(scene: THREE.Scene, background: number): void {
     scene.background = new THREE.Color(background);
     scene.fog = new THREE.Fog(background, 30, 90);
-    scene.add(new THREE.HemisphereLight(0x8aa4c0, 0x1a1612, 0.55));
-    const key = new THREE.DirectionalLight(0xb8c8ff, 0.7);
+    scene.add(new THREE.HemisphereLight(0xb4c7df, 0x485568, 1.25));
+    const key = new THREE.DirectionalLight(0xc8d6ff, 1.1);
     key.position.set(-8, 16, 10);
     key.castShadow = this.quality === 'high';
     key.shadow.mapSize.setScalar(2048);
@@ -670,7 +673,7 @@ export class StoryStage {
     scene.add(ramp);
     // Six labelled bundles in the truck, one per store.
     for (let slot = 0; slot < 6; slot += 1) {
-      const bundle = this.bundle(slot % 2 ? 3 : 2);
+      const bundle = this.bundle(6 + slot % 3 * 2);
       // The slots are squeezed to fit between the truck's side walls; the model's slot rows are unchanged.
       bundle.position.set(mallX(22), 1.1, mallZ(350 + slot * 20) * 0.62);
       scene.add(bundle);
@@ -689,20 +692,24 @@ export class StoryStage {
       leg.position.set(x, 0.22, z);
       cart.add(leg);
     }
-    const handle = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.9, 0.7), standard(0x8a949a, 0.4, 0.6));
-    handle.position.set(-0.58, 0.75, 0);
-    cart.add(handle);
+    const handleMaterial = standard(0x8a949a, 0.4, 0.6);
+    for (const z of [-0.32, 0.32]) {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.8, 0.045), handleMaterial);
+      post.position.set(-0.58, 0.75, z); cart.add(post);
+    }
+    const handle = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.045, 0.7), handleMaterial);
+    handle.position.set(-0.58, 1.15, 0); cart.add(handle);
     for (let i = 0; i < 2; i += 1) {
-      const load = this.bundle(3);
-      load.position.set(-0.22 + i * 0.5, 0.36, 0);
-      load.scale.setScalar(0.8);
+      const load = this.bundle(6);
+      load.position.set(0, 0.36, i ? 0.2 : -0.2);
+      load.scale.setScalar(0.9);
       load.visible = false;
       cart.add(load);
       props[`cart-${i}`] = load;
     }
     scene.add(cart);
     props.cart = cart;
-    const carried = this.bundle(2);
+    const carried = this.bundle(6);
     carried.visible = false;
     scene.add(carried);
     props.carried = carried;
@@ -716,20 +723,38 @@ export class StoryStage {
     });
   }
 
-  /** A strapped stack of two or three boxes with a name label above it. */
+  /** Two columns of real cartons make a visibly full, strapped store delivery. */
   private bundle(boxes: number): THREE.Group {
     const group = new THREE.Group();
     for (let i = 0; i < boxes; i += 1) {
-      const box = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.3, 0.36), standard(i % 2 ? 0xb8875a : 0xa47650, 0.9));
-      box.position.set((i % 2) * 0.06 - 0.03, 0.15 + i * 0.3, 0);
+      const box = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.22, 0.3), standard(i % 2 ? 0xb8875a : 0xa47650, 0.9));
+      box.name = 'delivery-box';
+      box.position.set(i % 2 ? 0.16 : -0.16, 0.11 + Math.floor(i / 2) * 0.24, 0);
       box.castShadow = true;
       group.add(box);
     }
-    const strap = new THREE.Mesh(new THREE.BoxGeometry(0.05, boxes * 0.3 + 0.02, 0.38), standard(0xd8c060, 0.6));
-    strap.position.y = boxes * 0.15;
+    const height = Math.ceil(boxes / 2) * 0.24;
+    const strap = new THREE.Mesh(new THREE.BoxGeometry(0.05, height + 0.02, 0.32), standard(0xd8c060, 0.6));
+    strap.position.y = height / 2;
     group.add(strap);
     group.userData.boxes = boxes;
     return group;
+  }
+
+  private setBundleCount(group: THREE.Object3D, boxes: number): void {
+    if (group.userData.boxes === boxes) return;
+    for (const child of [...group.children]) disposeObject3D(child);
+    group.add(...this.bundle(boxes).children);
+    group.userData.boxes = boxes; group.userData.label = undefined;
+  }
+
+  private highlightBundle(group: THREE.Object3D, active: boolean): void {
+    group.userData.pickable = active;
+    group.traverse(child => {
+      if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshStandardMaterial) {
+        child.material.emissive.setHex(0xffe7ab); child.material.emissiveIntensity = active ? 0.32 : 0;
+      }
+    });
   }
 
   private setLabel(group: THREE.Object3D, text: string, color = '#f1e5c4'): void {
@@ -742,7 +767,7 @@ export class StoryStage {
       // Store tags are gameplay labels: never hidden behind the truck's walls.
       sprite.material.depthTest = false;
       sprite.renderOrder = 10;
-      sprite.position.y = (group.userData.boxes ?? 2) * 0.3 + 0.35;
+      sprite.position.y = Math.ceil((group.userData.boxes ?? 2) / 2) * 0.24 + 0.35;
       group.add(sprite);
     }
     group.userData.label = text;
@@ -1104,32 +1129,35 @@ export class StoryStage {
       const load = props[`cart-${i}`];
       const id = model.cart.load[i];
       load.visible = Boolean(id);
-      if (id) this.setLabel(load, model.store(id).name);
+      if (id) { this.setBundleCount(load, model.store(id).boxes); this.setLabel(load, `${model.store(id).name} · ${model.store(id).boxes} BOXES`); }
       const tag = load.getObjectByName('label');
-      if (tag) tag.position.y = (load.userData.boxes ?? 2) * 0.3 + 0.35 + (i === raised ? 0.55 : 0);
+      if (tag) tag.position.y = Math.ceil((load.userData.boxes ?? 2) / 2) * 0.24 + 0.35 + (i === raised ? 0.55 : 0);
     }
     model.truckBundles.forEach((id, slot) => {
       const bundle = props[`slot-${slot}`];
       bundle.visible = id !== null;
       if (id) {
         const store = model.store(id);
+        this.setBundleCount(bundle, store.boxes);
         const current = store.run === model.run || (model.runComplete && store.run === model.run + 1);
-        this.setLabel(bundle, store.name, current ? '#f2c14e' : '#c8c0b0');
+        this.setLabel(bundle, `${store.name} · ${store.boxes} BOXES`, current ? '#f2c14e' : '#c8c0b0');
         // Alternate slots' tags sit in two staggered columns over the tailgate.
         const tag = bundle.getObjectByName('label');
         if (tag) tag.position.set(slot % 2 ? 0.75 : -0.75, 1.25, 0);
       }
     });
-    const nearestSlot = model.nearestSlot();
-    const atTail = model.skanky.x < MALL_LAYOUT.tailgate.x + MALL_LAYOUT.tailgate.w && !model.carrying;
+    const selection = model.interaction;
     model.truckBundles.forEach((_, slot) => {
-      props[`slot-${slot}`].scale.setScalar(atTail && slot === nearestSlot ? 1.12 + Math.sin(time * 6) * 0.04 : 1);
+      const selected = selection.action === 'take' && slot === selection.slot;
+      props[`slot-${slot}`].scale.setScalar(selected ? 1.08 + Math.sin(time * 6) * 0.02 : 1);
+      this.highlightBundle(props[`slot-${slot}`], selected);
     });
     const carried = props.carried;
     carried.visible = model.carrying !== null;
     if (model.carrying) {
+      this.setBundleCount(carried, model.store(model.carrying).boxes);
       const forward = new THREE.Vector3(Math.sin(skanky.root.rotation.y), 0, Math.cos(skanky.root.rotation.y));
-      carried.position.copy(skanky.root.position).addScaledVector(forward, 0.42).setY(0.75);
+      carried.position.copy(skanky.root.position).addScaledVector(forward, 0.58).setY(0.75);
       carried.rotation.y = skanky.root.rotation.y;
       this.setLabel(carried, model.store(model.carrying).name);
     }
@@ -1255,10 +1283,9 @@ export interface DepotCast {
 // The huddle fills the clear west lane beside the head of the belt, below the
 // receiving feeders, with Shan at its top end facing everyone.
 const SCRUM_SPOTS: Record<string, [number, number]> = {
-  termite: [366, 214], skanky: [418, 214],
-  hussan: [342, 252], aj: [386, 256], ben: [420, 250],
-  donna: [330, 292], doris: [362, 296], brian: [394, 292], bannerman: [426, 288],
-  fruitloop: [384, 330],
+  termite: [366, 214], skanky: [414, 214],
+  hussan: [342, 252], aj: [386, 256], ben: [386, 300], bannerman: [386, 344],
+  brian: [414, 238], fruitloop: [414, 272], doris: [414, 306], donna: [414, 340],
 };
 const SHAN_SPOT: [number, number] = [392, 166];
 
@@ -1267,11 +1294,11 @@ export function directDepot(cast: DepotCast, cutscene: Cutscene, dt: number, tim
   const shan = crew.actor('shan');
   shan.root.visible = true;
   const face = (from: [number, number], to: [number, number]): number => Math.atan2(to[0] - from[0], to[1] - from[1]);
-  const placeWorker = (id: 'termite' | 'skanky', x: number, y: number, angle: number, pose: Pose): void => {
+  const placeWorker = (id: 'termite' | 'skanky', x: number, y: number, angle: number, pose: Pose, moving = false): void => {
     const character = workers[id];
     setFromModel(character.root.position, { x, y }, actorSurfaceAt(x, y));
     character.root.rotation.y = angle;
-    animateCharacter(character, dt, { moving: false, time, reducedMotion });
+    animateCharacter(character, dt, { moving, time, reducedMotion });
     character.body.rotation.set(0, 0, 0);
     character.head.rotation.set(0, 0, 0);
     applyPose(character, pose, time, reducedMotion);
@@ -1284,11 +1311,11 @@ export function directDepot(cast: DepotCast, cutscene: Cutscene, dt: number, tim
     const pair: [number, number] = [392, 214];
     for (const [id, spot] of Object.entries(SCRUM_SPOTS)) {
       const x = spot[0];
-      const y = spot[1] - 40 * (1 - gather);
+      const y = spot[1] + 60 * (1 - gather);
       if (id === 'termite' || id === 'skanky') {
         const other = SCRUM_SPOTS[id === 'termite' ? 'skanky' : 'termite'];
-        const angle = look ? face(spot, other) : face(spot, SHAN_SPOT);
-        placeWorker(id, x, y, angle, 'none');
+        const angle = look ? face([x, y], other) : face([x, y], SHAN_SPOT);
+        placeWorker(id, x, y, angle, 'none', gather > 0 && gather < 1);
         continue;
       }
       if (id === 'ben' && crew.benGone) continue;
@@ -1296,7 +1323,7 @@ export function directDepot(cast: DepotCast, cutscene: Cutscene, dt: number, tim
       crew.hideCrewFreight(id);
       actor.root.visible = true;
       actor.place(x, y);
-      actor.faceAngle = turns ? face(spot, pair) : face(spot, SHAN_SPOT);
+      actor.faceAngle = gather < 1 ? Math.PI : turns ? face(spot, pair) : face(spot, SHAN_SPOT);
       const pose: Pose = id === 'hussan' && cueProgress(cutscene, 'hands-up') > 0 ? 'shout'
         : furious ? 'swear' : cueProgress(cutscene, 'shrug') > 0 && cueProgress(cutscene, 'shrug') < 1 ? 'shrug' : 'none';
       actor.setPoseAt(pose, time);
@@ -1315,19 +1342,14 @@ export function directDepot(cast: DepotCast, cutscene: Cutscene, dt: number, tim
   // Clock-out: Shan catches Skanky at the belt end; Termite heads down the stairs.
   const leaves = ease(cueProgress(cutscene, 'termite-leaves'));
   const catches = ease(cueProgress(cutscene, 'shan-catches'));
-  placeWorker('skanky', 560, 650, face([560, 650], [500, 640]), 'none');
-  // Walk to the west flight, then descend outwards. The terminal wall has no
-  // rear exit, and a diagonal shortcut would cross Ralph's parked truck.
-  const stairY = SHIFT_LAYOUT.stairs.centerY;
-  const landing = SHIFT_LAYOUT.floorT;
-  const approach = Math.min(1, leaves / 0.55);
-  const descend = Math.max(0, (leaves - 0.55) / 0.45);
-  placeWorker('termite', descend > 0 ? mix(365, landing.x, descend) : mix(410, 365, approach),
-    mix(650, stairY, approach), leaves > 0 ? descend > 0 ? -Math.PI / 2 : 0 : face([410, 650], [500, 640]), 'none');
+  const endY = DEPOT.dockD.y + 22;
+  placeWorker('skanky', 560, endY, face([560, endY], [500, endY - 10]), 'none');
+  const exit = alongPath([[400, endY], [365, DEPOT.stairs.centerY], [200, DEPOT.stairs.centerY]], leaves);
+  placeWorker('termite', exit.x, exit.z, leaves > 0 ? exit.h : face([400, endY], [500, endY - 10]), 'none', leaves > 0 && leaves < 1);
   // Down the east side of the bulk pallet, never through it.
-  shan.place(mix(532, 526, catches), mix(560, 652, catches));
+  shan.place(mix(532, 526, catches), mix(endY - 90, endY + 2, catches));
   shan.faceAngle = Math.PI / 2;
   shan.setPoseAt(cutscene.beat.speaker === 'shan' ? 'announce' : 'none', time);
   crew.animateActors(dt, time, new Set(['shan']));
-  return { position: toWorld({ x: 600, y: 820 }, 6.0), look: toWorld({ x: 490, y: 650 }, 1.6) };
+  return { position: toWorld({ x: 600, y: DEPOT.stairs.centerY - 10 }, 6.0), look: toWorld({ x: 490, y: endY }, 1.6) };
 }

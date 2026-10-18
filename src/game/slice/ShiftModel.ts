@@ -32,6 +32,8 @@ export interface ThrowFlight {
   durationMs: number;
   /** From the platform down to the lower floor: renderers drop the arc to floor level. */
   downward: boolean;
+  breakChance?: number;
+  route?: Route;
 }
 
 export interface Parcel {
@@ -39,6 +41,8 @@ export interface Parcel {
   route: Route;
   kind: ParcelKind;
   label: string;
+  address?: string;
+  street?: number;
   size: 'normal' | 'heavy';
   x: number;
   y: number;
@@ -60,7 +64,7 @@ export interface Parcel {
   thrownDelivery?: boolean;
 }
 
-type ParcelIdentity = Pick<Parcel, 'id' | 'route' | 'kind' | 'label' | 'size'>;
+export type ParcelIdentity = Pick<Parcel, 'id' | 'route' | 'kind' | 'label' | 'size' | 'address' | 'street'>;
 type PendingIntake = ParcelIdentity & { brian: boolean };
 
 /** One reserved real parcel on its final receiving-to-belt transfer. */
@@ -206,6 +210,7 @@ export const THROWING = {
   /** Simple two-level fragility: these break more often when thrown. */
   fragileKinds: ['makeup', 'duck', 'mesa', 'lobsters'] as readonly ParcelKind[],
   breakChance: { ordinary: 0.15, fragile: 0.55 },
+  stairBreakChance: 0.3,
   /** Charged exactly once per broken parcel. */
   breakPenalty: 150,
   /** Breakages beyond this many count as errors in the shift grade. */
@@ -284,7 +289,7 @@ const BRIAN_BULK_SEQUENCE: readonly ParcelKind[] = ['atv', 'lobsters', 'mesa', '
 const INTAKE_TRANSFER_MS = 900;
 const INTAKE_START_Y = 127;
 /** Original Player carry weights, mapped to each freight's original form. */
-const CARRY_MULTIPLIER: Record<ParcelKind, number> = {
+export const CARRY_MULTIPLIER: Record<ParcelKind, number> = {
   envelope: 1, smallbox: 0.95, standard: 0.85, bigbox: 0.7, longbox: 0.7,
   mallwood: 0.7, goji: 0.9, lobsters: 0.55, duck: 0.95, makeup: 0.85,
   mesa: 0.4, panchetters: 0.85, atv: 0.4, snakes: 0.85,
@@ -342,6 +347,8 @@ export interface ShiftOptions {
   random?: () => number;
   /** Disable only for isolated rules fixtures. The unattended worker assists in normal play. */
   crewAssist?: boolean;
+  autonomousCoworker?: boolean;
+  freightRandom?: () => number;
 }
 
 /** Ground beyond either side flight, not the central deck at the same y. */
@@ -352,7 +359,19 @@ export function onLowerFloor(point: { x: number; y: number }): boolean {
       || (point.x >= floor.right.minX && point.x <= floor.right.maxX));
 }
 
+type LayoutNumbers<T> = { readonly [K in keyof T]: T[K] extends number ? number : T[K] extends object ? LayoutNumbers<T[K]> : T[K] };
+export type DepotLayout = LayoutNumbers<typeof SHIFT_LAYOUT>;
+
 export class ShiftModel {
+  public readonly layout: DepotLayout = SHIFT_LAYOUT;
+  protected get freightFlow() { return { lessonMs: 6000, flowMs: 2800, rushMs: 2200, brianMs: 1900 }; }
+  protected surfaceLevelAt = platformLevelAt;
+  protected isLowerFloor = onLowerFloor;
+  protected pileSlot = floorPileSlot;
+  protected stairSideAt = stairAt;
+  public autonomousCoworker: boolean;
+  protected readonly freightRandom: () => number;
+  private ordinaryFreightCount = 0;
   public readonly workers: Worker[] = [
     { id: 'termite', x: 382, y: 500, side: 'left', heldId: null, facing: 'right', moving: false },
     { id: 'skanky', x: 578, y: 500, side: 'right', heldId: null, facing: 'left', moving: false },
@@ -396,10 +415,10 @@ export class ShiftModel {
   private events: ShiftEvent[] = [];
   private nextId = 1;
   private spawnElapsedMs = 0;
-  private nextSpawnIntervalMs = 6_000;
+  private nextSpawnIntervalMs = this.freightFlow.lessonMs;
   private pendingIntake: PendingIntake | null = null;
   private brianSent = false;
-  private wrongSortErrors = 0;
+  protected wrongSortErrors = 0;
   private readonly countedMisses = new Set<number>();
   private readonly penalizedBreaks = new Set<number>();
   private readonly floorPiles: Record<'T' | 'S', number> = { T: 0, S: 0 };
@@ -407,6 +426,8 @@ export class ShiftModel {
 
   constructor(options: ShiftOptions = {}) {
     this.random = options.random ?? Math.random;
+    this.freightRandom = options.freightRandom ?? Math.random;
+    this.autonomousCoworker = options.autonomousCoworker ?? true;
     this.crewAssist = options.crewAssist ?? true;
     this.spawnPackage();
   }
@@ -483,11 +504,13 @@ export class ShiftModel {
 
   public get intakePreview(): IntakePreview | null {
     if (!this.pendingIntake || this.ended || this.elapsedMs >= this.durationMs) return null;
-    const { id, route, kind, label, size } = this.pendingIntake;
+    const { id, route, kind, label, size, address, street } = this.pendingIntake;
     const progress = clamp((this.spawnElapsedMs - this.nextSpawnIntervalMs + INTAKE_TRANSFER_MS) / INTAKE_TRANSFER_MS, 0, 1);
     return {
-      id, route, kind, label, size, progress, x: SHIFT_LAYOUT.beltX,
-      y: INTAKE_START_Y + (SHIFT_LAYOUT.beltTop + 26 - INTAKE_START_Y) * progress,
+      id, route, kind, label, size,
+      ...(address === undefined ? {} : { address }), ...(street === undefined ? {} : { street }),
+      progress, x: this.layout.beltX,
+      y: INTAKE_START_Y + (this.layout.beltTop + 26 - INTAKE_START_Y) * progress,
     };
   }
 
@@ -527,7 +550,7 @@ export class ShiftModel {
   /** The selected worker can pick belt parcels, same-side floor parcels, or recover the pile. */
   public nearestPackage(worker: Worker = this.activeWorker): Parcel | null {
     let nearest: Parcel | null = null;
-    let nearestDistance = SHIFT_LAYOUT.grabRadius + 0.0001;
+    let nearestDistance = this.layout.grabRadius + 0.0001;
     for (const parcel of this.packages) {
       if (!this.canPickup(worker, parcel)) continue;
       const separation = distance(worker, parcel);
@@ -539,18 +562,17 @@ export class ShiftModel {
     return nearest;
   }
 
-  public action(): void {
+  public action(worker: Worker = this.activeWorker): void {
     if (!this.canAct()) return;
-    const worker = this.activeWorker;
     if (this.scannerWorker === worker.id) {
       this.scannerWorker = null;
       this.scannerResetCount += 1;
       this.emit('scanner', `${worker.id.toUpperCase()}'S SCANNER RESET · BACK TO WORK`, worker);
       return;
     }
-    const held = this.heldPackage;
+    const held = this.packages.find(parcel => parcel.id === worker.heldId);
     if (!held) {
-      const parcel = this.nearestPackage();
+      const parcel = this.nearestPackage(worker);
       if (!parcel) {
         this.emit('wrong', this.clearForCarry(worker.x, worker.y, worker.side)
           ? 'Move closer to a parcel, then press SPACE' : 'Step clear of the pile, wall or stair rails before picking up', worker);
@@ -563,9 +585,7 @@ export class ShiftModel {
     const dock = this.currentDock(worker);
     if (dock) {
       if (dock !== held.route) {
-        this.combo = 0;
-        if (!held.recovered) this.wrongSortErrors += 1;
-        this.emit('wrong', `This parcel needs ${ROUTE_NAMES[held.route]}`, worker, held);
+        this.wrongDelivery(held, worker);
       } else {
         this.release(worker, held);
         this.deliver(held);
@@ -573,13 +593,13 @@ export class ShiftModel {
       return;
     }
 
-    if (Math.abs(worker.x - SHIFT_LAYOUT.beltX) <= SHIFT_LAYOUT.grabRadius && worker.y >= SHIFT_LAYOUT.beltTop && worker.y <= SHIFT_LAYOUT.beltBottom) {
-      const dropY = clamp(worker.y, SHIFT_LAYOUT.beltTop + 28, SHIFT_LAYOUT.beltBottom - 42);
-      if (this.packages.some((parcel) => parcel.id !== held.id && parcel.state === 'belt' && Math.abs(parcel.y - dropY) < SHIFT_LAYOUT.parcelGap)) {
+    if (Math.abs(worker.x - this.layout.beltX) <= this.layout.grabRadius && worker.y >= this.layout.beltTop && worker.y <= this.layout.beltBottom) {
+      const dropY = clamp(worker.y, this.layout.beltTop + 28, this.layout.beltBottom - 42);
+      if (this.packages.some((parcel) => parcel.id !== held.id && parcel.state === 'belt' && Math.abs(parcel.y - dropY) < this.layout.parcelGap)) {
         this.emit('wrong', 'Belt space occupied · move along the belt to place it', worker, held);
         return;
       }
-      held.x = SHIFT_LAYOUT.beltX;
+      held.x = this.layout.beltX;
       held.y = dropY;
       held.beltOffset = dropY - this.beltTravel;
       held.state = 'belt';
@@ -588,19 +608,19 @@ export class ShiftModel {
       return;
     }
 
-    if (stairAt(worker.x, worker.y)) {
+    if (this.stairSideAt(worker.x, worker.y)) {
       this.emit('wrong', 'Keep the stairs clear · carry it to the landing', worker, held);
       return;
     }
-    const lane = worker.side === 'left' ? SHIFT_LAYOUT.leftLane : SHIFT_LAYOUT.rightLane;
-    const radius = SHIFT_LAYOUT.parcelRadius;
-    const lower = SHIFT_LAYOUT.lowerFloor[worker.side];
-    const floorX = onLowerFloor(worker)
+    const lane = worker.side === 'left' ? this.layout.leftLane : this.layout.rightLane;
+    const radius = this.layout.parcelRadius;
+    const lower = this.layout.lowerFloor[worker.side];
+    const floorX = this.isLowerFloor(worker)
       ? clamp(worker.x + (worker.side === 'left' ? 23 : -23), lower.minX + radius, lower.maxX - radius)
       : clamp(worker.x + (worker.side === 'left' ? 23 : -23), worker.side === 'left' ? lane.minX + 6 : 542, worker.side === 'left' ? 418 : lane.maxX - 6);
-    const floorY = onLowerFloor(worker)
-      ? clamp(worker.y + 40, SHIFT_LAYOUT.lowerFloor.top + radius, SHIFT_LAYOUT.lowerFloor.bottom - radius)
-      : clamp(worker.y + 40, SHIFT_LAYOUT.workerMinY + radius, SHIFT_LAYOUT.bulkRearWall.y - SHIFT_LAYOUT.bulkRearWall.height / 2 - radius);
+    const floorY = this.isLowerFloor(worker)
+      ? clamp(worker.y + 40, this.layout.lowerFloor.top + radius, this.layout.lowerFloor.bottom - radius)
+      : clamp(worker.y + 40, this.layout.workerMinY + radius, this.layout.bulkRearWall.y - this.layout.bulkRearWall.height / 2 - radius);
     if (DEPOT_EQUIPMENT_FOOTPRINTS.some((rect) => {
       const nearestX = clamp(floorX, rect.x - rect.width / 2, rect.x + rect.width / 2);
       const nearestY = clamp(floorY, rect.y - rect.height / 2, rect.y + rect.height / 2);
@@ -609,14 +629,14 @@ export class ShiftModel {
       this.emit('wrong', 'Keep the belt and trays clear · step aside to set it down', worker, held);
       return;
     }
-    const storage = SHIFT_LAYOUT.floorStorage[worker.side === 'left' ? 'T' : 'S'];
+    const storage = this.layout.floorStorage[worker.side === 'left' ? 'T' : 'S'];
     const storageX = clamp(floorX, storage.x - storage.width / 2, storage.x + storage.width / 2);
     const storageY = clamp(floorY, storage.y - storage.height / 2, storage.y + storage.height / 2);
     if (Math.hypot(floorX - storageX, floorY - storageY) < radius) {
       this.emit('wrong', 'Keep the storage pile clear · deliver inside the painted route', worker, held);
       return;
     }
-    if (distance(worker, { x: floorX, y: floorY }) < SHIFT_LAYOUT.workerRadius + radius) {
+    if (distance(worker, { x: floorX, y: floorY }) < this.layout.workerRadius + radius) {
       this.emit('wrong', 'Leave room for the parcel · step clear of the edge', worker, held);
       return;
     }
@@ -653,7 +673,7 @@ export class ShiftModel {
       result.reason = 'TOO HEAVY TO THROW · carry it';
     } else if (this.currentDock(worker) === route) {
       result.reason = 'ALREADY AT THE DROP · press SPACE';
-    } else if (onLowerFloor(worker) && info.kind !== 'floor') {
+    } else if (this.isLowerFloor(worker) && info.kind !== 'floor') {
       result.reason = "CAN'T THROW UP ONTO THE PLATFORM · carry it";
     } else if (separation > THROWING.rangePx) {
       result.reason = `TOO FAR TO THROW · ${Math.ceil((separation - THROWING.rangePx) / 32)} m closer, or carry it`;
@@ -682,7 +702,8 @@ export class ShiftModel {
     held.state = 'thrown';
     held.flight = {
       fromX: held.x, fromY: held.y, toX: target.x, toY: target.y, elapsedMs: 0, durationMs: THROWING.flightMs,
-      downward: platformLevelAt(worker.x, worker.y) > 0.5 && ROUTE_INFO[held.route].kind === 'floor',
+      downward: this.surfaceLevelAt(worker.x, worker.y) > 0.5 && ROUTE_INFO[target.route].kind === 'floor',
+      breakChance: target.breakChance, route: target.route,
     };
     this.emit('throw', `THROWN · ${held.label} → ${held.route}`, worker, held);
   }
@@ -693,13 +714,13 @@ export class ShiftModel {
     return result;
   }
 
-  private canAct(): boolean {
+  protected canAct(): boolean {
     return !this.paused && !this.ended;
   }
 
-  private destinationCenter(route: Route, side: 'left' | 'right'): { x: number; y: number } {
-    if (route === 'C') return side === 'left' ? SHIFT_LAYOUT.bulkLeft : SHIFT_LAYOUT.bulkRight;
-    const area = SHIFT_LAYOUT.dropAreas[route];
+  protected destinationCenter(route: Route, side: 'left' | 'right'): { x: number; y: number } {
+    if (route === 'C') return side === 'left' ? this.layout.bulkLeft : this.layout.bulkRight;
+    const area = this.layout.dropAreas[route];
     return { x: area.x, y: area.y };
   }
 
@@ -722,8 +743,7 @@ export class ShiftModel {
     this.beltTravel += ((startSpeed + endSpeed) / 2) * movingMs / 1000;
 
     this.moveWorker(deltaMs, move);
-    this.updateScannerRequest();
-    this.assistWorker(deltaMs);
+    this.updateCoworker(deltaMs);
     for (const worker of this.workers) {
       const held = this.packages.find((parcel) => parcel.id === worker.heldId);
       if (held) this.syncHeld(worker, held);
@@ -739,7 +759,7 @@ export class ShiftModel {
         parcel.broken = true;
         this.emit('spill', parcel.label, parcel, parcel);
       }
-      if (parcel.y >= SHIFT_LAYOUT.beltBottom) this.miss(parcel);
+      if (parcel.y >= this.layout.beltBottom) this.miss(parcel);
     }
 
     if (this.pileup >= this.capacity) {
@@ -756,8 +776,8 @@ export class ShiftModel {
         this.spawnElapsedMs -= this.nextSpawnIntervalMs;
         // A phase change applies to the next interval, so it cannot produce
         // an unexpected short gap immediately after the previous parcel.
-        this.nextSpawnIntervalMs = this.brianRemaining > 0 ? 1_900
-          : this.phase === 'lesson' ? 6_000 : this.phase === 'flow' ? 2_800 : 2_200;
+        this.nextSpawnIntervalMs = this.brianRemaining > 0 ? this.freightFlow.brianMs
+          : this.phase === 'lesson' ? this.freightFlow.lessonMs : this.phase === 'flow' ? this.freightFlow.flowMs : this.freightFlow.rushMs;
       }
     } else {
       // A parcel still in receiving is not on the shift's belt or score sheet.
@@ -779,14 +799,22 @@ export class ShiftModel {
     if (t < 1) return;
     parcel.flight = null;
     const fragile = THROWING.fragileKinds.includes(parcel.kind);
-    const chance = fragile ? THROWING.breakChance.fragile : THROWING.breakChance.ordinary;
+    const chance = flight.breakChance ?? (fragile ? THROWING.breakChance.fragile : THROWING.breakChance.ordinary);
     if (this.random() < chance) this.damage(parcel);
-    else {
+    else if ((flight.route ?? parcel.route) === parcel.route) {
       parcel.thrownDelivery = true;
       this.thrownDeliveries += 1;
       this.deliver(parcel);
-    }
+    } else { parcel.state = 'floor'; this.wrongDelivery(parcel, parcel); }
   }
+
+  protected wrongDelivery(parcel: Parcel, at: { x: number; y: number }): void {
+    this.combo = 0;
+    if (!parcel.recovered) this.wrongSortErrors += 1;
+    this.emit('wrong', `This parcel needs ${ROUTE_NAMES[parcel.route]}`, at, parcel);
+  }
+
+  protected updateCoworker(deltaMs: number): void { this.updateScannerRequest(); this.assistWorker(deltaMs); }
 
   /** A thrown parcel broke: no delivery credit and exactly one penalty, ever. */
   private damage(parcel: Parcel): void {
@@ -802,7 +830,7 @@ export class ShiftModel {
     this.emit('damage', `BROKEN · ${parcel.label} · -${THROWING.breakPenalty}`, parcel, parcel, -penalty);
   }
 
-  private moveWorker(deltaMs: number, move: { x: number; y: number }, worker: Worker = this.activeWorker): void {
+  protected moveWorker(deltaMs: number, move: { x: number; y: number }, worker: Worker = this.activeWorker): void {
     const x = Number.isFinite(move.x) ? clamp(move.x, -1, 1) : 0;
     const y = Number.isFinite(move.y) ? clamp(move.y, -1, 1) : 0;
     const magnitude = Math.hypot(x, y);
@@ -813,8 +841,8 @@ export class ShiftModel {
     const normalized = Math.max(1, magnitude);
     const previousX = worker.x;
     const previousY = worker.y;
-    const maxY = held ? SHIFT_LAYOUT.stairs.maxY - SHIFT_LAYOUT.carriedClearance : SHIFT_LAYOUT.workerMaxY;
-    let nextY = clamp(worker.y + y / normalized * speed * deltaMs / 1000, SHIFT_LAYOUT.workerMinY, maxY);
+    const maxY = held ? this.layout.stairs.maxY - this.layout.carriedClearance : this.layout.workerMaxY;
+    let nextY = clamp(worker.y + y / normalized * speed * deltaMs / 1000, this.layout.workerMinY, maxY);
     const bounds = this.walkBounds(worker.side, worker.y);
     let nextX = clamp(worker.x + x / normalized * speed * deltaMs / 1000, bounds.minX, bounds.maxX);
     // Resolve each axis so a diagonal input slides along solid storage instead of tunnelling through it.
@@ -828,18 +856,18 @@ export class ShiftModel {
 
   /** Horizontal envelope; walkable() also rejects the gaps beside each flight. */
   public walkBounds(side: 'left' | 'right', y: number): { minX: number; maxX: number } {
-    const lane = side === 'left' ? SHIFT_LAYOUT.leftLane : SHIFT_LAYOUT.rightLane;
-    const floor = SHIFT_LAYOUT.lowerFloor;
-    if (y < floor.top + SHIFT_LAYOUT.workerRadius || y > floor.bottom - SHIFT_LAYOUT.workerRadius) return lane;
-    return side === 'left' ? { minX: floor.left.minX + SHIFT_LAYOUT.workerRadius, maxX: lane.maxX }
-      : { minX: lane.minX, maxX: floor.right.maxX - SHIFT_LAYOUT.workerRadius };
+    const lane = side === 'left' ? this.layout.leftLane : this.layout.rightLane;
+    const floor = this.layout.lowerFloor;
+    if (y < floor.top + this.layout.workerRadius || y > floor.bottom - this.layout.workerRadius) return lane;
+    return side === 'left' ? { minX: floor.left.minX + this.layout.workerRadius, maxX: lane.maxX }
+      : { minX: lane.minX, maxX: floor.right.maxX - this.layout.workerRadius };
   }
 
   public walkable(side: 'left' | 'right', x: number, y: number): boolean {
-    if (y < SHIFT_LAYOUT.workerMinY || y > SHIFT_LAYOUT.workerMaxY) return false;
+    if (y < this.layout.workerMinY || y > this.layout.workerMaxY) return false;
     if (this.workers.find(worker => worker.side === side)?.heldId !== null && !this.clearForCarry(x, y, side)) return false;
-    const { stairs, lowerFloor, workerRadius: radius } = SHIFT_LAYOUT;
-    const lane = side === 'left' ? SHIFT_LAYOUT.leftLane : SHIFT_LAYOUT.rightLane;
+    const { stairs, lowerFloor, workerRadius: radius } = this.layout;
+    const lane = side === 'left' ? this.layout.leftLane : this.layout.rightLane;
     const floor = lowerFloor[side];
     const deck = x >= lane.minX && x <= lane.maxX;
     const ground = x >= floor.minX + radius && x <= floor.maxX - radius
@@ -847,25 +875,25 @@ export class ShiftModel {
     const flight = y >= stairs.minY + radius && y <= stairs.maxY - radius
       && (side === 'left' ? x >= floor.maxX - radius && x <= lane.minX : x >= lane.maxX && x <= floor.minX + radius);
     if (!deck && !ground && !flight) return false;
-    const storage = SHIFT_LAYOUT.floorStorage[side === 'left' ? 'T' : 'S'];
+    const storage = this.layout.floorStorage[side === 'left' ? 'T' : 'S'];
     const nearestX = clamp(x, storage.x - storage.width / 2, storage.x + storage.width / 2);
     const nearestY = clamp(y, storage.y - storage.height / 2, storage.y + storage.height / 2);
-    if (Math.hypot(x - nearestX, y - nearestY) < SHIFT_LAYOUT.workerRadius) return false;
-    return !this.packages.some((parcel) => parcel.state === 'floor' && onLowerFloor(parcel) === onLowerFloor({ x, y })
-      && Math.hypot(x - parcel.x, y - parcel.y) < SHIFT_LAYOUT.workerRadius + SHIFT_LAYOUT.parcelRadius);
+    if (Math.hypot(x - nearestX, y - nearestY) < this.layout.workerRadius) return false;
+    return !this.packages.some((parcel) => parcel.state === 'floor' && this.isLowerFloor(parcel) === this.isLowerFloor({ x, y })
+      && Math.hypot(x - parcel.x, y - parcel.y) < this.layout.workerRadius + this.layout.parcelRadius);
   }
 
-  private clearForCarry(x: number, y: number, side: 'left' | 'right'): boolean {
-    const radius = SHIFT_LAYOUT.carriedClearance;
-    if (y + radius > SHIFT_LAYOUT.stairs.maxY) return false;
-    const { stairs } = SHIFT_LAYOUT;
+  protected clearForCarry(x: number, y: number, side: 'left' | 'right'): boolean {
+    const radius = this.layout.carriedClearance;
+    if (y + radius > this.layout.stairs.maxY) return false;
+    const { stairs } = this.layout;
     const flight = stairs[side];
     const railX = clamp(x, Math.min(flight.topX, flight.bottomX), Math.max(flight.topX, flight.bottomX));
     // Include each rail's endpoints: cargo can rotate before entering a flight
     // as well as while descending it. The same check guards pickup poses.
     if ([stairs.minY - 2, stairs.maxY + 0.5].some(railY => Math.hypot(x - railX, y - railY) < radius)) return false;
-    if (stairAt(x, y) === side && (y < stairs.minY + radius || y > stairs.maxY - radius)) return false;
-    const storage = SHIFT_LAYOUT.floorStorage[side === 'left' ? 'T' : 'S'];
+    if (this.stairSideAt(x, y) === side && (y < stairs.minY + radius || y > stairs.maxY - radius)) return false;
+    const storage = this.layout.floorStorage[side === 'left' ? 'T' : 'S'];
     const nearestX = clamp(x, storage.x - storage.width / 2, storage.x + storage.width / 2);
     const nearestY = clamp(y, storage.y - storage.height / 2, storage.y + storage.height / 2);
     return Math.hypot(x - nearestX, y - nearestY) >= radius;
@@ -873,28 +901,28 @@ export class ShiftModel {
 
   /** A walking waypoint through the side stair opening, with no position changes or speed boost. */
   public navigationTarget(target: { x: number; y: number }, worker: Worker = this.activeWorker): { x: number; y: number } {
-    const { stairs } = SHIFT_LAYOUT;
+    const { stairs } = this.layout;
     const flight = stairs[worker.side];
-    const laneX = worker.side === 'left' ? SHIFT_LAYOUT.leftLane.maxX : SHIFT_LAYOUT.rightLane.minX;
+    const laneX = worker.side === 'left' ? this.layout.leftLane.maxX : this.layout.rightLane.minX;
     const onDeck = worker.side === 'left' ? worker.x >= flight.topX : worker.x <= flight.topX;
-    const radius = worker.heldId === null ? SHIFT_LAYOUT.workerRadius : SHIFT_LAYOUT.carriedClearance;
+    const radius = worker.heldId === null ? this.layout.workerRadius : this.layout.carriedClearance;
     const aligned = worker.y >= stairs.minY + radius && worker.y <= stairs.maxY - radius;
-    if (onLowerFloor(target) && onDeck) {
+    if (this.isLowerFloor(target) && onDeck) {
       return aligned ? target : { x: laneX, y: stairs.centerY };
     }
-    if (!onLowerFloor(target) && !onDeck) {
-      if (onLowerFloor(worker) && !aligned) return { x: worker.x, y: stairs.centerY };
+    if (!this.isLowerFloor(target) && !onDeck) {
+      if (this.isLowerFloor(worker) && !aligned) return { x: worker.x, y: stairs.centerY };
       return { x: laneX, y: stairs.centerY };
     }
     return target;
   }
 
-  private syncHeld(worker: Worker, parcel: Parcel): void {
+  protected syncHeld(worker: Worker, parcel: Parcel): void {
     parcel.x = worker.x + (worker.side === 'left' ? 18 : -18);
     parcel.y = worker.y - 17;
   }
 
-  private pickup(worker: Worker, parcel: Parcel): void {
+  protected pickup(worker: Worker, parcel: Parcel): void {
     const recovered = parcel.state === 'missed';
     if (recovered) parcel.recovered = true;
     parcel.state = 'held';
@@ -905,15 +933,15 @@ export class ShiftModel {
   }
 
   /** Reach is measured on one flat surface, never through the deck edge or stair stringers. */
-  private canPickup(worker: Worker, parcel: Parcel): boolean {
+  protected canPickup(worker: Worker, parcel: Parcel): boolean {
     if (parcel.state !== 'belt' && parcel.state !== 'floor' && parcel.state !== 'missed') return false;
     if (!this.clearForCarry(worker.x, worker.y, worker.side)) return false;
-    if (stairAt(worker.x, worker.y)) return false;
+    if (this.stairSideAt(worker.x, worker.y)) return false;
     if (parcel.state === 'floor') {
       if (worker.side === 'left' ? parcel.x > 440 : parcel.x < 520) return false;
-      if (onLowerFloor(worker) !== onLowerFloor(parcel)) return false;
-    } else if (onLowerFloor(worker)) return false;
-    return distance(worker, parcel) <= SHIFT_LAYOUT.grabRadius;
+      if (this.isLowerFloor(worker) !== this.isLowerFloor(parcel)) return false;
+    } else if (this.isLowerFloor(worker)) return false;
+    return distance(worker, parcel) <= this.layout.grabRadius;
   }
 
   /** Same walking, carrying, stairs and delivery rules as the player; never throws or handles bulk. */
@@ -929,9 +957,9 @@ export class ShiftModel {
       && (item.state === 'belt' || item.state === 'missed'
         || (item.state === 'floor' && (worker.side === 'left' ? item.x <= 440 : item.x >= 520))))
       .sort((a, b) => (a.state === 'missed' ? -1 : 0) - (b.state === 'missed' ? -1 : 0) || b.y - a.y)[0];
-    const laneX = worker.side === 'left' ? SHIFT_LAYOUT.leftLane.maxX : SHIFT_LAYOUT.rightLane.minX;
+    const laneX = worker.side === 'left' ? this.layout.leftLane.maxX : this.layout.rightLane.minX;
     const destination = parcel ? held ? this.destinationCenter(held.route, worker.side)
-      : onLowerFloor(parcel) ? parcel : { x: laneX, y: parcel.y } : { x: laneX, y: 500 };
+      : this.isLowerFloor(parcel) ? parcel : { x: laneX, y: parcel.y } : { x: laneX, y: 500 };
     if (held && this.currentDock(worker) === held.route) {
       this.release(worker, held);
       this.deliver(held, true);
@@ -953,7 +981,7 @@ export class ShiftModel {
   }
 
   /** Two brief handovers after real assisted work, never from a clock-only fixture. */
-  private updateScannerRequest(): void {
+  protected updateScannerRequest(): void {
     if (!this.assistanceActive || this.scannerWorker || this.elapsedMs >= this.durationMs || this.scannerFaultIndex >= 2) return;
     const at = this.scannerFaultIndex === 0 ? 70_000 : 135_000;
     const deliveries = this.scannerFaultIndex === 0 ? 4 : 10;
@@ -964,7 +992,7 @@ export class ShiftModel {
     this.emit('scanner', this.scannerRequest!.message, worker);
   }
 
-  private release(worker: Worker, parcel: Parcel): void {
+  protected release(worker: Worker, parcel: Parcel): void {
     worker.heldId = null;
     parcel.workerId = null;
   }
@@ -974,17 +1002,17 @@ export class ShiftModel {
     if (!this.walkable(worker.side, worker.x, worker.y)) return null;
     const routes = WORKER_ROUTES[worker.id];
     for (const route of routes) {
-      if ((route === 'T' || route === 'S') !== onLowerFloor(worker)) continue;
-      const area = SHIFT_LAYOUT.dropAreas[route as 'A' | 'B' | 'D' | 'E' | 'T' | 'S'];
+      if ((route === 'T' || route === 'S') !== this.isLowerFloor(worker)) continue;
+      const area = this.layout.dropAreas[route as 'A' | 'B' | 'D' | 'E' | 'T' | 'S'];
       // Truck areas exclude their lower edge; each painted route has one owner.
       if (Math.abs(worker.x - area.x) <= area.width / 2 && worker.y >= area.y - area.height / 2 && worker.y < area.y + area.height / 2) return route;
     }
-    const bulk = worker.side === 'left' ? SHIFT_LAYOUT.dropAreas.bulkLeft : SHIFT_LAYOUT.dropAreas.bulkRight;
+    const bulk = worker.side === 'left' ? this.layout.dropAreas.bulkLeft : this.layout.dropAreas.bulkRight;
     if (inside(bulk, worker)) return 'C';
     return null;
   }
 
-  private deliver(parcel: Parcel, assisted = false): void {
+  protected deliver(parcel: Parcel, assisted = false): void {
     const base = DELIVERY_POINTS[parcel.route];
     const award = assisted ? 0 : parcel.recovered ? base / 2 : base + Math.min(this.combo, 10) * 15;
     parcel.state = 'delivered';
@@ -992,12 +1020,12 @@ export class ShiftModel {
     if (parcel.route === 'T' || parcel.route === 'S') {
       parcel.pileIndex = this.floorPiles[parcel.route];
       this.floorPiles[parcel.route] += 1;
-      const slot = floorPileSlot(parcel.route, parcel.pileIndex);
+      const slot = this.pileSlot(parcel.route, parcel.pileIndex);
       parcel.x = slot.x;
       parcel.y = slot.y;
     } else {
-      const destination = parcel.route === 'C' ? SHIFT_LAYOUT.bulkPile : parcel.route === 'A' ? SHIFT_LAYOUT.dockA
-        : parcel.route === 'B' ? SHIFT_LAYOUT.dockB : parcel.route === 'D' ? SHIFT_LAYOUT.dockD : SHIFT_LAYOUT.dockE;
+      const destination = parcel.route === 'C' ? this.layout.bulkPile : parcel.route === 'A' ? this.layout.dockA
+        : parcel.route === 'B' ? this.layout.dockB : parcel.route === 'D' ? this.layout.dockD : this.layout.dockE;
       parcel.x = destination.x;
       parcel.y = destination.y;
     }
@@ -1015,8 +1043,8 @@ export class ShiftModel {
 
   private miss(parcel: Parcel): void {
     parcel.state = 'missed';
-    parcel.x = SHIFT_LAYOUT.recoveryPile.x;
-    parcel.y = SHIFT_LAYOUT.recoveryPile.y;
+    parcel.x = this.layout.recoveryPile.x;
+    parcel.y = this.layout.recoveryPile.y;
     if (!this.countedMisses.has(parcel.id)) {
       this.countedMisses.add(parcel.id);
       parcel.missCounted = true;
@@ -1026,34 +1054,35 @@ export class ShiftModel {
     this.emit('miss', `${this.pileup}/${this.capacity} in recovery · pick up near the belt end`, parcel, parcel);
   }
 
+  protected freightIdentity(id: number, _ordinaryIndex: number, brianKind: ParcelKind | null): ParcelIdentity {
+    const { route, kind } = brianKind ? { route: 'C' as const, kind: brianKind } : PARCEL_SEQUENCE[(id - 1) % PARCEL_SEQUENCE.length];
+    return { id, route, kind, label: PARCEL_LABELS[kind], size: CARRY_MULTIPLIER[kind] <= 0.7 ? 'heavy' : 'normal' };
+  }
+
   private nextParcelIdentity(plannedArrival: number): PendingIntake {
     const brianSending = this.brianRemaining > 0 || (!this.brianSent && plannedArrival >= 63_000);
     const brianIndex = this.brianRemaining > 0 ? BRIAN_BULK_SEQUENCE.length - this.brianRemaining : 0;
-    const { route, kind } = brianSending
-      ? { route: 'C' as const, kind: BRIAN_BULK_SEQUENCE[brianIndex] }
-      : PARCEL_SEQUENCE[(this.nextId - 1) % PARCEL_SEQUENCE.length];
-    return {
-      id: this.nextId, route, kind, label: PARCEL_LABELS[kind],
-      size: CARRY_MULTIPLIER[kind] <= 0.7 ? 'heavy' : 'normal', brian: brianSending,
-    };
+    return { ...this.freightIdentity(this.nextId, this.ordinaryFreightCount, brianSending ? BRIAN_BULK_SEQUENCE[brianIndex] : null), brian: brianSending };
   }
 
   private spawnPackage(): boolean {
-    const spawnY = SHIFT_LAYOUT.beltTop + 26;
-    if (this.packages.some((parcel) => parcel.state === 'belt' && Math.abs(parcel.y - spawnY) < SHIFT_LAYOUT.parcelGap)) return false;
+    const spawnY = this.layout.beltTop + 26;
+    if (this.packages.some((parcel) => parcel.state === 'belt' && Math.abs(parcel.y - spawnY) < this.layout.parcelGap)) return false;
     // Once the unloaders show a parcel, its identity must survive a brake or
     // blocked intake. An ordinary reservation delayed past Brian's cue lands
     // first; all five Brian parcels follow without consuming one of his slots.
-    const { id, route, kind, label, size, brian } = this.pendingIntake ?? this.nextParcelIdentity(this.elapsedMs);
+    const { id, route, kind, label, size, address, street, brian } = this.pendingIntake ?? this.nextParcelIdentity(this.elapsedMs);
     this.nextId += 1;
     this.packages.push({
       id, route, kind, label, size,
-      x: SHIFT_LAYOUT.beltX, y: spawnY, state: 'belt', workerId: null,
+      ...(address === undefined ? {} : { address }), ...(street === undefined ? {} : { street }),
+      x: this.layout.beltX, y: spawnY, state: 'belt', workerId: null,
       beltOffset: spawnY - this.beltTravel, recovered: false, missCounted: false,
       broken: false, breakY: kind === 'makeup' ? 220 + id * 73 % 301 : null,
     });
     this.pendingIntake = null;
     if (brian) this.brianRemaining -= 1;
+    else this.ordinaryFreightCount += 1;
     return true;
   }
 
@@ -1083,7 +1112,7 @@ export class ShiftModel {
     this.emit('end', message, { x: 480, y: 340 });
   }
 
-  private emit(type: ShiftEvent['type'], message: string, point: { x: number; y: number }, parcel?: Parcel, score?: number, assisted?: boolean): void {
+  protected emit(type: ShiftEvent['type'], message: string, point: { x: number; y: number }, parcel?: Parcel, score?: number, assisted?: boolean): void {
     const workerId = 'id' in point && (point.id === 'termite' || point.id === 'skanky') ? point.id : undefined;
     this.events.push({ type, message, x: point.x, y: point.y, route: parcel?.route, packageId: parcel?.id, score, workerId, assisted });
   }
