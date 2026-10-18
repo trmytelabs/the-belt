@@ -203,7 +203,7 @@ export class Belt3d {
       parcel.workerId = null;
       this.stolen.add(parcel.id);
     };
-    this.dream = new MesaDream(this.overlay.root);
+    this.dream = new MesaDream(this.overlay.root, this.quality);
     this.touch = new TouchControls(this.overlay.root, {
       action: () => this.act(),
       switchWorker: () => { if (this.state === 'playing') this.model.switchWorker(); },

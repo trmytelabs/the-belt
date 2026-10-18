@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 
 import { BODY, bendElbows, bendKnees, createCharacter, mergeCharacter, type Character } from './characters';
+import { placeProp } from './propModels';
 import { shadowed, standard, textPlane } from './space';
 
 /**
@@ -36,7 +37,7 @@ export class MesaDream {
   private score = 24800;
   private frameClock = 0;
 
-  constructor(host: HTMLElement) {
+  constructor(host: HTMLElement, quality: 'high' | 'low') {
     const scene = this.scene;
     scene.background = new THREE.Color(0x161e2a);
     scene.add(new THREE.HemisphereLight(0x7f95b8, 0x2a1e16, 0.55));
@@ -54,7 +55,7 @@ export class MesaDream {
     ampFill.target.position.set(2.4, 0.5, -0.1);
     scene.add(lamp, tvGlow, moon, ampFill, ampFill.target);
 
-    this.buildRoom();
+    this.buildRoom(quality);
     this.lumines = this.buildTv();
     this.buildAmp();
 
@@ -91,6 +92,13 @@ export class MesaDream {
     const stool = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.22, 0.5, 14), standard(0x5b4636, 0.8));
     stool.position.set(-1.35, 0.25, -0.25);
     scene.add(shadowed(stool));
+    if (quality === 'high') {
+      // A round steel shop stool at the same seat height.
+      const seat = new THREE.Group();
+      seat.position.set(-1.35, 0, -0.25);
+      void placeProp(seat, 'metal-stool', { fallback: stool, size: { y: 0.5 } });
+      scene.add(seat);
+    }
     this.buildGuitar();
     this.skanky.body.add(this.guitar);
     mergeCharacter(this.skanky);
@@ -130,7 +138,7 @@ export class MesaDream {
     bendKnees(c, 1.45);
   }
 
-  private buildRoom(): void {
+  private buildRoom(quality: 'high' | 'low'): void {
     const scene = this.scene;
     // Floorboards.
     const boards = document.createElement('canvas');
@@ -235,6 +243,16 @@ export class MesaDream {
     const mug = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.045, 0.12, 12), standard(0xd8d0c0, 0.5));
     mug.position.set(-2.05, 0.88, -1.9);
     scene.add(shadowed(desk), shadowed(legs), shadowed(monitor), screen, keyboard, mug);
+    if (quality === 'high') {
+      // A steel office desk in the same footprint, under the same monitor.
+      const wooden = new THREE.Group();
+      wooden.add(desk, legs);
+      scene.add(wooden);
+      const steel = new THREE.Group();
+      steel.position.set(-2.55, 0, -1.95);
+      void placeProp(steel, 'office-desk', { fallback: wooden, size: { x: 1.5, y: 0.82, z: 0.7 } });
+      scene.add(steel);
+    }
 
     // Bed against the side wall.
     const bed = new THREE.Group();
