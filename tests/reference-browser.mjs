@@ -93,10 +93,12 @@ try {
   for (const [name, x, y] of [
     ['HUSSAN', 244, 148], ['AJ', 244, 244], ['PAULA ABDUL', 244, 340], ['BANNERMAN', 244, 436],
     ['FRUIT LOOP', 716, 148], ['DORIS', 716, 244], ['BRIAN', 716, 340], ['DONNA', 716, 436],
-    ['HERES UR SOVICE', 244, 532], ['PAYTMAN', 716, 532], ['DOWNTOWN', 244, 740], ['EASTSIDE', 716, 740],
+    ['HERES UR SOVICE', 244, 532], ['PAYTMAN', 716, 532],
+    ['DOWNTOWN', SHIFT_LAYOUT.playerTrucks.D.x, SHIFT_LAYOUT.playerTrucks.D.y],
+    ['EASTSIDE', SHIFT_LAYOUT.playerTrucks.E.x, SHIFT_LAYOUT.playerTrucks.E.y],
   ]) {
     const truck = truckLayout.find(truck => truck.name === name);
-    assert.deepEqual([truck?.x, truck?.y], [x, y], `${name} must occupy its original truck bay`);
+    assert.deepEqual([truck?.x, truck?.y], [x, y], `${name} must occupy its designated truck bay`);
   }
   await read(() => {
     window.fixtureGame.loop.sleep();
@@ -332,7 +334,7 @@ try {
   });
   assert.deepEqual(bulkContact.box, { x: SHIFT_LAYOUT.bulkPile.x - 61, y: SHIFT_LAYOUT.bulkPile.y, visible: true },
     'Ralph lifts at the near edge of the shared pile while his body stays outside it');
-  assert.deepEqual(bulkContact.truck, { x: 244, y: 628 }, 'Ralph backs into the empty west bay beside the bulk pile');
+  assert.deepEqual(bulkContact.truck, { x: SHIFT_LAYOUT.ralphBay.x, y: SHIFT_LAYOUT.ralphBay.y }, 'Ralph backs into the empty west bay beside the bulk pile');
   for (let trip = 0; trip < 5; trip++) {
     await advance(93_600 + trip * 3000);
     const lifted = await snapshot();

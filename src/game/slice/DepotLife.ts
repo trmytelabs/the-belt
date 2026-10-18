@@ -72,7 +72,7 @@ export class DepotLife {
     for (const [id, name, x, y] of [
       ['kylie', 'KYLIE', 850, 400], ['vic', 'VIC', 132, 286],
       ['john', 'JOHN RUSHTON', 77, 397], ['shan', SHAN_NAME, 880, 395],
-      ['ralph', 'RALPH', 751, 610], ['paula', 'PAULA ABDUL', 214, 382],
+      ['ralph', 'RALPH', SHIFT_LAYOUT.platform.left + SHIFT_LAYOUT.workerRadius, SHIFT_LAYOUT.ralphBay.y], ['paula', 'PAULA ABDUL', 214, 382],
       ['gunman', 'GUNMAN', 344, 348], ['demon', '', 160, 360],
     ] as [string, string, number, number][]) this.add(id, name, x, y, false);
     this.portal = scene.add.graphics().setDepth(14);
@@ -103,6 +103,7 @@ export class DepotLife {
       fontFamily: 'Arial, sans-serif', fontSize: '10px', fontStyle: 'bold',
       color: '#d0d3b9', stroke: '#142b34', strokeThickness: 3,
     }).setOrigin(0.5);
+    tag.setData('homeY', tag.y);
     art.add(tag);
     this.cast.set(id, { art, tag, name, x, y });
   }
@@ -111,6 +112,7 @@ export class DepotLife {
     // The interlude owns its own clock. Normal updates cannot advance the crew
     // or consume a suspended speech window while the story is in progress.
     if (this.benActive) return;
+    for (const colleague of this.cast.values()) colleague.tag.y = colleague.tag.getData('homeY');
     const time = this.model.elapsedMs;
     this.advanceSpeech(time);
     // A few purposeful idle gestures; the crew stays out of both workers' lanes.
@@ -499,26 +501,30 @@ export class DepotLife {
       // Everyone puts their freight down for the scrum.
       this.routines.hideFreight();
       const gather = progress('gather');
+      // Use the clear west platform, as in 3D. The taller 2D illustrations need
+      // two spaced columns so heads and name tags remain readable, including
+      // while everyone walks in from the back of the shot.
       const spots: [string, number, number][] = [
-        ['hussan', 372, 40], ['aj', 398, 4], ['ben', 420, 54], ['bannerman', 560, 6],
-        ['fruitloop', 584, 46], ['doris', 540, 54], ['brian', 612, 16], ['donna', 348, 8],
+        ['hussan', 350, 292], ['aj', 404, 292], ['ben', 350, 368], ['bannerman', 404, 368],
+        ['fruitloop', 350, 444], ['doris', 404, 444], ['brian', 350, 520], ['donna', 404, 520],
       ];
       for (const [id, x, y] of spots) {
         if (id === 'ben' && this.benCompleted) continue;
         place(id, x, y - 40 * (1 - gather));
+        this.cast.get(id)!.tag.y = 39;
         const art = this.cast.get(id)!.art;
         const furious = progress('crew-furious') > 0;
         art.rotation = furious && !this.reducedMotion ? Math.sin(time / 90 + x) * 0.08 : 0;
         setColleaguePose(art, id === 'aj' && furious ? 'shout' : 'idle', time);
       }
-      workers[0].container.setPosition(452, 18 - 40 * (1 - gather)).setVisible(true);
-      workers[1].container.setPosition(508, 18 - 40 * (1 - gather)).setVisible(true);
+      workers[0].container.setPosition(350, 216 - 40 * (1 - gather)).setVisible(true);
+      workers[1].container.setPosition(404, 216 - 40 * (1 - gather)).setVisible(true);
       workers[0].update(time, false, true, false);
       workers[1].update(time, false, true, false);
-      shan.setVisible(true).setPosition(480, 100).setData('ranting', progress('shan-over') > 0);
+      shan.setVisible(true).setPosition(377, 152).setData('ranting', progress('shan-over') > 0);
       updateColleagueArt(shan, time);
       this.clearStandingCast(workers.map(worker => worker.container));
-      return { x: 480, y: 60, zoom: 2.1 };
+      return { x: 460, y: 328, zoom: 1.05 };
     }
     const leaves = progress('termite-leaves');
     const catches = progress('shan-catches');

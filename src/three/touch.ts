@@ -79,7 +79,7 @@ export class TouchControls {
       <div class="b3d-stick" aria-label="Move"><div class="b3d-knob"></div></div>
       <div class="b3d-actions">
         <button type="button" class="switch" data-touch="switch">SWITCH</button>
-        <button type="button" class="grab" data-touch="grab">GRAB /<br>DELIVER</button>
+        <button type="button" class="grab" data-touch="grab" aria-label="Grab or deliver">GRAB /<br>DELIVER</button>
         <button type="button" class="brake" data-touch="brake">BRAKE</button>
         <button type="button" class="throw" data-touch="throw">THROW</button>
       </div>
@@ -159,12 +159,15 @@ export class TouchControls {
    * lot chapters (where GRAB acts, BRAKE takes the cart and SWITCH, THROW and
    * VIEW are hidden). Releases the stick otherwise.
    */
-  public setLive(live: boolean, brakeLabel: string, brakeReady: boolean, chapter = false): void {
+  public setLive(live: boolean, brakeLabel: string, brakeReady: boolean, chapter = false, scannerReset = false): void {
     this.root.classList.toggle('live', live);
     this.root.classList.toggle('chapter', chapter);
     const grab = this.root.querySelector<HTMLButtonElement>('.grab')!;
-    const grabLabel = chapter ? 'ACT' : 'GRAB /<br>DELIVER';
-    if (grab.innerHTML !== grabLabel) grab.innerHTML = grabLabel;
+    const grabLabel = chapter ? 'ACT' : scannerReset ? 'RESET<br>SCANNER' : 'GRAB /<br>DELIVER';
+    if (grab.innerHTML !== grabLabel) {
+      grab.innerHTML = grabLabel;
+      grab.setAttribute('aria-label', chapter ? 'Act' : scannerReset ? 'Reset scanner' : 'Grab or deliver');
+    }
     if (!live) this.reset();
     if (this.brakeButton.textContent !== brakeLabel) this.brakeButton.textContent = brakeLabel;
     this.brakeButton.disabled = !brakeReady;

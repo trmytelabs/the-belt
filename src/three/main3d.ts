@@ -42,7 +42,7 @@ const PHASE_LABELS: Record<string, string> = {
 const EVENT_SOUNDS: Partial<Record<ShiftEvent['type'], SoundEffect>> = {
   grab: 'grab', drop: 'drop', sort: 'correct', wrong: 'wrong', miss: 'pile-up',
   recover: 'dig', brake: 'belt-stop', switch: 'switch', phase: 'event-alert', end: 'shift-end',
-  brian: 'event-alert', spill: 'drop', throw: 'throw', damage: 'smash',
+  brian: 'event-alert', spill: 'drop', throw: 'throw', damage: 'smash', scanner: 'event-alert',
 };
 const BEAT_SOUNDS: Record<NonNullable<StoryBeat['sound']>, SoundEffect> = {
   engine: 'engine', cough: 'cough', horn: 'horn', gate: 'gate', door: 'button', spill: 'splash', register: 'register', truck: 'truck', sign: 'sign',
@@ -375,7 +375,8 @@ export class Belt3d {
       <h1>ANOTHER NIGHT ON THE BELT.</h1>
       <p><b>Get in, survive the scrum, dispatch ${this.model.goal} parcels, then Skanky still has a mall run.</b></p>
       <p>TERMITE loads A and D at his trucks and T down the stairs. SKANKY loads B, E and S. C goes to BULK at the belt end.</p>
-      <p>After the warm-up, your partner sorts their own routes. Hold your lane, clear bulk, and switch when they need help.</p>
+      <p>After the warm-up, your partner sorts their own routes perfectly. Their deliveries count toward dispatch, but earn no points or combo. Your deliveries earn the score.</p>
+      <p>Occasionally their scanner needs a reset. Switch to the worker named on screen, then ${this.touch.enabled ? 'tap RESET SCANNER' : 'press SPACE'} to get them sorting again. Carried freight stays safe.</p>
       ${this.touch.enabled ? `
       <p>The stick moves. SWITCH changes worker. GRAB / DELIVER picks up and delivers. THROW risks it to save the walk.</p>
       <p>BRAKE holds the belt. VIEW shows the whole warehouse. In story scenes, NEXT or SKIP.</p>` : `
@@ -731,14 +732,20 @@ export class Belt3d {
   private updateHud(): void {
     const m = this.model;
     const held = m.heldPackage;
+    const scannerWorker = this.state === 'playing' ? m.pendingScannerWorker : null;
+    const scannerSelected = scannerWorker !== null && scannerWorker === m.activeWorker.id;
+    const scanner = scannerWorker ? `${scannerWorker.toUpperCase()} NEEDS A SCANNER RESET · ${scannerSelected
+      ? this.touch.enabled ? 'TAP RESET SCANNER' : 'SPACE TO RESET'
+      : this.touch.enabled ? 'SWITCH, THEN RESET SCANNER' : 'TAB TO SWITCH, THEN SPACE'}` : '';
     const target = this.state === 'playing' && held ? m.throwTarget() : null;
     const throwHint = target ? (target.ok ? ` · [F] ${target.reason}` : ` · ${target.reason}`) : '';
     this.overlay.updateHud({
       sorted: m.sorted, goal: m.goal, score: m.score, timeLeftMs: m.timeLeftMs, backlog: m.pileup, capacity: m.capacity,
       phase: this.state === 'interlude' ? 'BEN  /  DODGE TRAINING' : PHASE_LABELS[m.phase] ?? '', combo: m.combo, worker: m.activeWorker.id,
       hint: this.state === 'interlude' ? 'Belt held · your freight is safe' : this.state === 'mesa' ? 'Y steals the Mesa · N leaves it'
+        : scannerSelected ? `${this.touch.enabled ? 'RESET SCANNER' : 'SPACE resets scanner'} · carried freight stays in hand`
         : held ? `${held.label} → ${held.route} · ${ROUTE_INFO[held.route].name}${throwHint}` : this.hint,
-      overview: this.overview, routes: this.routeLegend(),
+      overview: this.overview, routes: this.routeLegend(), scanner,
       brake: m.brakeRemainingMs > 0 ? '■ BELT HELD' : m.brakeCooldownMs > 0 ? `[E] RECHARGE ${Math.ceil(m.brakeCooldownMs / 1000)}s` : '[E] BRAKE READY',
     });
     if (this.state === 'mall' && this.mall) {
@@ -755,7 +762,7 @@ export class Belt3d {
     this.touch.setLive(this.state === 'playing' || this.state === 'interlude' || chapter,
       chapter ? (this.state === 'mall' ? (this.mall?.cart.pushed ? 'PARK' : 'CART') : '—')
         : m.brakeRemainingMs > 0 ? 'HELD' : m.brakeCooldownMs > 0 ? `${Math.ceil(m.brakeCooldownMs / 1000)}s` : 'BRAKE',
-      chapter ? this.state === 'mall' : this.state === 'playing' && m.brakeCooldownMs <= 0, chapter);
+      chapter ? this.state === 'mall' : this.state === 'playing' && m.brakeCooldownMs <= 0, chapter, scannerSelected);
   }
 
   private activeCamera(): THREE.PerspectiveCamera {
@@ -805,7 +812,7 @@ export class Belt3d {
   }
 
   private handleEvent(event: ShiftEvent): void {
-    const sound = EVENT_SOUNDS[event.type];
+    const sound = event.assisted ? undefined : EVENT_SOUNDS[event.type];
     if (sound) audioSystem.play(sound);
     if (event.type === 'sort' && event.score) {
       this.overlay.pop(`+${event.score}`, ROUTE_COLORS[event.route ?? 'A'], toWorld(event, surfaceAt(event.x, event.y) + 1.8));
@@ -825,10 +832,10 @@ export class Belt3d {
     }
     if (event.type === 'grab' || event.type === 'recover' || event.type === 'drop' || event.type === 'wrong' || event.type === 'miss' || event.type === 'brake' || event.type === 'throw') {
       if (!event.workerId || event.workerId === this.model.activeWorker.id) this.hint = event.message;
-    } else if (event.type === 'sort' || event.type === 'damage') {
+    } else if ((event.type === 'sort' && !event.assisted) || event.type === 'damage') {
       this.hint = 'Approach the belt · match letter to dock';
     }
-    if (event.type === 'phase' || event.type === 'miss') this.overlay.showToast(event.message);
+    if (event.type === 'phase' || event.type === 'miss' || (event.type === 'scanner' && this.model.pendingScannerWorker === null)) this.overlay.showToast(event.message);
 
     this.crew.onEvent(event, this.model);
   }

@@ -90,6 +90,24 @@ test('drop zones never overlap and the lower-floor drops sit below the platform'
   }
 });
 
+test('both truck rows precede bulk at the rear wall, with floor drops beyond the stairs', () => {
+  for (const [front, rear, bulk, floor] of [['A', 'D', 'bulkLeft', 'T'], ['B', 'E', 'bulkRight', 'S']]) {
+    const first = SHIFT_LAYOUT.dropAreas[front];
+    const second = SHIFT_LAYOUT.dropAreas[rear];
+    const shared = SHIFT_LAYOUT.dropAreas[bulk];
+    assert.ok(first.y + first.height / 2 < second.y - second.height / 2, 'a clear gap separates both truck rows');
+    assert.ok(second.y + second.height / 2 < shared.y - shared.height / 2, 'both trucks precede the bulk approach');
+    assert.ok(shared.y + shared.height / 2 < SHIFT_LAYOUT.stairs.top, 'bulk is reached before descending');
+    assert.equal(SHIFT_LAYOUT.playerTrucks[front].y, first.y);
+    assert.equal(SHIFT_LAYOUT.playerTrucks[rear].y, second.y);
+    assert.ok(SHIFT_LAYOUT.dropAreas[floor].y > SHIFT_LAYOUT.stairs.bottom, 'ground drops remain beyond the end stairs');
+  }
+  assert.ok(SHIFT_LAYOUT.recoveryPile.y - 26 > SHIFT_LAYOUT.beltBottom, 'missed freight rests beyond the belt');
+  assert.ok(SHIFT_LAYOUT.recoveryPile.y + 26 < SHIFT_LAYOUT.bulkPile.y - 48, 'recovery and bulk storage stay distinct');
+  assert.equal(SHIFT_LAYOUT.bulkRearWall.y + SHIFT_LAYOUT.bulkRearWall.height / 2, SHIFT_LAYOUT.platform.bottom);
+  assert.ok(SHIFT_LAYOUT.bulkRearWall.y > SHIFT_LAYOUT.bulkPile.y);
+});
+
 test('platform, stairs and lower floor have distinct heights', () => {
   assert.equal(platformLevelAt(400, 300), 1, 'the lanes are on the platform');
   assert.equal(platformLevelAt(480, 300), 1, 'the belt stands on the platform');
@@ -224,7 +242,7 @@ test('put-downs cannot hang over stair treads and floor cargo blocks movement wi
 test('put-downs beside recovery reject solid tray contact and remain possible one step aside', () => {
   const scenery = depotSolidFootprints();
   for (const side of [0, 1]) {
-    for (const y of [672.001, 680, 690]) {
+    for (const y of [577, 580, 583.999]) {
       const model = holding(side ? 'B' : 'A');
       const parcel = model.heldPackage;
       Object.assign(model.activeWorker, { x: side ? 560 : 400, y });

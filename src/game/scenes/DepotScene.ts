@@ -512,7 +512,9 @@ export class DepotScene extends Phaser.Scene {
       const visual = this.workers[index];
       const moving = delta > 0 && Phaser.Math.Distance.Between(visual.container.x, visual.container.y, worker.x, worker.y) > 0.1;
       visual.container.setPosition(worker.x, worker.y).setDepth(25 + worker.y / 1000);
-      visual.update(this.reducedMotion ? 0 : this.time.now, moving, index === this.model.activeIndex, worker.heldId !== null, this.model.assistanceActive);
+      const scannerFault = this.model.pendingScannerWorker === worker.id;
+      visual.update(this.reducedMotion ? 0 : this.time.now, moving, index === this.model.activeIndex, worker.heldId !== null,
+        this.model.assistanceActive && !scannerFault, scannerFault);
     });
     const visibleIds = new Set<number>();
     let backlogIndex = 0;
@@ -621,9 +623,9 @@ export class DepotScene extends Phaser.Scene {
     g.fillStyle(0xedba6d).fillRect(28, 27, 5, 43);
     this.label(46, 21, 'THE BELT', 35, INK, true);
     this.label(47, 62, 'NIGHT SORT SIMULATOR', 10, MUTED, true).setLetterSpacing(1);
-    this.label(320, 25, 'DISPATCHED', 10, MUTED, true).setLetterSpacing(1);
+    this.label(320, 25, 'TEAM DISPATCHED', 10, MUTED, true).setLetterSpacing(1);
     this.countText = this.label(320, 43, `00 / ${this.model.goal}`, 26, INK, true);
-    this.label(487, 25, 'SHIFT SCORE', 10, MUTED, true).setLetterSpacing(1);
+    this.label(487, 25, 'YOUR SCORE', 10, MUTED, true).setLetterSpacing(1);
     this.scoreText = this.label(487, 43, '00000', 26, INK, true);
     this.label(665, 25, 'TIME LEFT', 10, MUTED, true).setLetterSpacing(1);
     this.clockText = this.label(665, 43, '03:00', 26, '#edba6d', true);
@@ -666,10 +668,16 @@ export class DepotScene extends Phaser.Scene {
     this.statusText.setText(phases[m.phase]);
     this.comboText.setText(m.combo > 1 ? `${m.combo} IN A ROW  /  +${Math.min(m.combo * 15, 150)} NEXT` : `TARGET  /  ${m.goal} CLEAN DISPATCHES`);
     const player = m.activeWorker;
-    this.operatorText.setText(`● ${player.id.toUpperCase()}${m.assistanceActive ? ' + AUTO' : ''}`).setColor(player.side === 'left' ? '#76cbd1' : '#a6cc9a');
+    const scannerWorker = m.pendingScannerWorker;
+    const resetScanner = scannerWorker === player.id;
+    const partner = m.workers[1 - m.activeIndex];
+    const partnerAssisting = m.assistanceActive && scannerWorker !== partner.id;
+    this.operatorText.setText(`● ${player.id.toUpperCase()}${partnerAssisting ? ' + AUTO' : ''}`).setColor(player.side === 'left' ? '#76cbd1' : '#a6cc9a');
+    if (scannerWorker) this.comboText.setText(`${scannerWorker.toUpperCase()} SCANNER · ${resetScanner ? 'SPACE TO RESET' : 'TAB THEN SPACE'}`);
     const held = m.packages.find(item => item.id === player.heldId);
     const nearby = m.nearestPackage();
-    if (held) {
+    if (resetScanner) this.actionText.setText(`[ SPACE ] RESET ${player.id.toUpperCase()}'S SCANNER`);
+    else if (held) {
       const info = ROUTE_INFO[held.route];
       const wrongSide = info.side !== 'both' && info.side !== player.side;
       const inDock = m.currentDock() === held.route;
@@ -700,7 +708,7 @@ export class DepotScene extends Phaser.Scene {
       const live = this.state === 'playing' || this.state === 'story' || this.state === 'mall' || this.state === 'lot';
       this.mobileLayer.style.visibility = live ? 'visible' : 'hidden';
       const labels = this.state === 'story' ? ['SKIP', 'NEXT', '—', '—'] : this.state === 'mall' ? ['—', 'ACT', this.mall?.cart.pushed ? 'PARK' : 'CART', '—']
-        : this.state === 'lot' ? ['—', 'ACT', '—', '—'] : ['SWITCH', 'GRAB / DELIVER', 'BRAKE', 'THROW'];
+        : this.state === 'lot' ? ['—', 'ACT', '—', '—'] : ['SWITCH', resetScanner ? 'RESET SCANNER' : 'GRAB / DELIVER', 'BRAKE', 'THROW'];
       ['switch', 'grab', 'brake', 'throw'].forEach((key, index) => {
         const button = this.mobileButtons[key];
         if (!button) return;
@@ -715,10 +723,10 @@ export class DepotScene extends Phaser.Scene {
     const sounds: Partial<Record<ShiftEvent['type'], SoundEffect>> = {
       grab: 'grab', drop: 'drop', sort: 'correct', wrong: 'wrong', miss: 'pile-up',
       recover: 'dig', brake: 'belt-stop', switch: 'switch', phase: 'event-alert', end: 'shift-end',
-      brian: 'event-alert', spill: 'drop', throw: 'throw', damage: 'smash',
+      brian: 'event-alert', spill: 'drop', throw: 'throw', damage: 'smash', scanner: 'event-alert',
     };
     const sound = sounds[event.type];
-    if (sound) audioSystem.play(sound);
+    if (sound && !event.assisted) audioSystem.play(sound);
     if (event.type === 'throw' && event.packageId !== undefined && event.workerId) this.throwers.set(event.packageId, event.workerId);
     if (event.type === 'sort') {
       const deliverySide = event.x < 480 ? 'left' : 'right';
@@ -741,7 +749,8 @@ export class DepotScene extends Phaser.Scene {
         this.depot.setFloorPiles({ T: count('T'), S: count('S') });
       }
       if (event.route) this.depot.flashDock(event.route, deliverySide);
-      this.floatText(event.x, event.y - 43, `+${event.score ?? 100}  ${event.message.startsWith('THROWN') ? 'THROWN IN' : 'DISPATCHED'}`, '#a6cc9a');
+      this.floatText(event.x, event.y - 43, event.assisted ? 'PARTNER DISPATCH · NO POINTS'
+        : `+${event.score ?? 100}  ${event.message.startsWith('THROWN') ? 'THROWN IN' : 'DISPATCHED'}`, '#a6cc9a');
       if (!this.reducedMotion) {
         const ring = this.add.circle(event.x, event.y, 13).setStrokeStyle(2, event.route ? ROUTE[event.route] : 0xa6cc9a).setDepth(32);
         this.tweens.add({ targets: ring, scale: 3, alpha: 0, duration: 330, onComplete: () => ring.destroy() });
@@ -764,6 +773,7 @@ export class DepotScene extends Phaser.Scene {
       const spill = this.add.ellipse(event.x, event.y + 8, 34, 11, 0xda8db6, 0.62).setDepth(8);
       this.tweens.add({ targets: spill, scaleX: 1.35, alpha: 0, duration: 4200, onComplete: () => spill.destroy() });
     }
+    if (event.type === 'scanner' && !this.model.pendingScannerWorker) this.tell(event.message, '#edba6d', 4500);
     if ((!event.workerId || event.workerId === this.model.activeWorker.id)
       && ['wrong', 'miss', 'phase', 'brian', 'recover', 'brake'].includes(event.type)) {
       this.tell(event.type === 'wrong' ? `NO SCORE · ${event.message}` : event.message, event.type === 'wrong' || event.type === 'miss' ? '#f3987c' : INK, 3300);
@@ -784,9 +794,10 @@ export class DepotScene extends Phaser.Scene {
     this.showPanel('TERMITE & SKANKY / ONE MORE OVERNIGHT', 'ANOTHER NIGHT ON THE BELT.', [
       `Get in, survive the scrum, dispatch ${this.model.goal} parcels, then Skanky has a mall run.`,
       'TERMITE: A + D trucks, T down the stairs.   SKANKY: B + E trucks, S down the stairs.',
-      'C goes to BULK. After 36 seconds your partner sorts their own routes automatically.',
-      'SPACE grabs and delivers. F throws to save the walk, but it can break.',
-      'WASD moves. TAB switches. E brakes. V overview. Story: SPACE next, ENTER skips.',
+      'C goes to BULK. Partner sorts after 36s: team dispatch only, no score.',
+      'Scanner fault? TAB to that worker, then SPACE to reset it.',
+      'WASD moves. SPACE grabs/delivers. F throws (breakage risk).',
+      'E brakes. V overview. Story: SPACE next, ENTER skips.',
     ], 'START THE NIGHT  ↵', () => this.startShift());
     const original = this.textButton(480, 543, 'O  /  PLAY THE ORIGINAL FULL SHIFT', () => this.scene.start('TitleScene'), 11).setOrigin(0.5);
     this.overlay?.add(original);

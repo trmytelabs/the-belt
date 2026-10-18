@@ -5,7 +5,7 @@ import { SHIFT_LAYOUT } from '../src/game/slice/ShiftModel.ts';
 import { OPENERS, BREAK_SCENES, SCRUM, MALL_ASSIGNMENT, DRIVE_TO_MALL, DRIVE_TO_UPS, GO_HOME } from '../src/game/slice/StoryScript.ts';
 
 // Controlled geometry fixtures complement real-input gameplay in the other suites.
-const server = await preview({ preview: { host: '127.0.0.1', port: 0 }, logLevel: 'silent' });
+const server = process.env.BELT_TEST_BASE_URL ? null : await preview({ preview: { host: '127.0.0.1', port: 0 }, logLevel: 'silent' });
 let browser;
 try {
   browser = await chromium.launch({ headless: true,
@@ -16,12 +16,26 @@ try {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.addInitScript(() => window.addEventListener('belt3d:ready', event => { window.fixtureApp = event.detail; }));
-  await page.goto(server.resolvedUrls.local[0]);
+  await page.goto(process.env.BELT_TEST_BASE_URL ?? server.resolvedUrls.local[0]);
   await page.waitForFunction(() => window.fixtureApp?.state === 'briefing', null, { timeout: 90_000 });
   const snapshot = await page.evaluate(() => window.fixtureApp.world.geometrySnapshot());
   assert.ok(Math.abs(snapshot.platform.max.y - 1.1) < 1e-5, 'deck stands 1.1m above lower floor');
   assert.ok(Math.abs(snapshot.belt.max.y - 1.88) < 1e-5, 'belt contact is 0.78m above deck');
   assert.equal(snapshot.trucks.length, 12);
+  assert.deepEqual(snapshot.trucks.filter(truck => truck.route).map(truck => truck.route).sort(), ['A', 'B', 'D', 'E'],
+    'all four player trucks remain present');
+  const secondRow = snapshot.trucks.filter(truck => truck.route === 'D' || truck.route === 'E');
+  for (const truck of secondRow) {
+    assert.ok(truck.bounds.max.z < snapshot.bulk.min.z, `${truck.route}: second truck row stands before the bulk pile`);
+  }
+  assert.ok(snapshot.recovery.max.z < snapshot.bulk.min.z, 'recovery tray precedes the bulk area');
+  assert.ok(snapshot.bulk.max.z < snapshot.rearWall.min.z, 'bulk pallet stops before its rear wall');
+  assert.ok(snapshot.rearWall.min.y >= snapshot.platform.max.y - 1e-5, 'rear wall stands on the raised platform');
+  assert.ok(snapshot.rearWall.max.z <= snapshot.platform.max.z + 1e-5, 'rear wall ends at the platform edge');
+  assert.ok(snapshot.rearWall.min.x > (SHIFT_LAYOUT.leftLane.maxX + SHIFT_LAYOUT.workerRadius - 480) / 32,
+    'rear wall leaves the whole left stair flight clear');
+  assert.ok(snapshot.rearWall.max.x < (SHIFT_LAYOUT.rightLane.minX - SHIFT_LAYOUT.workerRadius - 480) / 32,
+    'rear wall leaves the whole right stair flight clear');
   for (const truck of snapshot.trucks) {
     assert.ok(Math.abs(truck.cargoFloorY - snapshot.platform.max.y) < 1e-5, `${truck.name}: cargo floor meets deck`);
     assert.ok(Math.abs(Math.abs(truck.rearX) - 162 / 32) < 1e-5, `${truck.name}: rear meets platform edge`);
@@ -31,6 +45,52 @@ try {
     for (let i = 1; i < rows.length; i++) assert.ok(rows[i].bounds.min.z - rows[i - 1].bounds.max.z >= 0.7,
       `${rows[i].name}: truck bodies leave a walkable aisle`);
   }
+
+  // Real assisted deliveries establish the event threshold. Only the clock and
+  // held freight are fixtures; switching and resetting use the actual controls.
+  const scanner = await page.evaluate(layout => {
+    const app = window.fixtureApp;
+    app.restart(); app.forceStory({ breakAtMs: 1e12 }); app.benStarted = true;
+    app.state = 'playing'; app.overlay.clearCenter();
+    const m = app.model;
+    m.eventStopped = true; m.elapsedMs = 36_000; m.score = 420; m.combo = 3;
+    for (const p of m.packages) p.state = 'delivered';
+    const helper = m.workers[1];
+    for (let index = 0; index < 4; index++) {
+      Object.assign(helper, { x: layout.dropAreas.B.x, y: layout.dropAreas.B.y });
+      const parcel = { id: 7000 + index, route: 'B', kind: 'smallbox', label: 'SYNTHETIC ASSIST', size: 'normal',
+        x: helper.x, y: helper.y, state: 'held', workerId: helper.id, beltOffset: 0,
+        recovered: false, missCounted: false, broken: false, breakY: null };
+      m.packages.push(parcel); helper.heldId = parcel.id;
+      m.update(20);
+    }
+    const assisted = { count: m.assistedSorted, dispatched: m.sorted, score: m.score, combo: m.combo };
+    m.elapsedMs = 69_990; m.update(20);
+    const carried = { ...m.packages.find(p => p.id === 7000), id: 7100, state: 'held', workerId: helper.id };
+    m.packages.push(carried); helper.heldId = carried.id;
+    app.updateHud();
+    return { assisted, pending: m.pendingScannerWorker, heldId: carried.id, routeBefore: m.routeSorted.B };
+  }, SHIFT_LAYOUT);
+  assert.deepEqual(scanner.assisted, { count: 4, dispatched: 4, score: 420, combo: 3 }, 'partner dispatches add no points or combo');
+  assert.equal(scanner.pending, 'skanky', 'the inactive worker asks for a scanner reset');
+  await page.locator('.b3d-scanner').waitFor({ state: 'visible' });
+  assert.match(await page.locator('.b3d-scanner').textContent(), /SKANKY.*TAB TO SWITCH/);
+  await page.keyboard.press('Tab');
+  await page.waitForFunction(() => window.fixtureApp.model.activeWorker.id === 'skanky');
+  assert.equal(await page.evaluate(() => window.fixtureApp.model.pendingScannerWorker), 'skanky', 'switching alone does not reset the scanner');
+  await page.waitForFunction(() => document.querySelector('.b3d-scanner')?.textContent.includes('SPACE TO RESET'));
+  assert.match(await page.locator('.b3d-scanner').textContent(), /SPACE TO RESET/);
+  assert.match(await page.locator('[data-touch="grab"]').textContent(), /RESET.*SCANNER/);
+  await page.keyboard.press('Space');
+  await page.waitForFunction(() => window.fixtureApp.model.pendingScannerWorker === null);
+  assert.deepEqual(await page.evaluate(() => ({ held: window.fixtureApp.model.activeWorker.heldId,
+    resets: window.fixtureApp.model.scannerResets, score: window.fixtureApp.model.score, combo: window.fixtureApp.model.combo })),
+  { held: scanner.heldId, resets: 1, score: 420, combo: 3 }, 'resetting preserves held freight, score and combo');
+  await page.locator('.b3d-scanner').waitFor({ state: 'hidden' });
+  await page.keyboard.press('Space');
+  await page.waitForFunction(before => window.fixtureApp.model.routeSorted.B === before + 1, scanner.routeBefore);
+  assert.ok(await page.evaluate(() => window.fixtureApp.model.score > 420), 'the following player delivery earns points');
+  console.log('PASS partner dispatches without score; persistent named scanner prompt; real Tab/Space reset preserves freight and resumes delivery');
 
   // Every destination uses the same rendered surface as the shared rules.
   const destinations = ['A', 'D', 'T', 'B', 'E', 'S', 'C'];
@@ -214,7 +274,7 @@ try {
       const halfWidth = halfHeight * camera.aspect;
       const near = app.world.physicalBounds(app.world.platformDeck).makeEmpty().expandByPoint(camera.position);
       for (const x of [-halfWidth, halfWidth]) for (const y of [-halfHeight, halfHeight]) near.expandByPoint(camera.position.clone().set(x, y, -camera.near).applyMatrix4(camera.matrixWorld));
-      for (const solid of [app.world.platformDeck, app.world.beltSurface, ...app.world.trucks.map(truck => truck.group)]) {
+      for (const solid of [app.world.platformDeck, app.world.beltSurface, app.world.bulkSurface, app.world.recoverySurface, app.world.bulkRearWall, ...app.world.trucks.map(truck => truck.group)]) {
         samples++;
         if (near.intersectsBox(app.world.physicalBounds(solid))) failures.push(label);
       }
@@ -222,7 +282,8 @@ try {
     for (const aspect of [1.6, 390 / 844]) {
       app.camera.aspect = aspect; app.camera.updateProjectionMatrix();
       app.state = 'playing';
-      for (const side of [0, 1]) for (const y of [-20, 146, 532, 740, 830, 940, 992]) for (const overview of [false, true]) {
+      for (const side of [0, 1]) for (const y of [-20, layout.beltTop, layout.dockA.y, layout.dockD.y, layout.bulkLeft.y,
+        (layout.stairs.top + layout.stairs.bottom) / 2, layout.floorT.y, layout.workerMaxY]) for (const overview of [false, true]) {
         app.model.activeIndex = side; app.overview = overview;
         Object.assign(app.model.activeWorker, { x: side ? 580 : 380, y });
         app.syncWorkers(0); app.updateCamera(1, true);
@@ -237,7 +298,7 @@ try {
     }
     return { failures, samples };
   }, { layout: SHIFT_LAYOUT, scrum: SCRUM });
-  assert.ok(depotCameras.samples > 1_000, 'warehouse checks cover actual geometry, both workers, seven heights, both views and two aspect ratios');
+  assert.ok(depotCameras.samples > 1_000, 'warehouse checks cover actual geometry, both workers, all drop heights, both views and two aspect ratios');
   assert.deepEqual(depotCameras.failures, []);
 
   const lifecycle = await page.evaluate(() => {
@@ -264,5 +325,5 @@ try {
   console.log('PASS parcel contact/carry bounds, authored camera samples, stable GPU resources over replay, complete app teardown');
 } finally {
   await browser?.close();
-  await server.close();
+  await server?.close();
 }

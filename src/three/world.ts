@@ -47,7 +47,7 @@ export const TERMITE_SPEC: CharacterSpec = { name: 'TERMITE', skin: 0xe2b088, sh
 export const SKANKY_SPEC: CharacterSpec = { name: 'SKANKY', skin: 0xe8b98f, shirt: 0x8f3f34, pants: 0x34404c, hair: 0x5b3a22, hairStyle: 'long', beard: true };
 
 /** Where Ralph's five-ton backs in: the empty bay beside the bulk pile, west side. */
-export const RALPH_BAY = { x: 244, y: 628, from: -120 } as const;
+export const RALPH_BAY = SHIFT_LAYOUT.ralphBay;
 
 type PlayerTruckRoute = 'A' | 'B' | 'D' | 'E';
 const PLAYER_TRUCKS: { route: PlayerTruckRoute; body: number; cab: number }[] = [
@@ -87,15 +87,18 @@ export class DepotWorld {
   public platformDeck!: THREE.Mesh;
   public beltSurface!: THREE.Mesh;
   public recoverySurface!: THREE.Mesh;
+  public bulkSurface!: THREE.Mesh;
+  public bulkRearWall!: THREE.Mesh;
 
   public physicalBounds(object: THREE.Object3D): THREE.Box3 { return physicalBounds(object); }
 
   public geometrySnapshot(): {
-    platform: THREE.Box3; belt: THREE.Box3;
+    platform: THREE.Box3; belt: THREE.Box3; bulk: THREE.Box3; recovery: THREE.Box3; rearWall: THREE.Box3;
     trucks: { name: string; route?: PlayerTruckRoute; bounds: THREE.Box3; rearX: number; cargoFloorY: number }[];
   } {
     return {
       platform: physicalBounds(this.platformDeck), belt: physicalBounds(this.beltSurface),
+      bulk: physicalBounds(this.bulkSurface), recovery: physicalBounds(this.recoverySurface), rearWall: physicalBounds(this.bulkRearWall),
       trucks: this.trucks.map((truck) => ({
         name: truck.name, route: truck.route, bounds: physicalBounds(truck.group),
         rearX: truck.group.position.x - truck.direction * crewTruckLength / 2,
@@ -383,12 +386,23 @@ export class DepotWorld {
     const leftStairInner = toWorldX(leftLane.maxX + SHIFT_LAYOUT.workerRadius);
     const rightStairInner = toWorldX(rightLane.minX - SHIFT_LAYOUT.workerRadius);
     const rightStairOuter = toWorldX(rightLane.maxX + SHIFT_LAYOUT.workerRadius);
+    // The shared pile ends against a low rear wall. Keep it between the stair
+    // flights and below the eye line so the floor drops remain visible.
+    const rear = SHIFT_LAYOUT.bulkRearWall;
+    const wall = new THREE.Mesh(new THREE.BoxGeometry(rear.width * WORLD_SCALE, 1.05, rear.height * WORLD_SCALE), standard(0x3d4a4f, 0.85));
+    wall.position.copy(toWorld(rear, PLATFORM_HEIGHT + 0.525));
+    wall.name = 'bulk-rear-wall';
+    wall.userData.keep = true;
+    this.bulkRearWall = wall;
+    scene.add(shadowed(wall));
     railRun(leftStairInner + 0.05, z1 - 0.08, rightStairInner - 0.05, z1 - 0.08);
     if (leftStairOuter - x0 > 0.2) railRun(x0 + 0.08, z1 - 0.08, leftStairOuter - 0.05, z1 - 0.08);
     if (x1 - rightStairOuter > 0.2) railRun(rightStairOuter + 0.05, z1 - 0.08, x1 - 0.08, z1 - 0.08);
-    for (const x of [x0 + 0.08, x1 - 0.08]) railRun(x, toWorldZ(-200), x, toWorldZ(100));
-    // The east bay beside Paytman's truck is empty; the west one is Ralph's dock.
-    railRun(x1 - 0.08, toWorldZ(588), x1 - 0.08, toWorldZ(668));
+    // Worker bounds allow their shoulders to reach the deck edge. Mount these
+    // rails just outside it, as with the stair handrails, to keep that space clear.
+    for (const x of [x0 - 0.06, x1 + 0.06]) railRun(x, toWorldZ(-200), x, toWorldZ(100));
+    // The east bay beside bulk holds the fish tank; the west one is Ralph's dock.
+    railRun(x1 + 0.06, toWorldZ(SHIFT_LAYOUT.fishTank.y - 40), x1 + 0.06, toWorldZ(SHIFT_LAYOUT.fishTank.y + 40));
 
     // Two stair flights descend from the lanes to the lower floor.
     const steps = stairs.steps;
@@ -472,7 +486,7 @@ export class DepotWorld {
     }
     const platformSign = textPlane(['LOADING PLATFORM'], 2.6, 0.32, { width: 300, height: 36, background: '#13252cdd', color: '#e8c04a' });
     platformSign.rotation.x = -Math.PI / 2;
-    platformSign.position.copy(toWorld({ x: 480, y: 742 }, PLATFORM_HEIGHT + 0.01));
+    platformSign.position.copy(toWorld({ x: 480, y: (SHIFT_LAYOUT.recoveryPile.y + SHIFT_LAYOUT.bulkPile.y) / 2 }, PLATFORM_HEIGHT + 0.01));
     scene.add(platformSign);
   }
 
@@ -797,16 +811,18 @@ export class DepotWorld {
 
     // Shared bulk cage beyond the belt end, on the deck.
     const bulk = toWorld(SHIFT_LAYOUT.bulkPile);
-    const pallet = rounded(2.0, 0.16, 1.5, standard(0x8c6a42, 0.9), 0.02);
+    const pallet = rounded(2.0, 0.16, 2.5, standard(0x8c6a42, 0.9), 0.02);
     pallet.position.set(bulk.x, deck + 0.08, bulk.z);
+    pallet.userData.keep = true;
+    this.bulkSurface = pallet;
     const cageMat = standard(0x6b7a80, 0.4, 0.7);
     for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
       const post = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 1.3, 6), cageMat);
-      post.position.set(bulk.x + sx * 0.98, deck + 0.65, bulk.z + sz * 0.73);
+      post.position.set(bulk.x + sx * 0.98, deck + 0.65, bulk.z + sz * 1.23);
       scene.add(post);
     }
     const bulkSign = textPlane(['BULK'], 1.0, 0.3, { width: 120, height: 36, background: ROUTE_COLORS.C, color: '#1b1f22' });
-    bulkSign.position.set(bulk.x, deck + 1.45, bulk.z - 0.74);
+    bulkSign.position.set(bulk.x, deck + 1.45, bulk.z - 1.24);
     scene.add(shadowed(pallet), bulkSign);
     this.bulkStack.position.set(bulk.x, deck + 0.16, bulk.z);
 
@@ -1097,8 +1113,8 @@ export class DepotWorld {
       tank.add(fish);
       this.fish.push(fish);
     }
-    // In the empty bay beside Paytman's truck, where no truck drives through.
-    tank.position.copy(toWorld({ x: 716, y: 628 }));
+    // In the empty bay beside bulk, clear of the four player truck paths.
+    tank.position.copy(toWorld(SHIFT_LAYOUT.fishTank));
     this.scene.add(shadowed(tank));
   }
 

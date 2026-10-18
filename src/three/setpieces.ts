@@ -295,7 +295,7 @@ export class SetPieces {
       this.ralphLifted = Math.min(5, loaded + Number(trip >= 1600));
       this.world.setRalphLoad(loaded);
       // From the flatbed, backed against the platform edge, to the shared pile.
-      const door = { x: 330, y: RALPH_BAY.y };
+      const door = { x: SHIFT_LAYOUT.platform.left + SHIFT_LAYOUT.workerRadius, y: RALPH_BAY.y };
       const pile = { x: SHIFT_LAYOUT.bulkPile.x - 70, y: SHIFT_LAYOUT.bulkPile.y + 8 };
       if (trip < 1300) ralph.place(mix(door.x, pile.x, trip / 1300), mix(door.y, pile.y, trip / 1300));
       else if (trip < 1600) ralph.place(pile.x, pile.y);

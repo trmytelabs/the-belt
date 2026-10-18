@@ -35,10 +35,11 @@ export function overlapsFootprint(point: FootprintPoint, radius: number, rect: F
 /** The stationary truck bodies and central equipment shared by both depots. */
 export function depotSolidFootprints(): FootprintRect[] {
   return [
-    ...[148, 244, 340, 436, 532, 740].flatMap(y => [244, 716].map(x => ({ x, y, width: 148, height: SHIFT_LAYOUT.truckDepth }))),
+    ...[148, 244, 340, 436].flatMap(y => [244, 716].map(x => ({ x, y, width: 148, height: SHIFT_LAYOUT.truckDepth }))),
+    ...Object.values(SHIFT_LAYOUT.playerTrucks).map(truck => ({ ...truck, width: 148, height: SHIFT_LAYOUT.truckDepth })),
     ...DEPOT_EQUIPMENT_FOOTPRINTS,
     SHIFT_LAYOUT.floorStorage.T, SHIFT_LAYOUT.floorStorage.S,
-    { x: 716, y: 628, width: 52, height: 36 },
+    SHIFT_LAYOUT.fishTank,
   ];
 }
 

@@ -62,7 +62,7 @@ try {
     'the current speech bubble belongs to the story stage');
   await press('Escape');
   await wait(`${S}.state === 'paused'`);
-  await page.waitForTimeout(1800);
+  await page.waitForTimeout(2600);
   assert.equal(await read('window.fixtureSpeech.active'), true, 'pause keeps the current line visible');
   await press('Escape');
   await stepScene('opener-2');
@@ -71,6 +71,36 @@ try {
     assert.ok((await read(`${S}.storyView.history`)).includes(`${name(beat.speaker)}: ${beat.line}`), `opener-2: ${beat.line}`);
   }
   assert.equal(await read(`${S}.cutscene.scene.id`), 'scrum');
+  await wait(`${S}.cutscene.index > 0`);
+  const scrum = await read(() => {
+    const scene = window.fixtureGame.scene.getScene('DepotScene');
+    const camera = scene.view.world;
+    const members = [...scene.life.cast].filter(([id]) =>
+      ['shan', 'hussan', 'aj', 'ben', 'bannerman', 'fruitloop', 'doris', 'brian', 'donna'].includes(id))
+      .map(([id, actor]) => ({ id, art: actor.art, tag: actor.tag }));
+    members.push(...scene.workers.map((worker, index) => ({ id: index ? 'skanky' : 'termite', art: worker.container })));
+    return members.map(({ id, art, tag }) => {
+      // Phaser Graphics have no measured geometry bounds. Check the authored
+      // body envelope plus the actual raster-text label bounds instead of the
+      // container's bounds, which can incorrectly include the world origin.
+      const label = tag?.getBounds();
+      const bounds = { left: Math.min(art.x - 28, label?.left ?? Infinity), right: Math.max(art.x + 28, label?.right ?? -Infinity),
+        top: Math.min(art.y - 55, label?.top ?? Infinity), bottom: Math.max(art.y + 24, label?.bottom ?? -Infinity) };
+      return { id, x: art.x, y: art.y, visible: art.visible,
+        left: camera.x + camera.width / 2 + (bounds.left - camera.midPoint.x) * camera.zoom,
+        right: camera.x + camera.width / 2 + (bounds.right - camera.midPoint.x) * camera.zoom,
+        top: camera.y + camera.height / 2 + (bounds.top - camera.midPoint.y) * camera.zoom,
+        bottom: camera.y + camera.height / 2 + (bounds.bottom - camera.midPoint.y) * camera.zoom };
+    });
+  });
+  for (const member of scrum) {
+    assert.equal(member.visible, true, `${member.id} is present at the scrum`);
+    assert.ok(member.left >= 0 && member.right <= 960 && member.top >= 126 && member.bottom <= 620,
+      `${member.id}: the complete illustration and name fit between the story bars`);
+    assert.ok(member.x - SHIFT_LAYOUT.workerRadius >= SHIFT_LAYOUT.platform.left
+      && member.x + SHIFT_LAYOUT.workerRadius <= SHIFT_LAYOUT.beltX - 52,
+    `${member.id}: the scrum stands on the clear west platform, outside the conveyor`);
+  }
   await stepScene('scrum');
   const life = await read(`${S}.life.history`);
   for (const beat of SCRUM.beats.filter((item) => item.line)) {
@@ -206,6 +236,57 @@ try {
   assert.ok(crewFloorClearance.distance >= SHIFT_LAYOUT.parcelRadius + crewFloorClearance.radius - 0.001,
     'the rendered colleague stands outside the loose parcel footprint');
   console.log('PASS 2D crew clearance: a visible colleague moves clear of loose floor freight');
+
+  // Four real assisted pickups/carries/deliveries unlock the late-shift fault.
+  // Only cargo and the late clock are fixtures; score and assistance counters
+  // remain untouched, and actual Tab/Space inputs must service the scanner.
+  const scanner = await read(() => {
+    const scene = window.fixtureGame.scene.getScene('DepotScene');
+    const m = scene.model;
+    for (const parcel of m.packages) parcel.state = 'delivered';
+    for (const worker of m.workers) worker.heldId = null;
+    if (m.activeIndex !== 0) m.switchWorker();
+    m.eventStopped = true; m.crewAssist = true; m.elapsedMs = 36_000;
+    const before = { score: m.score, combo: m.combo, assisted: m.assistedSorted, sorted: m.sorted, playerSorted: m.playerSorted };
+    for (let index = 0; index < 4; index++) {
+      const y = 240 + index * 70;
+      m.packages.push({ id: 9100 + index, route: 'B', kind: 'smallbox', label: 'SYNTHETIC PARTNER B', size: 'normal',
+        x: 480, y, state: 'belt', workerId: null, beltOffset: y - m.beltTravel,
+        recovered: false, missCounted: false, broken: false, breakY: null });
+    }
+    for (let frame = 0; frame < 2000 && m.assistedSorted < before.assisted + 4 && !m.ended; frame++) m.update(20);
+    const after = { score: m.score, combo: m.combo, assisted: m.assistedSorted, sorted: m.sorted, playerSorted: m.playerSorted };
+    m.elapsedMs = 70_000; m.update(20);
+    // Keep the unrelated Ben interlude out of this isolated scanner fixture.
+    m.elapsedMs = 60_000;
+    const worker = m.workers[1];
+    const parcel = { id: 9200, route: 'B', kind: 'smallbox', label: 'HELD DURING RESET', size: 'normal',
+      x: worker.x, y: worker.y, state: 'held', workerId: worker.id, beltOffset: 0,
+      recovered: false, missCounted: false, broken: false, breakY: null };
+    m.packages.push(parcel); worker.heldId = parcel.id;
+    return { before, after, fault: m.pendingScannerWorker, held: parcel.id };
+  });
+  assert.deepEqual(scanner.after, { ...scanner.before, assisted: scanner.before.assisted + 4, sorted: scanner.before.sorted + 4 },
+    'partner deliveries increase team dispatch without adding personal score, combo or player deliveries');
+  assert.equal(scanner.fault, 'skanky');
+  await wait(`${S}.comboText.text.includes('SKANKY SCANNER')`);
+  assert.match(await read(`${S}.comboText.text`), /TAB THEN SPACE/, 'inactive worker fault gives a persistent switch prompt');
+  assert.doesNotMatch(await read(`${S}.operatorText.text`), /AUTO/, 'the interrupted partner is not labeled as assisting');
+  await press('Tab');
+  await wait(`${S}.model.activeWorker.id === 'skanky'`);
+  assert.equal(await read(`${S}.model.pendingScannerWorker`), 'skanky', 'switching alone does not clear the fault');
+  await wait(`${S}.actionText.text.includes("RESET SKANKY'S SCANNER")`);
+  await press('Space');
+  await wait(`${S}.model.pendingScannerWorker === null`);
+  assert.deepEqual(await read(`({ held: ${S}.model.activeWorker.heldId, score: ${S}.model.score, sorted: ${S}.model.sorted })`),
+    { held: scanner.held, score: scanner.after.score, sorted: scanner.after.sorted }, 'reset preserves held freight and personal points');
+  await press('Space');
+  await wait(`${S}.model.packages.find(parcel => parcel.id === ${scanner.held}).state === 'delivered'`);
+  assert.ok(await read(`${S}.model.score > ${scanner.after.score}`), 'the next manual delivery earns personal points');
+  assert.equal(await read(`${S}.model.playerSorted`), scanner.after.playerSorted + 1);
+  await read(`(() => { ${S}.model.eventStopped = false; ${S}.model.elapsedMs = 1000; })()`);
+  assert.deepEqual(errors, []);
+  console.log('PASS 2D partner and scanner: automatic team dispatch earns no personal points; real Tab/Space resets without losing freight, then manual delivery earns points');
 
   // A won shift goes on through the mall and home to the results.
   await read(`(() => { const m = ${S}.model; for (const p of m.packages) if (p.state !== 'damaged') p.state = 'delivered'; m.workers[0].heldId = null; m.sorted = m.goal; m.elapsedMs = m.durationMs - 20; })()`);

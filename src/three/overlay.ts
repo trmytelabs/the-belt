@@ -25,6 +25,13 @@ const CSS = `
 .b3d-worker { font-weight: 800; letter-spacing: 1px; min-width: 120px; }
 .b3d-worker.termite { color: #76cbd1; } .b3d-worker.skanky { color: #a6cc9a; }
 .b3d-hint { flex: 1; min-width: 0; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.b3d-scanner { position: absolute; z-index: 2; top: 82px; left: 50%; transform: translateX(-50%); width: max-content;
+  max-width: calc(100% - 32px); box-sizing: border-box; padding: 9px 14px; border: 2px solid #edb765;
+  border-radius: 8px; background: #17282ef2; color: #ffe1a4; text-align: center; font-weight: 800; font-size: 14px; }
+.b3d-scanner[hidden] { display: none; }
+.b3d.scanner-pending .b3d-toast { top: 140px; }
+.b3d.touch .b3d-scanner { top: 142px; font-size: 12px; }
+.b3d.touch.scanner-pending .b3d-toast { top: 202px; }
 .b3d-brake { white-space: nowrap; }
 @media (max-width: 1180px) { .b3d-keys { display: none; } }
 .b3d-keys { color: #8eaaae; font-size: 11px; letter-spacing: 1px; }
@@ -50,7 +57,7 @@ const CSS = `
 .b3d-pop { position: absolute; transform: translate(-50%, -50%); font: 900 18px "Segoe UI", Arial, sans-serif; text-shadow: 0 2px 6px #000c; white-space: nowrap; }
 .b3d-center { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
 .b3d-panel { pointer-events: auto; width: min(620px, calc(100vw - 32px)); background: #142a31f2; border: 1px solid #3b5a62; border-radius: 12px;
-  padding: 28px 34px; box-shadow: 0 30px 80px #000a; }
+  max-height: calc(100dvh - 24px); overflow: auto; box-sizing: border-box; padding: 28px 34px; box-shadow: 0 30px 80px #000a; }
 .b3d-panel h1 { font: 800 34px/1.1 "Segoe UI", Arial, sans-serif; margin: 6px 0 16px; }
 .b3d-panel .kicker { font-size: 12px; letter-spacing: 2px; color: #edb765; }
 .b3d-panel p { margin: 6px 0; color: #cfd8cc; font-size: 15px; }
@@ -121,7 +128,7 @@ const CSS = `
 
 export interface HudState {
   sorted: number; goal: number; score: number; timeLeftMs: number; backlog: number; capacity: number;
-  phase: string; combo: number; worker: 'termite' | 'skanky'; hint: string; brake: string; overview: boolean; routes?: string;
+  phase: string; combo: number; worker: 'termite' | 'skanky'; hint: string; brake: string; overview: boolean; routes?: string; scanner?: string;
 }
 
 interface Bubble {
@@ -162,11 +169,12 @@ export class Overlay {
       <div class="b3d-top">
         <div class="b3d-brand"><b>THE BELT</b><small>NIGHT SORT SIMULATOR</small></div>
         <div class="b3d-stat"><small>DISPATCHED</small><b data-f="sorted">00</b><div class="b3d-progress"><i data-f="bar"></i></div></div>
-        <div class="b3d-stat"><small>SHIFT SCORE</small><b data-f="score">00000</b></div>
+        <div class="b3d-stat"><small>YOUR SCORE</small><b data-f="score">00000</b></div>
         <div class="b3d-stat time"><small>TIME LEFT</small><b data-f="time">03:00</b></div>
         <div class="b3d-stat"><small>BACKLOG</small><div class="b3d-pips" data-f="pips"></div></div>
         <div class="b3d-phase"><span data-f="phase"></span><em data-f="combo"></em></div>
       </div>
+      <div class="b3d-scanner" data-f="scanner" role="status" aria-live="polite" hidden></div>
       <div class="b3d-bottom">
         <div class="b3d-worker" data-f="worker"></div>
         <div class="b3d-hint" data-f="hint"></div>
@@ -322,6 +330,10 @@ export class Overlay {
     f.hint.textContent = state.hint;
     f.brake.textContent = state.brake;
     f.view.textContent = state.overview ? 'CLOSE VIEW' : 'OVERVIEW';
+    const scanner = state.scanner ?? '';
+    if (f.scanner.textContent !== scanner) f.scanner.textContent = scanner;
+    f.scanner.hidden = !scanner;
+    this.root.classList.toggle('scanner-pending', !!scanner);
     if (state.routes !== undefined && f.routes.innerHTML !== state.routes) f.routes.innerHTML = state.routes;
   }
 

@@ -293,8 +293,18 @@ export class DepotArt {
       const stripe = Math.round((x - platform.left) / 16);
       g.fillStyle(stripe % 2 === 0 ? 0xe2b84e : 0x1c1c1c).fillRect(x, platform.bottom - 6, 16, 6);
     }
-    // Guard rail between the two flights.
-    line(g, stairFlights[0].maxX, platform.bottom - 10, stairFlights[1].minX, platform.bottom - 10, 0xe0b23c, 3, 0.9);
+    // The bulk pallet backs against the rear wall; both flights remain open.
+    const wall = SHIFT_LAYOUT.bulkRearWall;
+    const wallLeft = wall.x - wall.width / 2;
+    const wallRight = wall.x + wall.width / 2;
+    const wallTop = wall.y - wall.height / 2;
+    const rearWall = scene.add.graphics().setDepth(4).setData('rearWall', { ...wall });
+    rearWall.fillStyle(0x142a31).fillRect(wallLeft, wallTop, wall.width, wall.height);
+    rearWall.fillStyle(0x526b6c).fillRect(wallLeft, wallTop, wall.width, 3);
+    for (let x = wallLeft + 8; x < wallRight; x += 20) {
+      line(rearWall, x, wallTop + 3, x, wallTop + wall.height, 0x2b444a, 1);
+    }
+    line(rearWall, wallLeft, wallTop, wallRight, wallTop, 0xe0b23c, 2, 0.9);
     // Lane coordinates constrain body centers: the stair deck must also support
     // the full body at either extreme, rather than cutting through its feet.
     for (const lane of stairFlights) {
@@ -309,7 +319,8 @@ export class DepotArt {
       g.fillStyle(0x0a1a20).fillRect(lane.minX - 3, stairs.top, 3, stairs.bottom - stairs.top).fillRect(lane.maxX, stairs.top, 3, stairs.bottom - stairs.top);
       label(scene, (lane.minX + lane.maxX) / 2, stairs.top + 46, 'STAIRS\n▼', 8, '#e8c04a').setAlign('center').setDepth(1);
     }
-    label(scene, 480, platform.bottom - 28, 'LOADING PLATFORM', 8, '#c8b47a').setDepth(1);
+    label(scene, 480, platform.bottom + 22, 'REAR WALL', 8, '#c8b47a').setDepth(4);
+    label(scene, 480, SHIFT_LAYOUT.recoveryPile.y + 55, 'RAISED LOADING PLATFORM', 7, '#c8b47a').setDepth(1);
     label(scene, 480, lowerFloor.bottom - 12, 'LOWER FLOOR', 8, '#6e8a8b').setDepth(1);
     for (const route of ['T', 'S'] as const) {
       const storage = SHIFT_LAYOUT.floorStorage[route];
@@ -332,7 +343,7 @@ export class DepotArt {
   private drawBulk() {
     const { x, y } = SHIFT_LAYOUT.bulkPile;
     const g = this.scene.add.graphics().setDepth(3);
-    const height = 96;
+    const height = 2 * (SHIFT_LAYOUT.bulkRearWall.y - SHIFT_LAYOUT.bulkRearWall.height / 2 - y);
     g.setData('bulkPile', { x, y, width: 116, height });
     g.fillStyle(0x173039).fillRoundedRect(x - 63, y - height / 2 - 3, 126, height + 6, 4);
     g.lineStyle(1, 0xc2a771, 0.55).strokeRoundedRect(x - 63, y - height / 2 - 3, 126, height + 6, 4);
@@ -354,7 +365,7 @@ export class DepotArt {
     };
     for (const cy of [y + 6, y - 9]) for (const cx of [x, x - 30, x + 30]) crate(cx, cy, 26, 20);
     this.setBulkStock(0);
-    label(this.scene, x, y + height / 2 + 10, 'BULK / DISPATCH', 7, '#c5b384').setDepth(4);
+    label(this.scene, x, y - height / 2 - 10, 'BULK / DISPATCH', 7, '#c5b384').setDepth(4);
     const recovery = SHIFT_LAYOUT.recoveryPile;
     const tray = this.scene.add.graphics().setDepth(3).setData('recoveryPile', { ...recovery });
     tray.fillStyle(0x0a2028).fillRoundedRect(recovery.x - 59, recovery.y - 26, 118, 52, 4);
@@ -426,8 +437,8 @@ export class DepotArt {
     this.crewTruckPoints.dorothy = this.crewTruckPoints.doris;
     this.fishTank = createPaytmanTankArt(this.scene);
     // In the empty bay beside Paytman's truck.
-    this.fishTank.container.setPosition(716, 628).setDepth(4);
-    this.departureObjects.push({ object: this.fishTank.container, x: 716, direction: 1 });
+    this.fishTank.container.setPosition(SHIFT_LAYOUT.fishTank.x, SHIFT_LAYOUT.fishTank.y).setDepth(4);
+    this.departureObjects.push({ object: this.fishTank.container, x: SHIFT_LAYOUT.fishTank.x, direction: 1 });
   }
 }
 
@@ -605,7 +616,7 @@ export function updateParcelArt(container: Phaser.GameObjects.Container, kind: P
 
 export interface DepotWorkerArt {
   container: Phaser.GameObjects.Container;
-  update(timeMs: number, moving: boolean, active: boolean, holding: boolean, assisting?: boolean): void;
+  update(timeMs: number, moving: boolean, active: boolean, holding: boolean, assisting?: boolean, scannerFault?: boolean): void;
 }
 
 /** Illustrated workers with independently articulated arms and boots. */
@@ -684,7 +695,7 @@ export function createWorkerArt(scene: Phaser.Scene, side: DepotSide): DepotWork
   root.add(head);
   return {
     container: root,
-    update(timeMs, moving, active, holding, assisting = false) {
+    update(timeMs, moving, active, holding, assisting = false, scannerFault = false) {
       const stride = moving ? Math.sin(timeMs / 80) : 0;
       legs[0].y = 10 + stride * 3;
       legs[1].y = 10 - stride * 3;
@@ -696,9 +707,9 @@ export function createWorkerArt(scene: Phaser.Scene, side: DepotSide): DepotWork
       arms[0].y = holding ? -8 : -11;
       arms[1].y = holding ? -8 : -11;
       ring.setVisible(active);
-      sleepy.setText(assisting ? 'AUTO' : 'zZz');
-      sleepy.setVisible(!active);
-      root.setAlpha(active || assisting ? 1 : 0.6);
+      sleepy.setText(scannerFault ? 'SCAN!' : assisting ? 'AUTO' : 'zZz').setColor(scannerFault ? '#f3987c' : '#e5e9d6');
+      sleepy.setVisible(!active || scannerFault);
+      root.setAlpha(active || assisting || scannerFault ? 1 : 0.6);
       body.y = moving ? -Math.abs(stride) * 0.7 : 0;
       head.y = body.y;
       shadow.scaleX = moving ? 1 - Math.abs(stride) * 0.025 : 1;

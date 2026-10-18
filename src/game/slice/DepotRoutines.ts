@@ -13,7 +13,7 @@ type Speaker = (id: string, text: string, duration: number, priority?: number) =
 const RESIDENTS = ['hussan', 'aj', 'ben', 'bannerman', 'fruitloop', 'doris', 'brian', 'donna'];
 const mix = (a: number, b: number, t: number) => Phaser.Math.Linear(a, b, Phaser.Math.Clamp(t, 0, 1));
 /** Ralph's five-ton backs into the empty west bay beside the bulk pile. */
-const RALPH_BAY = { x: 244, y: 628, from: -120 };
+const RALPH_BAY = SHIFT_LAYOUT.ralphBay;
 /** One engine first (Hussan's truck), then the rest in turn. */
 export function engineStartAt(index: number): number {
   return index === 0 ? DRIVERS.firstEngineAt : DRIVERS.otherEnginesAt + (index - 1) * DRIVERS.engineStaggerMs;

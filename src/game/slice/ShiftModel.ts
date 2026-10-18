@@ -71,7 +71,7 @@ export interface IntakePreview extends ParcelIdentity {
 }
 
 export interface ShiftEvent {
-  type: 'grab' | 'drop' | 'sort' | 'wrong' | 'miss' | 'recover' | 'brake' | 'switch' | 'phase' | 'brian' | 'spill' | 'end' | 'throw' | 'damage';
+  type: 'grab' | 'drop' | 'sort' | 'wrong' | 'miss' | 'recover' | 'brake' | 'switch' | 'phase' | 'brian' | 'spill' | 'end' | 'throw' | 'damage' | 'scanner';
   message: string;
   x: number;
   y: number;
@@ -79,7 +79,11 @@ export interface ShiftEvent {
   score?: number;
   packageId?: number;
   workerId?: WorkerId;
+  /** Automatic deliveries contribute to dispatch, never the player's points or combo. */
+  assisted?: boolean;
 }
+
+export interface ScannerRequest { workerId: WorkerId; message: string }
 
 type Rect = { x: number; y: number; width: number; height: number };
 
@@ -100,24 +104,27 @@ export const SHIFT_LAYOUT = {
   parcelGap: 68,
   dockA: { x: 360, y: 532 },
   dockB: { x: 600, y: 532 },
-  dockD: { x: 360, y: 740 },
-  dockE: { x: 600, y: 740 },
+  dockD: { x: 360, y: 628 },
+  dockE: { x: 600, y: 628 },
   floorT: { x: 380, y: 940 },
   floorS: { x: 580, y: 940 },
-  bulkPile: { x: 480, y: 610 },
-  bulkLeft: { x: 400, y: 624 },
-  bulkRight: { x: 560, y: 624 },
-  recoveryPile: { x: 480, y: 690 },
+  bulkPile: { x: 480, y: 736 },
+  bulkLeft: { x: 400, y: 736 },
+  bulkRight: { x: 560, y: 736 },
+  recoveryPile: { x: 480, y: 610 },
+  bulkRearWall: { x: 480, y: 781, width: 132, height: 6 },
+  ralphBay: { x: 244, y: 740, from: -120 },
+  fishTank: { x: 716, y: 740, width: 52, height: 36 },
   /** Centered rectangles shared by delivery rules, guidance and painted floor markings. */
   dropAreas: {
     A: { x: 369, y: 532, width: 102, height: 88 },
     B: { x: 591, y: 532, width: 102, height: 88 },
-    D: { x: 369, y: 740, width: 102, height: 88 },
-    E: { x: 591, y: 740, width: 102, height: 88 },
+    D: { x: 369, y: 628, width: 102, height: 88 },
+    E: { x: 591, y: 628, width: 102, height: 88 },
     T: { x: 380, y: 940, width: 120, height: 84 },
     S: { x: 580, y: 940, width: 120, height: 84 },
-    bulkLeft: { x: 400, y: 624, width: 80, height: 96 },
-    bulkRight: { x: 560, y: 624, width: 80, height: 96 },
+    bulkLeft: { x: 400, y: 736, width: 80, height: 80 },
+    bulkRight: { x: 560, y: 736, width: 80, height: 80 },
   },
   workerMinY: -20,
   workerMaxY: 992,
@@ -139,7 +146,7 @@ export const SHIFT_LAYOUT = {
   truckDepth: 72,
   /** Truck bodies (148 × 72) parked against the platform edges, rear doors flush with it. */
   playerTrucks: {
-    A: { x: 244, y: 532 }, B: { x: 716, y: 532 }, D: { x: 244, y: 740 }, E: { x: 716, y: 740 },
+    A: { x: 244, y: 532 }, B: { x: 716, y: 532 }, D: { x: 244, y: 628 }, E: { x: 716, y: 628 },
   },
 } as const;
 
@@ -148,6 +155,7 @@ export const DEPOT_EQUIPMENT_FOOTPRINTS: readonly Rect[] = [
   { x: SHIFT_LAYOUT.beltX, y: (SHIFT_LAYOUT.beltTop + SHIFT_LAYOUT.beltBottom) / 2, width: 104, height: SHIFT_LAYOUT.beltBottom - SHIFT_LAYOUT.beltTop },
   { ...SHIFT_LAYOUT.bulkPile, width: 116, height: 96 },
   { ...SHIFT_LAYOUT.recoveryPile, width: 118, height: 52 },
+  SHIFT_LAYOUT.bulkRearWall,
 ];
 
 /** Every destination's readable identity. Letters and names appear on parcels, floors and signs. */
@@ -365,6 +373,9 @@ export class ShiftModel {
   /** The inactive worker carries their own routes once the opening lesson is complete. */
   public crewAssist: boolean;
   private assistedDeliveries = 0;
+  private scannerFaultIndex = 0;
+  private scannerWorker: WorkerId | null = null;
+  private scannerResetCount = 0;
 
   private events: ShiftEvent[] = [];
   private nextId = 1;
@@ -396,6 +407,18 @@ export class ShiftModel {
     return this.assistedDeliveries;
   }
 
+  public get playerSorted(): number { return this.sorted - this.assistedDeliveries; }
+
+  public get pendingScannerWorker(): WorkerId | null { return this.scannerWorker; }
+
+  public get scannerResets(): number { return this.scannerResetCount; }
+
+  public get scannerRequest(): ScannerRequest | null {
+    const workerId = this.scannerWorker;
+    if (!workerId) return null;
+    return { workerId, message: `${workerId.toUpperCase()}'S SCANNER STOPPED · ${this.activeWorker.id === workerId ? 'SPACE TO RESET' : 'TAB THEN SPACE TO RESET'}` };
+  }
+
   public get timeLeftMs(): number {
     return Math.max(0, this.durationMs - this.elapsedMs);
   }
@@ -418,8 +441,8 @@ export class ShiftModel {
   }
 
   public get accuracy(): number {
-    const total = this.sorted + this.errors;
-    return total === 0 ? 100 : Math.round(this.sorted / total * 100);
+    const total = this.playerSorted + this.errors;
+    return total === 0 ? 100 : Math.round(this.playerSorted / total * 100);
   }
 
   public get grade(): ShiftGrade {
@@ -503,6 +526,12 @@ export class ShiftModel {
   public action(): void {
     if (!this.canAct()) return;
     const worker = this.activeWorker;
+    if (this.scannerWorker === worker.id) {
+      this.scannerWorker = null;
+      this.scannerResetCount += 1;
+      this.emit('scanner', `${worker.id.toUpperCase()}'S SCANNER RESET · BACK TO WORK`, worker);
+      return;
+    }
     const held = this.heldPackage;
     if (!held) {
       const parcel = this.nearestPackage();
@@ -673,6 +702,7 @@ export class ShiftModel {
     this.beltTravel += ((startSpeed + endSpeed) / 2) * movingMs / 1000;
 
     this.moveWorker(deltaMs, move);
+    this.updateScannerRequest();
     this.assistWorker(deltaMs);
     for (const worker of this.workers) {
       const held = this.packages.find((parcel) => parcel.id === worker.heldId);
@@ -828,7 +858,7 @@ export class ShiftModel {
   private assistWorker(deltaMs: number): void {
     const worker = this.workers[this.activeIndex === 0 ? 1 : 0];
     worker.moving = false;
-    if (!this.assistanceActive) return;
+    if (!this.assistanceActive || this.scannerWorker === worker.id) return;
     const held = this.packages.find((parcel) => parcel.id === worker.heldId);
     const owned = WORKER_ROUTES[worker.id];
     // Taking control of a worker is immediate; leaving them with another route never hides a handoff.
@@ -847,8 +877,7 @@ export class ShiftModel {
     }
     if (held && this.currentDock(worker) === held.route) {
       this.release(worker, held);
-      this.deliver(held);
-      this.assistedDeliveries += 1;
+      this.deliver(held, true);
       return;
     }
     if (!held && parcel && this.canPickup(worker, parcel)) {
@@ -859,6 +888,18 @@ export class ShiftModel {
     const dy = target.y - worker.y;
     const length = Math.hypot(dx, dy);
     if (length > 2) this.moveWorker(deltaMs, { x: dx / length, y: dy / length }, worker);
+  }
+
+  /** Two brief handovers after real assisted work, never from a clock-only fixture. */
+  private updateScannerRequest(): void {
+    if (!this.assistanceActive || this.scannerWorker || this.elapsedMs >= this.durationMs || this.scannerFaultIndex >= 2) return;
+    const at = this.scannerFaultIndex === 0 ? 70_000 : 135_000;
+    const deliveries = this.scannerFaultIndex === 0 ? 4 : 10;
+    if (this.elapsedMs < at || this.assistedDeliveries < deliveries) return;
+    const worker = this.workers[this.activeIndex === 0 ? 1 : 0];
+    this.scannerWorker = worker.id;
+    this.scannerFaultIndex += 1;
+    this.emit('scanner', this.scannerRequest!.message, worker);
   }
 
   private release(worker: Worker, parcel: Parcel): void {
@@ -872,7 +913,7 @@ export class ShiftModel {
     const routes = WORKER_ROUTES[worker.id];
     for (const route of routes) {
       const area = SHIFT_LAYOUT.dropAreas[route as 'A' | 'B' | 'D' | 'E' | 'T' | 'S'];
-      // Truck areas exclude their lower edge; the adjoining bulk area owns it.
+      // Truck areas exclude their lower edge; each painted route has one owner.
       if (Math.abs(worker.x - area.x) <= area.width / 2 && worker.y >= area.y - area.height / 2 && worker.y < area.y + area.height / 2) return route;
     }
     const bulk = worker.side === 'left' ? SHIFT_LAYOUT.dropAreas.bulkLeft : SHIFT_LAYOUT.dropAreas.bulkRight;
@@ -880,9 +921,9 @@ export class ShiftModel {
     return null;
   }
 
-  private deliver(parcel: Parcel): void {
+  private deliver(parcel: Parcel, assisted = false): void {
     const base = DELIVERY_POINTS[parcel.route];
-    const award = parcel.recovered ? base / 2 : base + Math.min(this.combo, 10) * 15;
+    const award = assisted ? 0 : parcel.recovered ? base / 2 : base + Math.min(this.combo, 10) * 15;
     parcel.state = 'delivered';
     parcel.workerId = null;
     if (parcel.route === 'T' || parcel.route === 'S') {
@@ -901,9 +942,12 @@ export class ShiftModel {
     this.sorted += 1;
     this.routeSorted[parcel.route] += 1;
     if (parcel.route === 'C') this.bulkSorted += 1;
-    this.combo += 1;
-    this.bestCombo = Math.max(this.bestCombo, this.combo);
-    this.emit('sort', `${parcel.recovered ? 'RECOVERED' : parcel.thrownDelivery ? 'THROWN IN' : 'SORTED'} +${award}`, parcel, parcel, award);
+    if (assisted) this.assistedDeliveries += 1;
+    else {
+      this.combo += 1;
+      this.bestCombo = Math.max(this.bestCombo, this.combo);
+    }
+    this.emit('sort', assisted ? 'PARTNER SORTED · NO POINTS' : `${parcel.recovered ? 'RECOVERED' : parcel.thrownDelivery ? 'THROWN IN' : 'SORTED'} +${award}`, parcel, parcel, award, assisted);
   }
 
   private miss(parcel: Parcel): void {
@@ -976,9 +1020,9 @@ export class ShiftModel {
     this.emit('end', message, { x: 480, y: 340 });
   }
 
-  private emit(type: ShiftEvent['type'], message: string, point: { x: number; y: number }, parcel?: Parcel, score?: number): void {
+  private emit(type: ShiftEvent['type'], message: string, point: { x: number; y: number }, parcel?: Parcel, score?: number, assisted?: boolean): void {
     const workerId = 'id' in point && (point.id === 'termite' || point.id === 'skanky') ? point.id : undefined;
-    this.events.push({ type, message, x: point.x, y: point.y, route: parcel?.route, packageId: parcel?.id, score, workerId });
+    this.events.push({ type, message, x: point.x, y: point.y, route: parcel?.route, packageId: parcel?.id, score, workerId, assisted });
   }
 }
 

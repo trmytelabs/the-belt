@@ -20,9 +20,20 @@ test('crew and carried freight fit between truck rows without shifting a clear p
   }
 });
 
+test('Ralph and the fish tank keep separate bays after the second player trucks', () => {
+  const ralph = { ...SHIFT_LAYOUT.ralphBay, width: 148, height: SHIFT_LAYOUT.truckDepth };
+  for (const prop of [ralph, SHIFT_LAYOUT.fishTank]) {
+    for (const truck of Object.values(SHIFT_LAYOUT.playerTrucks)) {
+      const separated = Math.abs(prop.x - truck.x) >= (prop.width + 148) / 2
+        || Math.abs(prop.y - truck.y) >= (prop.height + SHIFT_LAYOUT.truckDepth) / 2;
+      assert.ok(separated, 'moving D/E must not occupy an existing prop bay');
+    }
+  }
+});
+
 test('crew yields around both active workers and stationary scenery', () => {
   const workers = [{ x: 330, y: 532, radius: 12 }, { x: 630, y: 532, radius: 12 }];
-  for (const point of [{ x: 324, y: 532 }, { x: 636, y: 532 }, { x: 480, y: 300 }, { x: 480, y: 610 }, { x: 480, y: 690 }]) {
+  for (const point of [{ x: 324, y: 532 }, { x: 636, y: 532 }, { x: 480, y: 300 }, SHIFT_LAYOUT.bulkPile, SHIFT_LAYOUT.recoveryPile]) {
     assertClear(clearDepotFootprint(point, DEPOT_BODY_RADIUS, workers, solids), DEPOT_BODY_RADIUS, workers);
   }
 });
