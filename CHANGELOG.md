@@ -13,6 +13,10 @@
   parcel collection/loading and brief original gags. Keep Shan visible at work.
 - Reveal people through soft circular cutaways in foreground truck parts,
   restoring the solid view as they move away.
+- Keep elbows beside the torso, soften the walking swing and separate fists
+  during angry gestures so the crew no longer appears to clap through its chest.
+- Upgrade 3D cars to two detailed sedan models and the devil to an animated,
+  winged Quaternius model. Include CC0 provenance and procedural fallbacks.
 - Sort street addresses against city district ranges, including Mill Woods for
   Termite, with neutral signs and no visible routing letters or answer guidance.
 - Let the uncontrolled coworker collect and deliver freight automatically.

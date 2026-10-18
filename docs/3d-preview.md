@@ -42,6 +42,9 @@ rear platform, outward side stairs, truck interiors and lower-floor drops.
   keeps cross-lane departures around the belt head.
 - `truckCutaway.ts` opens soft circular windows in foreground truck shells
   and shelf boards around nearby people. Delivered cargo remains visible.
+- `propModels.ts` upgrades cars and the devil with compact CC0 Quaternius GLBs,
+  preserving their original driving and story roots and procedural fallbacks.
+  See [asset sources](../public/models/PROP-SOURCES.md).
 - `parcels.ts` builds each named freight type with its full shipping tag.
 - `overlay.ts` holds the HUD, the briefing/countdown/results panels and the
   speech bubbles. Each bubble is anchored above its speaker. If the speaker is

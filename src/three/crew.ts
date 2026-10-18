@@ -79,8 +79,8 @@ export function applyPose(c: Character, pose: Pose, t: number, still: boolean): 
   const wave = (speed: number, amount: number): number => still ? 0 : Math.sin(t * speed) * amount;
   switch (pose) {
     case 'shout':
-      c.leftArm.rotation.set(-2.9 + wave(14, 0.15), 0, 0.35);
-      c.rightArm.rotation.set(-2.9 - wave(14, 0.15), 0, -0.35);
+      c.leftArm.rotation.set(-2.9 + wave(6, 0.08), 0, -0.25);
+      c.rightArm.rotation.set(-2.9 - wave(6, 0.08), 0, 0.25);
       bendElbows(c, -0.35 + wave(14, 0.2), -0.35 - wave(14, 0.2));
       c.head.rotation.x = -0.25;
       break;
@@ -103,25 +103,26 @@ export function applyPose(c: Character, pose: Pose, t: number, still: boolean): 
     case 'dance':
       c.body.rotation.z = wave(11, 0.16);
       c.body.position.y = Math.abs(wave(14, 0.12));
-      c.leftArm.rotation.set(-2.6 + wave(13, 0.5), 0, 0.3);
-      c.rightArm.rotation.set(-2.6 - wave(13, 0.5), 0, -0.3);
+      c.leftArm.rotation.set(-2.6 + wave(8, 0.25), 0, -0.3);
+      c.rightArm.rotation.set(-2.6 - wave(8, 0.25), 0, 0.3);
       bendElbows(c, -0.6 + wave(13, 0.4), -0.6 - wave(13, 0.4));
       bendKnees(c, 0.25 + Math.abs(wave(14, 0.25)));
       break;
     case 'cheer':
       c.body.position.y = Math.abs(wave(9, 0.1));
       c.body.rotation.z = wave(7, 0.08);
-      c.leftArm.rotation.set(-2.8 + wave(9, 0.35), 0, 0.25);
-      c.rightArm.rotation.set(-2.8 - wave(9, 0.35), 0, -0.25);
+      c.leftArm.rotation.set(-2.8 + wave(6, 0.2), 0, -0.25);
+      c.rightArm.rotation.set(-2.8 - wave(6, 0.2), 0, 0.25);
       bendElbows(c, -0.3);
       break;
     case 'swear':
-      // Fists up at chest height, shaking.
-      c.leftArm.rotation.set(-0.5, 0, 0.75 + wave(16, 0.2));
-      c.rightArm.rotation.set(-0.5, 0, -0.75 - wave(16, 0.2));
-      bendElbows(c, -1.5 + wave(16, 0.2), -1.5 - wave(16, 0.2));
-      c.head.rotation.y = wave(12, 0.35);
-      c.body.rotation.x = -0.12;
+      // Fists stay apart, with the elbows beside the ribs. Inward shoulder
+      // rolls made the old gesture cross the chest and look like clapping.
+      c.leftArm.rotation.set(-0.4, 0, -0.18 + wave(4, 0.035));
+      c.rightArm.rotation.set(-0.4, 0, 0.18 + wave(4, 0.035));
+      bendElbows(c, -1.35 + wave(4, 0.06), -1.35 - wave(4, 0.06));
+      c.head.rotation.y = wave(3, 0.1);
+      c.body.rotation.x = -0.06;
       break;
     case 'cough':
       // Doubled over with a hand to the mouth.
@@ -131,8 +132,8 @@ export function applyPose(c: Character, pose: Pose, t: number, still: boolean): 
       bendElbows(c, -0.7, -2.1);
       break;
     case 'announce':
-      c.rightArm.rotation.set(-2.1 + wave(5, 0.25), 0, -0.2);
-      c.leftArm.rotation.set(-0.7, 0, 0.3);
+      c.rightArm.rotation.set(-1.0 + wave(3, 0.08), 0, 0.2);
+      c.leftArm.rotation.set(-0.35, 0, -0.12);
       bendElbows(c, -1.2, -0.35);
       break;
     case 'push':
@@ -157,9 +158,9 @@ export function applyPose(c: Character, pose: Pose, t: number, still: boolean): 
       bendElbows(c, -0.12, -0.45);
       break;
     case 'carry':
-      c.leftArm.rotation.set(-0.62, 0, -0.2);
-      c.rightArm.rotation.set(-0.62, 0, 0.2);
-      bendElbows(c, -1.0);
+      c.leftArm.rotation.set(-0.3, 0, -0.12);
+      c.rightArm.rotation.set(-0.3, 0, 0.12);
+      bendElbows(c, -1.25);
       break;
     case 'keys':
       c.rightArm.rotation.set(-1.0 + wave(8, 0.08), 0, -0.1);
@@ -344,6 +345,7 @@ export class CrewLife {
     this.actor('ben').root.scale.setScalar(1);
     this.crewEpoch.clear();
     this.workWalks.clear();
+    this.world.shoulderDevil?.reset();
     this.cell.root.visible = false;
     this.cellCaption.visible = false;
     this.cell.tag.visible = true;

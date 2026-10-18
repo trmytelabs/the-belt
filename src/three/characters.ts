@@ -521,15 +521,15 @@ export function animateCharacter(character: Character, dt: number, state: {
   character.leftShin.rotation.x = ease(character.leftShin.rotation.x, leftKnee);
   character.rightShin.rotation.x = ease(character.rightShin.rotation.x, rightKnee);
   // Carrying holds the parcel at the waist with bent elbows; otherwise the arms swing.
-  const carryAngle = -0.62;
-  character.leftArm.rotation.x = ease(character.leftArm.rotation.x, carrying ? carryAngle : -swing * 0.42);
-  character.rightArm.rotation.x = ease(character.rightArm.rotation.x, carrying ? carryAngle : swing * 0.42);
+  const carryAngle = -0.3;
+  character.leftArm.rotation.x = ease(character.leftArm.rotation.x, carrying ? carryAngle : -swing * 0.24);
+  character.rightArm.rotation.x = ease(character.rightArm.rotation.x, carrying ? carryAngle : swing * 0.24);
   character.leftArm.rotation.y = ease(character.leftArm.rotation.y, 0);
   character.rightArm.rotation.y = ease(character.rightArm.rotation.y, 0);
-  character.leftArm.rotation.z = ease(character.leftArm.rotation.z, carrying ? -0.2 : -0.07);
-  character.rightArm.rotation.z = ease(character.rightArm.rotation.z, carrying ? 0.2 : 0.07);
-  const elbowLeft = carrying ? -1.0 : walking ? -0.22 - Math.max(0, swing) * 0.35 : -0.12;
-  const elbowRight = carrying ? -1.0 : walking ? -0.22 - Math.max(0, -swing) * 0.35 : -0.12;
+  character.leftArm.rotation.z = ease(character.leftArm.rotation.z, carrying ? -0.12 : -0.1);
+  character.rightArm.rotation.z = ease(character.rightArm.rotation.z, carrying ? 0.12 : 0.1);
+  const elbowLeft = carrying ? -1.25 : walking ? -0.2 - Math.max(0, swing) * 0.12 : -0.12;
+  const elbowRight = carrying ? -1.25 : walking ? -0.2 - Math.max(0, -swing) * 0.12 : -0.12;
   character.leftForearm.rotation.x = ease(character.leftForearm.rotation.x, elbowLeft);
   character.rightForearm.rotation.x = ease(character.rightForearm.rotation.x, elbowRight);
   character.leftForearm.rotation.y = ease(character.leftForearm.rotation.y, 0);

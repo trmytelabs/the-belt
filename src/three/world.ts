@@ -12,6 +12,7 @@ import {
 } from './space';
 import { SHAN_NAME } from '../game/slice/StoryScript';
 import { TruckCutaway } from './truckCutaway';
+import { DevilModel } from './propModels';
 
 const rounded = (w: number, h: number, d: number, material: THREE.Material, r = 0.05): THREE.Mesh =>
   new THREE.Mesh(new RoundedBoxGeometry(w, h, d, 2, Math.min(r, w / 2, h / 2, d / 2)), material);
@@ -60,6 +61,7 @@ const PLAYER_TRUCKS: { route: PlayerTruckRoute; body: number; cab: number }[] = 
 
 export class DepotWorld {
   public readonly truckCutaway: TruckCutaway;
+  public shoulderDevil: DevilModel | null = null;
   public readonly scene = new THREE.Scene();
   public readonly tread: THREE.Texture;
   public readonly residents = new Map<string, Resident>();
@@ -892,6 +894,7 @@ export class DepotWorld {
     } else if (id === 'ben') {
       // Ben's literal small purple shoulder demon.
       const demon = new THREE.Group();
+      demon.name = 'shoulder-devil'; demon.userData.keep = true;
       const purple = new THREE.MeshStandardMaterial({ color: 0x8a4fb8, roughness: 0.5, emissive: 0x3a1450, emissiveIntensity: 0.4 });
       const torso = new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 8), purple);
       const head = new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 8), purple);
@@ -910,6 +913,7 @@ export class DepotWorld {
       }
       demon.position.set(0.3, 1.5, 0);
       character.body.add(demon);
+      this.shoulderDevil = new DevilModel(demon, { height:0.34, width:0.32 });
     } else if (id === 'bannerman') {
       const bricks = new THREE.Group();
       bricks.position.copy(toWorld(SHIFT_LAYOUT.eventProps.lego));
@@ -1043,6 +1047,7 @@ export class DepotWorld {
   }
 
   public update(dt: number, time: number, beltTravel: number, reducedMotion: boolean): void {
+    if (this.residents.get('ben')?.character.root.visible) this.shoulderDevil?.update('Idle', dt, reducedMotion);
     // One texture repeat spans one world unit of belt.
     this.tread.offset.y = beltTravel * WORLD_SCALE;
     for (const roller of this.beltRollers) roller.rotation.x = -beltTravel * WORLD_SCALE / 0.2;

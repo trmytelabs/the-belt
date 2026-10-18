@@ -6,6 +6,7 @@ import type { Cutscene } from '../game/slice/StoryModel';
 import type { StoryScene } from '../game/slice/StoryScript';
 import { animateCharacter, createCharacter, mergeCharacter, type Character, type CharacterSpec } from './characters';
 import { applyPose, type CrewLife, type Pose } from './crew';
+import { upgradeCar } from './propModels';
 import { PuffField } from './fx';
 import { buildSouthgateMall, mallX, mallZ, type SouthgateMall } from './mall';
 import { mergeStatic } from './merge';
@@ -152,6 +153,7 @@ function createCar(color: number): THREE.Group {
     rear.position.set(-2.11, 0.72, z);
     car.add(light, rear);
   }
+  void upgradeCar(car, color);
   return shadowed(car);
 }
 

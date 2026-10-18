@@ -139,6 +139,49 @@ try {
     assert.equal(result.shownFigure, 0, `${result.name} hides only its procedural figure`);
   }
   console.log(`PASS all ${ROCKETBOX_CAST.length} shipped character models decode and attach across depot, story, mall and dream scenes`);
+  // Check the actual rig proportions too: the previous inward shoulder roll
+  // put angry fists together across the chest on the imported crew.
+  const armSamples = [];
+  for (const { file } of ROCKETBOX_CAST) {
+    await page.evaluate(async ({ file, entries }) => {
+      const app = window.fixtureApp;
+      await app.useCharacterModels([{ names:['HUSSAN'],url:`/models/characters/${file}.glb`,skinMaterial:/head/i }, ...entries.filter(entry => !entry.names.includes('HUSSAN'))]);
+      const names = new Set(entries.flatMap(entry => entry.names));
+      app.world.scene.traverse(object => { if (names.has(object.name)) object.visible = false; });
+      app.crew.actor('hussan').root.visible = true;
+    }, { file, entries:cast });
+    const samples = await page.evaluate(() => {
+      const app = window.fixtureApp, actor = app.crew.actor('hussan');
+      const out = [];
+      for (const time of [0,0.35,0.7,1.05]) {
+        actor.pose = 'swear'; actor.poseStart = 0; actor.carrying = false;
+        actor.animate(0.1,time,false); app.lastRender = -Infinity; app.draw();
+        actor.root.updateMatrixWorld(true);
+        const inverse = actor.character.body.matrixWorld.clone().invert();
+        const roles = { upper:[],elbow:[],hand:[] };
+        actor.root.getObjectByName('character-model').traverse(bone => {
+          if (!bone.isBone) return;
+          const role = /upperarm$/i.test(bone.name) ? 'upper' : /forearm$/i.test(bone.name) ? 'elbow' : /hand$/i.test(bone.name) ? 'hand' : null;
+          if (role) roles[role].push(bone.getWorldPosition(actor.root.position.clone()).applyMatrix4(inverse));
+        });
+        for (const points of Object.values(roles)) points.sort((a,b) => a.x-b.x);
+        out.push({ separation:roles.hand[0].distanceTo(roles.hand[1]),
+          arms:roles.upper.map((shoulder,index) => ({ shoulder:shoulder.x,elbow:roles.elbow[index].x,hand:roles.hand[index].x,
+            bend:roles.elbow[index].clone().sub(shoulder).angleTo(roles.hand[index].clone().sub(roles.elbow[index])) })) });
+      }
+      return out;
+    });
+    armSamples.push(...samples.map(sample => ({ file,...sample })));
+  }
+  for (const sample of armSamples) {
+    assert.ok(sample.separation > 0.25, `${sample.file} keeps its fists separated`);
+    for (const arm of sample.arms) {
+      assert.ok(Math.sign(arm.shoulder) === Math.sign(arm.elbow) && Math.sign(arm.shoulder) === Math.sign(arm.hand), `${sample.file} never crosses its own chest`);
+      assert.ok(Math.abs(arm.elbow) >= Math.abs(arm.shoulder)*0.8 && Math.abs(arm.hand) >= Math.abs(arm.shoulder)*0.8);
+      assert.ok(arm.bend > 0.8 && arm.bend < 1.6, `${sample.file} bends at the elbow: ${arm.bend}`);
+    }
+  }
+  console.log('PASS all 23 real character rigs keep angry fists apart, flex the elbows and avoid crossing the chest');
   assert.deepEqual(errors, [], 'no page errors');
   console.log('PASS no page errors with imported character models');
 } finally {

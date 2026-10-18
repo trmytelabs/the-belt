@@ -36,6 +36,14 @@ Animations from the file (for example Mixamo clips) are not used yet; the
 figure's poses drive the model. Natural walk, idle and carry clips would be a
 later step.
 
+Walking uses a restrained opposite arm swing with relaxed elbow flexion.
+Carrying keeps upper arms beside the ribs and bends primarily at the elbows.
+Angry and celebratory poses keep the hands on their own sides of the torso,
+avoiding the former chest-crossing, clapping motion. Regression checks cover
+complete pose cycles and the actual elbow/wrist positions on all 23 crew rigs.
+The separately loaded devil uses its own animation clips; see
+[prop sources](../public/models/PROP-SOURCES.md).
+
 ## The crew
 
 `src/three/rocketboxCast.ts` lists each character's Rocketbox avatar, and

@@ -29,6 +29,10 @@ WebGL; without it the page links to the 2D depot. See
 [the 3D depot](docs/3d-preview.md). The crew uses 23 rigged Microsoft Rocketbox
 characters, with procedural figures on software graphics. Their animation,
 props and provenance are covered in [character models](docs/character-models.md).
+Arms stay beside the torso with natural elbow bends during walking, carrying
+and gestures. Cars use two detailed sedan models, and the devil uses an animated
+horned, winged model. These compact CC0 models retain the existing story paths
+and have procedural fallbacks; see [prop sources](public/models/PROP-SOURCES.md).
 
 The legacy **2D Night Shift / Depot 07** is at `?mode=2d`. The current 3D game
 plays a whole night: one of three random

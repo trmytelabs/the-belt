@@ -8,6 +8,7 @@ import { createCharacter } from './characters';
 import { mix, type Actor, type CrewLife, type Say } from './crew';
 import { setFromModel, standard, textSprite, toWorld, toWorldX } from './space';
 import { RALPH_BAY, type DepotWorld } from './world';
+import { DevilModel } from './propModels';
 
 /**
  * The 2D depot's big set pieces, on its authored clocks
@@ -24,6 +25,7 @@ const GATE = { x: 152, y: BEN_BAY.y };
 const FALLEN = { x: 210, y: BEN_BAY.y + 2 };
 
 export class SetPieces {
+  public readonly devilModel: DevilModel;
   public ralphState: 'waiting' | 'entering' | 'loading' | 'leaving' | 'done' = 'waiting';
   public ralphLoaded = 0;
   public ralphLifted = 0;
@@ -74,6 +76,7 @@ export class SetPieces {
     this.gateLight = new THREE.PointLight(0xff5a1c, 0, 9, 1.6);
     this.buildGate();
     this.buildDemon();
+    this.devilModel = new DevilModel(this.demon);
     this.bang = SHOT_WORDS.map((word) => {
       const sprite = textSprite([word], 0.55, { width: Math.max(120, word.length * 26), height: 56, color: '#f0dfb3', font: '900 SIZEpx Impact, "Arial Black", sans-serif' });
       sprite.material.color.setHex(0xffffff);
@@ -191,6 +194,7 @@ export class SetPieces {
     this.gate.visible = false;
     this.demon.visible = false;
     this.deadMarker.visible = false;
+    this.devilModel.reset();
     for (const sprite of this.bang) sprite.visible = false;
   }
 
@@ -410,6 +414,7 @@ export class SetPieces {
       ben.root.position.set(mix(ben.root.position.x, gateWorld.x, sink), 0.15 - 1.4 * sink, gateWorld.z);
       ben.root.scale.setScalar(Math.max(0.01, 1 - sink));
     }
+    if (this.demon.visible) this.devilModel.update(this.benStage, dt, this.reducedMotion);
     this.deadMarker.visible = t >= 80_020 && t < 85_600;
     if (this.deadMarker.visible) this.deadMarker.position.copy(ben.root.position).add(new THREE.Vector3(0, 0.9, 0));
 
