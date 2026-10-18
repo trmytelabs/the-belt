@@ -31,6 +31,11 @@ export class BeltSystem {
   private treadOffset = 0;
 
   public create(scene: Phaser.Scene): void {
+    // GameScene reuses this system when a finished or failed shift is replayed.
+    // A previous cleanup / Mesa stop must not leave the new shift stalled.
+    this.currentState = 'running';
+    this._beltSpeed = 80;
+    this.treadOffset = 0;
     const baseGraphics = scene.add.graphics();
     baseGraphics.fillStyle(colors.black, 0.32);
     baseGraphics.fillRoundedRect(BELT_LEFT - 14, BELT_TOP - 4, BELT_WIDTH + 28, BELT_HEIGHT + 8, 10);

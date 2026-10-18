@@ -21,7 +21,7 @@ export class SortingSystem {
 
   private scoreSystem!: ScoreSystem;
 
-  private readonly playerZoneLocks = new Map<string, string | null>();
+  private readonly playerZoneLocks = new Map<string, { zoneId: string; packageId: string }>();
 
   public create(scene: Phaser.Scene, zones: SortingZones, scoreSystem: ScoreSystem): void {
     this.scene = scene;
@@ -34,17 +34,19 @@ export class SortingSystem {
     const zone = this.findCurrentZone(player.x, player.y);
 
     if (!zone) {
-      this.playerZoneLocks.set(player.id, null);
+      this.playerZoneLocks.delete(player.id);
       return;
     }
 
-    const previousZoneId = this.playerZoneLocks.get(player.id) ?? null;
+    const previous = this.playerZoneLocks.get(player.id);
 
-    if (previousZoneId === zone.id) {
+    if (previous?.zoneId === zone.id && previous.packageId === item.id) {
       return;
     }
 
-    this.playerZoneLocks.set(player.id, zone.id);
+    // Debounce a rejected parcel while it stays in one dock, but let the next
+    // parcel be sorted even if the worker never had to leave that dock.
+    this.playerZoneLocks.set(player.id, { zoneId: zone.id, packageId: item.id });
 
     if (zone.type === 'bulk') {
       if (item.destination === 'BULK') {

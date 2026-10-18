@@ -66,6 +66,7 @@ export class InputSystem {
     this.getPackages = getPackages;
     this.tryDigOutActivePlayer = tryDigOutActivePlayer;
     this.canProcessActions = canProcessActions;
+    this.mobileControlScheme = isMobileBrowser();
 
     this.termite.setActive(true);
     this.skanky.setActive(false);
@@ -73,8 +74,7 @@ export class InputSystem {
     this.attachTabListener(scene);
     this.attachMouseListeners(scene);
 
-    if (isMobileBrowser()) {
-      this.mobileControlScheme = true;
+    if (this.mobileControlScheme) {
       this.createMobileControls(scene);
     }
   }
@@ -247,6 +247,7 @@ export class InputSystem {
     };
 
     stick.addEventListener('pointerdown', (event) => {
+      if (this.mobileStickPointerId !== null) return;
       event.preventDefault();
       updateStickCenter();
       this.mobileStickPointerId = event.pointerId;
@@ -274,7 +275,16 @@ export class InputSystem {
       }
     });
 
+    // Capture may be interrupted by an OS gesture or a second control. A
+    // missing pointerup must not leave the worker walking indefinitely.
+    stick.addEventListener('lostpointercapture', (event) => {
+      if (this.mobileStickPointerId === event.pointerId) this.releaseMobileStick();
+    });
+    const blur = () => this.releaseMobileStick();
+    scene.game.events.on(Phaser.Core.Events.BLUR, blur);
+
     scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      scene.game.events.off(Phaser.Core.Events.BLUR, blur);
       this.destroyMobileControls();
     });
   }
