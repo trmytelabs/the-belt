@@ -159,7 +159,7 @@ test('an ordinary parcel reserved before Brian survives a brake delay and all fi
   clearAndAdvance(model, 59_200);
   assert.equal(model.elapsedMs, 61_200);
   const ordinary = model.intakePreview;
-  assert.equal(ordinary.kind, 'lobsters');
+  assert.equal(ordinary.kind, 'goji');
   model.brake();
   clearAndAdvance(model, 2_000);
   assert.equal(model.elapsedMs, 63_200);
@@ -252,9 +252,9 @@ test('both bulk hand-ins feed one central pile and the old side bays no longer a
     model.action();
     assert.equal(model.heldPackage?.id, 1);
     const oldBay = { ...model.activeWorker, x: side === 0 ? 260 : 700, y: 492 };
-    assert.equal(model.currentDock(oldBay), null);
+    assert.equal(model.currentDock(oldBay), null, 'a truck body beyond the platform edge is never a drop');
     Object.assign(model.activeWorker, { x: side === 0 ? 330 : 630, y: 492 });
-    assert.equal(model.currentDock(), null, 'the closest reachable edge of the old side bay is not a bulk dock');
+    assert.equal(model.currentDock(), side === 0 ? 'A' : 'B', 'the truck rear door is flush with the platform, so the whole lane in front of it loads');
     Object.assign(model.activeWorker, side === 0 ? SHIFT_LAYOUT.dockA : SHIFT_LAYOUT.dockB);
     model.action();
     assert.equal(model.heldPackage?.id, 1, 'bulk freight must not be accepted by a truck dock');
@@ -447,50 +447,26 @@ test('movement normalizes diagonals, respects lane bounds, and slows heavy carri
   const startY = heavy.activeWorker.y;
   heavy.update(100, { x: 0, y: 1 });
   assert.ok(Math.abs(heavy.activeWorker.y - startY - 9.4) < 1e-9);
-  advance(heavy, 8_000, { x: 1, y: 1 });
-  assert.equal(heavy.activeWorker.x, 400);
+  // Down the lane, the stairs and onto the lower floor, where that side widens.
+  advance(heavy, 14_000, { x: 1, y: 1 });
+  assert.equal(heavy.activeWorker.x, SHIFT_LAYOUT.lowerFloor.left.maxX);
   assert.equal(heavy.activeWorker.y, SHIFT_LAYOUT.workerMaxY);
 });
 
-test('workers stop at main truck corners and can walk around the front from either direction', () => {
+test('the platform edge is solid: parked trucks stay beyond the lane at every row', () => {
   for (const side of [0, 1]) {
-    for (const vertical of [-1, 1]) {
+    for (const y of [148, 340, 532, 628, 740]) {
       const model = new ShiftModel();
       if (side === 1) model.switchWorker();
       const worker = model.activeWorker;
-      const outerX = side === 0 ? 340 : 620;
-      Object.assign(worker, { x: outerX, y: vertical === 1 ? 440 : 620 });
-      advance(model, 500, { x: 0, y: vertical });
-      assert.equal(worker.x, outerX, 'touching a truck edge must not snap the worker sideways');
-      assert.equal(worker.y, vertical === 1 ? 476 : 588);
-      const edge = worker.y;
-      advance(model, 200, { x: side === 0 ? 1 : -1, y: 0 });
-      assert.equal(worker.y, edge);
-      assert.ok(side === 0 ? worker.x >= 360 : worker.x <= 600);
-      for (let frame = 0; frame < 35; frame += 1) {
-        model.update(20, { x: 0, y: vertical });
-        if (worker.y > 476 && worker.y < 588) assert.ok(side === 0 ? worker.x >= 360 : worker.x <= 600);
-      }
-      assert.ok(vertical === 1 ? worker.y > 588 : worker.y < 476, 'the worker must be able to pass the truck along its front');
+      Object.assign(worker, { x: side === 0 ? 380 : 580, y });
+      const outward = side === 0 ? -1 : 1;
+      advance(model, 500, { x: outward, y: 0 });
+      assert.equal(worker.x, side === 0 ? SHIFT_LAYOUT.leftLane.minX : SHIFT_LAYOUT.rightLane.maxX);
+      assert.equal(worker.y, y);
+      assert.equal(worker.moving, false, 'pushing against the platform edge must not animate walking');
+      assert.ok(side === 0 ? worker.x > SHIFT_LAYOUT.platform.left : worker.x < SHIFT_LAYOUT.platform.right, 'workers never step off the platform onto a truck');
     }
-  }
-});
-
-test('main truck fronts block horizontal penetration without restricting the other rows', () => {
-  for (const side of [0, 1]) {
-    const model = new ShiftModel();
-    if (side === 1) model.switchWorker();
-    const worker = model.activeWorker;
-    Object.assign(worker, { x: side === 0 ? 380 : 580, y: 532 });
-    const outward = side === 0 ? -1 : 1;
-    advance(model, 500, { x: outward, y: 0 });
-    assert.equal(worker.x, side === 0 ? 360 : 600);
-    assert.equal(worker.y, 532);
-    assert.equal(worker.moving, false, 'pushing against a solid truck must not animate walking');
-    advance(model, 400, { x: 0, y: -1 });
-    assert.ok(worker.y < 476);
-    advance(model, 300, { x: outward, y: 0 });
-    assert.equal(worker.x, side === 0 ? 330 : 630, 'the wider outer lane remains usable above the truck');
   }
 });
 
@@ -635,7 +611,7 @@ test('missed freight remains recoverable and never counts a second miss for the 
   assert.equal(model.pileup, 1);
   assert.equal(model.missed, 1);
   model.activeWorker.x = 400;
-  model.activeWorker.y = SHIFT_LAYOUT.workerMaxY;
+  model.activeWorker.y = SHIFT_LAYOUT.recoveryPile.y;
   model.action();
   assert.equal(model.heldPackage.id, 1);
   assert.equal(model.pileup, 0);
@@ -645,7 +621,7 @@ test('missed freight remains recoverable and never counts a second miss for the 
   advance(model, 1_400);
   assert.equal(model.pileup, 1);
   assert.equal(model.missed, 1);
-  model.activeWorker.y = SHIFT_LAYOUT.workerMaxY;
+  model.activeWorker.y = SHIFT_LAYOUT.recoveryPile.y;
   model.action();
   Object.assign(model.activeWorker, SHIFT_LAYOUT.dockA);
   model.action();
@@ -713,7 +689,7 @@ test('comic parcel identity survives pickup, handoff, pile recovery, and dispatc
   advance(model, 1_500);
   assert.equal(parcel.state, 'missed');
   model.switchWorker();
-  model.activeWorker.y = SHIFT_LAYOUT.workerMaxY;
+  model.activeWorker.y = SHIFT_LAYOUT.recoveryPile.y;
   model.action();
   assert.equal(model.heldPackage.id, parcel.id);
   Object.assign(model.activeWorker, SHIFT_LAYOUT.dockA);
@@ -790,8 +766,8 @@ test('Brian announces once and sends exactly five bulk parcels before ordinary f
   assert.deepEqual(burst.map(({ parcel }) => parcel.size), ['heavy', 'heavy', 'heavy', 'normal', 'heavy']);
   assert.equal(model.brianRemaining, 0);
   assert.equal(arrivals[18].time, 75_600);
-  assert.equal(arrivals[18].parcel.route, 'A');
-  assert.equal(arrivals[18].parcel.kind, 'bigbox');
+  assert.equal(arrivals[18].parcel.route, 'S');
+  assert.equal(arrivals[18].parcel.kind, 'standard');
   assert.deepEqual(arrivals.slice(0, 13).map(({ time }) => time), [
     0, 6_000, 12_000, 18_000, 24_000, 30_000, 36_000, 40_000, 44_000, 48_000, 52_000, 56_000, 60_000,
   ], 'Brian must not change the first63seconds of teaching and ordinary freight');
@@ -850,12 +826,12 @@ test('full deterministic shift is winnable through public movement and action in
     let target;
     if (held) {
       target = held.route === 'C' ? (model.activeWorker.side === 'left' ? SHIFT_LAYOUT.bulkLeft : SHIFT_LAYOUT.bulkRight)
-        : held.route === 'A' ? SHIFT_LAYOUT.dockA : SHIFT_LAYOUT.dockB;
+        : SHIFT_LAYOUT[{ A: 'dockA', B: 'dockB', D: 'dockD', E: 'dockE', T: 'floorT', S: 'floorS' }[held.route]];
       if (Math.hypot(model.activeWorker.x - target.x, model.activeWorker.y - target.y) < 12) model.action();
     } else {
       const parcel = model.packages.filter((item) => item.state === 'belt' || item.state === 'missed' || item.state === 'floor').sort((a, b) => b.y - a.y)[0];
       if (parcel) {
-        const intended = parcel.route === 'B' ? 1 : 0;
+        const intended = ['B', 'E', 'S'].includes(parcel.route) ? 1 : 0;
         if (model.activeIndex !== intended) model.switchWorker();
         target = { x: intended === 0 ? 400 : 560, y: Math.max(SHIFT_LAYOUT.workerMinY, Math.min(SHIFT_LAYOUT.workerMaxY, parcel.y)) };
         if (Math.hypot(model.activeWorker.x - parcel.x, model.activeWorker.y - parcel.y) < SHIFT_LAYOUT.grabRadius - 1) model.action();
@@ -882,9 +858,10 @@ test('full deterministic shift is winnable through public movement and action in
     'MESA BOOGIE', 'PANCHETTERS', 'SMALL ATV', 'PARCEL', 'ENVELOPE', 'SMALL BOX', 'BIG BOX', 'LONG BOX',
   ].sort(), 'all original comic parcel references must actually reach a normal playable shift');
   assert.deepEqual(model.packages.slice(0, 24).map((parcel) => parcel.route), [
-    'A', 'B', 'C', 'A', 'B', 'C', 'B', 'A', 'C', 'B', 'A', 'B', 'C',
-    'C', 'C', 'C', 'C', 'C', 'A', 'B', 'C', 'B', 'A', 'B',
+    'A', 'B', 'C', 'A', 'B', 'C', 'D', 'E', 'C', 'T', 'S', 'A', 'B',
+    'C', 'C', 'C', 'C', 'C', 'S', 'A', 'B', 'D', 'C', 'E',
   ], 'Brian’s five-parcel bulk incident should be the only change to the route sequence');
+  for (const route of ['A', 'B', 'C', 'D', 'E', 'T', 'S']) assert.ok(model.routeSorted[route] > 0, `${route} must be served in a normal shift`);
   assert.equal(model.packages.some((parcel) => parcel.kind === 'snakes'), false, 'Hussan’s CELL belongs to its separate NPC event');
   const events = model.drainEvents();
   assert.equal(events.filter((event) => event.type === 'brian').length, 1, 'the later rush phase must not repeat Brian’s incident');

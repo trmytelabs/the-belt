@@ -6,20 +6,32 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 
 import { MESA } from '../game/slice/DepotReferences';
-import { SHIFT_LAYOUT, ShiftModel, type Parcel, type ShiftEvent } from '../game/slice/ShiftModel';
+import { KeyReturnModel, MallModel, MALL_RULES, type MallEvent } from '../game/slice/MallModel';
+import {
+  ROUTE_INFO, SHIFT_LAYOUT, ShiftModel, THROWING, floorPileSlot, type Parcel, type Route, type ShiftEvent, type WorkerId,
+} from '../game/slice/ShiftModel';
+import { Cutscene, StoryRun, type StoryChoices } from '../game/slice/StoryModel';
+import {
+  DRIVE_TO_MALL, DRIVE_TO_UPS, GO_HOME, KEY_RETURN_LINES, MALL_ASSIGNMENT, MALL_INTRO, SCRUM, SPEAKER_NAMES,
+  type StoryActor, type StoryBeat, type StoryScene,
+} from '../game/slice/StoryScript';
 import { audioSystem, type SoundEffect } from '../game/systems/AudioSystem';
 import { animateCharacter, createCharacter, mergeCharacter, type Character } from './characters';
 import { CrewLife } from './crew';
 import { MesaDream } from './dream';
 import { MesaEncounter } from './mesa';
 import { BEN_CAST, BEN_END, BEN_START, SetPieces } from './setpieces';
+import { StoryStage, directDepot } from './story';
 import { TouchControls } from './touch';
 import { Overlay } from './overlay';
 import { createParcelView, type ParcelView } from './parcels';
-import { BELT_HEIGHT, ROUTE_COLORS, setFromModel, textSprite, toWorld, toWorldX, toWorldZ } from './space';
-import { DepotWorld } from './world';
+import {
+  BELT_HEIGHT, PLATFORM_HEIGHT, ROUTE_COLORS, setFromModel, surfaceAt, textSprite, toWorld, toWorldX, toWorldZ,
+} from './space';
+import { DepotWorld, SKANKY_SPEC, TERMITE_SPEC } from './world';
 
-type AppState = 'briefing' | 'countdown' | 'playing' | 'interlude' | 'mesa' | 'dream' | 'paused' | 'celebrating' | 'ended';
+type AppState = 'briefing' | 'story' | 'countdown' | 'playing' | 'interlude' | 'mesa' | 'dream' | 'paused' | 'celebrating' | 'mall' | 'lot' | 'ended';
+type Resumable = 'playing' | 'interlude' | 'story' | 'mall' | 'lot';
 
 const PHASE_LABELS: Record<string, string> = {
   lesson: '01  /  FIND YOUR RHYTHM', flow: '02  /  KEEP IT MOVING', rush: '03  /  LAST DISPATCH',
@@ -28,9 +40,15 @@ const PHASE_LABELS: Record<string, string> = {
 const EVENT_SOUNDS: Partial<Record<ShiftEvent['type'], SoundEffect>> = {
   grab: 'grab', drop: 'drop', sort: 'correct', wrong: 'wrong', miss: 'pile-up',
   recover: 'dig', brake: 'belt-stop', switch: 'switch', phase: 'event-alert', end: 'shift-end',
-  brian: 'event-alert', spill: 'drop',
+  brian: 'event-alert', spill: 'drop', throw: 'throw', damage: 'smash',
+};
+const BEAT_SOUNDS: Record<NonNullable<StoryBeat['sound']>, SoundEffect> = {
+  engine: 'engine', cough: 'cough', horn: 'horn', gate: 'gate', door: 'button', spill: 'splash', register: 'register', truck: 'truck', sign: 'sign',
 };
 const FACING_ANGLE = { right: Math.PI / 2, left: -Math.PI / 2, down: 0, up: Math.PI } as const;
+const NEW_ROUTES: readonly Route[] = ['D', 'E', 'T', 'S'];
+/** How long a broken parcel stays visible where it landed, in seconds. */
+const DAMAGE_VISIBLE_S = 8;
 
 function webglAvailable(): boolean {
   try {
@@ -51,17 +69,26 @@ function showWebglFallback(host: HTMLElement): void {
     <p><a style="color:#edb765" href="${window.location.pathname}?mode=2d">Play the 2D night shift instead</a></p></div></div>`;
 }
 
+const escapeHtml = (text: string): string => text.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
+
 export class Belt3d {
   public model = new ShiftModel();
   public state: AppState = 'briefing';
+  public story = new StoryRun();
+  /** The cutscene on screen, if any. */
+  public cutscene: Cutscene | null = null;
+  public mall: MallModel | null = null;
+  public lot: KeyReturnModel | null = null;
   public readonly overlay: Overlay;
   public readonly world: DepotWorld;
+  public readonly stage: StoryStage;
   public readonly quality: 'high' | 'low';
   private readonly renderer: THREE.WebGLRenderer;
   private readonly composer: EffectComposer | null;
-  private readonly camera = new THREE.PerspectiveCamera(38, 1, 0.1, 120);
+  private readonly renderPass: RenderPass | null;
+  private readonly camera = new THREE.PerspectiveCamera(38, 1, 0.1, 140);
   private readonly cameraTarget = new THREE.Vector3();
-  private readonly workers: Record<'termite' | 'skanky', Character>;
+  private readonly workers: Record<WorkerId, Character>;
   public readonly crew: CrewLife;
   public readonly setPieces: SetPieces;
   public readonly mesa: MesaEncounter;
@@ -70,17 +97,26 @@ export class Belt3d {
   /** Ben's story clock, independent of the frozen shift. */
   public benClock = BEN_START;
   private benStarted = false;
-  private pausedFrom: 'playing' | 'interlude' = 'playing';
+  private pausedFrom: Resumable = 'playing';
+  private forcedStory: Partial<StoryChoices> = {};
+  private depotShot: { position: THREE.Vector3; look: THREE.Vector3 } | null = null;
   private readonly stolen = new Set<number>();
   private readonly parcels = new Map<number, ParcelView>();
-  private readonly departing: { view: ParcelView; from: THREE.Vector3; to: THREE.Vector3; t: number; bulk: boolean }[] = [];
+  private readonly departing: { view: ParcelView; from: THREE.Vector3; to: THREE.Vector3; t: number; route: Route }[] = [];
+  /** Broken parcels stay in view where they landed for a while. */
+  private readonly broken = new Map<number, number>();
+  private readonly throwers = new Map<number, WorkerId>();
+  private readonly seenRoutes = new Set<Route>();
   private readonly activeRing: THREE.Mesh;
   private readonly sleepTag: THREE.Sprite;
   private readonly marker: THREE.Mesh;
+  private readonly throwArc: THREE.Line;
+  private readonly throwRing: THREE.Mesh;
   private readonly keys = new Set<string>();
   private readonly reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   private overview = false;
   private hint = 'Approach the belt · match letter to dock';
+  private chapterHint = '';
   private countdownMs = 0;
   private time = 0;
   private lastFrame = performance.now();
@@ -88,7 +124,10 @@ export class Belt3d {
   private renderCost = 0;
   private banter = new Set<string>();
   private bulkVisible = 0;
+  private readonly pileVisible: Record<'T' | 'S', number> = { T: 0, S: 0 };
+  private readonly truckVisible: Record<'A' | 'B' | 'D' | 'E', number> = { A: 0, B: 0, D: 0, E: 0 };
   private fumeTimer = 0;
+  private mallBonus = 0;
 
   private readonly host: HTMLElement;
 
@@ -111,26 +150,27 @@ export class Belt3d {
     const pmrem = new THREE.PMREMGenerator(this.renderer);
     this.world.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     this.world.scene.environmentIntensity = 0.18;
+    this.stage = new StoryStage(this.quality);
 
     if (this.quality === 'high') {
       const target = new THREE.WebGLRenderTarget(1, 1, { samples: 4, type: THREE.HalfFloatType });
       this.composer = new EffectComposer(this.renderer, target);
-      this.composer.addPass(new RenderPass(this.world.scene, this.camera));
+      this.renderPass = new RenderPass(this.world.scene, this.camera);
+      this.composer.addPass(this.renderPass);
       this.composer.addPass(new UnrealBloomPass(new THREE.Vector2(1, 1), 0.55, 0.5, 0.96));
       this.composer.addPass(new OutputPass());
     } else {
       this.composer = null;
+      this.renderPass = null;
     }
 
-    this.workers = {
-      termite: createCharacter({ name: 'TERMITE', skin: 0xe2b088, shirt: 0x2f5f8f, pants: 0x2a3f5c, overalls: 0x2a3f5c, hair: 0x5a3a20, hairStyle: 'short', headwear: 'termiteHat', beard: true }),
-      skanky: createCharacter({ name: 'SKANKY', skin: 0xe8b98f, shirt: 0x8f3f34, pants: 0x34404c, hair: 0x5b3a22, hairStyle: 'long', beard: true }),
-    };
+    this.workers = { termite: createCharacter(TERMITE_SPEC), skanky: createCharacter(SKANKY_SPEC) };
     for (const worker of Object.values(this.workers)) {
       mergeCharacter(worker);
       this.world.scene.add(worker.root);
     }
     this.crew = new CrewLife(this.world, (id, copy, ms) => this.say(id, copy, ms));
+    this.crew.caption = (text) => this.overlay.showToast(text, 2600);
     this.setPieces = new SetPieces(this.world, this.crew, (id, copy, ms) => this.say(id, copy, ms));
     this.mesa = new MesaEncounter(this.overlay, this.crew, {
       say: (id, copy, ms) => this.say(id, copy, ms),
@@ -151,11 +191,21 @@ export class Belt3d {
     };
     this.dream = new MesaDream(this.overlay.root);
     this.touch = new TouchControls(this.overlay.root, {
-      action: () => { if (this.state === 'playing') this.model.action(); },
+      action: () => this.act(),
       switchWorker: () => { if (this.state === 'playing') this.model.switchWorker(); },
-      brake: () => { if (this.state === 'playing') this.model.brake(); },
+      brake: () => {
+        if (this.state === 'playing') this.model.brake();
+        else if (this.state === 'mall') this.mall?.toggleCart();
+      },
+      throwParcel: () => { if (this.state === 'playing') this.model.throwHeld(); },
       overview: () => { this.overview = !this.overview; },
-      pause: () => { if (this.state === 'playing' || this.state === 'interlude') this.pause(); },
+      pause: () => { if (this.canPause()) this.pause(); },
+    });
+    this.overlay.onStoryButton((action) => {
+      if (this.state !== 'story' || !this.cutscene) return;
+      if (action === 'pause') { if (this.canPause()) this.pause(); return; }
+      if (action === 'next') this.cutscene.userNext();
+      else this.cutscene.skip();
     });
 
     this.activeRing = new THREE.Mesh(new THREE.RingGeometry(0.42, 0.5, 40), new THREE.MeshBasicMaterial({ color: 0xf3e6c6, transparent: true, opacity: 0.85 }));
@@ -166,6 +216,15 @@ export class Belt3d {
     this.marker = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.3, 4), new THREE.MeshStandardMaterial({ color: 0xf3e6c6, emissive: 0xf3e6c6, emissiveIntensity: 0.8 }));
     this.marker.rotation.x = Math.PI;
     this.world.scene.add(this.marker);
+    // The throw preview: a dashed arc to the parcel's own destination and a ring where it lands.
+    this.throwArc = new THREE.Line(new THREE.BufferGeometry().setFromPoints(Array.from({ length: 24 }, () => new THREE.Vector3())),
+      new THREE.LineDashedMaterial({ color: 0xffffff, dashSize: 0.18, gapSize: 0.12, transparent: true, opacity: 0.9 }));
+    this.throwArc.frustumCulled = false;
+    this.throwArc.visible = false;
+    this.throwRing = new THREE.Mesh(new THREE.RingGeometry(0.45, 0.6, 32), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85, side: THREE.DoubleSide }));
+    this.throwRing.rotation.x = -Math.PI / 2;
+    this.throwRing.visible = false;
+    this.world.scene.add(this.throwArc, this.throwRing);
 
     this.bindInput();
     this.resize();
@@ -186,6 +245,12 @@ export class Belt3d {
     }
   }
 
+  /** Fixes the next run's random choices (opener, break place, variant, time). For checks and rehearsal. */
+  public forceStory(choices: Partial<StoryChoices>): void {
+    this.forcedStory = { ...choices };
+    if (this.state === 'briefing') this.story = new StoryRun(Math.random, this.forcedStory);
+  }
+
   private resize(): void {
     const width = this.host.clientWidth || window.innerWidth;
     const height = this.host.clientHeight || window.innerHeight;
@@ -195,7 +260,20 @@ export class Belt3d {
     // Narrow portrait screens need a wider lens to keep both lanes in view.
     this.camera.fov = width < height ? 58 : 38;
     this.camera.updateProjectionMatrix();
+    this.stage.resize(width / height);
     this.dream?.resize(width / height);
+  }
+
+  private canPause(): boolean {
+    return this.state === 'playing' || this.state === 'interlude' || this.state === 'story' || this.state === 'mall' || this.state === 'lot';
+  }
+
+  /** The primary action: grab/deliver on the belt, next line in a story, interact in the mall or lot. */
+  private act(): void {
+    if (this.state === 'playing') this.model.action();
+    else if (this.state === 'story') this.cutscene?.userNext();
+    else if (this.state === 'mall') this.mall?.action();
+    else if (this.state === 'lot') this.lot?.action();
   }
 
   private bindInput(): void {
@@ -210,76 +288,202 @@ export class Belt3d {
         return;
       }
       if (event.code === 'Enter') {
-        if (this.state === 'briefing') this.startCountdown();
+        if (this.state === 'briefing') this.startNight();
+        else if (this.state === 'story') this.cutscene?.skip();
         else if (this.state === 'ended') this.restart();
         else if (this.state === 'paused') this.resume();
-      } else if (event.code === 'KeyV') {
-        this.overview = !this.overview;
       } else if (event.code === 'KeyM') {
         audioSystem.toggleMuted();
       } else if (event.code === 'Escape') {
-        if (this.state === 'playing' || this.state === 'interlude') this.pause();
+        if (this.canPause()) this.pause();
         else if (this.state === 'paused') this.resume();
+      } else if (this.state === 'story') {
+        if (event.code === 'Space') this.cutscene?.userNext();
+      } else if (this.state === 'mall') {
+        if (event.code === 'Space') this.mall?.action();
+        else if (event.code === 'KeyE') this.mall?.toggleCart();
+      } else if (this.state === 'lot') {
+        if (event.code === 'Space') this.lot?.action();
+      } else if (event.code === 'KeyV') {
+        this.overview = !this.overview;
       } else if (this.state === 'playing') {
         if (event.code === 'Space') this.model.action();
         else if (event.code === 'Tab') this.model.switchWorker();
         else if (event.code === 'KeyE') this.model.brake();
+        else if (event.code === 'KeyF') this.model.throwHeld();
       }
     });
     window.addEventListener('keyup', (event) => this.keys.delete(event.code));
-    window.addEventListener('blur', () => { this.keys.clear(); if (this.state === 'playing' || this.state === 'interlude') this.pause(); });
+    window.addEventListener('blur', () => { this.keys.clear(); if (this.canPause()) this.pause(); });
     const canvas = this.renderer.domElement;
     canvas.addEventListener('contextmenu', (event) => event.preventDefault());
     canvas.addEventListener('pointerdown', (event) => {
       void audioSystem.unlock();
       // On touch screens the on-screen buttons act; a tap on the scene does not.
-      if (this.state !== 'playing' || event.pointerType === 'touch') return;
+      if (event.pointerType === 'touch') return;
+      if (this.state === 'story' && event.button === 0) { this.cutscene?.userNext(); return; }
+      if (this.state === 'mall' && event.button === 0) { this.mall?.action(); return; }
+      if (this.state === 'lot' && event.button === 0) { this.lot?.action(); return; }
+      if (this.state !== 'playing') return;
       if (event.button === 0) this.model.action();
       else if (event.button === 2) this.model.switchWorker();
     });
   }
 
-  private showBriefing(): void {
-    this.overlay.showPanel(`
-      <div class="kicker">TERMITE &amp; SKANKY  /  THE WHOLE CREW IS HERE</div>
-      <h1>ANOTHER NIGHT ON THE BELT.</h1>
-      <p><b>Dispatch 24 parcels in a three-minute night shift.</b></p>
-      <p>A and B go to your trucks. C goes to BULK at the belt end.</p>
-      ${this.touch.enabled ? `
-      <p>The stick moves. SWITCH changes worker.</p>
-      <p>GRAB / DELIVER picks up, delivers at a dock, or puts a parcel down.</p>
-      <p>BRAKE holds the belt. VIEW shows the whole warehouse. Recover misses before 5 pile up.</p>` : `
-      <p>WASD / arrows move. TAB or right-click switches your worker.</p>
-      <p>SPACE or click grabs, delivers at a dock, or puts a parcel down.</p>
-      <p>E brakes. V shows the whole warehouse. Recover misses before 5 pile up.</p>`}
-      <button type="button">START SHIFT  ↵</button>
-      <a href="${window.location.pathname}?mode=2d">PLAY THE 2D DEPOT</a>
-      <a href="${window.location.pathname}?mode=classic">PLAY THE ORIGINAL FULL SHIFT</a>`, () => this.startCountdown());
+  private routeLegend(): string {
+    const chip = (route: Route): string => `<i style="background:${ROUTE_INFO[route].color}">${route}</i>`;
+    return `TERMITE ${chip('A')}${chip('D')}${chip('T')} · SKANKY ${chip('B')}${chip('E')}${chip('S')} · BOTH ${chip('C')}`;
   }
 
-  private startCountdown(): void {
+  private showBriefing(): void {
+    this.overlay.setMode('shift');
+    this.overlay.showPanel(`
+      <div class="kicker">TERMITE &amp; SKANKY  /  ONE MORE OVERNIGHT</div>
+      <h1>ANOTHER NIGHT ON THE BELT.</h1>
+      <p><b>Get in, survive the scrum, dispatch 24 parcels, then Skanky still has a mall run.</b></p>
+      <p>TERMITE loads A and D at his trucks and T down the stairs. SKANKY loads B, E and S. C goes to BULK at the belt end.</p>
+      ${this.touch.enabled ? `
+      <p>The stick moves. SWITCH changes worker. GRAB / DELIVER picks up and delivers. THROW risks it to save the walk.</p>
+      <p>BRAKE holds the belt. VIEW shows the whole warehouse. In story scenes, NEXT or SKIP.</p>` : `
+      <p>WASD / arrows move. TAB or right-click switches. SPACE or click grabs and delivers.</p>
+      <p>F throws a held parcel to its drop: faster, but it can break. E brakes. V overview.</p>
+      <p>Story scenes: SPACE next line, ENTER skips the scene, ESC pauses.</p>`}
+      <button type="button">START THE NIGHT  ↵</button>
+      <a href="${window.location.pathname}?mode=2d">PLAY THE 2D DEPOT</a>
+      <a href="${window.location.pathname}?mode=classic">PLAY THE ORIGINAL FULL SHIFT</a>`, () => this.startNight());
+  }
+
+  // ---------------------------------------------------------------- story flow
+
+  private startNight(): void {
     if (this.state !== 'briefing') return;
     void audioSystem.unlock();
     audioSystem.play('ui-start');
+    this.overlay.clearCenter();
+    this.story.go('arrival');
+    this.playScene(this.story.opener);
+  }
+
+  private playScene(scene: StoryScene): void {
+    this.state = 'story';
+    this.cutscene = new Cutscene(scene);
+    this.keys.clear();
+    this.touch.reset();
+    this.overlay.clearSpeech();
+    this.overlay.setMode('story');
+    const kicker = scene.location === 'depot' ? 'THE DEPOT' : scene.location === 'road' ? 'ON THE ROAD' : scene.location === 'mall' ? 'THE MALL RUN' : scene.location === 'home' ? 'FINALLY' : 'THE NIGHT SHIFT';
+    this.overlay.storyTitle(scene.title, kicker, scene.clock ?? '');
+    if (scene.location === 'depot') {
+      this.stage.end();
+      this.depotShot = null;
+    } else {
+      this.stage.beginScene(scene);
+    }
+  }
+
+  /** What follows each scene; a skipped scene takes the same path. */
+  private finishScene(): void {
+    const scene = this.cutscene?.scene;
+    this.cutscene = null;
+    this.overlay.clearSpeech();
+    if (!scene) return;
+    if (scene.id.startsWith('opener')) {
+      this.story.go('scrum');
+      this.playScene(SCRUM);
+    } else if (scene.id === 'scrum') {
+      this.story.go('countdown');
+      this.startCountdown();
+    } else if (this.story.chapter === 'break') {
+      this.endBreak();
+    } else if (scene.id === 'mall-assignment') {
+      this.story.go('to-mall');
+      this.playScene(DRIVE_TO_MALL);
+    } else if (scene.id === 'drive-to-mall') {
+      this.story.go('mall');
+      this.playScene(MALL_INTRO);
+    } else if (scene.id === 'mall-intro') {
+      this.beginMall();
+    } else if (scene.id === 'drive-to-ups') {
+      this.story.go('return');
+      this.beginLot();
+    } else if (scene.id === 'go-home') {
+      this.showResults();
+    }
+  }
+
+  private startCountdown(): void {
+    this.stage.end();
+    this.overlay.setMode('shift');
     audioSystem.play('countdown');
     this.state = 'countdown';
     this.countdownMs = 0;
     this.overlay.showCount('3');
+    this.syncWorkers(0);
+    this.snapCamera();
+  }
+
+  /** The random mid-shift break: the shift, belt and every parcel freeze until the crew is back. */
+  private beginBreak(): void {
+    this.story.takeBreak(this.model.elapsedMs);
+    this.story.go('break');
+    this.model.paused = true;
+    audioSystem.stopMusic();
+    this.playScene(this.story.breakScene);
+  }
+
+  private endBreak(): void {
+    this.story.go('shift');
+    this.stage.end();
+    this.overlay.setMode('shift');
+    this.state = 'playing';
+    this.model.paused = false;
+    this.keys.clear();
+    this.touch.reset();
+    this.overlay.showToast('BACK TO THE BELT · same shift, same freight', 2200);
+    audioSystem.startMusic('game');
+    this.snapCamera();
+  }
+
+  private beginMall(): void {
+    this.mall = new MallModel();
+    this.stage.resetMall();
+    this.stage.beginMall();
+    this.state = 'mall';
+    this.overlay.setMode('chapter');
+    this.overlay.storyTitle('MALLWOOD CENTRE', 'SKANKY · THE MALL RUN', '5:20 AM');
+    this.chapterHint = 'Take a store bundle from the truck';
+    audioSystem.startMusic('game');
+  }
+
+  private beginLot(): void {
+    this.lot = new KeyReturnModel();
+    this.stage.beginLot();
+    this.state = 'lot';
+    this.overlay.setMode('chapter');
+    this.overlay.storyTitle('BACK AT UPS', 'RETURN THE FIVE-TON', '6:22 AM');
+    this.chapterHint = KEY_RETURN_LINES.prompt;
   }
 
   private pause(): void {
-    this.pausedFrom = this.state === 'interlude' ? 'interlude' : 'playing';
+    this.pausedFrom = this.state as Resumable;
     this.state = 'paused';
     this.model.paused = true;
+    if (this.mall) this.mall.paused = true;
+    if (this.lot) this.lot.paused = true;
+    this.keys.clear();
     audioSystem.stopMusic();
-    this.overlay.showPanel(`<div class="kicker">${this.pausedFrom === 'interlude' ? 'STORY PAUSED' : 'SHIFT PAUSED'}</div><h1>BELT ON HOLD.</h1><p>Your freight stays exactly where it is.</p><button type="button">RESUME  ↵</button>`, () => this.resume());
+    const kicker = this.pausedFrom === 'interlude' || this.pausedFrom === 'story' ? 'STORY PAUSED' : this.pausedFrom === 'playing' ? 'SHIFT PAUSED' : 'PAUSED';
+    this.overlay.showPanel(`<div class="kicker">${kicker}</div><h1>BELT ON HOLD.</h1><p>Your freight stays exactly where it is.</p><button type="button">RESUME  ↵</button>`, () => this.resume());
   }
 
   private resume(): void {
     this.state = this.pausedFrom;
-    this.model.paused = this.state === 'interlude';
+    // The shift stays frozen through a story; only active sorting runs its clock.
+    this.model.paused = this.state !== 'playing';
+    if (this.mall) this.mall.paused = false;
+    if (this.lot) this.lot.paused = false;
     this.overlay.clearCenter();
-    if (this.state === 'playing') audioSystem.startMusic('game');
+    if (this.state === 'playing' || this.state === 'mall') audioSystem.startMusic('game');
   }
 
   /** Ben's robbery freezes the shift, belt, freight and crew until Paula leaves. */
@@ -313,6 +517,7 @@ export class Belt3d {
   private showMesaCaught(): void {
     this.state = 'ended';
     this.model.paused = true;
+    this.story.go('results');
     audioSystem.play('wrong');
     this.overlay.showPanel(`
       <div class="kicker">SHIFT TERMINATED</div>
@@ -323,12 +528,20 @@ export class Belt3d {
       <button type="button">ANOTHER SHIFT  ↵</button>`, () => this.restart());
   }
 
+  /** A replay starts clean: no leftover scenes, parcels, timers, speech or input. */
   private restart(): void {
     for (const view of this.parcels.values()) this.world.scene.remove(view.root);
     for (const item of this.departing) this.world.scene.remove(item.view.root);
     this.parcels.clear();
     this.departing.length = 0;
+    this.broken.clear();
+    this.throwers.clear();
+    this.seenRoutes.clear();
     this.bulkVisible = 0;
+    this.pileVisible.T = this.pileVisible.S = 0;
+    for (const route of ['A', 'B', 'D', 'E'] as const) { this.truckVisible[route] = 0; this.world.setTruckLoad(route, 0); }
+    this.world.setFloorPile('T', 0);
+    this.world.setFloorPile('S', 0);
     this.stolen.clear();
     this.benStarted = false;
     this.benClock = BEN_START;
@@ -338,13 +551,32 @@ export class Belt3d {
     this.dream.stop();
     this.overlay.root.classList.remove('dreaming');
     this.model = new ShiftModel();
+    this.story = new StoryRun(Math.random, this.forcedStory);
+    this.cutscene = null;
+    this.mall = null;
+    this.lot = null;
+    this.mallBonus = 0;
+    this.stage.reset();
+    this.stage.resetMall();
+    this.depotShot = null;
     this.banter.clear();
     this.crew.reset();
     this.overlay.clearSpeech();
+    this.keys.clear();
+    this.touch.reset();
     this.hint = 'Approach the belt · match letter to dock';
     this.state = 'briefing';
     this.snapCamera();
     this.showBriefing();
+  }
+
+  private movement(): { x: number; y: number } {
+    const keyX = (this.keys.has('KeyD') || this.keys.has('ArrowRight') ? 1 : 0) - (this.keys.has('KeyA') || this.keys.has('ArrowLeft') ? 1 : 0);
+    const keyY = (this.keys.has('KeyS') || this.keys.has('ArrowDown') ? 1 : 0) - (this.keys.has('KeyW') || this.keys.has('ArrowUp') ? 1 : 0);
+    return {
+      x: Math.max(-1, Math.min(1, keyX + this.touch.move.x)),
+      y: Math.max(-1, Math.min(1, keyY + this.touch.move.y)),
+    };
   }
 
   private tick(): void {
@@ -354,6 +586,18 @@ export class Belt3d {
     this.time += dt;
     const m = this.model;
 
+    if (this.state === 'story' && this.cutscene) {
+      const cutscene = this.cutscene;
+      cutscene.update(dt * 1000);
+      const beat = cutscene.takeEntered();
+      if (beat) this.enterBeat(beat);
+      if (cutscene.scene.location === 'depot') {
+        this.depotShot = directDepot({ crew: this.crew, workers: this.workers }, cutscene, dt, this.time, this.reducedMotion);
+      } else {
+        this.stage.direct(cutscene, dt, this.time);
+      }
+      if (cutscene.done) this.finishScene();
+    }
     if (this.state === 'countdown') {
       const before = this.countdownMs;
       this.countdownMs += dt * 1000;
@@ -367,27 +611,25 @@ export class Belt3d {
       if (this.countdownMs >= 3350) {
         this.overlay.clearCenter();
         this.state = 'playing';
+        this.story.go('shift');
+        this.overlay.showToast(`You are ${m.activeWorker.id.toUpperCase()} · TAB switches · watch the route letter`, 3200);
         audioSystem.startMusic('game');
       }
     }
     if (this.state === 'playing') {
       if (!this.benStarted && m.elapsedMs >= BEN_START && !m.ended) this.beginInterlude();
       else if (this.mesa.check(m)) this.state = 'mesa';
+      else if (this.story.breakDue(m.elapsedMs) && !m.ended) this.beginBreak();
     }
     if (this.state === 'playing') {
-      const keyX = (this.keys.has('KeyD') || this.keys.has('ArrowRight') ? 1 : 0) - (this.keys.has('KeyA') || this.keys.has('ArrowLeft') ? 1 : 0);
-      const keyY = (this.keys.has('KeyS') || this.keys.has('ArrowDown') ? 1 : 0) - (this.keys.has('KeyW') || this.keys.has('ArrowUp') ? 1 : 0);
-      const move = {
-        x: Math.max(-1, Math.min(1, keyX + this.touch.move.x)),
-        y: Math.max(-1, Math.min(1, keyY + this.touch.move.y)),
-      };
-      m.update(dt * 1000, move);
+      m.update(dt * 1000, this.movement());
       for (const event of m.drainEvents()) this.handleEvent(event);
       this.updateBanter();
       this.crew.update(dt, m, this.time);
       this.setPieces.update(dt, m, this.time);
       if (m.ended && m.won) {
         this.state = 'celebrating';
+        this.story.go('clockout');
         audioSystem.play('truck');
         this.overlay.showToast('SHIFT COMPLETE', 13000);
         this.crew.beginCelebration(this.time);
@@ -395,7 +637,11 @@ export class Belt3d {
         this.showResults();
       }
     } else if (this.state === 'celebrating') {
-      if (this.crew.updateCelebration(dt, this.time)) this.showResults();
+      if (this.crew.updateCelebration(dt, this.time)) {
+        // The warehouse is done; Skanky's night is not.
+        this.story.go('assignment');
+        this.playScene(MALL_ASSIGNMENT);
+      }
     } else if (this.state === 'interlude') {
       this.benClock = Math.min(BEN_END, this.benClock + Math.min(dt * 1000, 100));
       this.setPieces.updateBen(this.benClock, dt, this.time);
@@ -407,29 +653,84 @@ export class Belt3d {
         audioSystem.startMusic('game');
         this.mesa.dreamFinished();
       }
+    } else if (this.state === 'mall' && this.mall) {
+      this.mall.update(dt * 1000, this.movement());
+      for (const event of this.mall.drainEvents()) this.handleMallEvent(event);
+      if (this.mall.finished) {
+        this.mallBonus = this.mall.signatures * MALL_RULES.pointsPerSignature;
+        this.story.go('to-ups');
+        this.playScene(DRIVE_TO_UPS);
+      }
+    } else if (this.state === 'lot' && this.lot) {
+      this.lot.update(dt * 1000, this.movement());
+      for (const event of this.lot.drainEvents()) {
+        audioSystem.play(event.type === 'done' ? 'correct' : 'wrong');
+        this.chapterHint = event.message;
+      }
+      if (this.lot.done) {
+        this.story.go('home');
+        this.playScene(GO_HOME);
+      }
     }
+    if (this.state === 'mall' && this.mall) this.stage.updateMall(this.mall, dt, this.time);
+    if (this.state === 'lot' && this.lot) this.stage.updateLot(this.lot, dt, this.time);
     this.mesa.update(dt * 1000, this.time);
 
     const running = this.state === 'playing' || this.state === 'celebrating' || this.state === 'ended';
     if (this.state === 'playing') this.crew.updateReceiving(m, dt, this.time);
     this.world.update(running ? dt : 0, this.time, m.beltTravel, this.reducedMotion);
-    this.syncWorkers(running ? dt : 0);
+    const depotStory = this.state === 'story' && this.cutscene?.scene.location === 'depot';
+    if (!depotStory) this.syncWorkers(running ? dt : 0);
     this.syncParcels(running ? dt : 0);
+    this.updateThrowPreview();
     this.updateCamera(dt);
+    this.updateHud();
+    const size = this.renderer.getSize(new THREE.Vector2());
+    const speechClock = running || this.state === 'interlude' || this.state === 'mesa' || this.state === 'dream' || this.state === 'story' || this.state === 'mall' || this.state === 'lot';
+    const camera = this.activeCamera();
+    // Bubbles project with the camera as it is now, whether or not a draw follows.
+    camera.updateMatrixWorld();
+    this.overlay.update(dt * 1000, speechClock, camera, size.x, size.y);
+  }
+
+  private updateHud(): void {
+    const m = this.model;
+    const held = m.heldPackage;
+    const target = this.state === 'playing' && held ? m.throwTarget() : null;
+    const throwHint = target ? (target.ok ? ` · [F] ${target.reason}` : ` · ${target.reason}`) : '';
     this.overlay.updateHud({
       sorted: m.sorted, goal: m.goal, score: m.score, timeLeftMs: m.timeLeftMs, backlog: m.pileup, capacity: m.capacity,
       phase: this.state === 'interlude' ? 'BEN  /  DODGE TRAINING' : PHASE_LABELS[m.phase] ?? '', combo: m.combo, worker: m.activeWorker.id,
-      hint: this.state === 'interlude' ? 'Belt held · your freight is safe' : this.state === 'mesa' ? 'Y steals the Mesa · N leaves it' : this.hint, overview: this.overview,
+      hint: this.state === 'interlude' ? 'Belt held · your freight is safe' : this.state === 'mesa' ? 'Y steals the Mesa · N leaves it'
+        : held ? `${held.label} → ${held.route} · ${ROUTE_INFO[held.route].name}${throwHint}` : this.hint,
+      overview: this.overview, routes: this.routeLegend(),
       brake: m.brakeRemainingMs > 0 ? '■ BELT HELD' : m.brakeCooldownMs > 0 ? `[E] RECHARGE ${Math.ceil(m.brakeCooldownMs / 1000)}s` : '[E] BRAKE READY',
     });
-    this.touch.setLive(this.state === 'playing' || this.state === 'interlude',
-      m.brakeRemainingMs > 0 ? 'HELD' : m.brakeCooldownMs > 0 ? `${Math.ceil(m.brakeCooldownMs / 1000)}s` : 'BRAKE',
-      this.state === 'playing' && m.brakeCooldownMs <= 0);
-    const size = this.renderer.getSize(new THREE.Vector2());
-    const speechClock = running || this.state === 'interlude' || this.state === 'mesa' || this.state === 'dream';
-    // Bubbles project with the camera as it is now, whether or not a draw follows.
-    this.camera.updateMatrixWorld();
-    this.overlay.update(dt * 1000, speechClock, this.camera, size.x, size.y);
+    if (this.state === 'mall' && this.mall) {
+      const mall = this.mall;
+      this.overlay.chapterHud([
+        ['RUN', `${Math.min(3, mall.run + 1)} / 3`], ['DELIVERED', `${mall.delivered} / 6`], ['SIGNED', `${mall.signatures} / 6`],
+        ['CART', mall.cart.load.length === 0 ? 'EMPTY' : mall.cart.load.map((id) => mall.store(id).name).join(' + ')],
+      ], `${mall.objective}${this.chapterHint ? ` · ${this.chapterHint}` : ''}`, 'WASD MOVE · SPACE TAKE / LOAD / DROP / SIGN · E PUSH OR PARK CART · ESC PAUSE');
+    } else if (this.state === 'lot' && this.lot) {
+      this.overlay.chapterHud([['MALL', '6 / 6 SIGNED'], ['FIVE-TON', this.lot.done ? 'RETURNED' : 'PARKED']],
+        this.lot.atKeyDrop ? 'Press SPACE to drop the keys' : this.chapterHint, 'WASD MOVE · SPACE DROP KEYS · ESC PAUSE');
+    }
+    const chapter = this.state === 'mall' || this.state === 'lot';
+    this.touch.setLive(this.state === 'playing' || this.state === 'interlude' || chapter,
+      chapter ? (this.state === 'mall' ? (this.mall?.cart.pushed ? 'PARK' : 'CART') : '—')
+        : m.brakeRemainingMs > 0 ? 'HELD' : m.brakeCooldownMs > 0 ? `${Math.ceil(m.brakeCooldownMs / 1000)}s` : 'BRAKE',
+      chapter ? this.state === 'mall' : this.state === 'playing' && m.brakeCooldownMs <= 0, chapter);
+  }
+
+  private activeCamera(): THREE.PerspectiveCamera {
+    return this.usesStage() ? this.stage.camera : this.camera;
+  }
+
+  private usesStage(): boolean {
+    const state = this.state === 'paused' ? this.pausedFrom : this.state;
+    if (state === 'mall' || state === 'lot') return true;
+    return state === 'story' && this.stage.active !== null;
   }
 
   private draw(): void {
@@ -437,26 +738,83 @@ export class Belt3d {
     // A software renderer can take longer than a frame to draw; space its draws out.
     if (this.quality === 'low' && now - this.lastRender < Math.max(100, this.renderCost * 2)) return;
     this.lastRender = now;
+    const stageScene = this.usesStage() ? this.stage.scene : null;
+    const scene = stageScene ?? this.world.scene;
+    const camera = stageScene ? this.stage.camera : this.camera;
     if (this.state === 'dream') this.renderer.render(this.dream.scene, this.dream.camera);
-    else if (this.composer) this.composer.render();
-    else this.renderer.render(this.world.scene, this.camera);
+    else if (this.composer && this.renderPass) {
+      this.renderPass.scene = scene;
+      this.renderPass.camera = camera;
+      this.composer.render();
+    } else this.renderer.render(scene, camera);
     this.renderCost = performance.now() - now;
+  }
+
+  /** A story beat starts: its sound, its subtitles, and a bubble over the speaker. */
+  private enterBeat(beat: StoryBeat): void {
+    if (beat.sound) audioSystem.play(BEAT_SOUNDS[beat.sound]);
+    const speaker = beat.speaker ? SPEAKER_NAMES[beat.speaker] : undefined;
+    this.overlay.subtitle({ speaker, line: beat.line, direction: beat.direction, caption: beat.caption });
+    if (beat.line && beat.speaker) {
+      const anchor = this.storyAnchor(beat.speaker);
+      this.overlay.say(`story-${beat.speaker}`, speaker!, beat.line, Math.max(1600, beat.ms), anchor);
+      audioSystem.play('npc-talk');
+    }
+  }
+
+  private storyAnchor(id: StoryActor): () => THREE.Vector3 {
+    return () => {
+      if (this.cutscene?.scene.location === 'depot' || !this.stage.active) return this.speakerAnchor(id)();
+      return this.stage.anchor(id) ?? new THREE.Vector3(0, 2, 0);
+    };
   }
 
   private handleEvent(event: ShiftEvent): void {
     const sound = EVENT_SOUNDS[event.type];
     if (sound) audioSystem.play(sound);
     if (event.type === 'sort' && event.score) {
-      this.overlay.pop(`+${event.score}`, ROUTE_COLORS[event.route ?? 'A'], toWorld(event, 1.8));
+      this.overlay.pop(`+${event.score}`, ROUTE_COLORS[event.route ?? 'A'], toWorld(event, surfaceAt(event.x, event.y) + 1.8));
     }
-    if (event.type === 'grab' || event.type === 'recover' || event.type === 'drop' || event.type === 'wrong' || event.type === 'miss' || event.type === 'brake') {
+    if (event.type === 'throw' && event.packageId !== undefined && event.workerId) this.throwers.set(event.packageId, event.workerId);
+    if (event.type === 'damage') {
+      const parcel = this.model.packages.find((item) => item.id === event.packageId);
+      const lost = Math.abs(event.score ?? 0);
+      this.overlay.pop(`BROKEN −${lost}`, '#f3987c', toWorld(event, surfaceAt(event.x, event.y) + 2.0));
+      this.overlay.showToast(`${parcel?.label ?? 'PARCEL'} BROKE · no credit · −${lost} points`, 2800);
+      const thrower = this.model.workers.find((worker) => worker.id === (event.packageId !== undefined ? this.throwers.get(event.packageId) : undefined)) ?? this.model.activeWorker;
+      this.crew.shanBreakage(thrower, this.model.elapsedMs);
+      const at = toWorld(event, surfaceAt(event.x, event.y) + 0.3);
+      for (let i = 0; i < 10; i += 1) {
+        this.world.puffs.emit(at, { color: parcel?.kind === 'makeup' ? 0xda8db6 : 0xb8875a, size: 0.12, life: 0.9, velocity: new THREE.Vector3((Math.random() - 0.5) * 2, 1.2, (Math.random() - 0.5) * 2), opacity: 0.8, grow: 1.4, spread: 0.3 });
+      }
+    }
+    if (event.type === 'grab' || event.type === 'recover' || event.type === 'drop' || event.type === 'wrong' || event.type === 'miss' || event.type === 'brake' || event.type === 'throw') {
       this.hint = event.message;
-    } else if (event.type === 'sort') {
+    } else if (event.type === 'sort' || event.type === 'damage') {
       this.hint = 'Approach the belt · match letter to dock';
     }
     if (event.type === 'phase' || event.type === 'miss') this.overlay.showToast(event.message);
 
     this.crew.onEvent(event, this.model);
+  }
+
+  private handleMallEvent(event: MallEvent): void {
+    const sounds: Record<MallEvent['type'], SoundEffect> = {
+      pick: 'grab', load: 'drop', cart: 'switch', drop: 'bulk', sign: 'sign', wrong: 'wrong', run: 'event-alert', done: 'correct',
+    };
+    audioSystem.play(sounds[event.type]);
+    this.chapterHint = event.message;
+    if (event.type === 'run' || event.type === 'done') this.overlay.showToast(event.message, 2600);
+    const mall = this.mall;
+    if (!mall) return;
+    const at = this.stage.mallEvent(mall, event);
+    if (at && (event.type === 'drop' || event.type === 'sign')) {
+      this.overlay.pop(event.type === 'sign' ? '✓ SIGNED' : 'DROPPED', event.type === 'sign' ? '#a6cc9a' : '#edb765', at);
+    }
+    if (event.type === 'sign' && event.storeId) {
+      const store = mall.store(event.storeId);
+      this.overlay.say(`clerk-${store.id}`, `${store.name} CLERK`, store.clerkLine, 3000, () => at ?? new THREE.Vector3());
+    }
   }
 
   private updateBanter(): void {
@@ -485,7 +843,7 @@ export class Belt3d {
     const m = this.model;
     for (const worker of m.workers) {
       const character = this.workers[worker.id];
-      setFromModel(character.root.position, worker, 0);
+      setFromModel(character.root.position, worker, surfaceAt(worker.x, worker.y));
       const targetAngle = FACING_ANGLE[worker.facing];
       let delta = targetAngle - character.root.rotation.y;
       delta = Math.atan2(Math.sin(delta), Math.cos(delta));
@@ -500,11 +858,13 @@ export class Belt3d {
       }
     }
     const active = this.workers[m.activeWorker.id];
-    this.activeRing.position.set(active.root.position.x, 0.02, active.root.position.z);
+    this.activeRing.position.set(active.root.position.x, active.root.position.y + 0.02, active.root.position.z);
     const pulse = 1 + Math.sin(this.time * 4) * 0.05;
     this.activeRing.scale.set(pulse, pulse, 1);
+    this.activeRing.visible = this.state !== 'story';
     const idle = this.workers[m.activeIndex === 0 ? 'skanky' : 'termite'];
-    this.sleepTag.position.set(idle.root.position.x + 0.3, 2.5 + Math.sin(this.time * 2) * 0.08, idle.root.position.z);
+    this.sleepTag.position.set(idle.root.position.x + 0.3, idle.root.position.y + 2.5 + Math.sin(this.time * 2) * 0.08, idle.root.position.z);
+    this.sleepTag.visible = this.state !== 'story';
 
     // A marker above the parcel the active worker would grab.
     const nearest = m.heldPackage ? null : m.nearestPackage();
@@ -516,18 +876,65 @@ export class Belt3d {
     }
   }
 
+  /** Where a throw would land: an arc and a ring in the destination's colour, only when the throw is allowed. */
+  private updateThrowPreview(): void {
+    const m = this.model;
+    const target = this.state === 'playing' && m.heldPackage ? m.throwTarget() : null;
+    const visible = Boolean(target?.ok);
+    this.throwArc.visible = visible;
+    this.throwRing.visible = visible;
+    if (!target || !visible) return;
+    const color = new THREE.Color(ROUTE_COLORS[target.route]);
+    (this.throwArc.material as THREE.LineDashedMaterial).color.copy(color);
+    (this.throwRing.material as THREE.MeshBasicMaterial).color.copy(color);
+    const worker = this.workers[m.activeWorker.id].root.position;
+    const from = worker.clone().add(new THREE.Vector3(0, 1.2, 0));
+    const to = toWorld(target, surfaceAt(target.x, target.y) + 0.05);
+    const positions = this.throwArc.geometry.attributes.position as THREE.BufferAttribute;
+    for (let i = 0; i < positions.count; i += 1) {
+      const t = i / (positions.count - 1);
+      const point = from.clone().lerp(to, t);
+      point.y += Math.sin(t * Math.PI) * 1.4;
+      positions.setXYZ(i, point.x, point.y, point.z);
+    }
+    positions.needsUpdate = true;
+    this.throwArc.geometry.computeBoundingSphere();
+    this.throwArc.computeLineDistances();
+    this.throwRing.position.copy(to);
+    const pulse = 1 + Math.sin(this.time * 6) * 0.08;
+    this.throwRing.scale.set(pulse, pulse, 1);
+  }
+
   private parcelPosition(parcel: Parcel, view: ParcelView, target: THREE.Vector3): THREE.Vector3 {
     if (parcel.state === 'held' && parcel.workerId) {
       const character = this.workers[parcel.workerId];
       const forward = new THREE.Vector3(Math.sin(character.root.rotation.y), 0, Math.cos(character.root.rotation.y));
-      return target.copy(character.root.position).addScaledVector(forward, 0.42).setY(1.05 - view.height * 0.35);
+      return target.copy(character.root.position).addScaledVector(forward, 0.42).setY(character.root.position.y + 1.05 - view.height * 0.35);
     }
     if (parcel.state === 'missed') {
       const missed = this.model.packages.filter((item) => item.state === 'missed');
       const index = missed.indexOf(parcel);
-      return setFromModel(target, { x: SHIFT_LAYOUT.recoveryPile.x - 64 + index * 32, y: SHIFT_LAYOUT.recoveryPile.y }, 0.14);
+      return setFromModel(target, { x: SHIFT_LAYOUT.recoveryPile.x - 64 + index * 32, y: SHIFT_LAYOUT.recoveryPile.y }, PLATFORM_HEIGHT + 0.14);
     }
-    return setFromModel(target, parcel, parcel.state === 'belt' ? BELT_HEIGHT + 0.01 : 0);
+    if (parcel.state === 'thrown' && parcel.flight) {
+      // An arc from the hands to the drop, dropping to floor level for a throw down the stairs.
+      const flight = parcel.flight;
+      const t = flight.elapsedMs / flight.durationMs;
+      const start = surfaceAt(flight.fromX, flight.fromY) + 1.0;
+      const end = surfaceAt(flight.toX, flight.toY) + 0.05;
+      return setFromModel(target, parcel, start + (end - start) * t + Math.sin(t * Math.PI) * 1.4);
+    }
+    return setFromModel(target, parcel, parcel.state === 'belt' ? BELT_HEIGHT + 0.01 : surfaceAt(parcel.x, parcel.y));
+  }
+
+  /** Where a delivered parcel goes: into its truck, onto the bulk stock, or onto its lower-floor pile. */
+  private deliveryTarget(parcel: Parcel): THREE.Vector3 {
+    if (parcel.route === 'C') return this.world.bulkStack.position.clone().add(new THREE.Vector3(0, 0.3, 0));
+    if (parcel.route === 'T' || parcel.route === 'S') {
+      const slot = floorPileSlot(parcel.route, parcel.pileIndex ?? 0);
+      return toWorld(slot, 0.21 + slot.layer * 0.43);
+    }
+    return this.world.truckRear(parcel.route);
   }
 
   private syncParcels(dt: number): void {
@@ -555,11 +962,35 @@ export class Belt3d {
           this.world.scene.remove(view.root);
         } else if (view) {
           this.parcels.delete(parcel.id);
-          const to = parcel.route === 'C'
-            ? this.world.bulkStack.position.clone().add(new THREE.Vector3(0, 0.3, 0))
-            : toWorld(parcel.route === 'A' ? { x: 300, y: 532 } : { x: 660, y: 532 }, 1.2);
-          this.departing.push({ view, from: view.root.position.clone(), to, t: 0, bulk: parcel.route === 'C' });
+          this.departing.push({ view, from: view.root.position.clone(), to: this.deliveryTarget(parcel), t: 0, route: parcel.route });
         }
+        continue;
+      }
+      if (parcel.state === 'damaged') {
+        // A broken parcel stays crushed where it landed, then is cleared away; it never comes back.
+        const age = (this.broken.get(parcel.id) ?? 0) + dt;
+        this.broken.set(parcel.id, age);
+        const view = this.parcels.get(parcel.id);
+        if (!view) continue;
+        if (age > DAMAGE_VISIBLE_S) {
+          this.world.scene.remove(view.root);
+          this.parcels.delete(parcel.id);
+          continue;
+        }
+        seen.add(parcel.id);
+        if (!view.root.userData.crushed) {
+          view.root.userData.crushed = true;
+          view.body.scale.y *= 0.5;
+          view.body.rotation.z = 0.35;
+          view.tag.visible = false;
+          const tag = textSprite(['BROKEN'], 0.26, { width: 110, height: 30, background: '#c23a2e', color: '#fff6e8', radius: 5 });
+          tag.position.y = view.height * 0.6 + 0.3;
+          tag.center.set(0.5, 0);
+          view.root.add(tag);
+          if (view.parts.crack) view.parts.crack.visible = true;
+          if (view.parts.spill) view.parts.spill.visible = true;
+        }
+        setFromModel(view.root.position, parcel, surfaceAt(parcel.x, parcel.y));
         continue;
       }
       seen.add(parcel.id);
@@ -569,11 +1000,17 @@ export class Belt3d {
         this.parcels.set(parcel.id, view);
         this.world.scene.add(view.root);
         audioSystem.play('package-spawn');
+        if (NEW_ROUTES.includes(parcel.route) && !this.seenRoutes.has(parcel.route)) {
+          this.seenRoutes.add(parcel.route);
+          const info = ROUTE_INFO[parcel.route];
+          this.overlay.showToast(`NEW: ${parcel.route} · ${info.name} · ${info.caption}`, 3600);
+        }
       }
       this.parcelPosition(parcel, view, target);
-      const settle = parcel.state === 'belt' ? 1 : Math.min(1, dt * 18);
+      const settle = parcel.state === 'belt' || parcel.state === 'thrown' ? 1 : Math.min(1, dt * 18);
       view.root.position.lerp(target, settle);
-      view.root.rotation.y = parcel.state === 'held' && parcel.workerId ? this.workers[parcel.workerId].root.rotation.y : 0;
+      view.root.rotation.y = parcel.state === 'held' && parcel.workerId ? this.workers[parcel.workerId].root.rotation.y
+        : parcel.state === 'thrown' && !this.reducedMotion ? this.time * 9 : 0;
       if (parcel.kind === 'makeup' && parcel.broken) {
         view.parts.crack.visible = true;
         view.parts.spill.visible = true;
@@ -593,11 +1030,19 @@ export class Belt3d {
       item.t += dt / 0.45;
       const t = Math.min(1, item.t);
       item.view.root.position.lerpVectors(item.from, item.to, t).setY(THREE.MathUtils.lerp(item.from.y, item.to.y, t) + Math.sin(t * Math.PI) * 0.6);
-      item.view.root.scale.setScalar(item.bulk ? 1 : 1 - t * 0.6);
+      const stays = item.route === 'C' || item.route === 'T' || item.route === 'S';
+      item.view.root.scale.setScalar(stays ? 1 : 1 - t * 0.4);
       if (t >= 1) {
         this.world.scene.remove(item.view.root);
         this.departing.splice(i, 1);
-        if (item.bulk) this.bulkVisible += 1;
+        if (item.route === 'C') this.bulkVisible += 1;
+        else if (item.route === 'T' || item.route === 'S') {
+          this.pileVisible[item.route] += 1;
+          this.world.setFloorPile(item.route, this.pileVisible[item.route]);
+        } else {
+          this.truckVisible[item.route] += 1;
+          this.world.setTruckLoad(item.route, this.truckVisible[item.route]);
+        }
       }
     }
   }
@@ -629,17 +1074,22 @@ export class Belt3d {
     const portrait = this.camera.aspect < 1;
     let position: THREE.Vector3;
     let look: THREE.Vector3;
-    if (this.state === 'interlude' || (this.state === 'paused' && this.pausedFrom === 'interlude')) {
+    const state = this.state === 'paused' ? this.pausedFrom : this.state;
+    if (state === 'interlude') {
       // Frame the whole outer bay: gunman, Ben, the gate and the demon.
       look = new THREE.Vector3(toWorldX(95), 1.0, toWorldZ(400));
       position = look.clone().add(portrait ? new THREE.Vector3(2, 11, 9) : new THREE.Vector3(3.2, 6.6, 7.6));
+    } else if (state === 'story' && this.depotShot) {
+      look = this.depotShot.look;
+      position = this.depotShot.position.clone();
+      if (portrait) position.add(new THREE.Vector3(0, 4, 3));
     } else if (this.overview || this.state === 'briefing' || this.state === 'celebrating') {
-      look = new THREE.Vector3(0, 0, toWorldZ(352));
-      position = look.clone().add(portrait ? new THREE.Vector3(0, 48, 24) : new THREE.Vector3(0, 33, 17));
+      look = new THREE.Vector3(0, 0, toWorldZ(420));
+      position = look.clone().add(portrait ? new THREE.Vector3(0, 64, 30) : new THREE.Vector3(0, 44, 21));
     } else {
       const worker = this.workers[this.model.activeWorker.id].root.position;
       // Keep the belt in frame by leaning the view toward the conveyor.
-      look = new THREE.Vector3(worker.x * 0.5, 0.4, worker.z - 1.0);
+      look = new THREE.Vector3(worker.x * 0.5, worker.y + 0.4, worker.z - 1.0);
       position = look.clone().add(portrait ? new THREE.Vector3(0, 15, 9) : new THREE.Vector3(worker.x * 0.2, 10.5, 9.4));
     }
     const ease = snap ? 1 : 1 - Math.exp(-dt * 4);
@@ -651,20 +1101,32 @@ export class Belt3d {
   private showResults(): void {
     if (this.state === 'ended') return;
     this.state = 'ended';
+    this.stage.end();
+    this.overlay.setMode('shift');
+    this.story.go('results');
     const m = this.model;
     audioSystem.startMusic('results');
     const overflow = m.pileup >= m.capacity;
     const rate = m.packages.length === 0 ? 0 : Math.round(m.sorted / m.packages.length * 100);
+    const home = this.lot?.done === true;
+    const mall = this.mall;
+    const routes = (['A', 'D', 'T', 'B', 'E', 'S', 'C'] as const).map((route) => `${route} ${m.routeSorted[route]}`).join(' · ');
+    const total = m.score + this.mallBonus;
     this.overlay.showPanel(`
       <div class="grade">${m.won ? m.grade : 'F'}</div>
       <div class="kicker">${m.won ? `SHIFT COMPLETE / GRADE ${m.grade}` : 'SHIFT TERMINATED / YOU FAILED THE SORT'}</div>
-      <h1>${overflow ? 'PILE-UP OVERFLOW' : m.gradeQuote}</h1>
+      <h1>${overflow ? 'PILE-UP OVERFLOW' : home ? 'HOME. FINALLY.' : m.gradeQuote}</h1>
       <p><b>${m.sorted} DISPATCHED · ${String(m.score).padStart(5, '0')} POINTS · ${m.bestCombo} BEST STREAK</b></p>
-      <p>${rate}% of freight dispatched · ${m.missed} parcels reached the belt end</p>
-      <button type="button">ANOTHER SHIFT  ↵</button>
+      <p>${rate}% of freight dispatched · ${m.missed} parcels reached the belt end · ${m.bulkSorted} to bulk</p>
+      <p>${escapeHtml(routes)}</p>
+      <p>${m.thrownDeliveries} thrown in clean · ${m.damaged} broken (−${m.breakagePenalty} points${m.damaged > THROWING.gradeForgivenBreaks ? `, ${m.gradedBreaks} counted against the grade` : ''})</p>
+      ${mall ? `<p>MALL RUN · ${mall.delivered}/6 delivered · ${mall.signatures}/6 signed · five-ton ${home ? 'returned' : 'not returned'} · +${this.mallBonus}</p>
+      <p><b>NIGHT TOTAL ${String(total).padStart(5, '0')}</b> · ${m.gradeQuote}</p>` : ''}
+      <button type="button">ANOTHER NIGHT  ↵</button>
       <a href="${window.location.pathname}?mode=2d">PLAY THE 2D DEPOT</a>`, () => this.restart());
   }
 }
+
 
 export function startBelt3d(): void {
   const host = document.querySelector<HTMLDivElement>('#app');

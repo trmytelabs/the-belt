@@ -5,10 +5,11 @@
  * All time inputs are milliseconds. The renderer reads beltTravel for both
  * the tread phase and parcel positions: there is no separate parcel velocity.
  */
-export type Route = 'A' | 'B' | 'C';
+export type Route = 'A' | 'B' | 'C' | 'D' | 'E' | 'T' | 'S';
 export type ParcelKind = 'envelope' | 'smallbox' | 'standard' | 'bigbox' | 'longbox' | 'mallwood' | 'goji' | 'lobsters' | 'duck' | 'makeup' | 'mesa' | 'panchetters' | 'atv' | 'snakes';
 export type WorkerId = 'termite' | 'skanky';
-export type PackageState = 'belt' | 'held' | 'floor' | 'delivered' | 'missed';
+/** 'thrown' is a parcel in the air; 'damaged' is a terminal, never-credited throw breakage. */
+export type PackageState = 'belt' | 'held' | 'floor' | 'delivered' | 'missed' | 'thrown' | 'damaged';
 export type ShiftPhase = 'lesson' | 'flow' | 'rush' | 'cleanup' | 'ended';
 export type ShiftGrade = 'S' | 'A' | 'B' | 'C' | 'F';
 
@@ -20,6 +21,17 @@ export interface Worker {
   heldId: number | null;
   facing: 'left' | 'right' | 'up' | 'down';
   moving: boolean;
+}
+
+export interface ThrowFlight {
+  fromX: number;
+  fromY: number;
+  toX: number;
+  toY: number;
+  elapsedMs: number;
+  durationMs: number;
+  /** From the platform down to the lower floor: renderers drop the arc to floor level. */
+  downward: boolean;
 }
 
 export interface Parcel {
@@ -37,8 +49,15 @@ export interface Parcel {
   /** A recovered parcel cannot incur a second first-miss penalty. */
   recovered: boolean;
   missCounted: boolean;
+  /** The makeup lotion's own leak on the belt (cosmetic, never penalized). */
   broken: boolean;
   breakY: number | null;
+  /** Set while the parcel is in the air. */
+  flight?: ThrowFlight | null;
+  /** Position in a lower-floor pile, counted from zero, once delivered there. */
+  pileIndex?: number;
+  /** True once a throw has landed it in its destination intact. */
+  thrownDelivery?: boolean;
 }
 
 type ParcelIdentity = Pick<Parcel, 'id' | 'route' | 'kind' | 'label' | 'size'>;
@@ -52,19 +71,28 @@ export interface IntakePreview extends ParcelIdentity {
 }
 
 export interface ShiftEvent {
-  type: 'grab' | 'drop' | 'sort' | 'wrong' | 'miss' | 'recover' | 'brake' | 'switch' | 'phase' | 'brian' | 'spill' | 'end';
+  type: 'grab' | 'drop' | 'sort' | 'wrong' | 'miss' | 'recover' | 'brake' | 'switch' | 'phase' | 'brian' | 'spill' | 'end' | 'throw' | 'damage';
   message: string;
   x: number;
   y: number;
   route?: Route;
   score?: number;
   packageId?: number;
+  workerId?: WorkerId;
 }
 
+type Rect = { x: number; y: number; width: number; height: number };
+
+/**
+ * Model pixels (32 px = 1 m in 3D). The belt, both worker lanes, the bulk pile
+ * and every truck's rear door sit on one raised loading platform. Two stair
+ * flights at the belt end lead down to the lower floor, where each worker has a
+ * separate package drop. Trucks back against the platform's long edges.
+ */
 export const SHIFT_LAYOUT = {
   worldTop: -240,
   receivingTop: -240,
-  worldBottom: 714,
+  worldBottom: 1010,
   beltX: 480,
   beltTop: 146,
   beltBottom: 550,
@@ -72,27 +100,100 @@ export const SHIFT_LAYOUT = {
   parcelGap: 68,
   dockA: { x: 360, y: 532 },
   dockB: { x: 600, y: 532 },
+  dockD: { x: 360, y: 740 },
+  dockE: { x: 600, y: 740 },
+  floorT: { x: 380, y: 940 },
+  floorS: { x: 580, y: 940 },
   bulkPile: { x: 480, y: 610 },
   bulkLeft: { x: 400, y: 624 },
   bulkRight: { x: 560, y: 624 },
   recoveryPile: { x: 480, y: 690 },
   /** Centered rectangles shared by delivery rules, guidance and painted floor markings. */
   dropAreas: {
-    A: { x: 381, y: 532, width: 78, height: 88 },
-    B: { x: 579, y: 532, width: 78, height: 88 },
+    A: { x: 369, y: 532, width: 102, height: 88 },
+    B: { x: 591, y: 532, width: 102, height: 88 },
+    D: { x: 369, y: 740, width: 102, height: 88 },
+    E: { x: 591, y: 740, width: 102, height: 88 },
+    T: { x: 380, y: 940, width: 120, height: 84 },
+    S: { x: 580, y: 940, width: 120, height: 84 },
     bulkLeft: { x: 400, y: 624, width: 80, height: 96 },
     bulkRight: { x: 560, y: 624, width: 80, height: 96 },
   },
   workerMinY: -20,
-  workerMaxY: 690,
+  workerMaxY: 992,
   leftLane: { minX: 330, maxX: 400 },
   rightLane: { minX: 560, maxX: 630 },
+  /** The raised loading platform: the full central spine, receiving included. */
+  platform: { left: 318, right: 642, top: -240, bottom: 784 },
+  /** One flight per worker, as wide as that worker's lane. */
+  stairs: { top: 784, bottom: 876 },
+  /** The lower floor below the platform's far end, split by the belt-end wall. */
+  lowerFloor: { top: 876, bottom: 1000, left: { minX: 314, maxX: 470 }, right: { minX: 490, maxX: 646 } },
+  /** Truck bodies (148 × 84) parked against the platform edges, rear doors flush with it. */
+  playerTrucks: {
+    A: { x: 244, y: 532 }, B: { x: 716, y: 532 }, D: { x: 244, y: 740 }, E: { x: 716, y: 740 },
+  },
+} as const;
+
+/** Every destination's readable identity. Letters and names appear on parcels, floors and signs. */
+export interface RouteInfo {
+  route: Route;
+  name: string;
+  owner: WorkerId | 'shared';
+  side: 'left' | 'right' | 'both';
+  kind: 'truck' | 'bulk' | 'floor';
+  /** Short destination text for parcel tags and hints. */
+  caption: string;
+  color: string;
+}
+
+// D, E, T and S are new. Their names are provisional and can be renamed here.
+export const ROUTE_INFO: Record<Route, RouteInfo> = {
+  A: { route: 'A', name: 'HERES UR SOVICE', owner: 'termite', side: 'left', kind: 'truck', caption: "TERMITE'S TRUCK 1", color: '#62c8d6' },
+  B: { route: 'B', name: 'PAYTMAN', owner: 'skanky', side: 'right', kind: 'truck', caption: "SKANKY'S TRUCK 1", color: '#8fd18a' },
+  C: { route: 'C', name: 'BULK', owner: 'shared', side: 'both', kind: 'bulk', caption: 'SHARED PILE AT THE BELT END', color: '#f0a64a' },
+  D: { route: 'D', name: 'DOWNTOWN', owner: 'termite', side: 'left', kind: 'truck', caption: "TERMITE'S TRUCK 2", color: '#7fa4f2' },
+  E: { route: 'E', name: 'EASTSIDE', owner: 'skanky', side: 'right', kind: 'truck', caption: "SKANKY'S TRUCK 2", color: '#d9dc6a' },
+  T: { route: 'T', name: 'TERMITE FLOOR DROP', owner: 'termite', side: 'left', kind: 'floor', caption: 'LOWER FLOOR · DOWN THE STAIRS', color: '#c9a2f2' },
+  S: { route: 'S', name: 'SKANKY FLOOR DROP', owner: 'skanky', side: 'right', kind: 'floor', caption: 'LOWER FLOOR · DOWN THE STAIRS', color: '#f29ab8' },
+};
+export const ROUTES: readonly Route[] = ['A', 'D', 'T', 'B', 'E', 'S', 'C'];
+export const WORKER_ROUTES: Record<WorkerId, readonly Route[]> = { termite: ['A', 'D', 'T'], skanky: ['B', 'E', 'S'] };
+
+/**
+ * Base points per successful delivery. Truck and floor drops keep the original
+ * 100; bulk keeps its original 120. The combo bonus (15 per streak, up to 10) and
+ * the half-value recovery rule are unchanged.
+ */
+export const DELIVERY_POINTS: Record<Route, number> = { A: 100, B: 100, C: 120, D: 100, E: 100, T: 100, S: 100 };
+
+/**
+ * Throwing is an optional shortcut. Carrying is unchanged and never breaks freight.
+ * All values are tuning knobs: see docs/overnight-shift-expansion.md.
+ */
+export const THROWING = {
+  /** Farthest throw, in model pixels (about 9.4 m). */
+  rangePx: 300,
+  flightMs: 600,
+  /** Heavy freight (bulk crates, the amp, the ATV) must be carried. */
+  heavyThrowable: false,
+  /** Simple two-level fragility: these break more often when thrown. */
+  fragileKinds: ['makeup', 'duck', 'mesa', 'lobsters'] as readonly ParcelKind[],
+  breakChance: { ordinary: 0.15, fragile: 0.55 },
+  /** Charged exactly once per broken parcel. */
+  breakPenalty: 150,
+  /** Breakages beyond this many count as errors in the shift grade. */
+  gradeForgivenBreaks: 1,
 } as const;
 
 const ROUTE_NAMES: Record<Route, string> = {
   A: 'A · HERES UR SOVICE · left dock',
   B: 'B · PAYTMAN · right dock',
   C: 'C · BULK · shared pile at the belt end',
+  D: "D · DOWNTOWN · Termite's second truck",
+  E: "E · EASTSIDE · Skanky's second truck",
+  T: 'T · TERMITE FLOOR DROP · down the stairs',
+  S: 'S · SKANKY FLOOR DROP · down the stairs',
 };
 // Names come from the original SpawnSystem and GameScene's Hussan phone gag.
 // The preview schedules them deliberately so the game's references cannot be
@@ -113,6 +214,8 @@ const PARCEL_LABELS: Record<ParcelKind, string> = {
   atv: 'SMALL ATV',
   snakes: 'THE SNAKES CELL',
 };
+// The opening six still teach A, B and C. Each worker's second truck (D, E) and
+// lower-floor drop (T, S) follow; heavy freight never goes downstairs.
 const PARCEL_SEQUENCE: readonly { route: Route; kind: ParcelKind }[] = [
   { route: 'A', kind: 'mallwood' },
   { route: 'B', kind: 'goji' },
@@ -120,24 +223,36 @@ const PARCEL_SEQUENCE: readonly { route: Route; kind: ParcelKind }[] = [
   { route: 'A', kind: 'duck' },
   { route: 'B', kind: 'makeup' },
   { route: 'C', kind: 'mesa' },
-  { route: 'B', kind: 'panchetters' },
-  { route: 'A', kind: 'envelope' },
+  { route: 'D', kind: 'envelope' },
+  { route: 'E', kind: 'standard' },
   { route: 'C', kind: 'atv' },
-  { route: 'B', kind: 'standard' },
+  { route: 'T', kind: 'smallbox' },
+  { route: 'S', kind: 'panchetters' },
   { route: 'A', kind: 'mallwood' },
   { route: 'B', kind: 'goji' },
+  { route: 'D', kind: 'panchetters' },
   { route: 'C', kind: 'lobsters' },
-  { route: 'A', kind: 'panchetters' },
+  { route: 'E', kind: 'makeup' },
+  { route: 'T', kind: 'duck' },
   { route: 'C', kind: 'mesa' },
-  { route: 'B', kind: 'makeup' },
-  { route: 'A', kind: 'duck' },
+  { route: 'S', kind: 'standard' },
+  { route: 'A', kind: 'envelope' },
+  { route: 'B', kind: 'longbox' },
+  { route: 'D', kind: 'bigbox' },
   { route: 'C', kind: 'atv' },
-  { route: 'A', kind: 'bigbox' },
+  { route: 'E', kind: 'smallbox' },
+  { route: 'T', kind: 'goji' },
+  { route: 'S', kind: 'makeup' },
+  { route: 'A', kind: 'panchetters' },
   { route: 'B', kind: 'standard' },
   { route: 'C', kind: 'lobsters' },
-  { route: 'B', kind: 'panchetters' },
+  { route: 'D', kind: 'duck' },
+  { route: 'E', kind: 'envelope' },
+  { route: 'T', kind: 'standard' },
+  { route: 'S', kind: 'smallbox' },
   { route: 'A', kind: 'smallbox' },
-  { route: 'B', kind: 'longbox' },
+  { route: 'B', kind: 'panchetters' },
+  { route: 'C', kind: 'mesa' },
 ];
 const BRIAN_BULK_SEQUENCE: readonly ParcelKind[] = ['atv', 'lobsters', 'mesa', 'panchetters', 'mallwood'];
 const INTAKE_TRANSFER_MS = 900;
@@ -152,6 +267,47 @@ const CARRY_MULTIPLIER: Record<ParcelKind, number> = {
 const clamp = (value: number, low: number, high: number): number => Math.max(low, Math.min(high, value));
 const distance = (a: { x: number; y: number }, b: { x: number; y: number }): number => Math.hypot(a.x - b.x, a.y - b.y);
 const smoothStep = (value: number): number => value * value * (3 - 2 * value);
+const inside = (rect: Rect, point: { x: number; y: number }): boolean =>
+  Math.abs(point.x - rect.x) <= rect.width / 2 && Math.abs(point.y - rect.y) <= rect.height / 2;
+
+/** Height of the walking surface as a fraction of the platform height: 1 on the platform, 0 below. */
+export function platformLevelAt(x: number, y: number): number {
+  const { platform, stairs, leftLane, rightLane } = SHIFT_LAYOUT;
+  if (x >= platform.left && x <= platform.right && y >= platform.top && y <= platform.bottom) return 1;
+  const onStairs = (x >= leftLane.minX - 2 && x <= leftLane.maxX + 2) || (x >= rightLane.minX - 2 && x <= rightLane.maxX + 2);
+  if (onStairs && y > stairs.top && y < stairs.bottom) return 1 - (y - stairs.top) / (stairs.bottom - stairs.top);
+  return 0;
+}
+
+/** Where the Nth parcel delivered to a lower-floor drop rests: a 4 × 3 grid, then the next layer. */
+export function floorPileSlot(route: 'T' | 'S', index: number): { x: number; y: number; layer: number } {
+  const zone = SHIFT_LAYOUT.dropAreas[route];
+  const column = index % 4;
+  const row = Math.floor(index / 4) % 3;
+  const layer = Math.floor(index / 12);
+  // The far (lower) band is left clear for the painted letter, which stays readable.
+  return { x: zone.x - 42 + column * 28 + (layer % 2) * 6, y: zone.y - 30 + row * 20, layer };
+}
+
+export interface ThrowTarget {
+  ok: boolean;
+  route: Route;
+  x: number;
+  y: number;
+  distance: number;
+  breakChance: number;
+  reason: string;
+}
+
+export interface ShiftOptions {
+  /** Breakage rolls. Tests inject a deterministic source; play uses Math.random. */
+  random?: () => number;
+}
+
+/** True from the foot of the stairs down: the same boundary walkBounds() uses. */
+export function onLowerFloor(point: { y: number }): boolean {
+  return point.y >= SHIFT_LAYOUT.lowerFloor.top;
+}
 
 export class ShiftModel {
   public readonly workers: Worker[] = [
@@ -174,6 +330,11 @@ export class ShiftModel {
   public missed = 0;
   public combo = 0;
   public bestCombo = 0;
+  /** Thrown parcels that broke, and the points actually deducted for them. */
+  public damaged = 0;
+  public breakagePenalty = 0;
+  public thrownDeliveries = 0;
+  public readonly routeSorted: Record<Route, number> = { A: 0, B: 0, C: 0, D: 0, E: 0, T: 0, S: 0 };
   public paused = false;
   /** Vic/Shan can stop the machinery while workers and the shift clock continue. */
   public eventStopped = false;
@@ -191,8 +352,12 @@ export class ShiftModel {
   private brianSent = false;
   private wrongSortErrors = 0;
   private readonly countedMisses = new Set<number>();
+  private readonly penalizedBreaks = new Set<number>();
+  private readonly floorPiles: Record<'T' | 'S', number> = { T: 0, S: 0 };
+  private readonly random: () => number;
 
-  constructor() {
+  constructor(options: ShiftOptions = {}) {
+    this.random = options.random ?? Math.random;
     this.spawnPackage();
   }
 
@@ -212,8 +377,13 @@ export class ShiftModel {
     return this.packages.filter((parcel) => parcel.state === 'missed').length;
   }
 
+  /** Breakages that count against the grade; the first accident is forgiven. */
+  public get gradedBreaks(): number {
+    return Math.max(0, this.damaged - THROWING.gradeForgivenBreaks);
+  }
+
   public get errors(): number {
-    return this.missed + this.wrongSortErrors;
+    return this.missed + this.wrongSortErrors + this.gradedBreaks;
   }
 
   public get accuracy(): number {
@@ -292,6 +462,8 @@ export class ShiftModel {
     for (const parcel of this.packages) {
       if (parcel.state !== 'belt' && parcel.state !== 'floor' && parcel.state !== 'missed') continue;
       if (parcel.state === 'floor' && (worker.side === 'left' ? parcel.x > 440 : parcel.x < 520)) continue;
+      // The platform's retaining wall separates the lower floor from the belt end.
+      if (parcel.state !== 'floor' && onLowerFloor(worker)) continue;
       const separation = distance(worker, parcel);
       if (separation < nearestDistance) {
         nearestDistance = separation;
@@ -328,7 +500,8 @@ export class ShiftModel {
         if (!held.recovered) this.wrongSortErrors += 1;
         this.emit('wrong', `This parcel needs ${ROUTE_NAMES[held.route]}`, worker, held);
       } else {
-        this.deliver(worker, held);
+        this.release(worker, held);
+        this.deliver(held);
       }
       return;
     }
@@ -348,7 +521,8 @@ export class ShiftModel {
       return;
     }
 
-    const floorX = clamp(worker.x + (worker.side === 'left' ? 23 : -23), worker.side === 'left' ? SHIFT_LAYOUT.leftLane.minX + 6 : 542, worker.side === 'left' ? 418 : SHIFT_LAYOUT.rightLane.maxX - 6);
+    const lane = worker.side === 'left' ? SHIFT_LAYOUT.leftLane : SHIFT_LAYOUT.rightLane;
+    const floorX = clamp(worker.x + (worker.side === 'left' ? 23 : -23), worker.side === 'left' ? lane.minX + 6 : 542, worker.side === 'left' ? 418 : lane.maxX - 6);
     const floorY = clamp(worker.y + 12, SHIFT_LAYOUT.workerMinY + 10, SHIFT_LAYOUT.worldBottom - 18);
     if (this.packages.some((parcel) => parcel.id !== held.id && parcel.state === 'floor' && distance(parcel, { x: floorX, y: floorY }) < 54)) {
       this.emit('wrong', 'Floor space occupied · take one step aside', worker, held);
@@ -361,6 +535,62 @@ export class ShiftModel {
     this.emit('drop', 'Set down · press SPACE nearby to pick up', held, held);
   }
 
+  /**
+   * Where the active worker's held parcel would go if thrown: always its own
+   * correct destination, so the choice is carry-or-throw rather than aim.
+   */
+  public throwTarget(worker: Worker = this.activeWorker): ThrowTarget | null {
+    const held = this.packages.find((parcel) => parcel.id === worker.heldId);
+    if (!held) return null;
+    const route = held.route;
+    const info = ROUTE_INFO[route];
+    const target = this.destinationCenter(route, worker.side);
+    const separation = distance(worker, target);
+    const fragile = THROWING.fragileKinds.includes(held.kind);
+    const result: ThrowTarget = {
+      ok: false, route, x: target.x, y: target.y, distance: separation,
+      breakChance: fragile ? THROWING.breakChance.fragile : THROWING.breakChance.ordinary, reason: '',
+    };
+    if (info.side !== 'both' && info.side !== worker.side) {
+      result.reason = `ROUTE ${route} is ${info.owner === 'termite' ? "TERMITE'S" : "SKANKY'S"} · put it on the belt and TAB`;
+    } else if (held.size === 'heavy' && !THROWING.heavyThrowable) {
+      result.reason = 'TOO HEAVY TO THROW · carry it';
+    } else if (this.currentDock(worker) === route) {
+      result.reason = 'ALREADY AT THE DROP · press SPACE';
+    } else if (onLowerFloor(worker) && info.kind !== 'floor') {
+      result.reason = "CAN'T THROW UP ONTO THE PLATFORM · carry it";
+    } else if (separation > THROWING.rangePx) {
+      result.reason = `TOO FAR TO THROW · ${Math.ceil((separation - THROWING.rangePx) / 32)} m closer, or carry it`;
+    } else {
+      result.ok = true;
+      result.reason = `THROW TO ${route} · ${Math.round(result.breakChance * 100)}% BREAK RISK`;
+    }
+    return result;
+  }
+
+  /** The optional shortcut: risks breaking the parcel instead of walking it there. */
+  public throwHeld(): void {
+    if (!this.canAct()) return;
+    const worker = this.activeWorker;
+    const held = this.heldPackage;
+    const target = this.throwTarget(worker);
+    if (!held || !target) {
+      this.emit('wrong', 'Pick up a parcel first, then F throws it', worker);
+      return;
+    }
+    if (!target.ok) {
+      this.emit('wrong', target.reason, worker, held);
+      return;
+    }
+    this.release(worker, held);
+    held.state = 'thrown';
+    held.flight = {
+      fromX: held.x, fromY: held.y, toX: target.x, toY: target.y, elapsedMs: 0, durationMs: THROWING.flightMs,
+      downward: platformLevelAt(worker.x, worker.y) > 0.5 && ROUTE_INFO[held.route].kind === 'floor',
+    };
+    this.emit('throw', `THROWN · ${held.label} → ${held.route}`, worker, held);
+  }
+
   public drainEvents(): ShiftEvent[] {
     const result = this.events;
     this.events = [];
@@ -369,6 +599,12 @@ export class ShiftModel {
 
   private canAct(): boolean {
     return !this.paused && !this.ended;
+  }
+
+  private destinationCenter(route: Route, side: 'left' | 'right'): { x: number; y: number } {
+    if (route === 'C') return side === 'left' ? SHIFT_LAYOUT.bulkLeft : SHIFT_LAYOUT.bulkRight;
+    const area = SHIFT_LAYOUT.dropAreas[route];
+    return { x: area.x, y: area.y };
   }
 
   private advance(deltaMs: number, move: { x: number; y: number }): void {
@@ -395,6 +631,10 @@ export class ShiftModel {
       if (held) this.syncHeld(worker, held);
     }
     for (const parcel of this.packages) {
+      if (parcel.state === 'thrown') {
+        this.advanceFlight(parcel, deltaMs);
+        continue;
+      }
       if (parcel.state !== 'belt') continue;
       parcel.y = this.beltTravel + parcel.beltOffset;
       if (movingMs > 0 && parcel.kind === 'makeup' && !parcel.broken && parcel.breakY !== null && parcel.y >= parcel.breakY) {
@@ -424,11 +664,44 @@ export class ShiftModel {
     } else {
       // A parcel still in receiving is not on the shift's belt or score sheet.
       this.pendingIntake = null;
-      const unfinished = this.packages.some((parcel) => parcel.state !== 'delivered');
+      const unfinished = this.packages.some((parcel) => parcel.state !== 'delivered' && parcel.state !== 'damaged');
       if (!unfinished || this.elapsedMs >= this.durationMs + this.cleanupMs) {
         this.finish(this.sorted >= this.goal, this.sorted >= this.goal ? 'Shift complete · freight cleared' : `Shift complete · ${this.sorted}/${this.goal} delivered`);
       }
     }
+  }
+
+  private advanceFlight(parcel: Parcel, deltaMs: number): void {
+    const flight = parcel.flight;
+    if (!flight) return;
+    flight.elapsedMs = Math.min(flight.durationMs, flight.elapsedMs + deltaMs);
+    const t = flight.elapsedMs / flight.durationMs;
+    parcel.x = flight.fromX + (flight.toX - flight.fromX) * t;
+    parcel.y = flight.fromY + (flight.toY - flight.fromY) * t;
+    if (t < 1) return;
+    parcel.flight = null;
+    const fragile = THROWING.fragileKinds.includes(parcel.kind);
+    const chance = fragile ? THROWING.breakChance.fragile : THROWING.breakChance.ordinary;
+    if (this.random() < chance) this.damage(parcel);
+    else {
+      parcel.thrownDelivery = true;
+      this.thrownDeliveries += 1;
+      this.deliver(parcel);
+    }
+  }
+
+  /** A thrown parcel broke: no delivery credit and exactly one penalty, ever. */
+  private damage(parcel: Parcel): void {
+    parcel.state = 'damaged';
+    parcel.workerId = null;
+    if (this.penalizedBreaks.has(parcel.id)) return;
+    this.penalizedBreaks.add(parcel.id);
+    const penalty = Math.min(this.score, THROWING.breakPenalty);
+    this.score -= penalty;
+    this.breakagePenalty += penalty;
+    this.damaged += 1;
+    this.combo = 0;
+    this.emit('damage', `BROKEN · ${parcel.label} · -${THROWING.breakPenalty}`, parcel, parcel, -penalty);
   }
 
   private moveWorker(deltaMs: number, move: { x: number; y: number }): void {
@@ -443,27 +716,27 @@ export class ShiftModel {
     const normalized = Math.max(1, magnitude);
     const previousX = worker.x;
     const previousY = worker.y;
-    const lane = worker.side === 'left' ? SHIFT_LAYOUT.leftLane : SHIFT_LAYOUT.rightLane;
-    const frontX = worker.side === 'left' ? SHIFT_LAYOUT.dockA.x : SHIFT_LAYOUT.dockB.x;
-    const truckTop = SHIFT_LAYOUT.dockA.y - 56;
-    const truckBottom = SHIFT_LAYOUT.dockA.y + 56;
-    let nextX = clamp(worker.x + x / normalized * speed * deltaMs / 1000, lane.minX, lane.maxX);
     let nextY = clamp(worker.y + y / normalized * speed * deltaMs / 1000, SHIFT_LAYOUT.workerMinY, SHIFT_LAYOUT.workerMaxY);
-    // Resolve each axis against the main truck plus the worker's clearance.
-    // A vertical approach stops at its edge; the player can then walk inward
-    // around the front without being teleported sideways or catching a corner.
-    if (previousY > truckTop && previousY < truckBottom) {
-      nextX = worker.side === 'left' ? Math.max(frontX, nextX) : Math.min(frontX, nextX);
-    }
-    const outsideFront = worker.side === 'left' ? nextX < frontX : nextX > frontX;
-    if (outsideFront) {
-      if (previousY <= truckTop && nextY > truckTop) nextY = truckTop;
-      else if (previousY >= truckBottom && nextY < truckBottom) nextY = truckBottom;
-    }
+    // The platform's retaining wall: from the lower floor, only the stairs lead up.
+    if (!this.walkable(worker.side, worker.x, nextY)) nextY = Math.max(nextY, SHIFT_LAYOUT.stairs.bottom);
+    const bounds = this.walkBounds(worker.side, nextY);
+    const nextX = clamp(worker.x + x / normalized * speed * deltaMs / 1000, bounds.minX, bounds.maxX);
     worker.x = nextX;
     worker.y = nextY;
     worker.moving = previousX !== worker.x || previousY !== worker.y;
     worker.facing = Math.abs(x) > Math.abs(y) ? x > 0 ? 'right' : 'left' : y > 0 ? 'down' : 'up';
+  }
+
+  /** The lane (platform and its stairs) or, below the stairs, that side of the lower floor. */
+  public walkBounds(side: 'left' | 'right', y: number): { minX: number; maxX: number } {
+    if (y >= SHIFT_LAYOUT.stairs.bottom) return SHIFT_LAYOUT.lowerFloor[side];
+    return side === 'left' ? SHIFT_LAYOUT.leftLane : SHIFT_LAYOUT.rightLane;
+  }
+
+  public walkable(side: 'left' | 'right', x: number, y: number): boolean {
+    if (y < SHIFT_LAYOUT.workerMinY || y > SHIFT_LAYOUT.workerMaxY) return false;
+    const bounds = this.walkBounds(side, y);
+    return x >= bounds.minX && x <= bounds.maxX;
   }
 
   private syncHeld(worker: Worker, parcel: Parcel): void {
@@ -477,30 +750,43 @@ export class ShiftModel {
   }
 
   public currentDock(worker: Worker = this.activeWorker): Route | null {
-    const lane = worker.side === 'left' ? SHIFT_LAYOUT.leftLane : SHIFT_LAYOUT.rightLane;
-    if (worker.x < lane.minX || worker.x > lane.maxX) return null;
-    const dock = worker.side === 'left' ? SHIFT_LAYOUT.dropAreas.A : SHIFT_LAYOUT.dropAreas.B;
-    // Truck areas exclude their lower edge; the adjoining bulk area owns it.
-    if (Math.abs(worker.x - dock.x) <= dock.width / 2 && worker.y >= dock.y - dock.height / 2 && worker.y < dock.y + dock.height / 2) return worker.side === 'left' ? 'A' : 'B';
+    // A painted zone never extends a worker's reach beyond the walkable floor.
+    if (!this.walkable(worker.side, worker.x, worker.y)) return null;
+    const routes = WORKER_ROUTES[worker.id];
+    for (const route of routes) {
+      const area = SHIFT_LAYOUT.dropAreas[route as 'A' | 'B' | 'D' | 'E' | 'T' | 'S'];
+      // Truck areas exclude their lower edge; the adjoining bulk area owns it.
+      if (Math.abs(worker.x - area.x) <= area.width / 2 && worker.y >= area.y - area.height / 2 && worker.y < area.y + area.height / 2) return route;
+    }
     const bulk = worker.side === 'left' ? SHIFT_LAYOUT.dropAreas.bulkLeft : SHIFT_LAYOUT.dropAreas.bulkRight;
-    if (Math.abs(worker.x - bulk.x) <= bulk.width / 2 && Math.abs(worker.y - bulk.y) <= bulk.height / 2) return 'C';
+    if (inside(bulk, worker)) return 'C';
     return null;
   }
 
-  private deliver(worker: Worker, parcel: Parcel): void {
-    const base = parcel.route === 'C' ? 120 : 100;
+  private deliver(parcel: Parcel): void {
+    const base = DELIVERY_POINTS[parcel.route];
     const award = parcel.recovered ? base / 2 : base + Math.min(this.combo, 10) * 15;
     parcel.state = 'delivered';
-    const destination = parcel.route === 'C' ? SHIFT_LAYOUT.bulkPile : parcel.route === 'A' ? SHIFT_LAYOUT.dockA : SHIFT_LAYOUT.dockB;
-    parcel.x = destination.x;
-    parcel.y = destination.y;
-    this.release(worker, parcel);
+    parcel.workerId = null;
+    if (parcel.route === 'T' || parcel.route === 'S') {
+      parcel.pileIndex = this.floorPiles[parcel.route];
+      this.floorPiles[parcel.route] += 1;
+      const slot = floorPileSlot(parcel.route, parcel.pileIndex);
+      parcel.x = slot.x;
+      parcel.y = slot.y;
+    } else {
+      const destination = parcel.route === 'C' ? SHIFT_LAYOUT.bulkPile : parcel.route === 'A' ? SHIFT_LAYOUT.dockA
+        : parcel.route === 'B' ? SHIFT_LAYOUT.dockB : parcel.route === 'D' ? SHIFT_LAYOUT.dockD : SHIFT_LAYOUT.dockE;
+      parcel.x = destination.x;
+      parcel.y = destination.y;
+    }
     this.score += award;
     this.sorted += 1;
+    this.routeSorted[parcel.route] += 1;
     if (parcel.route === 'C') this.bulkSorted += 1;
     this.combo += 1;
     this.bestCombo = Math.max(this.bestCombo, this.combo);
-    this.emit('sort', `${parcel.recovered ? 'RECOVERED' : 'SORTED'} +${award}`, parcel, parcel, award);
+    this.emit('sort', `${parcel.recovered ? 'RECOVERED' : parcel.thrownDelivery ? 'THROWN IN' : 'SORTED'} +${award}`, parcel, parcel, award);
   }
 
   private miss(parcel: Parcel): void {
@@ -574,7 +860,8 @@ export class ShiftModel {
   }
 
   private emit(type: ShiftEvent['type'], message: string, point: { x: number; y: number }, parcel?: Parcel, score?: number): void {
-    this.events.push({ type, message, x: point.x, y: point.y, route: parcel?.route, packageId: parcel?.id, score });
+    const workerId = 'id' in point && (point.id === 'termite' || point.id === 'skanky') ? point.id : undefined;
+    this.events.push({ type, message, x: point.x, y: point.y, route: parcel?.route, packageId: parcel?.id, score, workerId });
   }
 }
 

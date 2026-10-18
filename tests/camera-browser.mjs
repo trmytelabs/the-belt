@@ -3,6 +3,13 @@ import { join } from 'node:path';
 import { chromium } from 'playwright';
 import { preview } from 'vite';
 
+import { SHIFT_LAYOUT } from '../src/game/slice/ShiftModel.ts';
+import { holdBreak, skipOpening } from './night-helpers.mjs';
+
+// The overview fits the whole world (receiving down to the lower floor) into the 494 px viewport.
+const OVERVIEW_ZOOM = 494 / (SHIFT_LAYOUT.worldBottom - SHIFT_LAYOUT.worldTop);
+const OVERVIEW = { zoom: OVERVIEW_ZOOM, top: SHIFT_LAYOUT.worldTop + 1, bottom: SHIFT_LAYOUT.lowerFloor.bottom };
+
 // Real keyboard/touch travel verifies framing and screen-space hit targets.
 // The late joke alone uses an isolated clock fixture; it is not organic play.
 const server = await preview({ preview: { host: '127.0.0.1', port: 0 }, logLevel: 'silent' });
@@ -87,8 +94,9 @@ try {
   const desktop = await createPage({ viewport: { width: 1200, height: 900 } });
   const { page } = desktop;
   const press = key => page.keyboard.press(key, { delay: 40 });
+  await holdBreak(page);
   await press('Enter');
-  await page.waitForFunction(() => window.fixtureGame.scene.getScene('DepotScene').state === 'playing');
+  await skipOpening(page);
   await page.waitForFunction(() => window.fixtureGame.scene.getScene('DepotScene').view.world.zoom > 1.4);
   const start = await measure(page);
   assert.deepEqual(start.worldViewport, { x: 0, y: 126, width: 960, height: 494 });
@@ -116,14 +124,14 @@ try {
   assert.equal(switched.worker.id, 'skanky');
   assertHud(switched);
   await press('KeyV');
-  await page.waitForFunction(() => Math.abs(window.fixtureGame.scene.getScene('DepotScene').view.world.zoom - 494 / 954) < 0.02);
+  await page.waitForFunction((zoom) => Math.abs(window.fixtureGame.scene.getScene('DepotScene').view.world.zoom - zoom) < 0.01, OVERVIEW_ZOOM);
   assert.equal((await measure(page)).overview, true);
-  await page.waitForFunction(() => {
+  await page.waitForFunction(({ top, bottom }) => {
     const camera = window.fixtureGame.scene.getScene('DepotScene').view.world;
-    return camera.getWorldPoint(0, 126).y <= -239 && camera.getWorldPoint(960, 620).y >= 713;
-  });
+    return camera.getWorldPoint(0, 126).y <= top && camera.getWorldPoint(960, 620).y >= bottom;
+  }, OVERVIEW);
   const overview = await measure(page);
-  assert.ok(overview.worldEdges.top <= -239 && overview.worldEdges.bottom >= 713, `overview must include receiving, every truck row, bulk and the extended recovery tray: ${JSON.stringify(overview.worldEdges)}`);
+  assert.ok(overview.worldEdges.top <= OVERVIEW.top && overview.worldEdges.bottom >= OVERVIEW.bottom, `overview must include receiving, every truck row, bulk, the recovery tray, the stairs and the lower floor: ${JSON.stringify(overview.worldEdges)}`);
   if (process.env.BELT_SCREENSHOT_DIR) await page.screenshot({ path: join(process.env.BELT_SCREENSHOT_DIR, 'after-layout-overview.png') });
   await press('KeyV');
   await page.waitForFunction(() => window.fixtureGame.scene.getScene('DepotScene').view.world.zoom > 1.4);
@@ -189,8 +197,9 @@ try {
   const mobile = await createPage({ viewport: { width: 430, height: 932 }, isMobile: true, hasTouch: true });
   const touch = mobile.page;
   const startPoint = await canvasPoint(touch, 480, 495);
+  await holdBreak(touch);
   await touch.touchscreen.tap(startPoint.x, startPoint.y);
-  await touch.waitForFunction(() => window.fixtureGame.scene.getScene('DepotScene').state === 'playing');
+  await skipOpening(touch, { touch: true });
   await touch.waitForFunction(() => window.fixtureGame.scene.getScene('DepotScene').view.world.zoom > 1.4);
   const stick = await touch.locator('.depot-stick').boundingBox();
   const session = await mobile.context.newCDPSession(touch);
@@ -206,7 +215,7 @@ try {
   assert.equal((await measure(touch)).worker.id, 'skanky');
   const overviewTouch = await controlPoint(touch, 'viewText');
   await touch.touchscreen.tap(overviewTouch.x, overviewTouch.y);
-  await touch.waitForFunction(() => Math.abs(window.fixtureGame.scene.getScene('DepotScene').view.world.zoom - 494 / 954) < 0.02);
+  await touch.waitForFunction((zoom) => Math.abs(window.fixtureGame.scene.getScene('DepotScene').view.world.zoom - zoom) < 0.01, OVERVIEW_ZOOM);
   assert.equal((await measure(touch)).overview, true, 'the overview control must also work without a keyboard');
   const closerTouch = await controlPoint(touch, 'viewText');
   await touch.touchscreen.tap(closerTouch.x, closerTouch.y);

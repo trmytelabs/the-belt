@@ -3,6 +3,8 @@ import { join } from 'node:path';
 import { chromium } from 'playwright';
 import { preview } from 'vite';
 
+import { finishNight, holdBreak, skipOpening } from './night-helpers.mjs';
+
 // The Phaser observer exists only inside isolated browser contexts. Synthetic
 // parcel arrangements exercise rules through the real keyboard bindings.
 const server = await preview({ preview: { host: '127.0.0.1', port: 0 }, logLevel: 'silent' });
@@ -62,14 +64,19 @@ try {
   const paintedZones = await read(() => window.fixtureGame.scene.getScene('DepotScene').children.list
     .map(object => object.getData('dropArea')).filter(Boolean));
   assert.deepEqual(paintedZones.sort((a, b) => a.route.localeCompare(b.route) || a.x - b.x), [
-    { route: 'A', side: 'left', x: 381, y: 532, width: 78, height: 88 },
-    { route: 'B', side: 'right', x: 579, y: 532, width: 78, height: 88 },
+    { route: 'A', side: 'left', x: 369, y: 532, width: 102, height: 88 },
+    { route: 'B', side: 'right', x: 591, y: 532, width: 102, height: 88 },
     { route: 'C', side: 'left', x: 400, y: 624, width: 80, height: 96 },
     { route: 'C', side: 'right', x: 560, y: 624, width: 80, height: 96 },
-  ], 'the visible floor zones must represent the enlarged accepting areas');
+    { route: 'D', side: 'left', x: 369, y: 740, width: 102, height: 88 },
+    { route: 'E', side: 'right', x: 591, y: 740, width: 102, height: 88 },
+    { route: 'S', side: 'right', x: 580, y: 940, width: 120, height: 84 },
+    { route: 'T', side: 'left', x: 380, y: 940, width: 120, height: 84 },
+  ], 'the visible floor zones must represent every accepting area, bulk included');
   if (process.env.BELT_SCREENSHOT_DIR) await page.screenshot({ path: join(process.env.BELT_SCREENSHOT_DIR, 'after-title.png') });
+  await holdBreak(page);
   await press('Enter');
-  await page.waitForFunction(() => window.fixtureGame.scene.getScene('DepotScene').state === 'playing');
+  await skipOpening(page);
   await read(() => {
     window.fixtureInputs = [];
     const scene = window.fixtureGame.scene.getScene('DepotScene');
@@ -227,7 +234,7 @@ try {
     'the brake control must stop the surface and parcels together');
   await page.waitForFunction(travel => window.fixtureGame.scene.getScene('DepotScene').model.beltTravel > travel, brakedTravel);
   assert.ok((await read(() => window.fixtureGame.scene.getScene('DepotScene').life.history))
-    .includes('SHAN O MACK: WHO STOPPED THE #@%! BELT?!'), 'using the actual brake must provoke Shan');
+    .includes("SHAN O'MAC: WHO STOPPED THE #@%! BELT?!"), 'using the actual brake must provoke Shan');
   if (process.env.BELT_SCREENSHOT_DIR) {
     await page.waitForFunction(() => window.fixtureGame.scene.getScene('DepotScene').model.elapsedMs >= 25_100);
     // Follow Termite to put the massage in frame; Skanky's close view faces the
@@ -324,13 +331,13 @@ try {
     while (scene.state === 'interlude') scene.update(scene.time.now, 100);
   });
   await page.waitForFunction(() => window.fixtureGame.scene.getScene('DepotScene').state === 'celebrating');
-  await press('Enter');
-  await page.waitForFunction(() => window.fixtureGame.scene.getScene('DepotScene').state === 'results');
+  // A won shift goes on to Skanky's mall run before the results.
+  await finishNight(page);
   assert.equal(await read(() => window.fixtureGame.scene.getScene('DepotScene').model.won), true);
   await press('Enter');
   await page.waitForFunction(() => window.fixtureGame.scene.getScene('DepotScene').state === 'briefing');
   await press('Enter');
-  await page.waitForFunction(() => window.fixtureGame.scene.getScene('DepotScene').state === 'playing');
+  await skipOpening(page);
   await press('Tab');
   assert.equal(await read(() => window.fixtureGame.scene.getScene('DepotScene').model.activeIndex), 1,
     'restart must install exactly one input listener');
@@ -448,9 +455,12 @@ try {
     const box = await touchPage.locator('#app canvas').boundingBox();
     await touchPage.touchscreen.tap(box.x + x / 960 * box.width, box.y + y / 720 * box.height);
   };
+  await holdBreak(touchPage);
   await tapCanvas(480, 495);
-  await touchPage.waitForFunction(() => window.fixtureGame.scene.getScene('DepotScene').state === 'playing');
+  // The story's SKIP button is the touch SWITCH button, relabelled.
+  await skipOpening(touchPage, { touch: true });
   assert.equal(await touchPage.locator('.depot-touch').count(), 1);
+  assert.equal(await touchPage.getByRole('button', { name: 'THROW', exact: true }).isVisible(), true, 'touch players can throw');
   await touchPage.getByRole('button', { name: 'SWITCH', exact: true }).tap();
   assert.equal(await touchPage.evaluate(() => window.fixtureGame.scene.getScene('DepotScene').model.activeIndex), 1);
   await touchPage.getByRole('button', { name: 'SWITCH', exact: true }).tap();
@@ -506,12 +516,13 @@ try {
     scene.update(scene.time.now, 0);
     while (scene.state === 'interlude') scene.update(scene.time.now, 100);
   });
-  await touchPage.waitForFunction(() => window.fixtureGame.scene.getScene('DepotScene').state === 'results');
+  await touchPage.waitForFunction(() => window.fixtureGame.scene.getScene('DepotScene').state === 'celebrating');
+  await finishNight(touchPage);
   await touchPage.locator('.depot-touch').waitFor({ state: 'hidden' });
   await tapCanvas(480, 495);
   await touchPage.waitForFunction(() => window.fixtureGame.scene.getScene('DepotScene').state === 'briefing');
   await tapCanvas(480, 495);
-  await touchPage.waitForFunction(() => window.fixtureGame.scene.getScene('DepotScene').state === 'playing');
+  await skipOpening(touchPage, { touch: true });
   assert.equal(await touchPage.locator('.depot-touch').count(), 1);
   await touchPage.getByRole('button', { name: 'SWITCH', exact: true }).tap();
   assert.equal(await touchPage.evaluate(() => window.fixtureGame.scene.getScene('DepotScene').model.activeIndex), 1);

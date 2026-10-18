@@ -3,7 +3,7 @@ import Phaser from 'phaser';
 const text = (scene: Phaser.Scene, x: number, y: number, copy: string, size: number, color = '#eee2bd') =>
   scene.add.text(x, y, copy, { fontFamily: 'Arial, sans-serif', fontSize: `${size}px`, fontStyle: 'bold', color }).setOrigin(0.5);
 
-type TruckStyle = { name: string; side: 'left' | 'right'; body?: number; trim?: number; accent?: number; loaded?: boolean };
+type TruckStyle = { name: string; side: 'left' | 'right'; body?: number; trim?: number; accent?: number; loaded?: boolean; route?: string };
 
 /** One authored 148×84 truck, shared by both workers, all eight colleagues and Ralph. */
 export function createDepotTruckArt(scene: Phaser.Scene, style: TruckStyle): Phaser.GameObjects.Container {
@@ -52,6 +52,12 @@ export function createDepotTruckArt(scene: Phaser.Scene, style: TruckStyle): Pha
   const lettering = style.name === 'HERES UR SOVICE' ? 'HERES UR\nSOVICE'
     : style.name === 'PAULA ABDUL' ? 'PAULA ABDUL' : style.name;
   root.add(text(scene, direction * 13, style.loaded ? -16 : -1, lettering, style.name.length > 10 ? 10 : 11).setAlign('center'));
+  if (style.route) {
+    // The route letter sits by the rear door, matching the floor zone and the parcels.
+    const badge = scene.add.graphics();
+    badge.fillStyle(style.accent ?? 0xa2946f).fillRoundedRect(direction * 52 - 10, -30, 20, 20, 3);
+    root.add([badge, text(scene, direction * 52, -20, style.route, 13, '#14232a')]);
+  }
   return root;
 }
 
@@ -60,10 +66,13 @@ export function createCrewTruckArt(scene: Phaser.Scene, name: string, purple: bo
 }
 
 /** The same truck footprint, with five visible cargo slots controlled by Life. */
-export function createRalphTruckArt(scene: Phaser.Scene): Phaser.GameObjects.Container {
-  const root = createDepotTruckArt(scene, { name: 'RALPH 5 TON', side: 'right', body: 0x69777b, trim: 0xa2b0a7, accent: 0xc6ad62, loaded: true });
+export function createRalphTruckArt(scene: Phaser.Scene, side: 'left' | 'right' = 'right'): Phaser.GameObjects.Container {
+  const root = createDepotTruckArt(scene, { name: 'RALPH 5 TON', side, body: 0x69777b, trim: 0xa2b0a7, accent: 0xc6ad62, loaded: true });
   const boxes: Phaser.GameObjects.Graphics[] = [];
-  for (const [x, y] of [[-39, 16], [-17, 16], [5, 16], [-28, 4], [-6, 4]]) {
+  // The bed is opposite the cab, so the slots mirror with the truck.
+  const mirror = side === 'left' ? -1 : 1;
+  for (const [baseX, y] of [[-39, 16], [-17, 16], [5, 16], [-28, 4], [-6, 4]]) {
+    const x = baseX * mirror;
     const box = scene.add.graphics().setVisible(false);
     box.fillStyle(0x705338).fillRoundedRect(x - 7, y - 4, 15, 12, 1);
     box.fillStyle(0xc2a071).fillRoundedRect(x - 7, y - 6, 15, 10, 1);

@@ -49,7 +49,7 @@ export class DepotCamera {
 
   public toggleOverview(): void { this.overview = !this.overview; }
 
-  public update(delta: number, worker: Worker, mode: 'follow' | 'interlude' | 'overview' | 'hold'): void {
+  public update(delta: number, worker: Worker, mode: 'follow' | 'interlude' | 'overview' | 'hold' | 'story', focus?: { x: number; y: number; zoom: number }): void {
     if (mode === 'hold') return;
     const wide = mode === 'overview' || (mode === 'follow' && this.overview);
     // The wider receiving floor needs both semi doors in view. Ease into that
@@ -57,10 +57,10 @@ export class DepotCamera {
     const receivingBlend = Phaser.Math.Clamp((146 - worker.y) / 126, 0, 1);
     const followZoom = Phaser.Math.Linear(1.45, 1.08, receivingBlend);
     const followX = Phaser.Math.Linear(worker.side === 'left' ? 344 : 616, 480, receivingBlend);
-    const targetZoom = mode === 'interlude' ? 2.45 : wide ? 494 / (SHIFT_LAYOUT.worldBottom - SHIFT_LAYOUT.worldTop) : followZoom;
+    const targetZoom = mode === 'story' && focus ? focus.zoom : mode === 'interlude' ? 2.45 : wide ? 494 / (SHIFT_LAYOUT.worldBottom - SHIFT_LAYOUT.worldTop) : followZoom;
     const halfWidth = 960 / targetZoom / 2;
     const halfHeight = 494 / targetZoom / 2;
-    const target = mode === 'interlude' ? { x: 248, y: 355 }
+    const target = mode === 'story' && focus ? { x: focus.x, y: focus.y } : mode === 'interlude' ? { x: 248, y: 355 }
       : wide ? { x: 480, y: (SHIFT_LAYOUT.worldTop + SHIFT_LAYOUT.worldBottom) / 2 }
         : { x: followX, y: worker.y };
     target.x = halfWidth >= 480 ? 480 : Phaser.Math.Clamp(target.x, halfWidth, 960 - halfWidth);

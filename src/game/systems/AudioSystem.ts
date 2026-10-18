@@ -5,7 +5,8 @@ export type SoundEffect =
   | 'countdown' | 'countdown-go' | 'dig' | 'drop' | 'event-alert'
   | 'game-over' | 'grab' | 'gunshot' | 'missed' | 'npc-talk'
   | 'package-spawn' | 'pile-up' | 'results' | 'shift-end'
-  | 'switch' | 'truck' | 'ui-start' | 'warning' | 'wrong';
+  | 'switch' | 'truck' | 'ui-start' | 'warning' | 'wrong'
+  | 'engine' | 'cough' | 'throw' | 'smash' | 'sign' | 'horn' | 'gate' | 'register' | 'splash';
 
 type AudioWindow = Window & typeof globalThis & { webkitAudioContext?: typeof AudioContext };
 type VoiceOptions = { type?: 'sine' | 'triangle'; end?: number; attack?: number; cutoff?: number; music?: boolean };
@@ -13,6 +14,7 @@ const MUSIC_BPM: Record<MusicMode, number> = { title: 70, game: 82, danger: 94, 
 const COOLDOWN: Partial<Record<SoundEffect, number>> = {
   'npc-talk': 0.24, 'package-spawn': 0.1, warning: 0.75, truck: 0.6,
   correct: 0.09, wrong: 0.15, 'pile-up': 0.25, gunshot: 0.065,
+  engine: 0.3, cough: 0.2, smash: 0.12, sign: 0.3,
 };
 
 /** Editable, original Web Audio foley and a restrained warehouse score.
@@ -187,6 +189,49 @@ class AudioSystem {
       case 'warning':
         this.bell(now, 440, 0.105, 0.23);
         this.bell(now + 0.18, 349.23, 0.09, 0.3);
+        break;
+      case 'engine':
+        // A diesel turning over and catching: low, filtered and short.
+        this.noise(now, 0.32, 180, 0.16);
+        this.voice(48, 0.62, now + 0.08, 0.13, { type: 'triangle', end: 66, cutoff: 260, attack: 0.04 });
+        this.voice(72, 0.5, now + 0.22, 0.07, { end: 88, cutoff: 320, attack: 0.03 });
+        break;
+      case 'cough':
+        this.noise(now, 0.11, 900, 0.16);
+        this.noise(now + 0.16, 0.09, 760, 0.12);
+        this.voice(180, 0.08, now, 0.04, { end: 140 });
+        break;
+      case 'throw':
+        this.noise(now, 0.2, 1300, 0.1);
+        this.noise(now + 0.05, 0.16, 2100, 0.06);
+        break;
+      case 'smash':
+        // Cardboard crunch and a little glass: unmistakable without being harsh.
+        this.cushion(now, 120, 0.2, 0.2);
+        this.noise(now, 0.24, 640, 0.24);
+        this.noise(now + 0.03, 0.18, 2400, 0.12);
+        this.bell(now + 0.05, 1318.5, 0.04, 0.22);
+        this.bell(now + 0.09, 1568, 0.03, 0.18);
+        break;
+      case 'sign':
+        for (const offset of [0, 0.09, 0.2]) this.noise(now + offset, 0.06, 2600, 0.07);
+        this.bell(now + 0.32, 659.25, 0.07, 0.3);
+        break;
+      case 'horn':
+        this.voice(330, 0.36, now, 0.07, { type: 'triangle', cutoff: 1400, attack: 0.02 });
+        this.voice(415, 0.36, now, 0.06, { type: 'triangle', cutoff: 1400, attack: 0.02 });
+        break;
+      case 'gate':
+        this.latch(now, 0.8);
+        for (const offset of [0.08, 0.17, 0.27]) this.noise(now + offset, 0.07, 1700, 0.09);
+        break;
+      case 'register':
+        this.latch(now, 0.4);
+        this.bell(now + 0.04, 1046.5, 0.06, 0.25);
+        break;
+      case 'splash':
+        this.noise(now, 0.3, 420, 0.18);
+        this.noise(now + 0.04, 0.2, 1100, 0.07);
         break;
       case 'wrong':
         this.cushion(now, 144, 0.12, 0.14);

@@ -1,7 +1,10 @@
 import Phaser from 'phaser';
 import { createColleagueArt, updateColleagueArt, setColleaguePose } from './DepotCastArt';
 import { type DepotArt } from './DepotArt';
-import { DepotRoutines, type DepotColleague } from './DepotRoutines';
+import { DepotRoutines, engineStartAt, type DepotColleague } from './DepotRoutines';
+import { type DepotWorkerArt } from './DepotArt';
+import type { Cutscene } from './StoryModel';
+import { DRIVERS, SHAN_BREAKAGE_LINES, SHAN_NAME } from './StoryScript';
 import { KYLIE_QUOTES, SHAN_RANTS, WORKER_SWEARS, COUGH_LINES, SHOT_WORDS, CLOCK_OUT_LINES, MESA } from './DepotReferences';
 import type { ShiftEvent, ShiftModel } from './ShiftModel';
 import { audioSystem } from '../systems/AudioSystem';
@@ -14,6 +17,9 @@ const BEN_END = 92_500;
 const BEN_CAST = new Set(['ben', 'gunman', 'demon', 'paula']);
 
 /** The original warehouse's people and running jokes, staged outside the sort lanes. */
+/** Shan's breakage visit, in shift milliseconds: arrive, yell, leave. */
+const SHAN_VISIT = { walk: 1200, leave: 4800, total: 6000 } as const;
+
 export class DepotLife {
   public readonly history: string[] = [];
   private readonly cast = new Map<string, DepotColleague>();
@@ -35,6 +41,11 @@ export class DepotLife {
   private mesaOffering = false;
   private rantIndex = 1;
   private celebrationMs = 0;
+  private breakageIndex = 0;
+  /** Shan walking over to a breakage, yelling, and walking back, on the shift clock (as in 3D). */
+  private shanVisit: { start: number; line: string; spoken: boolean; from: { x: number; y: number }; to: { x: number; y: number } } | null = null;
+  /** Shan's breakage reactions so far, for the checks. */
+  public readonly breakageLines: string[] = [];
   private readonly depot: DepotArt;
   private readonly deadMarker: Phaser.GameObjects.Text;
   private readonly towel: Phaser.GameObjects.Graphics;
@@ -58,7 +69,7 @@ export class DepotLife {
     for (const [id, name, x, y] of residents) this.add(id, name, x, y, true);
     for (const [id, name, x, y] of [
       ['kylie', 'KYLIE', 850, 400], ['vic', 'VIC', 132, 286],
-      ['john', 'JOHN RUSHTON', 77, 397], ['shan', 'SHAN O MACK', 880, 395],
+      ['john', 'JOHN RUSHTON', 77, 397], ['shan', SHAN_NAME, 880, 395],
       ['ralph', 'RALPH', 751, 610], ['paula', 'PAULA ABDUL', 214, 382],
       ['gunman', 'GUNMAN', 344, 348], ['demon', '', 160, 360],
     ] as [string, string, number, number][]) this.add(id, name, x, y, false);
@@ -157,12 +168,20 @@ export class DepotLife {
     this.once('brian-response', 64600, () => this.say(this.model.activeWorker.id, 'YOU ARE SERIOUSLY SENDING 5 DOWN TO BULK?', 4700, 1));
     if (this.benCompleted) this.cast.get('ben')!.art.setVisible(false);
     this.updateButtonIncident(time);
+    const visiting = this.updateShanVisit(time);
     const shan = this.cast.get('shan')!.art;
-    shan.setData('ranting', time < this.shanUntil);
+    if (!visiting) shan.setData('ranting', time < this.shanUntil);
     updateColleagueArt(shan, this.reducedMotion ? 0 : time);
-    this.once('drivers', 114000, () => audioSystem.play('truck'));
-    COUGH_LINES.forEach((line, index) => this.once(`cough-${index}`, 116000 + index * 3000,
-      () => { this.say(index % 2 === 0 ? 'hussan' : 'doris', line, 2800, 1); audioSystem.play('npc-talk'); }));
+    // Near the end of the shift: drivers arrive, one engine starts, its exhaust
+    // drifts in and the loaders nearby cough, then the rest start. The belt keeps running.
+    this.once('drivers', DRIVERS.arriveAt, () => audioSystem.play('truck'));
+    this.once('engine-first', DRIVERS.firstEngineAt, () => { audioSystem.play('engine'); this.scene.events.emit('depot-caption', '[ONE ENGINE STARTS]'); });
+    this.once('engine-others', DRIVERS.otherEnginesAt, () => this.scene.events.emit('depot-caption', '[MORE ENGINES START]'));
+    for (let index = 1; index < 12; index += 1) this.once(`engine-${index}`, engineStartAt(index), () => audioSystem.play('engine'));
+    COUGH_LINES.forEach((line, index) => this.once(`cough-${index}`, DRIVERS.originalCoughAt[index],
+      () => { this.say(index % 2 === 0 ? 'hussan' : 'doris', line, 2800, 1); audioSystem.play('cough'); }));
+    this.once('cough-approved', DRIVERS.coughLine.at, () => { this.say(DRIVERS.coughLine.speaker, DRIVERS.coughLine.line, 2800, 1); audioSystem.play('cough'); });
+    this.once('drivers-shan', DRIVERS.shanLine.at, () => this.say('shan', DRIVERS.shanLine.line, 3000, 1));
     const reserved = new Set<string>();
     if (time >= 21000 && time < 33500) reserved.add('aj');
     if (this.benCompleted) reserved.add('ben');
@@ -412,6 +431,85 @@ export class DepotLife {
     } else if (event.type === 'brian') {
       this.say('brian', 'SENDING 5 DOWN', 4200, 1);
     }
+  }
+
+  /** A thrown parcel broke: Shan comes over and yells; the belt keeps moving. */
+  public shanBreakage(worker: { x: number; y: number; side: 'left' | 'right' }): void {
+    const line = SHAN_BREAKAGE_LINES[this.breakageIndex % SHAN_BREAKAGE_LINES.length];
+    this.breakageIndex += 1;
+    this.breakageLines.push(line.split('\n').join(' '));
+    const time = this.model.elapsedMs;
+    // Already on his way over: the next breakage just gets another line.
+    if (this.shanVisit && time < this.shanVisit.start + SHAN_VISIT.total) {
+      this.shanUntil = Math.max(this.shanUntil, time + 3400);
+      this.say('shan', line, 3400, 1);
+      return;
+    }
+    const laneX = worker.side === 'left' ? 365 : 595;
+    const top = worker.y > 784 ? 790 : Math.max(-10, worker.y - 150);
+    this.shanVisit = {
+      start: time, line, spoken: false,
+      from: { x: laneX, y: top },
+      to: { x: worker.x + (worker.side === 'left' ? 30 : -30), y: worker.y - 40 },
+    };
+    this.shanUntil = Math.max(this.shanUntil, time + SHAN_VISIT.total);
+  }
+
+  /** Walks Shan over, has him yell once he arrives, then walks him back. */
+  private updateShanVisit(time: number): boolean {
+    const visit = this.shanVisit;
+    if (!visit || time >= visit.start + SHAN_VISIT.total) return false;
+    const e = time - visit.start;
+    const p = e < SHAN_VISIT.walk ? e / SHAN_VISIT.walk : e < SHAN_VISIT.leave ? 1 : 1 - (e - SHAN_VISIT.leave) / (SHAN_VISIT.total - SHAN_VISIT.leave);
+    const yelling = e >= SHAN_VISIT.walk && e < SHAN_VISIT.leave;
+    if (yelling && !visit.spoken) {
+      visit.spoken = true;
+      this.say('shan', visit.line, 3400, 1);
+    }
+    this.cast.get('shan')!.art.setVisible(true)
+      .setPosition(Phaser.Math.Linear(visit.from.x, visit.to.x, p), Phaser.Math.Linear(visit.from.y, visit.to.y, p))
+      .setData('ranting', yelling);
+    return true;
+  }
+
+  /** The scrum at the head of the belt and Shan catching Skanky at clock-out, on the depot floor. */
+  public directStory(cutscene: Cutscene, workers: DepotWorkerArt[], progress: (cue: string) => number): { x: number; y: number; zoom: number } {
+    const place = (id: string, x: number, y: number): void => { this.cast.get(id)?.art.setVisible(true).setPosition(x, y); };
+    const shan = this.cast.get('shan')!.art;
+    const time = this.reducedMotion ? 0 : this.scene.time.now;
+    if (cutscene.scene.id === 'scrum') {
+      // Everyone puts their freight down for the scrum.
+      this.routines.hideFreight();
+      const gather = progress('gather');
+      const spots: [string, number, number][] = [
+        ['hussan', 372, 40], ['aj', 398, 4], ['ben', 420, 54], ['bannerman', 560, 6],
+        ['fruitloop', 584, 46], ['doris', 540, 54], ['brian', 612, 16], ['donna', 348, 8],
+      ];
+      for (const [id, x, y] of spots) {
+        if (id === 'ben' && this.benCompleted) continue;
+        place(id, x, y - 40 * (1 - gather));
+        const art = this.cast.get(id)!.art;
+        const furious = progress('crew-furious') > 0;
+        art.rotation = furious && !this.reducedMotion ? Math.sin(time / 90 + x) * 0.08 : 0;
+        setColleaguePose(art, id === 'aj' && furious ? 'shout' : 'idle', time);
+      }
+      workers[0].container.setPosition(452, 18 - 40 * (1 - gather)).setVisible(true);
+      workers[1].container.setPosition(508, 18 - 40 * (1 - gather)).setVisible(true);
+      workers[0].update(time, false, true, false);
+      workers[1].update(time, false, true, false);
+      shan.setVisible(true).setPosition(480, 100).setData('ranting', progress('shan-over') > 0);
+      updateColleagueArt(shan, time);
+      return { x: 480, y: 60, zoom: 2.1 };
+    }
+    const leaves = progress('termite-leaves');
+    const catches = progress('shan-catches');
+    workers[1].container.setPosition(560, 650).setVisible(true);
+    workers[0].container.setPosition(Phaser.Math.Linear(410, 365, leaves), Phaser.Math.Linear(650, 900, leaves)).setVisible(true);
+    workers[0].update(time, leaves > 0 && leaves < 1, true, false);
+    workers[1].update(time, false, true, false);
+    shan.setVisible(true).setPosition(Phaser.Math.Linear(480, 520, catches), Phaser.Math.Linear(560, 640, catches)).setData('ranting', false);
+    updateColleagueArt(shan, time);
+    return { x: 480, y: 680, zoom: 1.8 };
   }
 
   private rant(): void {

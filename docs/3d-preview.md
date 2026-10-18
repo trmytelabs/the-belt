@@ -80,8 +80,10 @@ Present in 3D:
   - THE SNAKES CELL: the case rides the belt and Hussan walks over and
     collects it. Its label becomes `CELL`. He dances with it overhead for
     3.2 s, then returns.
-  - Drivers and exhaust: ten drivers bring keys to the cab fronts at 114 s.
-    Exhaust stacks then smoke for the rest of the shift.
+  - Drivers and exhaust: twelve drivers bring keys to the cab fronts at 153 s
+    (moved from 114 s by the [overnight expansion](overnight-shift-expansion.md)).
+    One engine starts first, then the others one by one; exhaust stacks then
+    smoke for the rest of the shift.
   - Coughs: Hussan and Doris cough all four original lines.
   - United Way: Shan's announcement, then the whole floor's swearing reaction
     (every resident except Ben, who is gone by then, staggered 110 ms apart), all six swear lines and Brian's
@@ -171,7 +173,7 @@ checks:
   reference suite does. Belt freight is cleared between jumps so a slow
   renderer cannot fail the shift. The check covers each line, AJ's massage
   pose and the towel, the label change from `THE SNAKES CELL` to `CELL`, all
-  ten drivers, the United Way reaction without Ben, the dockhand's position,
+  twelve drivers, the United Way reaction without Ben, the dockhand's position,
   the eight clock-out lines, every truck's departure, and the results.
 - Touch, in a 390×844 touch browser: the touch briefing, stick movement,
   GRAB / DELIVER, SWITCH, BRAKE, VIEW, and PAUSE / RESUME.

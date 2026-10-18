@@ -25,15 +25,28 @@ WebGL; without it the page links to the 2D depot. See
 [the 3D depot](docs/3d-preview.md).
 
 The **2D Night Shift / Depot 07** is at `?mode=2d`, and the description below
-applies to both. It is one polished three-minute warehouse section, followed by
-up to ten seconds to clear remaining freight. Press Enter or tap **Start Shift**. Dispatch
+applies to both. Both depots now play a whole night: one of three random
+arrivals outside the locked gate, Shan's morning scrum, the warehouse shift
+with a Tim Hortons or 7-Eleven break, then Skanky's mall run in the five-ton,
+returning the truck and going home. Story scenes advance by themselves; Space
+shows the next line and Enter skips the scene. See
+[the overnight shift expansion](docs/overnight-shift-expansion.md).
+
+The shift is one polished three-minute warehouse section, followed by
+up to ten seconds to clear remaining freight. Press Enter or tap **START THE NIGHT**. Dispatch
 24 parcels and keep the recovery backlog below five. The original **3, 2, 1,
 SORT!** countdown starts the shift.
 
 - WASD / arrows move; Tab or right-click switches workers.
 - Space or left-click grabs, delivers inside a dock, or puts a parcel down.
-- Route A goes to the left truck, B to the right truck, and heavy C freight to
-  the shared bulk pile at the belt's end. Letters and colors identify every route.
+- F (or THROW) throws a held parcel to its destination. Throws can break
+  parcels: a breakage earns nothing and costs points once, and Shan yells.
+- The belt and both workers stand on a raised loading platform; trucks back
+  against its edge, and stairs at the belt's end lead to the lower floor.
+- Termite sorts A (HERES UR SOVICE), D (DOWNTOWN) and his lower-floor drop T;
+  Skanky sorts B (PAYTMAN), E (EASTSIDE) and his lower-floor drop S. Heavy C
+  freight still goes to the shared bulk pile at the belt's end. Letters, names
+  and colors identify every route.
 - Deliver anywhere inside the larger painted drop zones. The bulk zone extends
   farther down, with the recovery tray and more walking room below it.
 - E brakes the belt for two seconds, with an eight-second cooldown.
@@ -121,6 +134,9 @@ choices/dream, crew loading, Ralph's five pickups, and departures. Audio checks
 render every effect and music mode in Chromium, checking headroom, envelopes,
 mute/resume and scheduling after a stall. Receiving checks inspect the actual
 unloading handoff, parcel identity, contact, stops and restart cleanup.
+Story checks play all three arrivals, the scrum, all six break exchanges,
+throwing and breakage, the stairs, the full mall run, the key return and a
+clean replay in both depots.
 Browser checks use a
 loopback server, real opening inputs and isolated synthetic clock/cargo fixtures
 for later events and edge cases. TypeScript strict checking is enabled. Dependabot maintains

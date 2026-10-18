@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 import { preview } from 'vite';
 
+import { holdBreak, skipOpening } from './night-helpers.mjs';
+
 // Synthetic parcels isolate the production encounter's risk decision. The
 // constructor and every decision handler come from the actual built game.
 // Nothing is injected into shipped code, persisted, or run in the user's tab.
@@ -28,8 +30,9 @@ try {
   });
   await page.goto(`${server.resolvedUrls.local[0]}?mode=2d`);
   await page.waitForFunction(() => window.fixtureGame?.scene.isActive('DepotScene'));
+  await holdBreak(page);
   await page.keyboard.press('Enter');
-  await page.waitForFunction(() => window.fixtureGame.scene.getScene('DepotScene').state === 'playing');
+  await skipOpening(page);
   await page.keyboard.press('KeyM');
   const initial = await page.evaluate(() => {
     const scene = window.fixtureGame.scene.getScene('DepotScene');

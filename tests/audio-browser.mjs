@@ -11,7 +11,8 @@ const source = await readFile(new URL('../src/game/systems/AudioSystem.ts', impo
 const compiled = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2023, module: ts.ModuleKind.ESNext } }).outputText;
 // Extract only the public SoundEffect union; music modes overlap two cue names.
 const effectNames = [...source.slice(source.indexOf('export type SoundEffect'), source.indexOf('type AudioWindow')).matchAll(/'([^']+)'/g)].map(match => match[1]);
-assert.equal(effectNames.length, 24);
+// The original 24 cues plus the overnight story's engine, cough, throw, smash, sign, horn, gate, register and splash.
+assert.equal(effectNames.length, 33);
 const browser = await chromium.launch({ headless: true,
   ...(process.env.BELT_BROWSER_EXECUTABLE ? { executablePath: process.env.BELT_BROWSER_EXECUTABLE } : { channel: 'chromium' }),
 });
@@ -80,7 +81,7 @@ try {
     ensure(JSON.stringify(stress.allocations) === firstAllocation, 'same-frame spam must not allocate duplicate voices');
     ensure(stress.allocations.buffers === 1, 'all noise layers must share one cached buffer');
     const stressMetrics = metrics((await stress.offline.startRendering()).getChannelData(0));
-    ensure(stress.system.lastPlayed.size === 24 && stressMetrics.peak < 0.85 && stressMetrics.finite,
+    ensure(stress.system.lastPlayed.size === effectNames.length && stressMetrics.peak < 0.85 && stressMetrics.finite,
       `a simultaneous event burst must retain headroom: ${JSON.stringify(stressMetrics)}`);
 
     const musicMetrics = [];
@@ -179,7 +180,7 @@ try {
   }
   console.log(JSON.stringify({ cues: report.cueMetrics.map(({ effect, peak, rms }) => ({ effect, peak: +peak.toFixed(4), rms: +rms.toFixed(5) })),
     stressPeak: report.stressMetrics.peak, music: report.musicMetrics.map(({ mode, peak, rms }) => ({ mode, peak, rms })) }, null, 2));
-  console.log('PASS all 24 cue renders, 4 music modes, finite output/headroom/energy, quiet tails, overlapping event stress, reused noise, mute/unmute and pause/stall scheduling. Physical listening remains a manual check.');
+  console.log(`PASS all ${effectNames.length} cue renders, 4 music modes, finite output/headroom/energy, quiet tails, overlapping event stress, reused noise, mute/unmute and pause/stall scheduling. Physical listening remains a manual check.`);
 } finally {
   await browser.close();
 }
