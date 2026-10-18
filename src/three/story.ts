@@ -267,8 +267,8 @@ export class StoryStage {
   private night(scene: THREE.Scene, background: number): void {
     scene.background = new THREE.Color(background);
     scene.fog = new THREE.Fog(background, 30, 90);
-    scene.add(new THREE.HemisphereLight(0x8aa4c0, 0x1a1612, 0.55));
-    const key = new THREE.DirectionalLight(0xb8c8ff, 0.7);
+    scene.add(new THREE.HemisphereLight(0xb4c7df, 0x485568, 1.25));
+    const key = new THREE.DirectionalLight(0xc8d6ff, 1.1);
     key.position.set(-8, 16, 10);
     key.castShadow = this.quality === 'high';
     key.shadow.mapSize.setScalar(2048);
@@ -1226,11 +1226,11 @@ export function directDepot(cast: DepotCast, cutscene: Cutscene, dt: number, tim
   const shan = crew.actor('shan');
   shan.root.visible = true;
   const face = (from: [number, number], to: [number, number]): number => Math.atan2(to[0] - from[0], to[1] - from[1]);
-  const placeWorker = (id: 'termite' | 'skanky', x: number, y: number, angle: number, pose: Pose): void => {
+  const placeWorker = (id: 'termite' | 'skanky', x: number, y: number, angle: number, pose: Pose, moving = false): void => {
     const character = workers[id];
     setFromModel(character.root.position, { x, y }, actorSurfaceAt(x, y));
     character.root.rotation.y = angle;
-    animateCharacter(character, dt, { moving: false, time, reducedMotion });
+    animateCharacter(character, dt, { moving, time, reducedMotion });
     character.body.rotation.set(0, 0, 0);
     character.head.rotation.set(0, 0, 0);
     applyPose(character, pose, time, reducedMotion);
@@ -1243,11 +1243,11 @@ export function directDepot(cast: DepotCast, cutscene: Cutscene, dt: number, tim
     const pair: [number, number] = [392, 214];
     for (const [id, spot] of Object.entries(SCRUM_SPOTS)) {
       const x = spot[0];
-      const y = spot[1] - 40 * (1 - gather);
+      const y = spot[1] + 60 * (1 - gather);
       if (id === 'termite' || id === 'skanky') {
         const other = SCRUM_SPOTS[id === 'termite' ? 'skanky' : 'termite'];
-        const angle = look ? face(spot, other) : face(spot, SHAN_SPOT);
-        placeWorker(id, x, y, angle, 'none');
+        const angle = look ? face([x, y], other) : face([x, y], SHAN_SPOT);
+        placeWorker(id, x, y, angle, 'none', gather > 0 && gather < 1);
         continue;
       }
       if (id === 'ben' && crew.benGone) continue;
@@ -1255,7 +1255,7 @@ export function directDepot(cast: DepotCast, cutscene: Cutscene, dt: number, tim
       crew.hideCrewFreight(id);
       actor.root.visible = true;
       actor.place(x, y);
-      actor.faceAngle = turns ? face(spot, pair) : face(spot, SHAN_SPOT);
+      actor.faceAngle = gather < 1 ? Math.PI : turns ? face(spot, pair) : face(spot, SHAN_SPOT);
       const pose: Pose = id === 'hussan' && cueProgress(cutscene, 'hands-up') > 0 ? 'shout'
         : furious ? 'swear' : cueProgress(cutscene, 'shrug') > 0 && cueProgress(cutscene, 'shrug') < 1 ? 'shrug' : 'none';
       actor.setPoseAt(pose, time);
@@ -1275,7 +1275,8 @@ export function directDepot(cast: DepotCast, cutscene: Cutscene, dt: number, tim
   const leaves = ease(cueProgress(cutscene, 'termite-leaves'));
   const catches = ease(cueProgress(cutscene, 'shan-catches'));
   placeWorker('skanky', 560, 650, face([560, 650], [500, 640]), 'none');
-  placeWorker('termite', mix(410, 365, leaves), mix(650, 900, leaves), leaves > 0 ? 0 : face([410, 650], [500, 640]), 'none');
+  const exit = alongPath([[400, 650], [365, 830], [200, 830]], leaves);
+  placeWorker('termite', exit.x, exit.z, leaves > 0 ? exit.h : face([400, 650], [500, 640]), 'none', leaves > 0 && leaves < 1);
   // Down the east side of the bulk pallet, never through it.
   shan.place(mix(532, 526, catches), mix(560, 652, catches));
   shan.faceAngle = Math.PI / 2;

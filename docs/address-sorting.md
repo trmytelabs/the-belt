@@ -1,6 +1,6 @@
 # Address sorting and package flow
 
-The 3D and 2D depots use street addresses instead of visible route letters or
+The actively developed **3D depot** uses street addresses instead of visible route letters or
 matching colours. Read the second number in an address such as **2417 119 ST**,
 then compare **119** with the ranges posted on the trucks and floor drops.
 The building number does not select the route. Signs and parcel labels use the
@@ -23,28 +23,51 @@ game, rather than geographic boundaries or real delivery assignments.
 Every boundary is inclusive. The ordinary address ranges do not overlap.
 An address and its shipping identity remain attached through receiving, pickup,
 handoff, put-down, recovery and delivery. A wrong truck keeps the parcel in hand
-and records a sorting error without revealing the correct destination.
+and records a sorting error without revealing the correct destination. In 3D,
+each wrong delivery attempt costs **10 points**, capped at the remaining score.
+An intact throw to a wrong drop also costs 10 points once at landing.
 
-The worker you are not controlling walks to freight for their side or shared
-bulk, picks it up and carries it to the correct drop. They use the same walking
+The worker you are not controlling walks to ordinary freight for their side,
+picks it up and carries it to the correct drop. **Only the currently controlled
+worker picks up bulk**, including missed or loose bulk. Switching away from a
+worker already holding bulk leaves it in their hands until you return. They use the same walking
 bounds, stairs, carrying speeds, delivery areas and scoring as the player.
 Tab immediately gives you control of that worker. Pausing and story scenes
 freeze both workers. The coworker carries rather than risking throws.
 
-Regular arrivals are three times as frequent: every 2 seconds during the opening,
-then every 1⅓ seconds in flow and every second during the final rush. Two random
+3D arrivals run at half the previous triple-intake rate: every 4 seconds
+during the opening, 2⅔ seconds in flow and 2 seconds during the final rush. Two random
 everyday parcels are interleaved between authored reference parcels. Sixteen
 ordinary labels include documents, books, shoes, clothing, kitchenware, spare
 parts and sports equipment, using five different package forms. Original joke
-freight and Brian's five actual bulk parcels remain. Brian's burst uses one-second
+freight and Brian's five actual bulk parcels remain. Brian's burst uses two-second
 intervals; the shared minimum belt spacing still applies, including speed ramps,
 brakes and blocked receiving.
 
 Held 3D freight is placed in front of the worker using the actual scaled parcel
 depth. Its transform follows the worker's turn directly, preventing interpolation
-through the torso. The 2D offset clears the worker's silhouette as well.
+through the torso.
 
-**F / THROW** targets the nearest physical drop. It does not automatically find
+The two truck rows come before the rear bulk platform. Stairs descend outward
+to the left and right. Both floor drops and all walking space remain in front
+of the final rear wall. No painted safe zones, lane guides, throw arc or landing
+ring identify where to stand. Street ranges appear on the floor and physical
+signs. Lower-floor drops have low wooden pallets, neutral pads and tidy stacks.
+
+Truck deliveries require walking through the open rear door and pressing
+**SPACE / GRAB-DELIVER inside**. The roof turns transparent and its large sign
+clears from view while the controlled worker is inside, then both return on exit.
+The camera follows into the cargo bay. Two banks of three shelves hold the
+actual delivered parcels, preserving their forms and labels throughout the shift.
+Standing farther along the truck selects the nearest shelf bay; facing up or
+down selects a shelf bank. The next available tier at that position fills first.
+Long packages occupy two neighbouring slots. Eighteen ordinary slots fit inside;
+when no suitable shelf space remains, real parcels protrude through the rear
+opening in visible overflow piles. Leaving and switching workers preserve cargo;
+loaded parcels move with their truck at clock-out. Restart clears the load.
+
+**F / THROW** targets the nearest physical drop. Truck freight must be carried
+inside and cannot be thrown to bypass loading. Throwing does not automatically find
 the address's correct destination. An intact throw to the wrong drop gets no
 dispatch credit, records an error and leaves recoverable freight there.
 At the stair top, it targets that side's lower-floor drop with an exact **30%**
@@ -58,6 +81,14 @@ Vic's Mesa offer retains a fresh 20% catch roll per accepted theft. Getting caug
 deducts up to **500 points**, resets the combo, then resumes the same shift.
 It never ends the night. Leaving preserves the parcel; a successful theft retains
 the bedroom dream and returns to the same shift without dispatch credit.
+
+Night exteriors, the warehouse and the bedroom dream have brighter ambient
+lighting; a modest exposure lift keeps faces, paths and freight readable while
+preserving the night sky and warm work lights.
+The scrum gathers from below and walks up toward Shan, facing forward.
+
+Future gameplay and visual changes target 3D only. The 2D and classic versions
+are legacy modes; new 3D layout and scoring are isolated from their rules.
 
 Regression coverage includes the range boundaries, varied freight and contact
 spacing, coworker stair navigation and switching, all 3D parcel forms in four

@@ -1,5 +1,11 @@
 # 3D depot
 
+Active development targets **3D only**. The 2D and classic modes are retained as
+legacy versions. See [current gameplay rules](address-sorting.md) for street
+sorting, the rear platform and side stairs, player-only bulk, the 10-point wrong
+drop penalty and brighter night lighting. New 3D rules use `ShiftModel3D` and
+`layout.ts`; shared model extensions must preserve legacy behavior.
+
 The 3D depot is the default entry. It shows every reference in
 [reference parity](reference-parity.md), as the 2D depot does. The 2D depot is
 kept at `?mode=2d`, the original full shift at `?mode=classic`, and `?mode=3d`

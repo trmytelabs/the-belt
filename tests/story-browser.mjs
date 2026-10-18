@@ -70,6 +70,14 @@ try {
   await freshRun({ opener: 0, breakAtMs: 1e12 });
   await read(() => {
     window.countdown = [];
+    window.scrumSamples = [];
+    const sampler = setInterval(() => {
+      const app = window.fixtureApp;
+      if (app.cutscene?.scene.id !== 'scrum' || app.cutscene.index !== 0) return;
+      const roots = ['termite', 'skanky', 'doris', 'brian'].map(id => id in app.workers ? app.workers[id].root : app.crew.actors.get(id).root);
+      window.scrumSamples.push(roots.map(root => ({ z: root.position.z, facing: Math.cos(root.rotation.y) })));
+      if (window.scrumSamples.length > 100) clearInterval(sampler);
+    }, 50);
     new MutationObserver(() => {
       const copy = document.querySelector('.b3d-count')?.textContent;
       if (copy && window.countdown.at(-1) !== copy) window.countdown.push(copy);
@@ -82,7 +90,12 @@ try {
   await shot('opener-1');
   await stepScene('opener-1');
   assert.equal(await read(() => window.fixtureApp.cutscene.scene.id), 'scrum');
-  await page.waitForTimeout(300);
+  await wait(() => window.scrumSamples.length > 3 && window.scrumSamples.at(-1)[0].z < window.scrumSamples[0][0].z - 0.15);
+  const approach = await read(() => [window.scrumSamples[0], window.scrumSamples.at(-1)]);
+  for (let i = 0; i < approach[0].length; i++) {
+    assert.ok(approach[1][i].z < approach[0][i].z, 'the crew moves up toward Shan');
+    assert.ok(approach[1][i].facing < -0.5, 'the crew faces forward while approaching Shan');
+  }
   await shot('scrum');
   const scrumLines = SCRUM.beats.filter((beat) => beat.line).map((beat) => `${name(beat.speaker)}: ${beat.line}`);
   await stepScene('scrum');
@@ -218,19 +231,19 @@ try {
   assert.equal(await read((id) => window.fixtureApp.model.heldPackage?.id, heavyId), heavyId, 'heavy freight stays in hand');
   await clearFreight();
   await read(() => { window.fixtureApp.model.workers[0].heldId = null; for (const p of window.fixtureApp.model.packages) if (p.state === 'held') p.state = 'delivered'; });
-  // A clean throw into Termite's second truck.
-  const cleanId = await holdFor('D', 'smallbox', { x: 380, y: 690 });
+  // A clean throw down the left stair; truck freight must be carried inside.
+  const cleanId = await holdFor('T', 'smallbox', { x: 330, y: 830 });
   await read(() => { window.fixtureApp.model.random = () => 0.99; });
   await page.waitForTimeout(150);
-  assert.match(await page.locator('.b3d-hint').innerText(), /\[F\] THROW TO DOWNTOWN · 90–109 ST · 15% BREAK RISK/);
-  assert.equal(await read(() => window.fixtureApp.throwArc.visible), true, 'the throw preview shows where it lands');
+  assert.match(await page.locator('.b3d-hint').innerText(), /\[F\] THROW DOWN STAIRS · 30% BREAK RISK/);
+  assert.equal(await read(() => window.fixtureApp.throwArc), undefined, 'no safe aiming guide reveals the destination');
   const scoreBefore = await read(() => window.fixtureApp.model.score);
   await page.keyboard.press('KeyF');
   await wait((id) => window.fixtureApp.model.packages.find((item) => item.id === id).state === 'delivered', cleanId);
   assert.equal(await read(() => window.fixtureApp.model.score - 0), scoreBefore + 100);
   assert.equal(await read(() => window.fixtureApp.model.thrownDeliveries), 1);
   // A broken throw: no credit, one penalty, Shan comes over, the belt keeps moving.
-  const brokenId = await holdFor('A', 'makeup', { x: 380, y: 400 });
+  const brokenId = await holdFor('T', 'makeup', { x: 330, y: 830 });
   await read(() => { window.fixtureApp.model.random = () => 0; window.fixtureApp.model.score = 1000; });
   const travel = await read(() => window.fixtureApp.model.beltTravel);
   await page.keyboard.press('KeyF');
@@ -257,23 +270,23 @@ try {
   assert.equal(settled.score, beforeRepeat.score, 'repeat contact neither restores nor re-deducts points');
   // Carrying still works, down the real stairs to the lower floor.
   await read(() => { const m = window.fixtureApp.model; m.workers[0].heldId = null; for (const p of m.packages) if (p.state === 'held') p.state = 'delivered'; });
-  const floorId = await holdFor('T', 'smallbox', { x: 380, y: 640 });
+  const floorId = await holdFor('T', 'smallbox', { x: 380, y: 830 });
   const surface = () => read(() => window.fixtureApp.workers.termite.root.position.y);
   assert.ok(Math.abs(await surface() - 1.1) < 0.01, 'Termite stands on the raised platform');
-  await page.keyboard.down('KeyS');
-  await wait(() => window.fixtureApp.model.activeWorker.y > 912);
-  await page.keyboard.up('KeyS');
+  await page.keyboard.down('KeyA');
+  await wait(() => window.fixtureApp.model.activeWorker.x < 215);
+  await page.keyboard.up('KeyA');
   assert.ok(await surface() < 0.05, 'the stairs lead down to the lower floor');
   await page.keyboard.press('Space');
   await wait((id) => window.fixtureApp.model.packages.find((item) => item.id === id).state === 'delivered', floorId);
-  await wait(() => window.fixtureApp.world.floorPiles.T.count === 1);
+  await wait(() => window.fixtureApp.world.floorPiles.T.count === 2);
   await shot('lower-floor-pile');
-  await page.keyboard.down('KeyW');
-  await wait(() => window.fixtureApp.model.activeWorker.y < 700);
-  await page.keyboard.up('KeyW');
+  await page.keyboard.down('KeyD');
+  await wait(() => window.fixtureApp.model.activeWorker.x > 340);
+  await page.keyboard.up('KeyD');
   assert.ok(Math.abs(await surface() - 1.1) < 0.01, 'and back up to the platform');
   assert.deepEqual(errors, []);
-  console.log('PASS 3D throwing: heavy freight carry-only, clean F throw with preview and credit, broken throw with one penalty and Shan while the belt runs, no repeat penalty, carry down and up the real stairs to a floor-drop pile; no script errors');
+  console.log('PASS 3D throwing: heavy freight carry-only, clean F throw without aiming guides and with credit, broken throw with one penalty and Shan while the belt runs, no repeat penalty, carry down and up the real stairs to a floor-drop pile; no script errors');
 
   // ---- Scenes 7-13: shift completion, the mall run, the truck back to UPS, home and results.
   await read(() => {

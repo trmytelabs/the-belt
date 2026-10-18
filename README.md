@@ -1,6 +1,10 @@
 # The Belt
 
 The Belt is a browser game built with Three.js, Phaser, TypeScript and Vite.
+
+Active development targets **the 3D depot only**. The 2D depot and classic game
+are retained as legacy versions; new gameplay requests apply to 3D unless the
+owner explicitly requests another version.
 Players switch between workers, pick up packages and sort them to the appropriate
 dock. The game includes keyboard, mouse and touch controls.
 
@@ -24,8 +28,8 @@ movement stick and GRAB / DELIVER, SWITCH, BRAKE, VIEW and PAUSE buttons. It nee
 WebGL; without it the page links to the 2D depot. See
 [the 3D depot](docs/3d-preview.md).
 
-The **2D Night Shift / Depot 07** is at `?mode=2d`, and the description below
-applies to both. Both depots now play a whole night: one of three random
+The legacy **2D Night Shift / Depot 07** is at `?mode=2d`. The current 3D game
+plays a whole night: one of three random
 arrivals outside the locked gate, Shan's morning scrum, the warehouse shift
 with a Tim Hortons or 7-Eleven break, then Skanky's mall run in the five-ton
 (a 3D mall inspired by Edmonton's Southgate Centre),
@@ -39,31 +43,36 @@ up to ten seconds to clear remaining freight. Press Enter or tap **START THE NIG
 SORT!** countdown starts the shift.
 
 - WASD / arrows move; Tab or right-click switches workers.
-- Space or left-click grabs, delivers inside a dock, or puts a parcel down.
+- Space or left-click grabs, loads inside a truck, delivers at a floor drop,
+  or puts a parcel down. Carry truck freight through its open rear door.
+- Inside a truck the roof turns transparent. Face a shelf and load near where
+  you stand; the actual parcels remain on the shelves. Full shelves overflow
+  through the rear opening. The roof returns when you leave.
 - F (or THROW) throws toward the nearest drop. At the top of the stairs it
   throws to the lower-floor drop with a 30% break chance. A break earns nothing,
   costs up to 150 points once, and Shan runs over yelling.
-- The belt and both workers stand on a raised loading platform; trucks back
-  against its edge, and stairs at the belt's end lead to the lower floor.
+- The raised platform ends at the back wall, behind both player truck rows.
+  Stairs descend outward to the left and right, with tidy pallet drops below.
 - Read parcel street addresses and compare them with the ranges on the truck
   signs. Termite covers Mill Woods (10–49 ST), Downtown (90–109 ST) and the
   Westmount floor drop (110–129 ST). Skanky covers Bonnie Doon (50–89 ST),
   West End (130–169 ST) and the Northside floor drop (170–199 ST). Oversize
   freight goes to shared bulk. These are synthetic game districts.
-- The other worker automatically collects and delivers their side. Regular
-  freight arrives three times as often, with randomized everyday packages
-  mixed between the original named joke parcels. See [address sorting](docs/address-sorting.md).
-- Deliver anywhere inside the larger painted drop zones. The bulk zone extends
-  farther down, with the recovery tray and more walking room below it.
+- The other worker automatically loads their own address ranges. Only the worker
+  you control collects bulk. Random everyday freight mixes with the original
+  joke parcels. Arrivals run at half the previous triple-intake rate: every
+  4 seconds initially, 2⅔ seconds in flow and 2 seconds in rush.
+- Read street numbers painted on the floor and on physical signs. There are
+  no safe-zone outlines or aiming guides. A wrong drop costs up to 10 points.
+  See [address sorting and loading](docs/address-sorting.md).
 - E brakes the belt for two seconds, with an eight-second cooldown.
 - Escape pauses; M toggles sound. Losing focus pauses the preview automatically.
 - The closer camera follows your worker up and down the belt and reframes when
   you switch workers. V, or the Overview button, shows the whole warehouse.
 - Walk up past the first truck row to see the receiving dock: two incoming
   semis, unloaders and a smelly dockhand feeding the next real parcel onto the belt.
-- The original five truck rows and named bays are preserved. All trucks share
-  the same size, with the two player trucks in the bottom row. The incoming
-  articulated semis occupy the new receiving area above those rows.
+- Original named crew bays are preserved above the two player truck rows.
+  Incoming articulated semis occupy the receiving area above those rows.
 - Pick up missed freight near the belt exit to recover it for half base points.
 
 Touch devices have a movement stick and Switch, Grab / Deliver, and Brake
@@ -103,7 +112,8 @@ events, is retained. Choose **Play the original full shift** in either depot's
 briefing (keyboard O in the 2D depot), or open the local URL with `?mode=classic`. Its controls
 remain unchanged; it starts with Enter or a title-screen tap.
 
-The 3D and 2D depots run the same shift rules and the same reference events.
+The 3D and legacy 2D depots preserve the same reference events. New loading,
+layout and scoring changes apply to 3D only.
 `?mode=3d` also opens the 3D depot.
 
 Node 24 is recorded in `.node-version` and used by CI. The locked Vite dependency

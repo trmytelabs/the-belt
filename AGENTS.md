@@ -1,5 +1,14 @@
 # Repository editing rules
 
+## Active game version
+
+Only update the 3D depot (`?mode=3d`, the default game) going forward. The 2D
+depot and classic game are retained as legacy versions. Do not change their
+gameplay, visuals, controls or tests to implement new 3D requests. Keep new 3D
+rules and layout separate; changes to shared code must preserve legacy behavior.
+Apply this scope to future plans, implementation instructions and pull requests
+unless the owner explicitly requests work on another version.
+
 Read CONTRIBUTING.md, README.md and SECURITY.md before changes. The private
 GitHub repository's `main` is the source of truth. Follow the Git and version
 workflow in CONTRIBUTING.md: preserve existing work, update a clean `main` with

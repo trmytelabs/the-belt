@@ -1,7 +1,8 @@
+import { DEPOT_3D_LAYOUT as SHIFT_LAYOUT } from './layout';
 import * as THREE from 'three';
 
 import { SHOT_WORDS } from '../game/slice/DepotReferences';
-import { SHIFT_LAYOUT, type ShiftModel } from '../game/slice/ShiftModel';
+import { type ShiftModel } from '../game/slice/ShiftModel';
 import { audioSystem } from '../game/systems/AudioSystem';
 import { createCharacter } from './characters';
 import { mix, type Actor, type CrewLife, type Say } from './crew';

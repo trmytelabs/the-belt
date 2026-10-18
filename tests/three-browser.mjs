@@ -126,6 +126,11 @@ try {
   await page.keyboard.up('KeyD');
   const held = await read(() => window.fixtureApp.model.heldPackage && { label: window.fixtureApp.model.heldPackage.label, route: window.fixtureApp.model.heldPackage.route });
   assert.deepEqual(held, { label: 'MALLWOOD RD EAST', route: 'A' });
+  // Align with the open rear door, then enter using real movement input.
+  await read(() => { window.fixtureApp.model.activeWorker.y = 532; });
+  await page.keyboard.down('KeyA');
+  await page.waitForFunction(() => window.fixtureApp.model.activeWorker.x < 302);
+  await page.keyboard.up('KeyA');
   await page.keyboard.press('Space');
   await page.waitForFunction(() => window.fixtureApp.model.sorted === 1);
   assert.deepEqual(await read(() => ({ sorted: window.fixtureApp.model.sorted, score: window.fixtureApp.model.score })), { sorted: 1, score: 100 });
@@ -519,6 +524,11 @@ console: ${touchConsole.slice(-10).join(' | ')}`); });
     }, 5);
   }));
   assert.equal(await readTouch(() => window.fixtureApp.model.heldPackage?.label), 'MALLWOOD RD EAST', 'GRAB picks up the parcel');
+  await readTouch(() => { window.fixtureApp.model.activeWorker.y = 532; });
+  await touchSession.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [centre] });
+  await touchSession.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: stick.x + 4, y: centre.y }] });
+  await waitTouch(() => window.fixtureApp.model.activeWorker.x < 302);
+  await touchSession.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   await touchPage.locator('[data-touch="grab"]').tap();
   await waitTouch(() => window.fixtureApp.model.sorted === 1);
   await touchPage.locator('[data-touch="switch"]').tap();

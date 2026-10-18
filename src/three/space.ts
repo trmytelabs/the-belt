@@ -1,6 +1,7 @@
+import { DEPOT_3D_LAYOUT as SHIFT_LAYOUT, platformLevelAt } from './layout';
 import * as THREE from 'three';
 
-import { ROUTE_INFO, SHIFT_LAYOUT, platformLevelAt, type Route } from '../game/slice/ShiftModel';
+import { ROUTE_INFO, type Route } from '../game/slice/ShiftModel';
 
 /**
  * ShiftModel works in the 2D depot's pixel space. The 3D world keeps those

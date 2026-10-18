@@ -171,7 +171,7 @@ try {
     const freight = await read(() => {
       const scene = window.fixtureGame.scene.getScene('DepotScene');
       const parcel = scene.model.heldPackage;
-      return { kind: parcel.kind, label: parcel.label,
+      return { id: parcel.id, kind: parcel.kind, label: parcel.label,
         stamps: scene.parcels.get(parcel.id).container.list.filter(child => child.type === 'Text').map(child => child.text.replace(/\s+/g, ' ').trim()) };
     });
     assert.equal(freight.kind, kind, 'opening freight must preserve the original named parcel identities');
@@ -223,11 +223,11 @@ try {
     assert.equal(afterSort.sorted, beforeSort + 1, `Opening ${route} delivery diagnostics: ${JSON.stringify(afterSort)}`);
     if (route === 'C') {
       await page.waitForTimeout(400);
-      const bulk = await read(() => {
+      const bulk = await read(id => {
         const scene = window.fixtureGame.scene.getScene('DepotScene');
-        const delivered = scene.model.packages.find(parcel => parcel.route === 'C' && parcel.state === 'delivered');
+        const delivered = scene.model.packages.find(parcel => parcel.id === id);
         return { x: delivered.x, y: delivered.y, stock: scene.depot.bulkStockCount, action: scene.actionText.text };
-      });
+      }, freight.id);
       assert.deepEqual([bulk.x, bulk.y, bulk.stock], [480, 610, 1], 'C delivered from the extended lower area must reach the actual shared pile');
       if (process.env.BELT_SCREENSHOT_DIR) await page.screenshot({ path: join(process.env.BELT_SCREENSHOT_DIR, 'after-layout-bulk.png') });
     }

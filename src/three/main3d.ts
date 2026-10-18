@@ -1,3 +1,5 @@
+import { DEPOT_3D_LAYOUT as SHIFT_LAYOUT, floorPileSlot, truckInteriorAt } from './layout';
+import { ShiftModel3D } from './ShiftModel3D';
 import * as THREE from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
@@ -8,7 +10,7 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import { MESA } from '../game/slice/DepotReferences';
 import { KeyReturnModel, MallModel, MALL_RULES, type MallEvent } from '../game/slice/MallModel';
 import {
-  ROUTE_INFO, SHIFT_LAYOUT, ShiftModel, THROWING, floorPileSlot, parcelAddress, type Parcel, type Route, type ShiftEvent, type WorkerId,
+  ROUTE_INFO, THROWING, parcelAddress, type Parcel, type Route, type ShiftEvent, type WorkerId,
 } from '../game/slice/ShiftModel';
 import { Cutscene, StoryRun, type StoryChoices } from '../game/slice/StoryModel';
 import {
@@ -72,7 +74,7 @@ function showWebglFallback(host: HTMLElement): void {
 const escapeHtml = (text: string): string => text.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
 
 export class Belt3d {
-  public model = new ShiftModel();
+  public model = new ShiftModel3D();
   public state: AppState = 'briefing';
   public story = new StoryRun();
   /** The cutscene on screen, if any. */
@@ -111,8 +113,6 @@ export class Belt3d {
   private readonly activeRing: THREE.Mesh;
   private readonly sleepTag: THREE.Sprite;
   private readonly marker: THREE.Mesh;
-  private readonly throwArc: THREE.Line;
-  private readonly throwRing: THREE.Mesh;
   private readonly keys = new Set<string>();
   private readonly reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   private overview = false;
@@ -126,7 +126,6 @@ export class Belt3d {
   private banter = new Set<string>();
   private bulkVisible = 0;
   private readonly pileVisible: Record<'T' | 'S', number> = { T: 0, S: 0 };
-  private readonly truckVisible: Record<'A' | 'B' | 'D' | 'E', number> = { A: 0, B: 0, D: 0, E: 0 };
   private fumeTimer = 0;
   private mallBonus = 0;
 
@@ -144,7 +143,7 @@ export class Belt3d {
     this.renderer.shadowMap.enabled = this.quality === 'high';
     this.renderer.shadowMap.type = this.quality === 'high' ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 0.95;
+    this.renderer.toneMappingExposure = 1.18;
     this.overlay.root.prepend(this.renderer.domElement);
 
     this.world = new DepotWorld(this.quality);
@@ -217,16 +216,6 @@ export class Belt3d {
     this.marker = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.3, 4), new THREE.MeshStandardMaterial({ color: 0xf3e6c6, emissive: 0xf3e6c6, emissiveIntensity: 0.8 }));
     this.marker.rotation.x = Math.PI;
     this.world.scene.add(this.marker);
-    // The throw preview: a dashed arc to the parcel's own destination and a ring where it lands.
-    this.throwArc = new THREE.Line(new THREE.BufferGeometry().setFromPoints(Array.from({ length: 24 }, () => new THREE.Vector3())),
-      new THREE.LineDashedMaterial({ color: 0xffffff, dashSize: 0.18, gapSize: 0.12, transparent: true, opacity: 0.9 }));
-    this.throwArc.frustumCulled = false;
-    this.throwArc.visible = false;
-    this.throwRing = new THREE.Mesh(new THREE.RingGeometry(0.45, 0.6, 32), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85, side: THREE.DoubleSide }));
-    this.throwRing.rotation.x = -Math.PI / 2;
-    this.throwRing.visible = false;
-    this.world.scene.add(this.throwArc, this.throwRing);
-
     this.bindInput();
     this.resize();
     window.addEventListener('resize', () => this.resize());
@@ -342,7 +331,9 @@ export class Belt3d {
       <h1>ANOTHER NIGHT ON THE BELT.</h1>
       <p><b>Get in, survive the scrum, dispatch 24 parcels, then Skanky still has a mall run.</b></p>
       <p>Read each parcel's street address and compare it with the ranges posted on the trucks. Termite covers Mill Woods, Downtown and Westmount; Skanky covers Bonnie Doon, West End and Northside. Oversize freight goes to BULK.</p>
-      <p>Triple freight. Your other worker automatically collects and delivers their side.</p>
+      <p>A steadier intake. Your other worker sorts their own addresses; only the worker you control picks up bulk. Wrong drops cost 10 points. Read the signs: there are no painted safe zones or aiming guides.</p>
+      <p>Carry each truck parcel through its open rear door and press SPACE inside to load it. Face a shelf and load near where you stand. Packages stay on those shelves; full trucks overflow through the rear. The roof turns transparent while you are inside.</p>
+      <p>The bulk platform is at the back. The stairs descend left and right to Westmount and Northside.</p>
       ${this.touch.enabled ? `
       <p>The stick moves. SWITCH changes worker. GRAB / DELIVER picks up and delivers. THROW risks it to save the walk.</p>
       <p>BRAKE holds the belt. VIEW shows the whole warehouse. In story scenes, NEXT or SKIP.</p>` : `
@@ -522,7 +513,7 @@ export class Belt3d {
 
   /** A replay starts clean: no leftover scenes, parcels, timers, speech or input. */
   private restart(): void {
-    for (const view of this.parcels.values()) this.world.scene.remove(view.root);
+    for (const view of this.parcels.values()) view.root.removeFromParent();
     for (const item of this.departing) this.world.scene.remove(item.view.root);
     this.parcels.clear();
     this.departing.length = 0;
@@ -532,7 +523,6 @@ export class Belt3d {
     this.seenRoutes.clear();
     this.bulkVisible = 0;
     this.pileVisible.T = this.pileVisible.S = 0;
-    for (const route of ['A', 'B', 'D', 'E'] as const) { this.truckVisible[route] = 0; this.world.setTruckLoad(route, 0); }
     this.world.setFloorPile('T', 0);
     this.world.setFloorPile('S', 0);
     this.stolen.clear();
@@ -543,7 +533,7 @@ export class Belt3d {
     this.mesa.reset();
     this.dream.stop();
     this.overlay.root.classList.remove('dreaming');
-    this.model = new ShiftModel();
+    this.model = new ShiftModel3D();
     this.story = new StoryRun(Math.random, this.forcedStory);
     this.cutscene = null;
     this.mall = null;
@@ -675,7 +665,7 @@ export class Belt3d {
     const depotStory = this.state === 'story' && this.cutscene?.scene.location === 'depot';
     if (!depotStory) this.syncWorkers(running ? dt : 0);
     this.syncParcels(running ? dt : 0);
-    this.updateThrowPreview();
+    this.world.updateTruckInterior(m.activeWorker);
     this.updateCamera(dt);
     this.updateHud();
     const size = this.renderer.getSize(new THREE.Vector2());
@@ -691,11 +681,14 @@ export class Belt3d {
     const held = m.heldPackage;
     const target = this.state === 'playing' && held ? m.throwTarget() : null;
     const throwHint = target ? (target.ok ? ` · [F] ${target.reason}` : ` · ${target.reason}`) : '';
+    const truck = truckInteriorAt(m.activeWorker);
+    const overflow = truck ? [...m.truckLoads.values()].filter(load => load.route === truck && load.overflow).length : 0;
+    const loadingHint = truck ? overflow ? `SHELVES FULL · ${overflow} in rear overflow` : 'Face a shelf · SPACE loads near where you stand' : '';
     this.overlay.updateHud({
       sorted: m.sorted, goal: m.goal, score: m.score, timeLeftMs: m.timeLeftMs, backlog: m.pileup, capacity: m.capacity,
       phase: this.state === 'interlude' ? 'BEN  /  DODGE TRAINING' : PHASE_LABELS[m.phase] ?? '', combo: m.combo, worker: m.activeWorker.id,
       hint: this.state === 'interlude' ? 'Belt held · your freight is safe' : this.state === 'mesa' ? 'Y steals the Mesa · N leaves it'
-        : held ? `${parcelAddress(held)} · ${held.label}${throwHint}` : this.hint,
+        : held ? `${parcelAddress(held)} · ${held.label}${throwHint}${loadingHint ? ` · ${loadingHint}` : ''}` : loadingHint || this.hint,
       overview: this.overview, routes: this.routeLegend(),
       brake: m.brakeRemainingMs > 0 ? '■ BELT HELD' : m.brakeCooldownMs > 0 ? `[E] RECHARGE ${Math.ceil(m.brakeCooldownMs / 1000)}s` : '[E] BRAKE READY',
     });
@@ -874,35 +867,6 @@ export class Belt3d {
     }
   }
 
-  /** Where a throw would land: an arc and a ring in the destination's colour, only when the throw is allowed. */
-  private updateThrowPreview(): void {
-    const m = this.model;
-    const target = this.state === 'playing' && m.heldPackage ? m.throwTarget() : null;
-    const visible = Boolean(target?.ok);
-    this.throwArc.visible = visible;
-    this.throwRing.visible = visible;
-    if (!target || !visible) return;
-    const color = new THREE.Color(ROUTE_COLORS[target.route]);
-    (this.throwArc.material as THREE.LineDashedMaterial).color.copy(color);
-    (this.throwRing.material as THREE.MeshBasicMaterial).color.copy(color);
-    const view = m.heldPackage ? this.parcels.get(m.heldPackage.id) : null;
-    const from = view?.root.position.clone() ?? this.workers[m.activeWorker.id].root.position.clone().add(new THREE.Vector3(0, 1.2, 0));
-    const to = toWorld(target, surfaceAt(target.x, target.y) + 0.05);
-    const positions = this.throwArc.geometry.attributes.position as THREE.BufferAttribute;
-    for (let i = 0; i < positions.count; i += 1) {
-      const t = i / (positions.count - 1);
-      const point = from.clone().lerp(to, t);
-      point.y += Math.sin(t * Math.PI) * 1.4;
-      positions.setXYZ(i, point.x, point.y, point.z);
-    }
-    positions.needsUpdate = true;
-    this.throwArc.geometry.computeBoundingSphere();
-    this.throwArc.computeLineDistances();
-    this.throwRing.position.copy(to);
-    const pulse = 1 + Math.sin(this.time * 6) * 0.08;
-    this.throwRing.scale.set(pulse, pulse, 1);
-  }
-
   private parcelPosition(parcel: Parcel, view: ParcelView, target: THREE.Vector3): THREE.Vector3 {
     if (parcel.state === 'held' && parcel.workerId) {
       const character = this.workers[parcel.workerId];
@@ -956,11 +920,27 @@ export class Belt3d {
       view.root.position.set(toWorldX(intake.x), BELT_HEIGHT + 0.01 + lift, toWorldZ(intake.y));
     }
     for (const parcel of m.packages) {
+      if (parcel.state === 'delivered' && m.truckLoads.has(parcel.id) && !this.stolen.has(parcel.id)) {
+        seen.add(parcel.id);
+        const load = m.truckLoads.get(parcel.id)!;
+        const truck = this.world.trucks.find(truck => truck.route === load.route)!;
+        let view = this.parcels.get(parcel.id);
+        if (!view) { view = createParcelView(parcel); this.parcels.set(parcel.id, view); }
+        if (view.root.parent !== truck.group) truck.group.add(view.root);
+        const home = SHIFT_LAYOUT.playerTrucks[load.route];
+        view.root.position.set((load.x - home.x) / 32, PLATFORM_HEIGHT + 0.09 + load.height / 32, (load.y - home.y) / 32);
+        view.root.rotation.y = Math.PI / 2;
+        view.root.scale.setScalar(1);
+        view.tag.visible = false;
+        view.root.name = 'loaded-parcel';
+        view.root.userData.parcelId = parcel.id;
+        continue;
+      }
       if (parcel.state === 'delivered') {
         const view = this.parcels.get(parcel.id);
         if (view && this.stolen.has(parcel.id)) {
           this.parcels.delete(parcel.id);
-          this.world.scene.remove(view.root);
+          view.root.removeFromParent();
         } else if (view) {
           this.parcels.delete(parcel.id);
           this.departing.push({ view, from: view.root.position.clone(), to: this.deliveryTarget(parcel), t: 0, route: parcel.route });
@@ -974,7 +954,7 @@ export class Belt3d {
         const view = this.parcels.get(parcel.id);
         if (!view) continue;
         if (age > DAMAGE_VISIBLE_S) {
-          this.world.scene.remove(view.root);
+          view.root.removeFromParent();
           this.parcels.delete(parcel.id);
           continue;
         }
@@ -1019,7 +999,7 @@ export class Belt3d {
     }
     for (const [id, view] of this.parcels) {
       if (!seen.has(id)) {
-        this.world.scene.remove(view.root);
+        view.root.removeFromParent();
         this.parcels.delete(id);
       }
     }
@@ -1039,9 +1019,6 @@ export class Belt3d {
         else if (item.route === 'T' || item.route === 'S') {
           this.pileVisible[item.route] += 1;
           this.world.setFloorPile(item.route, this.pileVisible[item.route]);
-        } else {
-          this.truckVisible[item.route] += 1;
-          this.world.setTruckLoad(item.route, this.truckVisible[item.route]);
         }
       }
     }
@@ -1088,14 +1065,26 @@ export class Belt3d {
       position = look.clone().add(portrait ? new THREE.Vector3(0, 64, 30) : new THREE.Vector3(0, 44, 21));
     } else {
       const worker = this.workers[this.model.activeWorker.id].root.position;
-      // Keep the belt in frame by leaning the view toward the conveyor.
-      look = new THREE.Vector3(worker.x * 0.5, worker.y + 0.4, worker.z - 1.0);
-      position = look.clone().add(portrait ? new THREE.Vector3(0, 15, 9) : new THREE.Vector3(worker.x * 0.2, 10.5, 9.4));
+      const insideTruck = truckInteriorAt(this.model.activeWorker);
+      // Follow the worker inside so the transparent roof reveals the shelves.
+      const terminal = THREE.MathUtils.smoothstep(worker.z, toWorldZ(700), toWorldZ(790));
+      look = new THREE.Vector3(worker.x * (insideTruck ? 1 : 0.5 + 0.5 * terminal), worker.y + 0.4, worker.z - (1 - terminal));
+      position = look.clone().add(portrait ? new THREE.Vector3(0, 15, 9) : new THREE.Vector3(worker.x * 0.2 * (1 - terminal), 10.5, 9.4));
+      if (insideTruck && !portrait) position = look.clone().add(new THREE.Vector3(0, 9, 5.5));
     }
+    const rearLimit = toWorldZ(SHIFT_LAYOUT.bulkRearWall.y - SHIFT_LAYOUT.bulkRearWall.height / 2) - this.camera.near - 0.15;
+    position.z = Math.min(position.z, rearLimit);
     const ease = snap ? 1 : 1 - Math.exp(-dt * 4);
     this.camera.position.lerp(position, ease);
+    this.camera.position.z = Math.min(this.camera.position.z, rearLimit);
     this.cameraTarget.lerp(look, ease);
     this.camera.lookAt(this.cameraTarget);
+    const fog = this.world.scene.fog;
+    if (fog instanceof THREE.Fog) {
+      const altitude = Math.max(0, this.camera.position.y - 20);
+      fog.near = 26 + altitude;
+      fog.far = 62 + altitude;
+    }
   }
 
   private showResults(): void {

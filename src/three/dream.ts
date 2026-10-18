@@ -39,13 +39,13 @@ export class MesaDream {
   constructor(host: HTMLElement) {
     const scene = this.scene;
     scene.background = new THREE.Color(0x161e2a);
-    scene.add(new THREE.HemisphereLight(0x7f95b8, 0x2a1e16, 0.55));
+    scene.add(new THREE.HemisphereLight(0xa9bfdc, 0x514338, 1.0));
     const lamp = new THREE.PointLight(0xffc98a, 14, 9, 1.6);
     lamp.position.set(3.1, 2.1, -1.4);
     lamp.castShadow = true;
     const tvGlow = new THREE.PointLight(0x9fd0ff, 9, 6, 1.8);
     tvGlow.position.set(1.4, 1.5, -1.6);
-    const moon = new THREE.DirectionalLight(0xa8c4ff, 0.7);
+    const moon = new THREE.DirectionalLight(0xb9cfff, 1.0);
     moon.position.set(-2, 4, -3);
     moon.castShadow = true;
     moon.shadow.mapSize.setScalar(1024);
