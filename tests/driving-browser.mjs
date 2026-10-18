@@ -50,6 +50,8 @@ try {
     const view = window.fixtureApp.drivingView;
     return view.buildingCount >= 30 && view.truck.userData.modelReady && view.scene.children.filter(c => c.name === 'city-building').every(c => c.userData.modelReady);
   }), 'local building and five-ton models load successfully');
+  assert.equal(await page.evaluate(() => [...window.fixtureApp.drivingView.cones.values()].filter(cone => cone.children.length === 3).length), 6,
+    'asynchronous city merging retains movable cones for both journeys');
   await page.keyboard.press('Enter');
   assert.equal(await page.evaluate(() => window.fixtureApp.state), 'driving', 'Enter cannot skip driving');
   await page.keyboard.down('KeyW');

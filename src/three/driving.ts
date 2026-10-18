@@ -206,10 +206,12 @@ export class DrivingView {
       if (obstacle.kind === 'car') {
         if (this.traffic.has(obstacle.id)) continue;
         const car = createCar([0xa74132, 0x7a7a70, 0xc6b58c, 0x467b91, 0x698560, 0xd8d4c8][this.traffic.size % 6]);
+        car.userData.keep = true;
         this.traffic.set(obstacle.id, car); this.scene.add(car);
       } else {
         if (this.cones.has(obstacle.id)) continue;
         const cone = new THREE.Group();
+        cone.userData.keep = true;
         const base = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.09, 0.65), standard(0x1e292e, 1));
         base.position.y = 0.045;
         const orange = new THREE.Mesh(new THREE.ConeGeometry(0.25, 0.85, 10), standard(0xf58b38, 0.8)); orange.position.y = 0.5;
