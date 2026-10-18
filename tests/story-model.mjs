@@ -9,6 +9,7 @@ import {
   OPENERS, SCRUM, BREAK_SCENES, DRIVERS, SHAN_NAME, SPEAKER_NAMES, MALL_STORES, SHAN_BREAKAGE_LINES,
 } from '../src/game/slice/StoryScript.ts';
 import { MallModel, MALL_LAYOUT, MALL_RULES, KeyReturnModel, LOT_LAYOUT } from '../src/game/slice/MallModel.ts';
+import { depotSolidFootprints, overlapsFootprint } from '../src/game/slice/DepotClearance.ts';
 
 const never = () => 0.999;
 const always = () => 0;
@@ -95,7 +96,12 @@ test('platform, stairs and lower floor have distinct heights', () => {
   assert.equal(platformLevelAt(244, 532), 0, 'trucks park on the lower ground');
   assert.equal(platformLevelAt(150, 300), 0, 'the outer bays are lower ground');
   const mid = (SHIFT_LAYOUT.stairs.top + SHIFT_LAYOUT.stairs.bottom) / 2;
-  assert.ok(Math.abs(platformLevelAt(365, mid) - 0.5) < 0.01, 'the stairs descend evenly');
+  assert.equal(platformLevelAt(365, mid), 1 - 4 / 7, 'the middle stair matches its rendered tread');
+  for (let tread = 0; tread < SHIFT_LAYOUT.stairs.steps; tread += 1) {
+    const y = SHIFT_LAYOUT.stairs.top + (tread + 0.5) * (SHIFT_LAYOUT.stairs.bottom - SHIFT_LAYOUT.stairs.top) / SHIFT_LAYOUT.stairs.steps;
+    assert.equal(platformLevelAt(365, y), 1 - (tread + 1) / SHIFT_LAYOUT.stairs.steps);
+    assert.equal(platformLevelAt(595, y), platformLevelAt(365, y));
+  }
   assert.equal(platformLevelAt(480, mid), 0, 'only the two flights descend; the belt end is a wall');
   assert.equal(platformLevelAt(380, 940), 0);
 });
@@ -131,7 +137,7 @@ test('the bulk drop keeps its shared pile, 120 points and Ralph count alongside 
 test('a worker cannot step off the platform: the only way down is the stairs, and back up the same way', () => {
   const model = new ShiftModel();
   const worker = model.activeWorker;
-  walkTo(model, { x: 365, y: 940 });
+  walkTo(model, { x: 390, y: 940 });
   assert.equal(platformLevelAt(worker.x, worker.y), 0);
   // From the lower floor beside the belt-end wall, walking up stops at the wall.
   Object.assign(worker, { x: 455, y: 930 });
@@ -148,7 +154,7 @@ test('a worker cannot step off the platform: the only way down is the stairs, an
 test('walking speed is the same on the platform, the stairs and the lower floor', () => {
   for (const y of [400, 830, 930]) {
     const model = new ShiftModel();
-    Object.assign(model.activeWorker, { x: 365, y });
+    Object.assign(model.activeWorker, { x: 390, y });
     model.update(100, { x: 0, y: 1 });
     assert.ok(Math.abs(model.activeWorker.y - y - 23.5) < 1e-9, `normal speed at y=${y}`);
   }
@@ -157,17 +163,124 @@ test('walking speed is the same on the platform, the stairs and the lower floor'
 test('lower-floor deliveries pile up in fixed slots that leave the painted letter clear', () => {
   const zone = SHIFT_LAYOUT.dropAreas.T;
   const slots = Array.from({ length: 14 }, (_, index) => floorPileSlot('T', index));
-  assert.equal(new Set(slots.slice(0, 12).map(({ x, y }) => `${x},${y}`)).size, 12);
-  assert.equal(slots[12].layer, 1);
+  assert.equal(new Set(slots.slice(0, 8).map(({ x, y }) => `${x},${y}`)).size, 8);
+  assert.equal(slots[8].layer, 1);
   for (const slot of slots) {
     assert.ok(Math.abs(slot.x - zone.x) <= zone.width / 2 && slot.y - (zone.y - zone.height / 2) >= 0);
-    assert.ok(slot.y <= zone.y + 12, 'the far band of the zone stays clear for the letter');
+    assert.ok(Math.abs(slot.x - zone.x) >= 25, 'the center aisle and its painted letter stay clear');
   }
   const model = holding('T');
   walkTo(model, { x: zone.x, y: zone.y });
   model.action();
   assert.equal(model.packages[0].pileIndex, 0);
   assert.deepEqual({ x: model.packages[0].x, y: model.packages[0].y }, { x: slots[0].x, y: slots[0].y });
+});
+
+test('stored floor parcels leave a reachable delivery aisle and cannot be walked through', () => {
+  for (const side of [0, 1]) {
+    const model = new ShiftModel({ crewAssist: false });
+    model.packages[0].state = 'delivered';
+    if (side) model.switchWorker();
+    const route = side ? 'S' : 'T';
+    const worker = model.activeWorker;
+    const zone = SHIFT_LAYOUT.dropAreas[route];
+    walkTo(model, zone);
+    assert.equal(model.currentDock(), route);
+    for (let index = 0; index < 24; index += 1) {
+      const slot = floorPileSlot(route, index);
+      assert.equal(model.walkable(worker.side, slot.x, slot.y), false);
+      assert.ok(Math.abs(slot.x - worker.x) >= 24, 'the delivered stack is outside the worker approach');
+    }
+    const before = worker.x;
+    advance(model, 800, { x: side ? 1 : -1, y: 0 });
+    assert.ok(side ? worker.x <= before + 7 : worker.x >= before - 7, 'the stack band stops the worker before contact');
+    assert.ok(model.walkable(worker.side, worker.x, worker.y));
+  }
+});
+
+test('put-downs cannot hang over stair treads and floor cargo blocks movement without teleporting the worker', () => {
+  const stairs = holding('A');
+  Object.assign(stairs.activeWorker, { x: 400, y: 830 });
+  stairs.action();
+  assert.equal(stairs.heldPackage?.id, 1);
+  assert.match(stairs.drainEvents().at(-1).message, /stairs clear/);
+
+  const floor = holding('A');
+  Object.assign(floor.activeWorker, { x: 340, y: 390 });
+  floor.action();
+  const parcel = floor.packages[0];
+  assert.equal(parcel.state, 'floor');
+  const worker = floor.activeWorker;
+  for (let frame = 0; frame < 40; frame += 1) {
+    const before = { x: worker.x, y: worker.y };
+    floor.update(20, { x: Math.sign(parcel.x - worker.x), y: Math.sign(parcel.y - worker.y) });
+    assert.ok(Math.hypot(worker.x - before.x, worker.y - before.y) <= 4.7 + 1e-8, 'collision never teleports the worker');
+    assert.ok(Math.hypot(worker.x - parcel.x, worker.y - parcel.y) >= SHIFT_LAYOUT.workerRadius + SHIFT_LAYOUT.parcelRadius);
+  }
+  floor.action();
+  assert.equal(floor.heldPackage?.id, 1, 'a solid parcel remains easy to pick up');
+});
+
+test('put-downs beside recovery reject solid tray contact and remain possible one step aside', () => {
+  const scenery = depotSolidFootprints();
+  for (const side of [0, 1]) {
+    for (const y of [672.001, 680, 690]) {
+      const model = holding(side ? 'B' : 'A');
+      const parcel = model.heldPackage;
+      Object.assign(model.activeWorker, { x: side ? 560 : 400, y });
+      model.action();
+      assert.equal(model.heldPackage, parcel, 'the tray lip rejects overlapping cargo');
+      assert.match(model.drainEvents().at(-1).message, /trays clear/);
+      Object.assign(model.activeWorker, { x: side ? 600 : 360 });
+      model.action();
+      assert.equal(parcel.state, 'floor', 'the nearby clear floor still accepts cargo');
+      assert.ok(scenery.every(rect => !overlapsFootprint(parcel, SHIFT_LAYOUT.parcelRadius, rect)), 'the complete parcel footprint stays clear of scenery');
+    }
+  }
+});
+
+test('the retaining wall blocks floor pickup from the opposite elevation', () => {
+  for (const floorY of [760, 900]) {
+    const model = new ShiftModel({ crewAssist: false });
+    const parcel = model.packages[0];
+    Object.assign(parcel, { state: 'floor', x: 418, y: floorY });
+    Object.assign(model.activeWorker, { x: 400, y: floorY < 876 ? 876 : 820 });
+    assert.equal(model.nearestPackage(), null);
+    model.action();
+    assert.equal(model.heldPackage, null);
+  }
+});
+
+test('stair pickups use the same deck-edge clearance for the player and assistant', () => {
+  for (const side of [0, 1]) {
+    for (const assisted of [false, true]) {
+      const model = new ShiftModel({ crewAssist: assisted });
+      model.elapsedMs = 36_000;
+      const worker = model.workers[side];
+      const parcel = model.packages[0];
+      Object.assign(parcel, { state: 'floor', x: side ? 542 : 418, y: 760, route: side ? 'B' : 'A' });
+      Object.assign(worker, { x: side ? 560 : 400, y: 820 });
+      model.activeIndex = assisted ? 1 - side : side;
+      assert.equal(model.nearestPackage(worker), null, 'a nearby parcel on the deck is unreachable from the stairs');
+      if (assisted) model.update(20);
+      else model.action();
+      assert.equal(parcel.state, 'floor', 'neither worker reaches through the platform edge');
+    }
+  }
+});
+
+test('both workers keep body clearance at the lower-floor centre boundary', () => {
+  const model = new ShiftModel({ crewAssist: false });
+  model.packages[0].state = 'delivered';
+  for (const side of [0, 1]) {
+    model.activeIndex = side;
+    Object.assign(model.activeWorker, { x: side ? 580 : 380, y: 940 });
+    advance(model, 1_000, { x: side ? -1 : 1, y: 0 });
+  }
+  const [left, right] = model.workers;
+  assert.ok(right.x - left.x >= SHIFT_LAYOUT.workerRadius * 2);
+  assert.ok(model.walkable(left.side, left.x, left.y));
+  assert.ok(model.walkable(right.side, right.x, right.y));
 });
 
 test('the opening freight still teaches A, B and C before the new destinations arrive', () => {

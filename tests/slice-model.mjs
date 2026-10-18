@@ -136,16 +136,16 @@ test('blocked intake holds the reserved parcel at the transfer endpoint and neve
 test('Brian is forecast into an unloading reservation when its planned arrival reaches his announcement', () => {
   const model = new ShiftModel();
   model.eventStopped = true;
-  advance(model, 3_000);
+  advance(model, 2_000);
   model.eventStopped = false;
-  clearAndAdvance(model, 59_100);
-  assert.equal(model.elapsedMs, 62_100);
+  clearAndAdvance(model, 60_300);
+  assert.equal(model.elapsedMs, 62_300);
   assert.equal(model.brianRemaining, 0);
   const preview = model.intakePreview;
   assert.equal(preview.kind, 'atv');
   assert.equal(preview.route, 'C');
   clearAndAdvance(model, 900);
-  assert.equal(model.elapsedMs, 63_000);
+  assert.equal(model.elapsedMs, 63_200);
   assert.deepEqual(identity(model.packages.at(-1)), identity(preview));
   assert.equal(model.brianRemaining, 4);
   assert.equal(model.drainEvents().filter(event => event.type === 'brian').length, 1);
@@ -153,20 +153,17 @@ test('Brian is forecast into an unloading reservation when its planned arrival r
 
 test('an ordinary parcel reserved before Brian survives a brake delay and all five bulk parcels follow it', () => {
   const model = new ShiftModel();
-  model.eventStopped = true;
-  advance(model, 2_000);
-  model.eventStopped = false;
-  clearAndAdvance(model, 59_200);
-  assert.equal(model.elapsedMs, 61_200);
+  clearAndAdvance(model, 61_000);
+  assert.equal(model.elapsedMs, 61_000);
   const ordinary = model.intakePreview;
-  assert.equal(ordinary.kind, 'goji');
+  assert.equal(ordinary.kind, 'makeup');
   model.brake();
   clearAndAdvance(model, 2_000);
-  assert.equal(model.elapsedMs, 63_200);
+  assert.equal(model.elapsedMs, 63_000);
   assert.equal(model.brianRemaining, 5);
   assert.deepEqual(model.intakePreview, ordinary, 'the announcement must not morph a parcel already being unloaded');
-  clearAndAdvance(model, 800);
-  assert.equal(model.elapsedMs, 64_000);
+  clearAndAdvance(model, 200);
+  assert.equal(model.elapsedMs, 63_200);
   assert.deepEqual(identity(model.packages.at(-1)), identity(ordinary));
   assert.equal(model.brianRemaining, 5, 'the ordinary parcel must not consume a Brian slot');
   const burst = [];
@@ -176,13 +173,13 @@ test('an ordinary parcel reserved before Brian survives a brake delay and all fi
     assert.equal(model.brianRemaining, 4 - index);
   }
   assert.deepEqual(burst.map(parcel => parcel.kind), ['atv', 'lobsters', 'mesa', 'panchetters', 'mallwood']);
-  assert.deepEqual(burst.map(parcel => parcel.time), [65_900, 67_800, 69_700, 71_600, 73_500]);
+  assert.deepEqual(burst.map(parcel => parcel.time), [65_100, 67_000, 68_900, 70_800, 72_700]);
   assert.ok(burst.every(parcel => parcel.route === 'C'));
   const count = model.packages.length;
-  clearAndAdvance(model, 3_980);
+  clearAndAdvance(model, 2_780);
   assert.equal(model.packages.length, count);
   clearAndAdvance(model, 20);
-  assert.equal(model.packages.length, count + 1, 'ordinary four-second flow resumes after the five actual bulk arrivals');
+  assert.equal(model.packages.length, count + 1, 'ordinary 2.8-second flow resumes after the five actual bulk arrivals');
 });
 
 test('intake closure discards its visible reservation without adding freight or delaying the shift result', () => {
@@ -344,6 +341,9 @@ test('adjoining delivery zones have one owner at576 and bulk does not consume th
     const below = heldFixture(side, 'C', { x, y: 672.001 });
     assert.equal(below.currentDock(), null);
     below.action();
+    assert.equal(below.heldPackage?.route, 'C', 'the recovery tray blocks a put-down beside its lip');
+    below.activeWorker.x = side === 0 ? 360 : 600;
+    below.action();
     assert.equal(below.packages[0].state, 'floor');
     assert.equal(below.sorted, 0);
     below.activeWorker.y = SHIFT_LAYOUT.recoveryPile.y;
@@ -366,6 +366,9 @@ test('misses enter a separate recovery pile and dropping below the belt stays on
   walkTo(model, { x: 400, y: 690 });
   model.action();
   assert.equal(model.heldPackage?.id, parcel.id);
+  model.action();
+  assert.equal(model.heldPackage?.id, parcel.id, 'the tray stays clear of loose floor cargo');
+  walkTo(model, { x: 360, y: 690 });
   model.action();
   assert.equal(parcel.state, 'floor');
   assert.ok(parcel.y > SHIFT_LAYOUT.beltBottom);
@@ -653,7 +656,7 @@ test('the opening lesson keeps six-second arrivals and phases never bunch two ar
     }
   }
   assert.deepEqual(arrivals.slice(0, 6).map((arrival) => arrival.route), ['A', 'B', 'C', 'A', 'B', 'C']);
-  assert.deepEqual(arrivals.map((arrival) => arrival.time), [0, 6_000, 12_000, 18_000, 24_000, 30_000, 36_000, 40_000, 44_000]);
+  assert.deepEqual(arrivals.map((arrival) => arrival.time), [0, 6_000, 12_000, 18_000, 24_000, 30_000, 36_000, 38_800, 41_600, 44_400]);
 });
 
 test('original comic freight opens the shift with its teaching routes and original forms', () => {
@@ -759,18 +762,19 @@ test('Brian announces once and sends exactly five bulk parcels before ordinary f
     }
   }
   assert.deepEqual(announcements, [{ time: 63_000, message: 'BRIAN: SENDING 5 DOWN TO BULK!' }]);
-  const burst = arrivals.slice(13, 18);
+  const burst = arrivals.filter(({ time }) => time >= 63_000).slice(0, 5);
   assert.deepEqual(burst.map(({ time }) => time), [64_000, 65_900, 67_800, 69_700, 71_600]);
   assert.deepEqual(burst.map(({ parcel }) => parcel.kind), ['atv', 'lobsters', 'mesa', 'panchetters', 'mallwood']);
   assert.ok(burst.every(({ parcel }) => parcel.route === 'C'));
   assert.deepEqual(burst.map(({ parcel }) => parcel.size), ['heavy', 'heavy', 'heavy', 'normal', 'heavy']);
   assert.equal(model.brianRemaining, 0);
-  assert.equal(arrivals[18].time, 75_600);
-  assert.equal(arrivals[18].parcel.route, 'S');
-  assert.equal(arrivals[18].parcel.kind, 'standard');
-  assert.deepEqual(arrivals.slice(0, 13).map(({ time }) => time), [
-    0, 6_000, 12_000, 18_000, 24_000, 30_000, 36_000, 40_000, 44_000, 48_000, 52_000, 56_000, 60_000,
-  ], 'Brian must not change the first63seconds of teaching and ordinary freight');
+  const resumed = arrivals.find(({ time }) => time > burst.at(-1).time);
+  assert.equal(resumed.time, 74_400);
+  assert.equal(resumed.parcel.route, 'D');
+  assert.equal(resumed.parcel.kind, 'bigbox');
+  assert.deepEqual(arrivals.filter(({ time }) => time < 63_000).map(({ time }) => time), [
+    0, 6_000, 12_000, 18_000, 24_000, 30_000, 36_000, 38_800, 41_600, 44_400, 47_200, 50_000, 52_800, 55_600, 58_400, 61_200,
+  ], 'Brian must not change the first 63 seconds of teaching and ordinary freight');
 });
 
 test('pausing and braking Brian’s burst delay arrivals without consuming his remaining parcels', () => {
@@ -849,7 +853,7 @@ test('full deterministic shift is winnable through public movement and action in
   assert.equal(model.ended, true);
   assert.equal(model.won, true);
   assert.ok(model.sorted >= model.goal);
-  assert.ok(model.sorted >= 24, 'the normal-input simulation must meet the full warehouse shift target');
+  assert.ok(model.sorted >= 42, 'the normal-input simulation must meet the higher warehouse shift target');
   assert.equal(model.sorted, model.packages.length, 'the original freight weights must still allow the full workload to be dispatched');
   assert.deepEqual([...seen].filter((phase) => phase !== 'cleanup'), ['lesson', 'flow', 'rush', 'ended']);
   assert.equal(model.missed, 0);
@@ -858,11 +862,132 @@ test('full deterministic shift is winnable through public movement and action in
     'MESA BOOGIE', 'PANCHETTERS', 'SMALL ATV', 'PARCEL', 'ENVELOPE', 'SMALL BOX', 'BIG BOX', 'LONG BOX',
   ].sort(), 'all original comic parcel references must actually reach a normal playable shift');
   assert.deepEqual(model.packages.slice(0, 24).map((parcel) => parcel.route), [
-    'A', 'B', 'C', 'A', 'B', 'C', 'D', 'E', 'C', 'T', 'S', 'A', 'B',
-    'C', 'C', 'C', 'C', 'C', 'S', 'A', 'B', 'D', 'C', 'E',
+    'A', 'B', 'C', 'A', 'B', 'C', 'D', 'E', 'C', 'T', 'S', 'A', 'B', 'D', 'C', 'E',
+    'C', 'C', 'C', 'C', 'C', 'D', 'C', 'E',
   ], 'Brian’s five-parcel bulk incident should be the only change to the route sequence');
   for (const route of ['A', 'B', 'C', 'D', 'E', 'T', 'S']) assert.ok(model.routeSorted[route] > 0, `${route} must be served in a normal shift`);
   assert.equal(model.packages.some((parcel) => parcel.kind === 'snakes'), false, 'Hussan’s CELL belongs to its separate NPC event');
   const events = model.drainEvents();
   assert.equal(events.filter((event) => event.type === 'brian').length, 1, 'the later rush phase must not repeat Brian’s incident');
+});
+
+test('a paced player can keep one worker through flow and rush while the partner carries its three own routes', (t) => {
+  const model = new ShiftModel();
+  let switches = 0;
+  let maximumBacklog = 0;
+  // A decision every 100 ms, with ordinary movement and explicit grabs/deliveries.
+  // No cargo, time, worker positions or score is injected into this full shift.
+  for (let tick = 0; tick < 2_000 && !model.ended; tick += 1) {
+    let target;
+    const held = model.heldPackage;
+    if (held) {
+      target = held.route === 'C' ? (model.activeIndex === 0 ? SHIFT_LAYOUT.bulkLeft : SHIFT_LAYOUT.bulkRight)
+        : SHIFT_LAYOUT.dropAreas[held.route];
+      if (model.currentDock() === held.route) model.action();
+    } else {
+      const parcel = model.packages.filter((item) => ['belt', 'missed', 'floor'].includes(item.state)
+        && (!model.assistanceActive || ['A', 'D', 'T', 'C'].includes(item.route)))
+        .sort((a, b) => (a.state === 'missed' ? -1 : 0) - (b.state === 'missed' ? -1 : 0) || b.y - a.y)[0];
+      const intended = model.assistanceActive ? 0 : parcel && ['B', 'E', 'S'].includes(parcel.route) ? 1 : 0;
+      if (model.activeIndex !== intended) { model.switchWorker(); switches += 1; }
+      if (parcel) {
+        target = { x: intended === 0 ? 400 : 560, y: parcel.y };
+        if (model.nearestPackage()?.id === parcel.id) model.action();
+      } else target = { x: intended === 0 ? 400 : 560, y: 500 };
+    }
+    const dx = target.x - model.activeWorker.x;
+    const dy = target.y - model.activeWorker.y;
+    const length = Math.hypot(dx, dy);
+    model.update(100, { x: length > 12 ? dx / length : 0, y: length > 12 ? dy / length : 0 });
+    maximumBacklog = Math.max(maximumBacklog, model.pileup);
+    for (const worker of model.workers) assert.ok(model.walkable(worker.side, worker.x, worker.y), `${worker.id} stays on clear floor`);
+  }
+  assert.equal(model.ended, true);
+  assert.equal(model.won, true, `sorted ${model.sorted}, helper ${model.assistedSorted}, backlog ${maximumBacklog}`);
+  assert.ok(model.packages.length >= 60, 'the higher-rate shift brings at least 60 parcels');
+  assert.ok(model.sorted >= 42);
+  assert.ok(model.assistedSorted >= 15, 'the unattended partner must contribute substantial work');
+  assert.ok(switches <= 4, `only the tutorial requires switching; got ${switches}`);
+  for (const route of ['A', 'D', 'T', 'B', 'E', 'S', 'C']) assert.ok(model.routeSorted[route] > 0);
+  assert.ok(maximumBacklog < model.capacity);
+  t.diagnostic(`${model.sorted}/${model.packages.length} dispatched; ${model.assistedSorted} partner deliveries; ${switches} tutorial switches; peak backlog ${maximumBacklog}/${model.capacity}`);
+});
+
+test('crew assistance follows ordinary carrying and pause rules, and never supplies an unattended win', () => {
+  const model = new ShiftModel();
+  model.elapsedMs = 36_000;
+  const parcel = model.packages[0];
+  parcel.route = 'S';
+  parcel.kind = 'smallbox';
+  parcel.size = 'normal';
+  for (let time = 0; time < 8_000 && parcel.state !== 'delivered'; time += 20) {
+    const before = { ...model.workers[1] };
+    model.update(20);
+    const worker = model.workers[1];
+    assert.ok(Math.hypot(worker.x - before.x, worker.y - before.y) <= 235 * 0.02 + 1e-6, 'no assisted teleport or speed boost');
+    assert.ok(model.walkable(worker.side, worker.x, worker.y));
+    if (parcel.state === 'held' && !model.paused) {
+      model.paused = true;
+      const frozen = JSON.stringify(model);
+      model.update(100);
+      assert.equal(JSON.stringify(model), frozen, 'cutscene/pause freezes the helper too');
+      model.paused = false;
+    }
+  }
+  assert.equal(parcel.state, 'delivered');
+  assert.equal(model.assistedSorted, 1);
+  const idle = new ShiftModel();
+  advance(idle, 190_000);
+  assert.equal(idle.won, false);
+  assert.equal(idle.pileup, idle.capacity, 'crew assistance does not remove the need to play');
+  const abandoned = new ShiftModel();
+  abandoned.packages[0].state = 'delivered';
+  abandoned.elapsedMs = 36_000;
+  advance(abandoned, 100_000);
+  assert.ok(abandoned.assistedSorted > 0, 'the inactive partner worked during this fixture');
+  assert.equal(abandoned.won, false, 'leaving the active worker idle during flow still loses');
+  assert.equal(abandoned.pileup, abandoned.capacity);
+});
+
+test('switching takes immediate control of an assisted carry and bulk still requires the player', () => {
+  const model = new ShiftModel();
+  model.elapsedMs = 36_000;
+  const parcel = model.packages[0];
+  parcel.route = 'B';
+  Object.assign(model.workers[1], { x: 560, y: 200 });
+  model.update(20);
+  assert.equal(parcel.workerId, 'skanky');
+  model.switchWorker();
+  const position = { x: model.activeWorker.x, y: model.activeWorker.y };
+  advance(model, 500);
+  assert.deepEqual({ x: model.activeWorker.x, y: model.activeWorker.y }, position, 'the selected worker waits for player input');
+  Object.assign(model.activeWorker, SHIFT_LAYOUT.dockB);
+  model.update(20);
+  assert.equal(model.sorted, 0, 'even an assisted carry requires explicit hand-in after taking control');
+  model.action();
+  assert.equal(model.sorted, 1);
+  assert.equal(model.assistedSorted, 0);
+  const bulk = heldFixture(0, 'C', SHIFT_LAYOUT.bulkLeft);
+  bulk.elapsedMs = 36_000;
+  bulk.switchWorker();
+  advance(bulk, 500);
+  assert.equal(bulk.packages[0].state, 'held', 'the partner does not dispatch the player’s shared bulk task');
+  assert.equal(bulk.sorted, 0);
+});
+
+test('an assistant cannot collect its own route from the opposite lower-floor lane', () => {
+  for (const side of [0, 1]) {
+    const model = new ShiftModel();
+    model.elapsedMs = 36_000;
+    model.activeIndex = 1 - side;
+    const worker = model.workers[side];
+    Object.assign(worker, { x: side ? 492 : 468, y: 940 });
+    const parcel = model.packages[0];
+    Object.assign(parcel, { route: side ? 'S' : 'T', state: 'floor', x: side ? 418 : 542, y: 940 });
+    assert.ok(Math.hypot(worker.x - parcel.x, worker.y - parcel.y) < SHIFT_LAYOUT.grabRadius, 'fixture is within distance but across the centre barrier');
+    assert.equal(model.nearestPackage(worker), null);
+    model.update(20);
+    assert.equal(parcel.state, 'floor');
+    assert.equal(worker.heldId, null);
+  }
 });

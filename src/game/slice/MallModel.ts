@@ -83,6 +83,32 @@ const clamp = (value: number, low: number, high: number): number => Math.max(low
 const insideRect = (rect: Rect, x: number, y: number, margin = 0): boolean =>
   x >= rect.x + margin && x <= rect.x + rect.w - margin && y >= rect.y + margin && y <= rect.y + rect.h - margin;
 
+type FloorEdge = { x1: number; y1: number; x2: number; y2: number };
+const onFloor = (x: number, y: number): boolean => MALL_LAYOUT.walk.some(rect => insideRect(rect, x, y));
+/** Split at every rectangle corner and keep only exposed union edges. */
+const FLOOR_EDGES: readonly FloorEdge[] = MALL_LAYOUT.walk.flatMap(rect => {
+  const edges: FloorEdge[] = [];
+  for (const vertical of [false, true]) {
+    const start = vertical ? rect.y : rect.x;
+    const end = start + (vertical ? rect.h : rect.w);
+    const splits = [...new Set([start, end, ...MALL_LAYOUT.walk.flatMap(other => vertical ? [other.y, other.y + other.h] : [other.x, other.x + other.w])])]
+      .filter(value => value >= start && value <= end).sort((a, b) => a - b);
+    for (const fixed of vertical ? [rect.x, rect.x + rect.w] : [rect.y, rect.y + rect.h]) {
+      for (let index = 1; index < splits.length; index += 1) {
+        const middle = (splits[index - 1] + splits[index]) / 2;
+        const x = vertical ? fixed : middle;
+        const y = vertical ? middle : fixed;
+        const dx = vertical ? 0.01 : 0;
+        const dy = vertical ? 0 : 0.01;
+        if (onFloor(x - dx, y - dy) === onFloor(x + dx, y + dy)) continue;
+        edges.push(vertical ? { x1: fixed, y1: splits[index - 1], x2: fixed, y2: splits[index] }
+          : { x1: splits[index - 1], y1: fixed, x2: splits[index], y2: fixed });
+      }
+    }
+  }
+  return edges;
+});
+
 export class MallModel {
   public readonly skanky = { x: MALL_LAYOUT.start.x as number, y: MALL_LAYOUT.start.y as number, facing: 'up' as Facing, moving: false };
   public readonly cart = { x: MALL_LAYOUT.cartStart.x as number, y: MALL_LAYOUT.cartStart.y as number, facing: 'up' as Facing, pushed: false, load: [] as string[] };
@@ -357,7 +383,14 @@ export class MallModel {
     const horizontal = facing === 'left' || facing === 'right';
     const w = (horizontal ? MALL_RULES.cartSize.w : MALL_RULES.cartSize.h) / 2;
     const h = (horizontal ? MALL_RULES.cartSize.h : MALL_RULES.cartSize.w) / 2;
-    return [[x - w, y - h], [x + w, y - h], [x - w, y + h], [x + w, y + h], [x, y]].every(([px, py]) => this.free(px, py, 1));
+    if (!onFloor(x, y)) return false;
+    // A body may touch a boundary but no exposed floor edge may cross its
+    // interior; checking only corners misses concave doorway corners.
+    const crossesFloorEdge = FLOOR_EDGES.some(edge => edge.x1 === edge.x2
+      ? edge.x1 > x - w && edge.x1 < x + w && edge.y2 > y - h && edge.y1 < y + h
+      : edge.y1 > y - h && edge.y1 < y + h && edge.x2 > x - w && edge.x1 < x + w);
+    return !crossesFloorEdge && !MALL_LAYOUT.obstacles.some(rect =>
+      x + w > rect.x && x - w < rect.x + rect.w && y + h > rect.y && y - h < rect.y + rect.h);
   }
 
   private overlapsCart(x: number, y: number): boolean {
@@ -367,12 +400,12 @@ export class MallModel {
     return Math.abs(x - this.cart.x) < w && Math.abs(y - this.cart.y) < h;
   }
 
-  /** A circle is free when its centre and rim all lie on the floor and clear of every obstacle. */
+  /** Exact circle clearance against floor edges and obstacle corners. */
   public free(x: number, y: number, radius: number): boolean {
-    const d = radius * 0.7;
-    const points = [[0, 0], [radius, 0], [-radius, 0], [0, radius], [0, -radius], [d, d], [-d, d], [d, -d], [-d, -d]];
-    return points.every(([dx, dy]) => MALL_LAYOUT.walk.some((rect) => insideRect(rect, x + dx, y + dy))
-      && !MALL_LAYOUT.obstacles.some((rect) => insideRect(rect, x + dx, y + dy)));
+    if (!onFloor(x, y)) return false;
+    if (FLOOR_EDGES.some(edge => Math.hypot(x - clamp(x, edge.x1, edge.x2), y - clamp(y, edge.y1, edge.y2)) < radius)) return false;
+    return !MALL_LAYOUT.obstacles.some(rect =>
+      Math.hypot(x - clamp(x, rect.x, rect.x + rect.w), y - clamp(y, rect.y, rect.y + rect.h)) < radius);
   }
 
   private emit(type: MallEvent['type'], message: string, storeId?: string): void {
@@ -410,7 +443,8 @@ export class KeyReturnModel {
     const step = MALL_RULES.speed * Math.min(deltaMs, 100) / 1000 / Math.max(1, magnitude);
     const walk = LOT_LAYOUT.walk;
     const truck = LOT_LAYOUT.truck;
-    const ok = (nx: number, ny: number): boolean => insideRect(walk, nx, ny, 10) && !insideRect(truck, nx, ny, -12);
+    const ok = (nx: number, ny: number): boolean => insideRect(walk, nx, ny, MALL_RULES.skankyRadius)
+      && !insideRect(truck, nx, ny, -MALL_RULES.skankyRadius);
     const before = { ...this.skanky };
     const nx = this.skanky.x + x * step;
     const ny = this.skanky.y + y * step;
