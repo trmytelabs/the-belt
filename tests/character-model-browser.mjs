@@ -67,12 +67,14 @@ try {
   }
   await page.waitForFunction(() => window.fixtureApp.state === 'playing', null, { timeout: 30_000 });
   const standing = (await modelState()).termite.arm;
+  // Models are posed when a frame is drawn, and software renderers on CI draw
+  // about once a second, so wait for drawn frames rather than a fixed time.
   await page.keyboard.down('KeyD');
-  await page.waitForTimeout(1500);
-  const walking = (await modelState()).termite.arm;
+  await page.waitForFunction((rest) => {
+    const arm = window.fixtureApp.workers.termite.root.getObjectByName('mixamorigRightArm');
+    return Math.abs(arm.quaternion.toArray().reduce((sum, value, index) => sum + value * rest[index], 0)) < 0.9999;
+  }, standing, { timeout: 30_000 });
   await page.keyboard.up('KeyD');
-  const turned = Math.abs(standing.reduce((sum, value, index) => sum + value * walking[index], 0));
-  assert.ok(turned < 0.9999, `the model's arm moves with the walk cycle (|q·q'| ${turned})`);
   console.log('PASS the model follows the walk cycle during the shift');
   await page.screenshot({ path: process.env.BELT_MODEL_SCREENSHOT ?? 'node_modules/.cache/character-model.png' });
   assert.deepEqual(errors, [], 'no page errors');
