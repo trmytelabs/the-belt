@@ -15,8 +15,8 @@ freight and specific workplace jokes interrupting that job. Both are essential.
 The first art pass lost too much of that personality. The second restoration
 inventories the actual original source and restores its specific references
 inside the new scene; classic-mode access alone does not count as parity.
-The preview preserves the switching decision and the three
-route types, heavy carries, temporary belt stops, and recovery.
+The preview preserves occasional switching decisions alongside truck, lower-floor
+and shared bulk destinations, heavy carries, temporary belt stops, and recovery.
 
 The original playthrough exposed several readability problems: movement keys
 were not taught; parcel names were more prominent than their routing; many
@@ -145,15 +145,19 @@ the music scheduler skips missed beats after a stalled tab.
 
 The first six parcels teach A, B, and C at six-second intervals. Flow increases
 after 36 seconds. Brian announces a rush at 63 seconds: five heavy bulk parcels
-arrive at 1.9-second intervals, then four-second intake resumes; the final rush
-uses three-second intake after 126 seconds. Speed
+arrive at 1.9-second intervals, then 2.8-second intake resumes; the final rush
+uses 2.2-second intake after 126 seconds. Speed
 ramps smoothly and brakes stop the scheduled intake as well as belt travel.
-New freight stops at 180 seconds, with up to ten seconds of cleanup. Twenty-four
+New freight stops at 180 seconds, with up to ten seconds of cleanup. Forty-two
 dispatches meets the target. Five simultaneous missed parcels fill the recovery
 bay and end the shift. Original per-freight carrying penalties distinguish
 lobsters, the amp and ATV from lighter boxes. Recovery earns half base points;
 a parcel never adds the
-same miss twice. The input, pause, mute, and results paths support repeat play.
+same miss twice. After the 36-second lesson the inactive worker carries and
+sorts its own three routes without adding points or combo bonuses; shared C
+freight still needs the player. Two scanner faults ask the player to switch to
+the affected worker and press Space, keeping occasional switches meaningful.
+The input, pause, mute, and results paths support repeat play.
 
 ## Verification and review boundary
 

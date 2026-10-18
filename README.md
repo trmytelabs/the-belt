@@ -35,30 +35,38 @@ shows the next line and Enter skips the scene. See
 
 The shift is one polished three-minute warehouse section, followed by
 up to ten seconds to clear remaining freight. Press Enter or tap **START THE NIGHT**. Dispatch
-24 parcels and keep the recovery backlog below five. The original **3, 2, 1,
+42 parcels and keep the recovery backlog below five. The original **3, 2, 1,
 SORT!** countdown starts the shift.
 
 - WASD / arrows move; Tab or right-click switches workers.
+- After the 36-second warm-up, the inactive worker carries and sorts their own
+  A/D/T or B/E/S freight. Automatic deliveries count toward the team target,
+  but earn no points or combo bonus. Two scanner faults during the shift call
+  for a switch: select that worker and press Space to reset their scanner.
+  Focus on your lane and shared C bulk between those calls. Intake accelerates
+  from one parcel every six seconds to 2.8 seconds, then 2.2 seconds during the rush.
 - Space or left-click grabs, delivers inside a dock, or puts a parcel down.
 - F (or THROW) throws a held parcel to its destination. Throws can break
   parcels: a breakage earns nothing and costs points once, and Shan yells.
 - The belt and both workers stand on a raised loading platform; trucks back
   against its edge, and stairs at the belt's end lead to the lower floor.
+- The A/B truck pair is followed by D/E, then the shared bulk build-up against
+  the rear wall. The T/S ground drops sit beyond the stairs.
 - Termite sorts A (HERES UR SOVICE), D (DOWNTOWN) and his lower-floor drop T;
   Skanky sorts B (PAYTMAN), E (EASTSIDE) and his lower-floor drop S. Heavy C
   freight still goes to the shared bulk pile at the belt's end. Letters, names
   and colors identify every route.
-- Deliver anywhere inside the larger painted drop zones. The bulk zone extends
-  farther down, with the recovery tray and more walking room below it.
+- Deliver anywhere inside the painted drop zones. The recovery tray sits between
+  the belt exit and the bulk area, with clear approaches beside both.
 - E brakes the belt for two seconds, with an eight-second cooldown.
 - Escape pauses; M toggles sound. Losing focus pauses the preview automatically.
 - The closer camera follows your worker up and down the belt and reframes when
   you switch workers. V, or the Overview button, shows the whole warehouse.
 - Walk up past the first truck row to see the receiving dock: two incoming
   semis, unloaders and a smelly dockhand feeding the next real parcel onto the belt.
-- The original five truck rows and named bays are preserved. All trucks share
-  the same size, with the two player trucks in the bottom row. The incoming
-  articulated semis occupy the new receiving area above those rows.
+- The original named crew bays remain above the two player truck rows. All bay
+  trucks share the same size. The incoming articulated semis occupy the
+  receiving area above those rows.
 - Pick up missed freight near the belt exit to recover it for half base points.
 
 Touch devices have a movement stick and Switch, Grab / Deliver, and Brake
@@ -138,6 +146,11 @@ unloading handoff, parcel identity, contact, stops and restart cleanup.
 Story checks play all three arrivals, the scrum, all six break exchanges,
 throwing and breakage, the stairs, the full mall run, the key return and a
 clean replay in both depots.
+Geometry checks cover all seven destinations, truck/deck alignment, stairs,
+mixed recovery freight, full lower-floor stacks, sampled story and camera
+clearances, and GPU-resource cleanup across restarts. See the
+[depot review and validation record](docs/depot-quality-review.md) for findings,
+fixes, performance measurements and remaining manual checks.
 Browser checks use a
 loopback server, real opening inputs and isolated synthetic clock/cargo fixtures
 for later events and edge cases. TypeScript strict checking is enabled. Dependabot maintains
