@@ -108,18 +108,41 @@ try {
     await page.waitForFunction(() => Boolean(window.fixtureGame.scene.getScene('GameScene').inputSystem.getActivePlayer().heldPackage));
     await grab();
     await page.waitForFunction(() => window.fixtureGame.scene.getScene('GameScene').inputSystem.getActivePlayer().heldPackage === null);
+    const repeatedDockSorts = await page.evaluate(() => {
+      const scene = window.fixtureGame.scene.getScene('GameScene');
+      const player = scene.termite;
+      player.setPosition(scene.termiteTruck.dropZone.centerX, scene.termiteTruck.dropZone.centerY);
+      const before = scene.scoreSystem.getState().sortedCount;
+      for (let index = 0; index < 2; index += 1) {
+        const parcel = scene.spawnSystem.createRecoveredPackage(player.x, player.y, { destination: 'HERES_UR_SOVICE', size: 'small_box' });
+        player.tryGrab([parcel]);
+        scene.sortingSystem.checkDrop(parcel, player);
+      }
+      return scene.scoreSystem.getState().sortedCount - before;
+    });
+    assert.equal(repeatedDockSorts, 2, 'the next parcel must dispatch even if its worker stays in the same dock');
     // Enter the real result scene with deterministic results, then use its real
     // user input to restart. This checks listener and touch-layer cleanup.
-    await page.evaluate(() => window.fixtureGame.scene.getScene('GameScene').scene.start('ResultsScene', {
-      score: 120, accuracy: 100, packagesSorted: 4, bulkSorted: 0,
-      missed: 0, errors: 0, grade: 'A', gradeQuote: 'Synthetic shift'
-    }));
+    await page.evaluate(() => {
+      const scene = window.fixtureGame.scene.getScene('GameScene');
+      // A completed shift stops the belt before Results; replay must reset it.
+      scene.beltSystem.stop();
+      scene.scene.start('ResultsScene', {
+        score: 120, accuracy: 100, packagesSorted: 4, bulkSorted: 0,
+        missed: 0, errors: 0, grade: 'A', gradeQuote: 'Synthetic shift'
+      });
+    });
     await active('ResultsScene');
     assert.equal(await page.locator('.mobile-control-layer').count(), 0);
     if (mobile) await page.locator('#app canvas').tap();
     else await page.keyboard.press('Enter');
     await active('TitleScene');
     await start();
+    await page.waitForFunction(() => window.fixtureGame.scene.getScene('GameScene').beltSystem.isRunning());
+    await page.waitForFunction(() => window.fixtureGame.scene.getScene('GameScene').spawnSystem.getPackages().length > 0);
+    // Spawning is verified above; a random Mesa offer must not block this
+    // separate replay-input check (its choices have their own browser suite).
+    await page.evaluate(() => window.fixtureGame.scene.getScene('GameScene').beltEventSystem.stopEvents());
     const restarted = await playerId();
     if (mobile) {
       assert.equal(await page.locator('.mobile-control-layer').count(), 1);

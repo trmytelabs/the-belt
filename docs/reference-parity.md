@@ -228,7 +228,7 @@ listed above.
 ## Second-pass implementation and acceptance
 
 The new warehouse now runs for the original three-minute duration, with a
-24-parcel dispatch target and a separate clock-out celebration. The original
+42-parcel dispatch target and a separate clock-out celebration. The original
 source remains the content authority; the new scene schedules the set pieces
 deliberately so the humor is encountered during play. It is not necessary to
 open classic mode to reach these references.

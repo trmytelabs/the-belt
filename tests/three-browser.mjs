@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { chromium } from 'playwright';
 import { preview } from 'vite';
+import { depotSolidFootprints, overlapsFootprint, DEPOT_BODY_RADIUS } from '../src/game/slice/DepotClearance.ts';
 
 // The 3D preview needs WebGL. CI's GPU-free runners provide it through
 // SwiftShader, so this suite requests that explicitly rather than inheriting
@@ -362,8 +363,12 @@ try {
   assert.equal(await crew(() => window.fixtureApp.crew.drivers.some((driver) => driver.root.visible)), false, 'drivers board their trucks');
 
   // Receiving: the dockhand stands at the intake while unloaders feed the line.
-  const dockhand = await crew(() => window.fixtureApp.crew.dockhand.root.position.x);
-  assert.ok(Math.abs(dockhand - (430 - 480) / 32) < 0.01, 'the dockhand stands beside the intake');
+  const dockhand = await crew(() => {
+    const p = window.fixtureApp.crew.dockhand.root.position;
+    return { x: p.x * 32 + 480, y: p.z * 32 + 340 };
+  });
+  assert.ok(dockhand.x >= 400 && dockhand.x <= 430, 'the dockhand stands beside the intake');
+  assert.ok(depotSolidFootprints().every(rect => !overlapsFootprint(dockhand, DEPOT_BODY_RADIUS, rect)), 'the dockhand stays clear of the belt casing');
 
   // A winning clock-out: lines, celebration and every truck departing.
   const truckStart = await crew(() => window.fixtureApp.world.trucks.map((truck) => truck.group.position.x));

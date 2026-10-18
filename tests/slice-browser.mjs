@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { chromium } from 'playwright';
 import { preview } from 'vite';
+import { SHIFT_LAYOUT } from '../src/game/slice/ShiftModel.ts';
 
 import { finishNight, holdBreak, skipOpening } from './night-helpers.mjs';
 
@@ -44,7 +45,7 @@ try {
   });
   await page.goto(`${server.resolvedUrls.local[0]}?mode=2d`);
   await page.waitForFunction(() => window.fixtureGame?.scene.isActive('DepotScene'));
-  const read = fn => page.evaluate(fn);
+  const read = (fn, arg) => page.evaluate(fn, arg);
   const press = key => page.keyboard.press(key, { delay: 40 });
   console.log(`Slice renderer: ${await read(() => window.fixtureGame.renderer.type === 2 ? 'WebGL' : 'Canvas')}`);
   if (process.env.BELT_BROWSER_RENDERER === 'canvas') {
@@ -66,12 +67,12 @@ try {
   assert.deepEqual(paintedZones.sort((a, b) => a.route.localeCompare(b.route) || a.x - b.x), [
     { route: 'A', side: 'left', x: 369, y: 532, width: 102, height: 88 },
     { route: 'B', side: 'right', x: 591, y: 532, width: 102, height: 88 },
-    { route: 'C', side: 'left', x: 400, y: 624, width: 80, height: 96 },
-    { route: 'C', side: 'right', x: 560, y: 624, width: 80, height: 96 },
-    { route: 'D', side: 'left', x: 369, y: 740, width: 102, height: 88 },
-    { route: 'E', side: 'right', x: 591, y: 740, width: 102, height: 88 },
-    { route: 'S', side: 'right', x: 580, y: 940, width: 120, height: 84 },
-    { route: 'T', side: 'left', x: 380, y: 940, width: 120, height: 84 },
+    { route: 'C', side: 'left', ...SHIFT_LAYOUT.dropAreas.bulkLeft },
+    { route: 'C', side: 'right', ...SHIFT_LAYOUT.dropAreas.bulkRight },
+    { route: 'D', side: 'left', ...SHIFT_LAYOUT.dropAreas.D },
+    { route: 'E', side: 'right', ...SHIFT_LAYOUT.dropAreas.E },
+    { route: 'S', side: 'right', ...SHIFT_LAYOUT.dropAreas.S },
+    { route: 'T', side: 'left', ...SHIFT_LAYOUT.dropAreas.T },
   ], 'the visible floor zones must represent every accepting area, bulk included');
   if (process.env.BELT_SCREENSHOT_DIR) await page.screenshot({ path: join(process.env.BELT_SCREENSHOT_DIR, 'after-title.png') });
   await holdBreak(page);
@@ -150,7 +151,7 @@ try {
   for (const [route, index, dockX, dockY, kind, name] of [
     ['A', 0, 400, 532, 'mallwood', 'MALLWOOD RD EAST'],
     ['B', 1, 560, 532, 'goji', 'GOJI BERRIES'],
-    ['C', 1, 580, 640, 'lobsters', 'LIVE LOBSTERS'],
+    ['C', 1, 580, SHIFT_LAYOUT.bulkRight.y, 'lobsters', 'LIVE LOBSTERS'],
   ]) {
     if (await read(() => window.fixtureGame.scene.getScene('DepotScene').model.activeIndex) !== index) await press('Tab');
     await walkTo(index === 0 ? 400 : 560, 300);
@@ -217,7 +218,7 @@ try {
         const delivered = scene.model.packages.find(parcel => parcel.route === 'C' && parcel.state === 'delivered');
         return { x: delivered.x, y: delivered.y, stock: scene.depot.bulkStockCount, action: scene.actionText.text };
       });
-      assert.deepEqual([bulk.x, bulk.y, bulk.stock], [480, 610, 1], 'C delivered from the extended lower area must reach the actual shared pile');
+      assert.deepEqual([bulk.x, bulk.y, bulk.stock], [SHIFT_LAYOUT.bulkPile.x, SHIFT_LAYOUT.bulkPile.y, 1], 'C delivered from its hand-in area must reach the actual shared pile');
       if (process.env.BELT_SCREENSHOT_DIR) await page.screenshot({ path: join(process.env.BELT_SCREENSHOT_DIR, 'after-layout-bulk.png') });
     }
   }
@@ -300,19 +301,19 @@ try {
   assert.equal(await read(() => window.fixtureGame.scene.getScene('DepotScene').model.sorted), wrong.sorted + 1);
 
   const recovery = await arrange('C');
-  await read(() => {
+  await read(recoveryY => {
     const model = window.fixtureGame.scene.getScene('DepotScene').model;
     const parcel = model.packages[0];
     parcel.y = 549; parcel.beltOffset = 549 - model.beltTravel;
-    model.activeWorker.y = 690;
-  });
+    model.activeWorker.y = recoveryY;
+  }, SHIFT_LAYOUT.recoveryPile.y);
   await page.waitForFunction(() => window.fixtureGame.scene.getScene('DepotScene').model.pileup === 1);
   await press('Space');
   assert.equal(await read(() => window.fixtureGame.scene.getScene('DepotScene').model.pileup), 0);
-  await read(() => {
+  await read(bulkY => {
     const worker = window.fixtureGame.scene.getScene('DepotScene').model.activeWorker;
-    worker.x = 370; worker.y = 664;
-  });
+    worker.x = 370; worker.y = bulkY;
+  }, SHIFT_LAYOUT.bulkLeft.y);
   await press('Space');
   assert.equal(await read(() => window.fixtureGame.scene.getScene('DepotScene').model.score), recovery.score + 60,
     'a recovered bulk parcel awards the documented half score');

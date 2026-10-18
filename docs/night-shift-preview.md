@@ -15,8 +15,8 @@ freight and specific workplace jokes interrupting that job. Both are essential.
 The first art pass lost too much of that personality. The second restoration
 inventories the actual original source and restores its specific references
 inside the new scene; classic-mode access alone does not count as parity.
-The preview preserves the switching decision and the three
-route types, heavy carries, temporary belt stops, and recovery.
+The preview preserves occasional switching decisions alongside truck, lower-floor
+and shared bulk destinations, heavy carries, temporary belt stops, and recovery.
 
 The original playthrough exposed several readability problems: movement keys
 were not taught; parcel names were more prominent than their routing; many
@@ -99,19 +99,17 @@ eases back to the worker. Reduced-motion preference removes camera interpolation
 The HUD, speech panels, menus and their hit targets use a separate fixed camera.
 Text textures use higher resolution so authored labels stay sharp in close-ups.
 
-The floor plan follows the original game: four coworker truck rows on each side,
-followed by HERES UR SOVICE and PAYTMAN at the bottom. All eleven delivery trucks, including
-Ralph's arrival, use the same 148 × 84 footprint and shared artwork. The bulk pile
-is centered immediately beyond the conveyor, with a separate recovery tray below
-it. Either worker can deliver C freight from their side of this one pile; Ralph
-collects the same stock. The full-floor camera includes receiving, all five rows and the end
-of the belt. Personal props and event choreography follow their original bays.
+The floor plan retains four coworker truck rows on each side, followed by the
+A/B and D/E player rows. The twelve parked trucks and Ralph's arriving flatbed
+use the same 148 × 72 footprint and shared artwork. Recovery sits beyond the
+conveyor exit. Farther back, either worker delivers C from their side of one
+shared bulk pile, and Ralph collects that stock.
 
-The truck drop zones are now 78 × 88 and bulk receiving zones 80 × 96. Painted
-rectangles and acceptance use the same definitions: either truck accepts from
-the entire reachable front lane, and bulk extends farther down to y672. The
-longer central pallet sits at y610, with recovery at y690 and floor ending at
-y714. Camera follow and overview include the extra walking space.
+Bulk backs against the warehouse's final wall. Near that end, the left and
+right stair flights descend outward from the platform to the T/S ground drops.
+Every route and stair stays in front of the wall; nothing extends behind it.
+Painted rectangles and acceptance use the same shared layout definitions.
+Camera follow and overview include both side landings and all truck rows.
 
 A receiving annex extends the top of the warehouse to y-240. Walking up to
 y-20 reveals two articulated semis, unloading workers and a ragged, very smelly
@@ -145,15 +143,19 @@ the music scheduler skips missed beats after a stalled tab.
 
 The first six parcels teach A, B, and C at six-second intervals. Flow increases
 after 36 seconds. Brian announces a rush at 63 seconds: five heavy bulk parcels
-arrive at 1.9-second intervals, then four-second intake resumes; the final rush
-uses three-second intake after 126 seconds. Speed
+arrive at 1.9-second intervals, then 2.8-second intake resumes; the final rush
+uses 2.2-second intake after 126 seconds. Speed
 ramps smoothly and brakes stop the scheduled intake as well as belt travel.
-New freight stops at 180 seconds, with up to ten seconds of cleanup. Twenty-four
+New freight stops at 180 seconds, with up to ten seconds of cleanup. Forty-two
 dispatches meets the target. Five simultaneous missed parcels fill the recovery
 bay and end the shift. Original per-freight carrying penalties distinguish
 lobsters, the amp and ATV from lighter boxes. Recovery earns half base points;
 a parcel never adds the
-same miss twice. The input, pause, mute, and results paths support repeat play.
+same miss twice. After the 36-second lesson the inactive worker carries and
+sorts its own three routes without adding points or combo bonuses; shared C
+freight still needs the player. Two scanner faults ask the player to switch to
+the affected worker and press Space, keeping occasional switches meaningful.
+The input, pause, mute, and results paths support repeat play.
 
 ## Verification and review boundary
 

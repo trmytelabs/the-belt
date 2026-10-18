@@ -64,11 +64,12 @@ export class TouchControls {
   private readonly root: HTMLDivElement;
   private readonly knob: HTMLDivElement;
   private readonly brakeButton: HTMLButtonElement;
+  private readonly style = document.createElement('style');
   private stickPointer: number | null = null;
 
   constructor(host: HTMLElement, handlers: TouchHandlers) {
     this.enabled = window.matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
-    const style = document.createElement('style');
+    const style = this.style;
     style.textContent = CSS;
     document.head.append(style);
     if (this.enabled) host.classList.add('touch');
@@ -78,7 +79,7 @@ export class TouchControls {
       <div class="b3d-stick" aria-label="Move"><div class="b3d-knob"></div></div>
       <div class="b3d-actions">
         <button type="button" class="switch" data-touch="switch">SWITCH</button>
-        <button type="button" class="grab" data-touch="grab">GRAB /<br>DELIVER</button>
+        <button type="button" class="grab" data-touch="grab" aria-label="Grab or deliver">GRAB /<br>DELIVER</button>
         <button type="button" class="brake" data-touch="brake">BRAKE</button>
         <button type="button" class="throw" data-touch="throw">THROW</button>
       </div>
@@ -150,6 +151,7 @@ export class TouchControls {
     };
     stick.addEventListener('pointerup', end);
     stick.addEventListener('pointercancel', end);
+    stick.addEventListener('lostpointercapture', end);
   }
 
   /**
@@ -157,20 +159,30 @@ export class TouchControls {
    * lot chapters (where GRAB acts, BRAKE takes the cart and SWITCH, THROW and
    * VIEW are hidden). Releases the stick otherwise.
    */
-  public setLive(live: boolean, brakeLabel: string, brakeReady: boolean, chapter = false): void {
+  public setLive(live: boolean, brakeLabel: string, brakeReady: boolean, chapter = false, scannerReset = false): void {
     this.root.classList.toggle('live', live);
     this.root.classList.toggle('chapter', chapter);
     const grab = this.root.querySelector<HTMLButtonElement>('.grab')!;
-    const grabLabel = chapter ? 'ACT' : 'GRAB /<br>DELIVER';
-    if (grab.innerHTML !== grabLabel) grab.innerHTML = grabLabel;
-    if (!live && this.stickPointer === null) this.reset();
+    const grabLabel = chapter ? 'ACT' : scannerReset ? 'RESET<br>SCANNER' : 'GRAB /<br>DELIVER';
+    if (grab.innerHTML !== grabLabel) {
+      grab.innerHTML = grabLabel;
+      grab.setAttribute('aria-label', chapter ? 'Act' : scannerReset ? 'Reset scanner' : 'Grab or deliver');
+    }
+    if (!live) this.reset();
     if (this.brakeButton.textContent !== brakeLabel) this.brakeButton.textContent = brakeLabel;
     this.brakeButton.disabled = !brakeReady;
   }
 
   public reset(): void {
+    this.stickPointer = null;
     this.move.x = 0;
     this.move.y = 0;
     this.knob.style.transform = '';
+  }
+
+  public dispose(): void {
+    this.reset();
+    this.root.remove();
+    this.style.remove();
   }
 }

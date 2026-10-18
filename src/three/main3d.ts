@@ -6,6 +6,7 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 
 import { MESA } from '../game/slice/DepotReferences';
+import { clearDepotFootprint, DEPOT_BODY_RADIUS, DEPOT_CARRY_RADIUS, depotSolidFootprints, type FootprintCircle } from '../game/slice/DepotClearance';
 import { KeyReturnModel, MallModel, MALL_RULES, type MallEvent } from '../game/slice/MallModel';
 import {
   ROUTE_INFO, SHIFT_LAYOUT, ShiftModel, THROWING, floorPileSlot, type Parcel, type Route, type ShiftEvent, type WorkerId,
@@ -25,9 +26,10 @@ import { BEN_CAST, BEN_END, BEN_START, SetPieces } from './setpieces';
 import { StoryStage, directDepot } from './story';
 import { TouchControls } from './touch';
 import { Overlay } from './overlay';
-import { createParcelView, type ParcelView } from './parcels';
+import { alignParcelToSurface, createParcelView, setParcelCarried, type ParcelView } from './parcels';
+import { disposeObject3D } from './resources';
 import {
-  BELT_HEIGHT, PLATFORM_HEIGHT, ROUTE_COLORS, setFromModel, surfaceAt, textSprite, toWorld, toWorldX, toWorldZ,
+  BELT_HEIGHT, PLATFORM_HEIGHT, ROUTE_COLORS, actorSurfaceAt, setFromModel, surfaceAt, textSprite, toWorld, toWorldX, toWorldZ,
 } from './space';
 import { DepotWorld, SKANKY_SPEC, TERMITE_SPEC } from './world';
 
@@ -41,7 +43,7 @@ const PHASE_LABELS: Record<string, string> = {
 const EVENT_SOUNDS: Partial<Record<ShiftEvent['type'], SoundEffect>> = {
   grab: 'grab', drop: 'drop', sort: 'correct', wrong: 'wrong', miss: 'pile-up',
   recover: 'dig', brake: 'belt-stop', switch: 'switch', phase: 'event-alert', end: 'shift-end',
-  brian: 'event-alert', spill: 'drop', throw: 'throw', damage: 'smash',
+  brian: 'event-alert', spill: 'drop', throw: 'throw', damage: 'smash', scanner: 'event-alert',
 };
 const BEAT_SOUNDS: Record<NonNullable<StoryBeat['sound']>, SoundEffect> = {
   engine: 'engine', cough: 'cough', horn: 'horn', gate: 'gate', door: 'button', spill: 'splash', register: 'register', truck: 'truck', sign: 'sign',
@@ -131,6 +133,11 @@ export class Belt3d {
   private mallBonus = 0;
 
   private readonly host: HTMLElement;
+  private readonly inputAbort = new AbortController();
+  private readonly environment: THREE.WebGLRenderTarget;
+  private tickTimer: number | undefined;
+  private disposed = false;
+  private readonly depotSolids = depotSolidFootprints();
 
   constructor(host: HTMLElement) {
     this.host = host;
@@ -151,7 +158,11 @@ export class Belt3d {
 
     this.world = new DepotWorld(this.quality);
     const pmrem = new THREE.PMREMGenerator(this.renderer);
-    this.world.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    const room = new RoomEnvironment();
+    this.environment = pmrem.fromScene(room, 0.04);
+    this.world.scene.environment = this.environment.texture;
+    room.dispose();
+    pmrem.dispose();
     this.world.scene.environmentIntensity = 0.18;
     this.stage = new StoryStage(this.quality);
 
@@ -231,7 +242,7 @@ export class Belt3d {
 
     this.bindInput();
     this.resize();
-    window.addEventListener('resize', () => this.resize());
+    window.addEventListener('resize', () => this.resize(), { signal: this.inputAbort.signal });
     this.snapCamera();
     this.showBriefing();
     if (this.quality === 'high') {
@@ -243,9 +254,31 @@ export class Belt3d {
       // Software renderers deliver animation frames slowly. The shift runs on
       // its own fixed timer so game time, input and speech stay in real time;
       // animation frames only draw.
-      window.setInterval(() => this.tick(), 16);
+      this.tickTimer = window.setInterval(() => this.tick(), 16);
       this.renderer.setAnimationLoop(() => this.draw());
     }
+  }
+
+  /** Stop simulation and release GPU/input resources before a hot reload or unmount. */
+  public dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.inputAbort.abort();
+    window.clearInterval(this.tickTimer);
+    this.renderer.setAnimationLoop(null);
+    audioSystem.stopMusic();
+    this.keys.clear();
+    this.touch.dispose();
+    this.world.puffs.dispose();
+    this.stage.dispose();
+    disposeObject3D(this.dream.scene);
+    disposeObject3D(this.world.scene);
+    this.environment.dispose();
+    for (const pass of this.composer?.passes ?? []) pass.dispose();
+    this.composer?.dispose();
+    this.renderer.dispose();
+    this.renderer.forceContextLoss();
+    this.overlay.dispose();
   }
 
   /** Swaps the imported character model list. For checks and rehearsal. */
@@ -320,9 +353,9 @@ export class Belt3d {
         else if (event.code === 'KeyE') this.model.brake();
         else if (event.code === 'KeyF') this.model.throwHeld();
       }
-    });
-    window.addEventListener('keyup', (event) => this.keys.delete(event.code));
-    window.addEventListener('blur', () => { this.keys.clear(); if (this.canPause()) this.pause(); });
+    }, { signal: this.inputAbort.signal });
+    window.addEventListener('keyup', (event) => this.keys.delete(event.code), { signal: this.inputAbort.signal });
+    window.addEventListener('blur', () => { this.keys.clear(); this.touch.reset(); if (this.canPause()) this.pause(); }, { signal: this.inputAbort.signal });
     const canvas = this.renderer.domElement;
     canvas.addEventListener('contextmenu', (event) => event.preventDefault());
     canvas.addEventListener('pointerdown', (event) => {
@@ -348,8 +381,10 @@ export class Belt3d {
     this.overlay.showPanel(`
       <div class="kicker">TERMITE &amp; SKANKY  /  ONE MORE OVERNIGHT</div>
       <h1>ANOTHER NIGHT ON THE BELT.</h1>
-      <p><b>Get in, survive the scrum, dispatch 24 parcels, then Skanky still has a mall run.</b></p>
-      <p>TERMITE loads A and D at his trucks and T down the stairs. SKANKY loads B, E and S. C goes to BULK at the belt end.</p>
+      <p><b>Get in, survive the scrum, dispatch ${this.model.goal} parcels, then Skanky still has a mall run.</b></p>
+      <p>TERMITE loads A and D, then takes the left stairs down to T. SKANKY loads B and E, with S down the right stairs. Shared C bulk stands against the final back wall.</p>
+      <p>After the warm-up, your partner sorts their own routes perfectly. Their deliveries count toward dispatch, but earn no points or combo. Your deliveries earn the score.</p>
+      <p>Occasionally their scanner needs a reset. Switch to the worker named on screen, then ${this.touch.enabled ? 'tap RESET SCANNER' : 'press SPACE'} to get them sorting again. Carried freight stays safe.</p>
       ${this.touch.enabled ? `
       <p>The stick moves. SWITCH changes worker. GRAB / DELIVER picks up and delivers. THROW risks it to save the walk.</p>
       <p>BRAKE holds the belt. VIEW shows the whole warehouse. In story scenes, NEXT or SKIP.</p>` : `
@@ -538,8 +573,8 @@ export class Belt3d {
 
   /** A replay starts clean: no leftover scenes, parcels, timers, speech or input. */
   private restart(): void {
-    for (const view of this.parcels.values()) this.world.scene.remove(view.root);
-    for (const item of this.departing) this.world.scene.remove(item.view.root);
+    for (const view of this.parcels.values()) disposeObject3D(view.root);
+    for (const item of this.departing) disposeObject3D(item.view.root);
     this.parcels.clear();
     this.departing.length = 0;
     this.broken.clear();
@@ -689,6 +724,7 @@ export class Belt3d {
     this.world.update(running ? dt : 0, this.time, m.beltTravel, this.reducedMotion);
     const depotStory = this.state === 'story' && this.cutscene?.scene.location === 'depot';
     if (!depotStory) this.syncWorkers(running ? dt : 0);
+    if (this.state === 'playing' || this.state === 'countdown' || this.state === 'briefing') this.clearCrewFootprints();
     this.syncParcels(running ? dt : 0);
     this.updateThrowPreview();
     this.updateCamera(dt);
@@ -704,14 +740,20 @@ export class Belt3d {
   private updateHud(): void {
     const m = this.model;
     const held = m.heldPackage;
+    const scannerWorker = this.state === 'playing' ? m.pendingScannerWorker : null;
+    const scannerSelected = scannerWorker !== null && scannerWorker === m.activeWorker.id;
+    const scanner = scannerWorker ? `${scannerWorker.toUpperCase()} NEEDS A SCANNER RESET · ${scannerSelected
+      ? this.touch.enabled ? 'TAP RESET SCANNER' : 'SPACE TO RESET'
+      : this.touch.enabled ? 'SWITCH, THEN RESET SCANNER' : 'TAB TO SWITCH, THEN SPACE'}` : '';
     const target = this.state === 'playing' && held ? m.throwTarget() : null;
     const throwHint = target ? (target.ok ? ` · [F] ${target.reason}` : ` · ${target.reason}`) : '';
     this.overlay.updateHud({
       sorted: m.sorted, goal: m.goal, score: m.score, timeLeftMs: m.timeLeftMs, backlog: m.pileup, capacity: m.capacity,
       phase: this.state === 'interlude' ? 'BEN  /  DODGE TRAINING' : PHASE_LABELS[m.phase] ?? '', combo: m.combo, worker: m.activeWorker.id,
       hint: this.state === 'interlude' ? 'Belt held · your freight is safe' : this.state === 'mesa' ? 'Y steals the Mesa · N leaves it'
+        : scannerSelected ? `${this.touch.enabled ? 'RESET SCANNER' : 'SPACE resets scanner'} · carried freight stays in hand`
         : held ? `${held.label} → ${held.route} · ${ROUTE_INFO[held.route].name}${throwHint}` : this.hint,
-      overview: this.overview, routes: this.routeLegend(),
+      overview: this.overview, routes: this.routeLegend(), scanner,
       brake: m.brakeRemainingMs > 0 ? '■ BELT HELD' : m.brakeCooldownMs > 0 ? `[E] RECHARGE ${Math.ceil(m.brakeCooldownMs / 1000)}s` : '[E] BRAKE READY',
     });
     if (this.state === 'mall' && this.mall) {
@@ -728,7 +770,7 @@ export class Belt3d {
     this.touch.setLive(this.state === 'playing' || this.state === 'interlude' || chapter,
       chapter ? (this.state === 'mall' ? (this.mall?.cart.pushed ? 'PARK' : 'CART') : '—')
         : m.brakeRemainingMs > 0 ? 'HELD' : m.brakeCooldownMs > 0 ? `${Math.ceil(m.brakeCooldownMs / 1000)}s` : 'BRAKE',
-      chapter ? this.state === 'mall' : this.state === 'playing' && m.brakeCooldownMs <= 0, chapter);
+      chapter ? this.state === 'mall' : this.state === 'playing' && m.brakeCooldownMs <= 0, chapter, scannerSelected);
   }
 
   private activeCamera(): THREE.PerspectiveCamera {
@@ -779,7 +821,7 @@ export class Belt3d {
   }
 
   private handleEvent(event: ShiftEvent): void {
-    const sound = EVENT_SOUNDS[event.type];
+    const sound = event.assisted ? undefined : EVENT_SOUNDS[event.type];
     if (sound) audioSystem.play(sound);
     if (event.type === 'sort' && event.score) {
       this.overlay.pop(`+${event.score}`, ROUTE_COLORS[event.route ?? 'A'], toWorld(event, surfaceAt(event.x, event.y) + 1.8));
@@ -798,11 +840,11 @@ export class Belt3d {
       }
     }
     if (event.type === 'grab' || event.type === 'recover' || event.type === 'drop' || event.type === 'wrong' || event.type === 'miss' || event.type === 'brake' || event.type === 'throw') {
-      this.hint = event.message;
-    } else if (event.type === 'sort' || event.type === 'damage') {
+      if (!event.workerId || event.workerId === this.model.activeWorker.id) this.hint = event.message;
+    } else if ((event.type === 'sort' && !event.assisted) || event.type === 'damage') {
       this.hint = 'Approach the belt · match letter to dock';
     }
-    if (event.type === 'phase' || event.type === 'miss') this.overlay.showToast(event.message);
+    if (event.type === 'phase' || event.type === 'miss' || (event.type === 'scanner' && this.model.pendingScannerWorker === null)) this.overlay.showToast(event.message);
 
     this.crew.onEvent(event, this.model);
   }
@@ -873,7 +915,7 @@ export class Belt3d {
     this.activeRing.visible = this.state !== 'story';
     const idle = this.workers[m.activeIndex === 0 ? 'skanky' : 'termite'];
     this.sleepTag.position.set(idle.root.position.x + 0.3, idle.root.position.y + 2.5 + Math.sin(this.time * 2) * 0.08, idle.root.position.z);
-    this.sleepTag.visible = this.state !== 'story';
+    this.sleepTag.visible = this.state !== 'story' && !m.assistanceActive;
 
     // A marker above the parcel the active worker would grab.
     const nearest = m.heldPackage ? null : m.nearestPackage();
@@ -882,6 +924,25 @@ export class Belt3d {
     if (view) {
       this.marker.position.copy(view.root.position).add(new THREE.Vector3(0, view.height + 1.0 + Math.sin(this.time * 6) * 0.06, 0));
       this.marker.rotation.y += dt * 3;
+    }
+  }
+
+  /** Coworkers yield their standing space while the player keeps control. */
+  private clearCrewFootprints(): void {
+    const occupied: FootprintCircle[] = this.model.workers.map(worker => ({ x: worker.x, y: worker.y, radius: SHIFT_LAYOUT.workerRadius }));
+    for (const parcel of this.model.packages) if (parcel.state === 'floor') occupied.push({ x: parcel.x, y: parcel.y, radius: SHIFT_LAYOUT.parcelRadius });
+    for (const [id, actor] of this.crew.clearanceActors) {
+      // Authored seated/lying contact scenes use their own poses and staging.
+      if (!actor.root.visible || actor.pose === 'massage' || actor.pose === 'sit' || Math.abs(actor.character.body.rotation.z) > 0.8) continue;
+      const intended = { x: actor.root.position.x * 32 + 480, y: actor.root.position.z * 32 + 340 };
+      const radius = actor.carrying ? DEPOT_CARRY_RADIUS : DEPOT_BODY_RADIUS;
+      const clear = clearDepotFootprint(intended, radius, occupied, this.depotSolids);
+      const height = actorSurfaceAt(clear.x, clear.y);
+      const dy = height - actor.root.position.y;
+      this.crew.translateActorFreight(id, (clear.x - intended.x) / 32, (clear.y - intended.y) / 32, dy);
+      this.setPieces.translateActorFreight(id, (clear.x - intended.x) / 32, (clear.y - intended.y) / 32, dy);
+      setFromModel(actor.root.position, clear, height);
+      occupied.push({ ...clear, radius });
     }
   }
 
@@ -915,15 +976,20 @@ export class Belt3d {
   }
 
   private parcelPosition(parcel: Parcel, view: ParcelView, target: THREE.Vector3): THREE.Vector3 {
+    const carryOffset = setParcelCarried(view, parcel.state === 'held');
     if (parcel.state === 'held' && parcel.workerId) {
       const character = this.workers[parcel.workerId];
       const forward = new THREE.Vector3(Math.sin(character.root.rotation.y), 0, Math.cos(character.root.rotation.y));
-      return target.copy(character.root.position).addScaledVector(forward, 0.42).setY(character.root.position.y + 1.05 - view.height * 0.35);
+      return target.copy(character.root.position).addScaledVector(forward, carryOffset).setY(character.root.position.y + 1.05 - view.height * 0.35);
     }
     if (parcel.state === 'missed') {
       const missed = this.model.packages.filter((item) => item.state === 'missed');
       const index = missed.indexOf(parcel);
-      return setFromModel(target, { x: SHIFT_LAYOUT.recoveryPile.x - 64 + index * 32, y: SHIFT_LAYOUT.recoveryPile.y }, PLATFORM_HEIGHT + 0.14);
+      // Two columns stay inside the recovery tray and clear of both workers.
+      // Stack by actual model height so mixed parcel forms never intersect.
+      let height = PLATFORM_HEIGHT + 0.12;
+      for (let i = index % 2; i < index; i += 2) height += (this.parcels.get(missed[i].id)?.height ?? 1) + 0.04;
+      return setFromModel(target, { x: SHIFT_LAYOUT.recoveryPile.x + (index % 2 === 0 ? -24 : 24), y: SHIFT_LAYOUT.recoveryPile.y }, height);
     }
     if (parcel.state === 'thrown' && parcel.flight) {
       // An arc from the hands to the drop, dropping to floor level for a throw down the stairs.
@@ -968,7 +1034,18 @@ export class Belt3d {
         const view = this.parcels.get(parcel.id);
         if (view && this.stolen.has(parcel.id)) {
           this.parcels.delete(parcel.id);
-          this.world.scene.remove(view.root);
+          disposeObject3D(view.root);
+        } else if (view && (parcel.route === 'C' || parcel.route === 'T' || parcel.route === 'S')) {
+          // Replace hand-held freight with its stored slot immediately. Flying
+          // a full-size long carton into an already occupied stack crossed the
+          // neighboring boxes before the canonical stored box appeared.
+          this.parcels.delete(parcel.id);
+          disposeObject3D(view.root);
+          if (parcel.route === 'C') this.bulkVisible += 1;
+          else {
+            this.pileVisible[parcel.route] += 1;
+            this.world.setFloorPile(parcel.route, this.pileVisible[parcel.route]);
+          }
         } else if (view) {
           this.parcels.delete(parcel.id);
           this.departing.push({ view, from: view.root.position.clone(), to: this.deliveryTarget(parcel), t: 0, route: parcel.route });
@@ -982,7 +1059,7 @@ export class Belt3d {
         const view = this.parcels.get(parcel.id);
         if (!view) continue;
         if (age > DAMAGE_VISIBLE_S) {
-          this.world.scene.remove(view.root);
+          disposeObject3D(view.root);
           this.parcels.delete(parcel.id);
           continue;
         }
@@ -1000,6 +1077,7 @@ export class Belt3d {
           if (view.parts.spill) view.parts.spill.visible = true;
         }
         setFromModel(view.root.position, parcel, surfaceAt(parcel.x, parcel.y));
+        alignParcelToSurface(view, surfaceAt(parcel.x, parcel.y));
         continue;
       }
       seen.add(parcel.id);
@@ -1016,10 +1094,12 @@ export class Belt3d {
         }
       }
       this.parcelPosition(parcel, view, target);
-      const settle = parcel.state === 'belt' || parcel.state === 'thrown' ? 1 : Math.min(1, dt * 18);
-      view.root.position.lerp(target, settle);
+      // Rules own contact: smoothing a pickup/drop through the worker or deck
+      // briefly intersected solids, especially after a long frame.
+      view.root.position.copy(target);
       view.root.rotation.y = parcel.state === 'held' && parcel.workerId ? this.workers[parcel.workerId].root.rotation.y
         : parcel.state === 'thrown' && !this.reducedMotion ? this.time * 9 : 0;
+      if (parcel.state === 'belt' || parcel.state === 'floor' || parcel.state === 'missed') alignParcelToSurface(view, target.y);
       if (parcel.kind === 'makeup' && parcel.broken) {
         view.parts.crack.visible = true;
         view.parts.spill.visible = true;
@@ -1028,7 +1108,7 @@ export class Belt3d {
     }
     for (const [id, view] of this.parcels) {
       if (!seen.has(id)) {
-        this.world.scene.remove(view.root);
+        disposeObject3D(view.root);
         this.parcels.delete(id);
       }
     }
@@ -1042,7 +1122,7 @@ export class Belt3d {
       const stays = item.route === 'C' || item.route === 'T' || item.route === 'S';
       item.view.root.scale.setScalar(stays ? 1 : 1 - t * 0.4);
       if (t >= 1) {
-        this.world.scene.remove(item.view.root);
+        disposeObject3D(item.view.root);
         this.departing.splice(i, 1);
         if (item.route === 'C') this.bulkVisible += 1;
         else if (item.route === 'T' || item.route === 'S') {
@@ -1093,18 +1173,36 @@ export class Belt3d {
       position = this.depotShot.position.clone();
       if (portrait) position.add(new THREE.Vector3(0, 4, 3));
     } else if (this.overview || this.state === 'briefing' || this.state === 'celebrating') {
-      look = new THREE.Vector3(0, 0, toWorldZ(420));
-      position = look.clone().add(portrait ? new THREE.Vector3(0, 64, 30) : new THREE.Vector3(0, 44, 21));
+      look = new THREE.Vector3(0, 0, toWorldZ((SHIFT_LAYOUT.worldTop + SHIFT_LAYOUT.worldBottom) / 2));
+      // Leave room for the final wall, both outer floor signs and their zones,
+      // including the narrower horizontal field of view on portrait screens.
+      position = look.clone().add(new THREE.Vector3(0, Math.max(60, 48 / this.camera.aspect), 26));
     } else {
       const worker = this.workers[this.model.activeWorker.id].root.position;
-      // Keep the belt in frame by leaning the view toward the conveyor.
-      look = new THREE.Vector3(worker.x * 0.5, worker.y + 0.4, worker.z - 1.0);
-      position = look.clone().add(portrait ? new THREE.Vector3(0, 15, 9) : new THREE.Vector3(worker.x * 0.2, 10.5, 9.4));
+      // Lean toward the belt in the sorting lanes, then follow the actual
+      // worker through the side flights. Belt bias put ground workers offscreen
+      // once the camera stopped at the terminal wall.
+      const terminal = THREE.MathUtils.smoothstep(worker.z, toWorldZ(700), toWorldZ(790));
+      look = new THREE.Vector3(worker.x * (0.5 + 0.5 * terminal), worker.y + 0.4, worker.z - (1 - terminal));
+      position = look.clone().add(portrait ? new THREE.Vector3(0, 15, 9) : new THREE.Vector3(worker.x * 0.2 * (1 - terminal), 10.5, 9.4));
     }
+    // The final depot wall is solid. Reframe from its interior side when a
+    // worker reaches bulk or either side stair, including overview/portrait.
+    const cameraLimitZ = toWorldZ(SHIFT_LAYOUT.bulkRearWall.y - SHIFT_LAYOUT.bulkRearWall.height / 2) - this.camera.near - 0.15;
+    position.z = Math.min(position.z, cameraLimitZ);
     const ease = snap ? 1 : 1 - Math.exp(-dt * 4);
     this.camera.position.lerp(position, ease);
+    this.camera.position.z = Math.min(this.camera.position.z, cameraLimitZ);
     this.cameraTarget.lerp(look, ease);
     this.camera.lookAt(this.cameraTarget);
+    // Overview height must not turn the whole depot into the fog colour.
+    // Preserve the close-view haze while moving its distance with camera height.
+    const fog = this.world.scene.fog;
+    if (fog instanceof THREE.Fog) {
+      const altitude = Math.max(0, this.camera.position.y - 20);
+      fog.near = 26 + altitude;
+      fog.far = 62 + altitude;
+    }
   }
 
   private showResults(): void {
@@ -1148,6 +1246,7 @@ export function startBelt3d(): void {
     return;
   }
   const app = new Belt3d(host);
+  if (import.meta.hot) import.meta.hot.dispose(() => app.dispose());
   // Browser checks observe the app through this event; nothing global is set.
   window.dispatchEvent(new CustomEvent('belt3d:ready', { detail: app }));
 }
