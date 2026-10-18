@@ -100,7 +100,8 @@ SORT!** countdown starts the shift.
 - With one minute left, the trucks start their engines, illuminate headlights
   and emit exhaust. Loaders occasionally cough while continuing their work.
 - Lunch starts with a whistle and a short **15 MINUTE LUNCH BREAK!** alert,
-  then the existing break scene; the shift and held freight remain paused.
+  still inside the warehouse. Only after the alert does the game travel to
+  lunch; the shift and held freight remain paused.
 
 Touch devices have a movement stick and Switch, Grab / Deliver, and Brake
 buttons. Landscape gives a closer view; portrait reserves room below the game

@@ -34,8 +34,8 @@ import {
 } from './space';
 import { DepotWorld, SKANKY_SPEC, TERMITE_SPEC } from './world';
 
-type AppState = 'briefing' | 'story' | 'countdown' | 'playing' | 'interlude' | 'mesa' | 'dream' | 'paused' | 'celebrating' | 'mall' | 'lot' | 'ended';
-type Resumable = 'playing' | 'interlude' | 'story' | 'mall' | 'lot';
+type AppState = 'briefing' | 'story' | 'countdown' | 'playing' | 'break-alert' | 'interlude' | 'mesa' | 'dream' | 'paused' | 'celebrating' | 'mall' | 'lot' | 'ended';
+type Resumable = 'playing' | 'break-alert' | 'interlude' | 'story' | 'mall' | 'lot';
 
 const PHASE_LABELS: Record<string, string> = {
   lesson: '01  /  FIND YOUR RHYTHM', flow: '02  /  KEEP IT MOVING', rush: '03  /  LAST DISPATCH',
@@ -132,6 +132,7 @@ export class Belt3d {
   private readonly pileVisible: Record<'T' | 'S', number> = { T: 0, S: 0 };
   private fumeTimer = 0;
   private mallBonus = 0;
+  private breakAlertMs = 0;
 
   private readonly host: HTMLElement;
 
@@ -266,7 +267,7 @@ export class Belt3d {
   }
 
   private canPause(): boolean {
-    return this.state === 'playing' || this.state === 'interlude' || this.state === 'story' || this.state === 'mall' || this.state === 'lot';
+    return this.state === 'playing' || this.state === 'break-alert' || this.state === 'interlude' || this.state === 'story' || this.state === 'mall' || this.state === 'lot';
   }
 
   /** The primary action: grab/deliver on the belt, next line in a story, interact in the mall or lot. */
@@ -440,10 +441,13 @@ export class Belt3d {
     this.story.go('break');
     this.model.paused = true;
     audioSystem.stopMusic();
-    this.playScene({ ...this.story.breakScene, title: '15 MINUTE LUNCH BREAK!', beats: [
-      { direction: '15 MINUTE LUNCH BREAK!', cue: 'lunch-alert', ms: 3500 },
-      ...this.story.breakScene.beats,
-    ] });
+    this.state = 'break-alert';
+    this.breakAlertMs = 3500;
+    this.keys.clear(); this.touch.reset();
+    this.overlay.setMode('shift');
+    this.overlay.clearSpeech();
+    this.overlay.setLunchAlert(true);
+    audioSystem.lunchWhistle();
   }
 
   private endBreak(): void {
@@ -494,7 +498,7 @@ export class Belt3d {
 
   private resume(): void {
     this.state = this.pausedFrom;
-    this.overlay.setLunchAlert(this.state === 'story' && this.cutscene?.beat.cue === 'lunch-alert');
+    this.overlay.setLunchAlert(this.state === 'break-alert');
     // The shift stays frozen through a story; only active sorting runs its clock.
     this.model.paused = this.state !== 'playing';
     if (this.mall) this.mall.paused = false;
@@ -564,6 +568,8 @@ export class Belt3d {
     this.mall = null;
     this.lot = null;
     this.mallBonus = 0;
+    this.breakAlertMs = 0;
+    this.overlay.setLunchAlert(false);
     this.stage.reset();
     this.stage.resetMall();
     this.depotShot = null;
@@ -596,6 +602,10 @@ export class Belt3d {
     const m = this.model;
     let dispersed = false;
 
+    if (this.state === 'break-alert') {
+      this.breakAlertMs = Math.max(0, this.breakAlertMs - dt * 1000);
+      if (this.breakAlertMs === 0) this.playScene(this.story.breakScene);
+    }
     if (this.state === 'story' && this.cutscene) {
       const cutscene = this.cutscene;
       cutscene.update(dt * 1000);
@@ -772,8 +782,6 @@ export class Belt3d {
 
   /** A story beat starts: its sound, its subtitles, and a bubble over the speaker. */
   private enterBeat(beat: StoryBeat): void {
-    this.overlay.setLunchAlert(beat.cue === 'lunch-alert');
-    if (beat.cue === 'lunch-alert') audioSystem.lunchWhistle();
     if (beat.sound) audioSystem.play(BEAT_SOUNDS[beat.sound]);
     const speaker = beat.speaker ? SPEAKER_NAMES[beat.speaker] : undefined;
     this.overlay.subtitle({ speaker, line: beat.line, direction: beat.direction, caption: beat.caption });

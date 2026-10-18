@@ -25,9 +25,12 @@ try {
       const app=window.fixtureApp,m=app.model;m.activeIndex=side;
       const p=m.packages[0];Object.assign(p,{route:side?'S':'T',kind:'smallbox',size:'normal',state:'held',workerId:side?'skanky':'termite'});
       for(const worker of m.workers)worker.heldId=null;
-      Object.assign(m.activeWorker,{heldId:p.id,x:side?578:382,y:1102});
+      Object.assign(m.activeWorker,{heldId:p.id,x:side?630:330,y:1000});
     },side);
     const down=side?'KeyD':'KeyA',up=side?'KeyA':'KeyD';
+    await page.keyboard.down('KeyS');
+    await wait(()=>window.fixtureApp.model.activeWorker.y>=1142);
+    await page.keyboard.up('KeyS');
     await page.keyboard.down(down);
     await wait(side=>side?window.fixtureApp.model.activeWorker.x>735:window.fixtureApp.model.activeWorker.x<225,side);
     await page.keyboard.up(down);
@@ -66,14 +69,15 @@ try {
   await read(()=>{const app=window.fixtureApp;app.model.elapsedMs=80000;app.beginBreak();});
   await page.locator('.b3d-lunch-alert').waitFor({state:'visible'});
   assert.equal(await page.locator('.b3d-lunch-alert').innerText(),'15 MINUTE LUNCH BREAK!');
+  assert.deepEqual(await read(()=>({state:window.fixtureApp.state,stage:window.fixtureApp.stage.active,cutscene:window.fixtureApp.cutscene})),{state:'break-alert',stage:null,cutscene:null},'the warning stays in the warehouse');
   const frozen=await read(()=>({elapsed:window.fixtureApp.model.elapsedMs,travel:window.fixtureApp.model.beltTravel,held:window.fixtureApp.model.activeWorker.heldId}));
   await page.waitForTimeout(1100);assert.ok(await page.locator('.b3d-lunch-alert').isVisible());
   await page.keyboard.press('Escape');await wait(()=>window.fixtureApp.state==='paused');
   assert.equal(await page.locator('.b3d-lunch-alert').isVisible(),false);
-  await page.keyboard.press('Enter');await wait(()=>window.fixtureApp.state==='story');
+  await page.keyboard.press('Enter');await wait(()=>window.fixtureApp.state==='break-alert');
   await page.locator('.b3d-lunch-alert').waitFor({state:'hidden'});
   assert.deepEqual(await read(()=>({elapsed:window.fixtureApp.model.elapsedMs,travel:window.fixtureApp.model.beltTravel,held:window.fixtureApp.model.activeWorker.heldId})),frozen);
-  assert.ok(await read(()=>window.fixtureApp.cutscene.index>0),'the alert leads into the existing break scene');
+  assert.ok(await read(()=>window.fixtureApp.state==='story'&&window.fixtureApp.cutscene!==null),'the alert finishes before starting the existing lunch destination');
   console.log('PASS lunch has a multi-second 15 MINUTE LUNCH BREAK alert; pause/resume preserves the alert, shift clock and held freight');
 
   await read(async list=>{

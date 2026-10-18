@@ -250,7 +250,7 @@ try {
       };
     });
     assert.equal(cargo.loaded, 20); assert.equal(cargo.overflow, 2); assert.equal(cargo.front, 0);
-    assert.equal(cargo.shelves, 10); assert.equal(cargo.floorNumbers, 6); assert.equal(cargo.arc, false);
+    assert.equal(cargo.shelves, 10); assert.equal(cargo.floorNumbers, 8); assert.equal(cargo.arc, false);
     assert.equal(cargo.treads, 12); assert.ok(cargo.lights >= 0.9);
     await read(() => {
       const app = window.fixtureApp, m = app.model;

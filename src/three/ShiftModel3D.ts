@@ -131,8 +131,10 @@ export class ShiftModel3D extends ShiftModel {
   }
 
   protected override moveWorker(deltaMs: number, move: { x: number; y: number }, worker: Worker = this.activeWorker): void {
-    const x = Number.isFinite(move.x) ? clamp(move.x, -1, 1) : 0;
-    let y = Number.isFinite(move.y) ? clamp(move.y, -1, 1) : 0;
+    const requestedX = Number.isFinite(move.x) ? clamp(move.x, -1, 1) : 0;
+    let x = requestedX;
+    const requestedY = Number.isFinite(move.y) ? clamp(move.y, -1, 1) : 0;
+    let y = requestedY;
     const requestedSpeed = Math.min(1, Math.hypot(x, y));
     // A shallow funnel at each rear door guides a walking approach into the
     // shelf aisle. It uses normal movement speed, including with a heavy box.
@@ -144,7 +146,14 @@ export class ShiftModel3D extends ShiftModel {
     const { stairs } = this.layout;
     const flight = stairs[worker.side];
     const stairCenter = (stairs.minY + stairs.maxY) / 2;
-    const crossingStairs = x !== 0 && worker.x >= Math.min(flight.topX, flight.bottomX) - 80
+    const onDeck = worker.side === 'left' ? worker.x >= flight.topX : worker.x <= flight.topX;
+    const approachingStairs = onDeck && requestedY > 0 && worker.y >= stairs.minY - 85
+      && worker.y < stairs.minY + this.layout.carriedClearance;
+    if (approachingStairs) {
+      x = clamp(((worker.side === 'left' ? 382 : 578) - worker.x) / 18, -1, 1);
+      y = requestedY;
+    }
+    const crossingStairs = !approachingStairs && requestedX !== 0 && worker.x >= Math.min(flight.topX, flight.bottomX) - 80
       && worker.x <= Math.max(flight.topX, flight.bottomX) + 80
       && Math.abs(worker.y - stairCenter) <= 78;
     if (crossingStairs) y = clamp((stairCenter - worker.y) / 12, -1, 1);

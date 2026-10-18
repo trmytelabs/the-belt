@@ -745,9 +745,14 @@ export class DepotWorld {
       post.position.set(bulk.x + sx * 0.98, deck + 0.65, bulk.z + sz * 0.73);
       scene.add(post);
     }
-    const bulkSign = textPlane(['BULK'], 1.0, 0.3, { width: 120, height: 36, background: ROUTE_COLORS.C, color: '#1b1f22' });
-    bulkSign.position.set(bulk.x, deck + 1.45, bulk.z - 0.74);
-    scene.add(shadowed(pallet), bulkSign);
+    scene.add(shadowed(pallet));
+    for (const landing of [SHIFT_LAYOUT.bulkLeft, SHIFT_LAYOUT.bulkRight]) {
+      const bulkNumbers = textPlane(['BULK'], 1.2, 0.35, { width: 200, height: 60, color: '#f2e6c8' });
+      bulkNumbers.rotation.x = -Math.PI / 2;
+      bulkNumbers.position.copy(toWorld({ x: landing.x, y: landing.y - 54 }, deck + 0.012));
+      bulkNumbers.name = 'floor-bulk-marker'; bulkNumbers.userData.keep = true;
+      scene.add(bulkNumbers);
+    }
     this.bulkStack.position.set(bulk.x, deck + 0.16, bulk.z);
 
     // Recovery tray for missed freight, hazard-striped.

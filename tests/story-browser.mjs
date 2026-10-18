@@ -180,11 +180,13 @@ try {
       return { score: m.score, held: parcel.id };
     });
     const id = `${place}-${variant + 1}`;
+    await page.locator('.b3d-lunch-alert').waitFor({state:'visible'});
+    assert.equal(await read(()=>window.fixtureApp.stage.active),null,'the lunch warning appears in the warehouse before travelling');
+    assert.equal(await read(()=>window.fixtureApp.state),'break-alert');
     await wait((sceneId) => window.fixtureApp.cutscene?.scene.id === sceneId, id);
     assert.equal(await read(() => window.fixtureApp.story.chapter), 'break');
     const frozen = await read(() => ({ t: window.fixtureApp.model.elapsedMs, travel: window.fixtureApp.model.beltTravel, paused: window.fixtureApp.model.paused }));
     assert.equal(frozen.paused, true, 'the shift is paused for the break');
-    assert.equal(await read(() => window.fixtureApp.cutscene.scene.beats[0].direction), '15 MINUTE LUNCH BREAK!');
     if (index === 0 || index === 3) { await page.waitForTimeout(1200); await shot(`break-${id}`); }
     const lines = BREAK_SCENES[place][variant].beats.filter((beat) => beat.line).map((beat) => `${name(beat.speaker)}: ${beat.line}`);
     await stepScene(id);
