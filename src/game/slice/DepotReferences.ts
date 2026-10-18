@@ -25,7 +25,7 @@ export const CLOCK_OUT_LINES = [
 export const MESA = {
   spotted: 'VIC SPOTTED THE MESA', title: 'VIC WANTS THE MESA',
   offer: "STEAL IT?\nI'LL TOSS IT IN\nTHE SUV.",
-  body: "Vic says he'll throw it in the back of his SUV.\n1 IN 5 SHAN O MAC CATCHES YOU BOTH.\nIf he does, the run ends.",
+  body: "Vic says he'll throw it in the back of his SUV.\n1 IN 5 SHAN O MAC CATCHES YOU BOTH.\nIf caught, lose up to 500 points and get back to work.",
   leave: 'MESA STAYS ON THE BELT', thought: 'MESA\nAT HOME',
   caught: 'BUSTED BY SHAN O MAC',
   caughtDetail: 'Shan caught you and Vic trying to load the Mesa into the SUV.',

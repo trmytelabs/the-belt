@@ -42,6 +42,7 @@ try {
     scene.model.elapsedMs = 0;
     scene.model.spawnElapsedMs = 0;
     scene.model.beltTravel = 0;
+    scene.model.freightRandom = () => 0.3;
     scene.receiving.update();
     scene.syncWorld(0);
   });
@@ -110,8 +111,9 @@ try {
   assert.equal(before.previewId, before.preview.id);
   assert.equal(before.visible, true);
   assert.deepEqual(before.art, { x: before.preview.x, y: before.preview.y });
-  assert.equal(before.preview.kind, 'goji');
-  assert.deepEqual(before.hand, { x: before.preview.x - 17, y: before.preview.y });
+  assert.equal(before.preview.kind, 'smallbox');
+  assert.equal(before.preview.label, 'COFFEE BEANS');
+  assert.deepEqual(before.hand, { x: before.preview.x - 15, y: before.preview.y });
   assert.deepEqual(before.dockhand, { x: 430, y: before.preview.y + 12, pushing: before.preview.id });
   for (const [index, crate] of before.staging.entries()) {
     if (crate.visible) assert.ok(crate.y >= before.workers[index].y,
@@ -166,7 +168,7 @@ try {
       intakeVisible: scene.receiving.previewArt?.visible ?? false };
   }, identity.id);
   assert.equal(handedOff.count, 1);
-  for (const key of ['id', 'route', 'kind', 'label', 'size']) assert.equal(handedOff.parcel[key], identity[key], key);
+  for (const key of ['id', 'route', 'kind', 'label', 'size', 'street', 'address']) assert.equal(handedOff.parcel[key], identity[key], key);
   assert.deepEqual([handedOff.parcel.x, handedOff.parcel.y, handedOff.parcel.state], [480, 172, 'belt']);
   assert.ok(handedOff.parcel.y - finalTransfer.art.y <= 0.501,
     'the rendered parcel moves at most one transfer step across the intake/belt seam');

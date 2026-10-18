@@ -53,10 +53,10 @@ export function createDepotTruckArt(scene: Phaser.Scene, style: TruckStyle): Pha
     : style.name === 'PAULA ABDUL' ? 'PAULA ABDUL' : style.name;
   root.add(text(scene, direction * 13, style.loaded ? -16 : -1, lettering, style.name.length > 10 ? 10 : 11).setAlign('center'));
   if (style.route) {
-    // The route letter sits by the rear door, matching the floor zone and the parcels.
+    // Every truck posts a street range; parcels carry their own address.
     const badge = scene.add.graphics();
-    badge.fillStyle(style.accent ?? 0xa2946f).fillRoundedRect(direction * 52 - 10, -30, 20, 20, 3);
-    root.add([badge, text(scene, direction * 52, -20, style.route, 13, '#14232a')]);
+    badge.fillStyle(0xd9ccab).fillRoundedRect(-42, 12, 84, 16, 3);
+    root.add([badge, text(scene, 0, 20, style.route, 11, '#14232a')]);
   }
   return root;
 }

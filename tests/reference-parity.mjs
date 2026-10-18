@@ -72,7 +72,7 @@ for (const [exportName, path, originalName] of [
   });
 }
 
-test('Mesa copy comes verbatim from the original offer, choice and transition', () => {
+test('Mesa retains its reference dialogue and describes the points-only catch penalty', () => {
   const original = new Set([
     ...allStrings(source('systems/BeltEventSystem.ts')),
     ...allStrings(source('scenes/GameScene.ts')),
@@ -80,7 +80,10 @@ test('Mesa copy comes verbatim from the original offer, choice and transition', 
   assert.deepEqual(Object.keys(references.MESA).sort(),
     ['spotted', 'title', 'offer', 'body', 'leave', 'thought', 'caught', 'caughtDetail'].sort());
   for (const [key, copy] of Object.entries(references.MESA)) {
-    assert.ok(original.has(copy), `Mesa ${key} must retain exact original copy`);
+    if (key === 'body') {
+      assert.match(copy, /1 IN 5/);
+      assert.match(copy, /lose up to 500 points and get back to work/);
+    } else assert.ok(original.has(copy), `Mesa ${key} must retain exact original copy`);
   }
   // This deliberately checks advertised copy, not original risk behavior. The
   // old mesaCaught state was unreachable; its new implementation needs explicit

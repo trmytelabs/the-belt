@@ -114,7 +114,7 @@ try {
     const parcel = { ...m.packages[0], id: 1000 + m.packages.length, flight: null, pileIndex: undefined, thrownDelivery: false, broken: false, breakY: null }; m.packages.push(parcel);
     Object.assign(parcel, { state: 'held', workerId: 'termite', route: '${route}', kind: '${kind}', size: 'normal', recovered: false });
     if (m.activeIndex !== 0) m.switchWorker(); Object.assign(m.workers[0], { x: ${x}, y: ${y}, heldId: parcel.id }); return parcel.id; })()`);
-  await hold('D', 'smallbox', 380, 560);
+  await hold('D', 'smallbox', 380, 690);
   await read(`${S}.model.random = () => 0.99`);
   await page.waitForTimeout(100);
   assert.match(await read(`${S}.actionText.text`), /F THROWS \(15% RISK\)/, 'the console offers the throw and its risk');

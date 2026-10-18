@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { ROUTE_INFO, SHIFT_LAYOUT, floorPileSlot, type ParcelKind, type Route } from './ShiftModel';
+import { ROUTE_INFO, SHIFT_LAYOUT, floorPileSlot, streetRange, type ParcelKind, type Route } from './ShiftModel';
 import { createCrewTruckArt, createDepotTruckArt, createPaytmanTankArt } from './DepotProps';
 
 /** Editable, resolution-independent artwork for the night shift vertical slice. */
@@ -7,13 +7,8 @@ export type DepotRoute = Route;
 export type DepotSide = 'left' | 'right';
 
 export const DEPOT_ROUTE_COLORS: Record<DepotRoute, number> = {
-  A: 0x76cbd1,
-  B: 0xa6cc9a,
-  C: 0xedba6d,
-  D: 0x86a8f0,
-  E: 0xd6d877,
-  T: 0xc6a3ee,
-  S: 0xee9cb9,
+  A: 0xd9ccab, B: 0xd9ccab, C: 0xd9ccab, D: 0xd9ccab,
+  E: 0xd9ccab, T: 0xd9ccab, S: 0xd9ccab,
 };
 
 const INK = 0x10222a;
@@ -303,9 +298,9 @@ export class DepotArt {
   private drawTruck(route: 'A' | 'B' | 'D' | 'E') {
     const point = SHIFT_LAYOUT.playerTrucks[route];
     const side: DepotSide = point.x < 480 ? 'left' : 'right';
-    const colors = { A: [0x4f8495, 0x8dafae], B: [0x789369, 0xaac49d], D: [0x56689e, 0x8e9ccc], E: [0x9a9a4f, 0xc4c47a] }[route];
+    const colors = [0x827a67, 0xc2bba4];
     const truck = createDepotTruckArt(this.scene, {
-      name: ROUTE_INFO[route].name, route, side, body: colors[0], trim: colors[1], accent: DEPOT_ROUTE_COLORS[route],
+      name: ROUTE_INFO[route].name, route: streetRange(route), side, body: colors[0], trim: colors[1], accent: DEPOT_ROUTE_COLORS[route],
     }).setPosition(point.x, point.y).setDepth(3);
     this.departureObjects.push({ object: truck, x: point.x, direction: side === 'left' ? -1 : 1 });
   }
@@ -360,8 +355,8 @@ export class DepotArt {
       line(g, x - 8 * arrow, y + oy - 4, x - 15 * arrow, y + oy, color, 2, 0.65);
       line(g, x - 15 * arrow, y + oy, x - 8 * arrow, y + oy + 4, color, 2, 0.65);
     }
-    label(scene, x, y - 7, route, 26, `#${color.toString(16).padStart(6, '0')}`).setDepth(depth + 0.5);
-    label(scene, x, y + 17, bulk ? 'TO BULK' : route === 'T' || route === 'S' ? 'FLOOR DROP' : ROUTE_INFO[route].name.length > 10 ? 'LOAD' : ROUTE_INFO[route].name, 8, '#a9c0b4').setDepth(depth + 0.5);
+    label(scene, x, y - 7, streetRange(route), 12, '#d9ccab').setDepth(depth + 0.5);
+    label(scene, x, y + 17, bulk ? 'TO BULK' : ROUTE_INFO[route].name, 9, '#a9c0b4').setDepth(depth + 0.5);
     const highlight = scene.add.graphics().setDepth(depth).setAlpha(0);
     highlight.fillStyle(color, 0.16).fillRoundedRect(x - width / 2 + 1, y - height / 2 + 1, width - 2, height - 2, 5);
     highlight.lineStyle(2, color, 0.95).strokeRoundedRect(x - width / 2, y - height / 2, width, height, 5);
@@ -416,7 +411,7 @@ const parcelDecorations = new WeakMap<Phaser.GameObjects.Container, Phaser.GameO
 const parcelRecoveredBadges = new WeakMap<Phaser.GameObjects.Container, Phaser.GameObjects.Star>();
 
 /** Origin is the parcel contact center. No idle motion is baked into its art. */
-export function createParcelArt(scene: Phaser.Scene, route: DepotRoute, heavy = false, kind: ParcelKind = 'standard'): Phaser.GameObjects.Container {
+export function createParcelArt(scene: Phaser.Scene, _route: DepotRoute, heavy = false, kind: ParcelKind = 'standard', address?: string, parcelLabel?: string): Phaser.GameObjects.Container {
   const root = scene.add.container(0, 0);
   const g = scene.add.graphics();
   const dimensions: Partial<Record<ParcelKind, [number, number]>> = {
@@ -515,21 +510,21 @@ export function createParcelArt(scene: Phaser.Scene, route: DepotRoute, heavy = 
   const badge = scene.add.graphics();
   const badgeTop = t + (kind === 'envelope' ? 1 : 5);
   badge.fillStyle(0x6e5840, 0.4).fillRoundedRect(l + 5, badgeTop + 1, 17, 16, 1);
-  badge.fillStyle(DEPOT_ROUTE_COLORS[route]).fillRoundedRect(l + 4, badgeTop, 17, 16, 1);
+  badge.fillStyle(0xd9ccab).fillRoundedRect(l + 4, badgeTop, 17, 16, 1);
   for (let x = l + 25; x < r - 3; x += 2) line(g, x, b - 13, x, b - 8, 0x5a5844, 1, 0.8);
-  const letter = label(scene, l + 12.5, badgeTop + 8, route, 12, '#19383b');
+  const letter = label(scene, l + 12.5, badgeTop + 8, '▤', 12, '#19383b');
   if (kind === 'snakes') { badge.destroy(); letter.destroy(); }
   else root.add([badge, letter]);
-  if (kind !== 'standard') {
+  if (address || kind !== 'standard') {
     const stamp: Partial<Record<ParcelKind, string>> = {
       mallwood: 'MALLWOOD\nRD EAST', goji: 'GOJI\nBERRIES', lobsters: 'LIVE\nLOBSTERS', duck: 'LE DUCK',
       makeup: 'MAKEUP\nLOTION', mesa: 'MESA\nBOOGIE', panchetters: 'PANCHETTERS', atv: 'SMALL ATV',
     };
     if (kind === 'snakes') root.add(label(scene, 1, 0, 'THE SNAKES CELL', 6, '#eae2be'));
-    else if (stamp[kind]) {
+    else if (address || stamp[kind]) {
       // The full joke belongs on the freight itself. A tied paper tag keeps it
       // legible without covering the destination badge or the object's shape.
-      const copy = label(scene, 0, 0, stamp[kind]!, 9, '#24383b').setAlign('center');
+      const copy = label(scene, 0, 0, [address, stamp[kind] ?? parcelLabel].filter(Boolean).join('\n'), 9, '#24383b').setAlign('center');
       const tagWidth = copy.width + 9;
       const tagHeight = copy.height + 5;
       const tagY = t - tagHeight / 2 - 5;
@@ -670,15 +665,15 @@ export function createWorkerArt(scene: Phaser.Scene, side: DepotSide): DepotWork
       legs[0].y = 10 + stride * 3;
       legs[1].y = 10 - stride * 3;
       // Both forearms support the parcel's underside on the belt-facing side.
-      // This matches the model's +/-18, -17 carry offset instead of clasping air.
+      // The parcel clears the worker's silhouette on the belt-facing side.
       const carryAngle = side === 'left' ? -0.9 : 0.9;
       arms[0].rotation = holding ? carryAngle : stride * 0.17;
       arms[1].rotation = holding ? carryAngle : -stride * 0.17;
       arms[0].y = holding ? -8 : -11;
       arms[1].y = holding ? -8 : -11;
       ring.setVisible(active);
-      sleepy.setVisible(!active);
-      root.setAlpha(active ? 1 : 0.6);
+      sleepy.setVisible(false);
+      root.setAlpha(1);
       body.y = moving ? -Math.abs(stride) * 0.7 : 0;
       head.y = body.y;
       shadow.scaleX = moving ? 1 - Math.abs(stride) * 0.025 : 1;

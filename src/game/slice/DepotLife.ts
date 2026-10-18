@@ -18,7 +18,7 @@ const BEN_CAST = new Set(['ben', 'gunman', 'demon', 'paula']);
 
 /** The original warehouse's people and running jokes, staged outside the sort lanes. */
 /** Shan's breakage visit, in shift milliseconds: arrive, yell, leave. */
-const SHAN_VISIT = { walk: 1200, leave: 4800, total: 6000 } as const;
+const SHAN_VISIT = { walk: 650, leave: 4800, total: 6000 } as const;
 
 export class DepotLife {
   public readonly history: string[] = [];
@@ -455,7 +455,7 @@ export class DepotLife {
     this.shanUntil = Math.max(this.shanUntil, time + SHAN_VISIT.total);
   }
 
-  /** Walks Shan over, has him yell once he arrives, then walks him back. */
+  /** Shan runs over, yells once he arrives, then heads back. */
   private updateShanVisit(time: number): boolean {
     const visit = this.shanVisit;
     if (!visit || time >= visit.start + SHAN_VISIT.total) return false;

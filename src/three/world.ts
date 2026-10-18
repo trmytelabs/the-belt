@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 
-import { ROUTE_INFO, SHIFT_LAYOUT, floorPileSlot, type Route } from '../game/slice/ShiftModel';
+import { ROUTE_INFO, SHIFT_LAYOUT, floorPileSlot, streetRange, type Route } from '../game/slice/ShiftModel';
 import { BODY, bendElbows, bendKnees, createCharacter, mergeCharacter, type Character, type CharacterSpec } from './characters';
 import { mergeStatic } from './merge';
 import { PuffField } from './fx';
@@ -723,8 +723,8 @@ export class DepotWorld {
     // A floor drop keeps its painted name in the far band, which the pile leaves clear.
     const letter = new THREE.Mesh(new THREE.PlaneGeometry(w * 0.86, h * (band ? 0.3 : 0.86)), new THREE.MeshStandardMaterial({
       map: band
-        ? textTexture([`${route} · ${caption}`], { width: 256, height: 52, color: ROUTE_COLORS[route], font: '900 SIZEpx "Segoe UI", Arial, sans-serif' })
-        : textTexture([route, caption], { width: 128, height: 144, color: ROUTE_COLORS[route], font: '900 SIZEpx "Segoe UI", Arial, sans-serif' }),
+        ? textTexture([streetRange(route)], { width: 256, height: 52, color: ROUTE_COLORS[route], font: '900 SIZEpx "Segoe UI", Arial, sans-serif' })
+        : textTexture([streetRange(route), caption], { width: 320, height: 144, color: ROUTE_COLORS[route], font: '900 SIZEpx "Segoe UI", Arial, sans-serif' }),
       transparent: true, opacity: band ? 0.8 : 0.55, roughness: 0.9,
     }));
     letter.rotation.x = -Math.PI / 2;
@@ -789,8 +789,8 @@ export class DepotWorld {
       const center = toWorld(area);
       const post = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.4, 8), standard(0x3f4d53, 0.5, 0.4));
       post.position.set(center.x + (route === 'T' ? -1.75 : 1.75), 1.2, center.z + 1.0);
-      const sign = textPlane([`${route} · ${route === 'T' ? 'TERMITE' : 'SKANKY'}`, 'FLOOR DROP'], 1.7, 0.7, {
-        width: 220, height: 90, background: ROUTE_COLORS[route], color: '#14232a', radius: 8,
+      const sign = textPlane([ROUTE_INFO[route].name, streetRange(route), 'FLOOR DROP'], 2.1, 0.9, {
+        width: 300, height: 120, background: '#d9ccab', color: '#14232a', radius: 8,
       });
       sign.position.set(post.position.x, 2.3, post.position.z);
       sign.rotation.y = route === 'T' ? 0.3 : -0.3;
@@ -824,9 +824,9 @@ export class DepotWorld {
     ];
     for (const [name, x, y, side, color, cabColor] of crew) this.placeTruck(name, x, y, side, color, cabColor ?? 0xd4cbb4);
     // Termite's and Skanky's four trucks back flush against the platform edge.
-    for (const { route, body, cab } of PLAYER_TRUCKS) {
+    for (const { route } of PLAYER_TRUCKS) {
       const { x, y } = SHIFT_LAYOUT.playerTrucks[route];
-      this.placeTruck(ROUTE_INFO[route].name, x, y, x < 480 ? 'left' : 'right', body, cab, route);
+      this.placeTruck(ROUTE_INFO[route].name, x, y, x < 480 ? 'left' : 'right', 0x827a67, 0xc2bba4, route);
     }
   }
 
@@ -1189,16 +1189,16 @@ export function createTruck(name: string, color: number, cabColor: number, side:
       box.userData.keep = true;
       truck.add(box);
     }
-    const doorSign = textPlane([route], 0.5, 0.5, { width: 64, height: 64, background: ROUTE_COLORS[route], color: '#12232a', radius: 10 });
+    const doorSign = textPlane([ROUTE_INFO[route].name, streetRange(route)], 2.1, 0.65, { width: 320, height: 100, background: '#d9ccab', color: '#12232a', radius: 6 });
     doorSign.position.set(facing * (length / 2 + 0.04), floor + boxHeight + 0.3, 0);
     doorSign.rotation.y = facing * Math.PI / 2;
     truck.add(doorSign);
   }
   // Nameplates on the roof (overview) and the south side (follow camera).
   const words = name.split(' ');
-  const lines = name.length > 10 && words.length > 1 ? [words.slice(0, Math.ceil(words.length / 2)).join(' '), words.slice(Math.ceil(words.length / 2)).join(' ')] : [name];
+  const lines = route ? [name, streetRange(route)] : name.length > 10 && words.length > 1 ? [words.slice(0, Math.ceil(words.length / 2)).join(' '), words.slice(Math.ceil(words.length / 2)).join(' ')] : [name];
   const plateOptions = { width: 300, height: 120, background: '#14262d', color: '#d9ccab', border: route ? ROUTE_COLORS[route] : '#a8946a', radius: 10 };
-  const roof = textPlane(route ? [`${route} · ${lines.join(' ')}`] : lines, boxLength * 0.84, depth * 0.62, plateOptions);
+  const roof = textPlane(lines, boxLength * 0.84, depth * 0.62, plateOptions);
   roof.rotation.x = -Math.PI / 2;
   roof.position.set(boxX, floor + boxHeight + 0.011, 0);
   // An open-topped cutaway keeps the freight inside readable from above.

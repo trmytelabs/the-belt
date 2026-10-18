@@ -32,6 +32,9 @@ export interface ThrowFlight {
   durationMs: number;
   /** From the platform down to the lower floor: renderers drop the arc to floor level. */
   downward: boolean;
+  /** Risk fixed at launch, including the stair-top shortcut. */
+  breakChance: number;
+  route: Route;
 }
 
 export interface Parcel {
@@ -39,6 +42,9 @@ export interface Parcel {
   route: Route;
   kind: ParcelKind;
   label: string;
+  /** Synthetic depot addresses; the street determines the delivery range. */
+  address?: string;
+  street?: number;
   size: 'normal' | 'heavy';
   x: number;
   y: number;
@@ -60,7 +66,7 @@ export interface Parcel {
   thrownDelivery?: boolean;
 }
 
-type ParcelIdentity = Pick<Parcel, 'id' | 'route' | 'kind' | 'label' | 'size'>;
+type ParcelIdentity = Pick<Parcel, 'id' | 'route' | 'kind' | 'label' | 'size' | 'address' | 'street'>;
 type PendingIntake = ParcelIdentity & { brian: boolean };
 
 /** One reserved real parcel on its final receiving-to-belt transfer. */
@@ -145,20 +151,39 @@ export interface RouteInfo {
   /** Short destination text for parcel tags and hints. */
   caption: string;
   color: string;
+  streets: readonly [number, number] | null;
 }
 
-// D, E, T and S are new. Their names are provisional and can be renamed here.
+// Internal IDs remain stable; players see city district names and street ranges.
 export const ROUTE_INFO: Record<Route, RouteInfo> = {
-  A: { route: 'A', name: 'HERES UR SOVICE', owner: 'termite', side: 'left', kind: 'truck', caption: "TERMITE'S TRUCK 1", color: '#62c8d6' },
-  B: { route: 'B', name: 'PAYTMAN', owner: 'skanky', side: 'right', kind: 'truck', caption: "SKANKY'S TRUCK 1", color: '#8fd18a' },
-  C: { route: 'C', name: 'BULK', owner: 'shared', side: 'both', kind: 'bulk', caption: 'SHARED PILE AT THE BELT END', color: '#f0a64a' },
-  D: { route: 'D', name: 'DOWNTOWN', owner: 'termite', side: 'left', kind: 'truck', caption: "TERMITE'S TRUCK 2", color: '#7fa4f2' },
-  E: { route: 'E', name: 'EASTSIDE', owner: 'skanky', side: 'right', kind: 'truck', caption: "SKANKY'S TRUCK 2", color: '#d9dc6a' },
-  T: { route: 'T', name: 'TERMITE FLOOR DROP', owner: 'termite', side: 'left', kind: 'floor', caption: 'LOWER FLOOR · DOWN THE STAIRS', color: '#c9a2f2' },
-  S: { route: 'S', name: 'SKANKY FLOOR DROP', owner: 'skanky', side: 'right', kind: 'floor', caption: 'LOWER FLOOR · DOWN THE STAIRS', color: '#f29ab8' },
+  A: { route: 'A', name: 'MILL WOODS', owner: 'termite', side: 'left', kind: 'truck', caption: "TERMITE'S TRUCK 1", color: '#d9ccab', streets: [10, 49] },
+  B: { route: 'B', name: 'BONNIE DOON', owner: 'skanky', side: 'right', kind: 'truck', caption: "SKANKY'S TRUCK 1", color: '#d9ccab', streets: [50, 89] },
+  C: { route: 'C', name: 'BULK', owner: 'shared', side: 'both', kind: 'bulk', caption: 'SHARED PILE AT THE BELT END', color: '#d9ccab', streets: null },
+  D: { route: 'D', name: 'DOWNTOWN', owner: 'termite', side: 'left', kind: 'truck', caption: "TERMITE'S TRUCK 2", color: '#d9ccab', streets: [90, 109] },
+  E: { route: 'E', name: 'WEST END', owner: 'skanky', side: 'right', kind: 'truck', caption: "SKANKY'S TRUCK 2", color: '#d9ccab', streets: [130, 169] },
+  T: { route: 'T', name: 'WESTMOUNT', owner: 'termite', side: 'left', kind: 'floor', caption: 'LOWER FLOOR · DOWN THE STAIRS', color: '#d9ccab', streets: [110, 129] },
+  S: { route: 'S', name: 'NORTHSIDE', owner: 'skanky', side: 'right', kind: 'floor', caption: 'LOWER FLOOR · DOWN THE STAIRS', color: '#d9ccab', streets: [170, 199] },
 };
 export const ROUTES: readonly Route[] = ['A', 'D', 'T', 'B', 'E', 'S', 'C'];
 export const WORKER_ROUTES: Record<WorkerId, readonly Route[]> = { termite: ['A', 'D', 'T'], skanky: ['B', 'E', 'S'] };
+
+export function streetRange(route: Route): string {
+  const range = ROUTE_INFO[route].streets;
+  return range ? `${range[0]}–${range[1]} ST` : 'OVERSIZE';
+}
+
+export function routeForStreet(street: number): Route | null {
+  return ROUTES.find((route) => {
+    const range = ROUTE_INFO[route].streets;
+    return range && Number.isInteger(street) && street >= range[0] && street <= range[1];
+  }) ?? null;
+}
+
+export function parcelAddress(parcel: Pick<Parcel, 'id' | 'route' | 'address' | 'street'>): string {
+  if (parcel.address) return parcel.address;
+  const range = ROUTE_INFO[parcel.route].streets;
+  return range ? `${1000 + Math.abs(parcel.id * 137) % 9000} ${parcel.street ?? range[0] + Math.abs(parcel.id * 17) % (range[1] - range[0] + 1)} ST` : 'OVERSIZE · BULK';
+}
 
 /**
  * Base points per successful delivery. Truck and floor drops keep the original
@@ -180,21 +205,17 @@ export const THROWING = {
   /** Simple two-level fragility: these break more often when thrown. */
   fragileKinds: ['makeup', 'duck', 'mesa', 'lobsters'] as readonly ParcelKind[],
   breakChance: { ordinary: 0.15, fragile: 0.55 },
+  stairBreakChance: 0.3,
   /** Charged exactly once per broken parcel. */
   breakPenalty: 150,
   /** Breakages beyond this many count as errors in the shift grade. */
   gradeForgivenBreaks: 1,
 } as const;
 
-const ROUTE_NAMES: Record<Route, string> = {
-  A: 'A · HERES UR SOVICE · left dock',
-  B: 'B · PAYTMAN · right dock',
-  C: 'C · BULK · shared pile at the belt end',
-  D: "D · DOWNTOWN · Termite's second truck",
-  E: "E · EASTSIDE · Skanky's second truck",
-  T: 'T · TERMITE FLOOR DROP · down the stairs',
-  S: 'S · SKANKY FLOOR DROP · down the stairs',
-};
+/** Three times the regular freight, with room for every parcel on the belt. */
+export const FREIGHT_FLOW = { lessonMs: 2_000, flowMs: 4_000 / 3, rushMs: 1_000, brianMs: 1_000 } as const;
+export const MESA_CATCH_PENALTY = 500;
+
 // Names come from the original SpawnSystem and GameScene's Hussan phone gag.
 // The preview schedules them deliberately so the game's references cannot be
 // lost to rare-item rolls during a single warehouse shift.
@@ -255,6 +276,17 @@ const PARCEL_SEQUENCE: readonly { route: Route; kind: ParcelKind }[] = [
   { route: 'C', kind: 'mesa' },
 ];
 const BRIAN_BULK_SEQUENCE: readonly ParcelKind[] = ['atv', 'lobsters', 'mesa', 'panchetters', 'mallwood'];
+// Two ordinary deliveries between each authored reference parcel.
+const EVERYDAY_FREIGHT: readonly { kind: ParcelKind; label: string }[] = [
+  { kind: 'envelope', label: 'DOCUMENTS' }, { kind: 'envelope', label: 'PHOTO PRINTS' },
+  { kind: 'smallbox', label: 'BOOKS' }, { kind: 'smallbox', label: 'PHONE ACCESSORIES' },
+  { kind: 'smallbox', label: 'COFFEE BEANS' }, { kind: 'smallbox', label: 'SPARE PARTS' },
+  { kind: 'standard', label: 'SHOES' }, { kind: 'standard', label: 'CLOTHING' },
+  { kind: 'standard', label: 'OFFICE SUPPLIES' }, { kind: 'standard', label: 'KITCHENWARE' },
+  { kind: 'standard', label: 'TOYS' }, { kind: 'standard', label: 'BED LINENS' },
+  { kind: 'bigbox', label: 'SMALL APPLIANCE' }, { kind: 'bigbox', label: 'CAMPING GEAR' },
+  { kind: 'longbox', label: 'CURTAIN RODS' }, { kind: 'longbox', label: 'SPORTS EQUIPMENT' },
+];
 const INTAKE_TRANSFER_MS = 900;
 const INTAKE_START_Y = 127;
 /** Original Player carry weights, mapped to each freight's original form. */
@@ -302,6 +334,9 @@ export interface ThrowTarget {
 export interface ShiftOptions {
   /** Breakage rolls. Tests inject a deterministic source; play uses Math.random. */
   random?: () => number;
+  /** Independent from breakage, so freight reservations cannot consume a throw roll. */
+  freightRandom?: () => number;
+  autonomousCoworker?: boolean;
 }
 
 /** True from the foot of the stairs down: the same boundary walkBounds() uses. */
@@ -343,11 +378,13 @@ export class ShiftModel {
   public brianRemaining = 0;
   public ended = false;
   public won = false;
+  public autonomousCoworker: boolean;
 
   private events: ShiftEvent[] = [];
   private nextId = 1;
   private spawnElapsedMs = 0;
-  private nextSpawnIntervalMs = 6_000;
+  private nextSpawnIntervalMs: number = FREIGHT_FLOW.lessonMs;
+  private ordinaryFreightCount = 0;
   private pendingIntake: PendingIntake | null = null;
   private brianSent = false;
   private wrongSortErrors = 0;
@@ -355,9 +392,12 @@ export class ShiftModel {
   private readonly penalizedBreaks = new Set<number>();
   private readonly floorPiles: Record<'T' | 'S', number> = { T: 0, S: 0 };
   private readonly random: () => number;
+  private readonly freightRandom: () => number;
 
   constructor(options: ShiftOptions = {}) {
     this.random = options.random ?? Math.random;
+    this.freightRandom = options.freightRandom ?? Math.random;
+    this.autonomousCoworker = options.autonomousCoworker ?? true;
     this.spawnPackage();
   }
 
@@ -413,10 +453,10 @@ export class ShiftModel {
 
   public get intakePreview(): IntakePreview | null {
     if (!this.pendingIntake || this.ended || this.elapsedMs >= this.durationMs) return null;
-    const { id, route, kind, label, size } = this.pendingIntake;
+    const { id, route, kind, label, size, address, street } = this.pendingIntake;
     const progress = clamp((this.spawnElapsedMs - this.nextSpawnIntervalMs + INTAKE_TRANSFER_MS) / INTAKE_TRANSFER_MS, 0, 1);
     return {
-      id, route, kind, label, size, progress, x: SHIFT_LAYOUT.beltX,
+      id, route, kind, label, size, address, street, progress, x: SHIFT_LAYOUT.beltX,
       y: INTAKE_START_Y + (SHIFT_LAYOUT.beltTop + 26 - INTAKE_START_Y) * progress,
     };
   }
@@ -455,8 +495,7 @@ export class ShiftModel {
   }
 
   /** The selected worker can pick belt parcels, same-side floor parcels, or recover the pile. */
-  public nearestPackage(): Parcel | null {
-    const worker = this.activeWorker;
+  public nearestPackage(worker: Worker = this.activeWorker): Parcel | null {
     let nearest: Parcel | null = null;
     let nearestDistance = SHIFT_LAYOUT.grabRadius + 0.0001;
     for (const parcel of this.packages) {
@@ -473,23 +512,16 @@ export class ShiftModel {
     return nearest;
   }
 
-  public action(): void {
+  public action(worker: Worker = this.activeWorker): void {
     if (!this.canAct()) return;
-    const worker = this.activeWorker;
-    const held = this.heldPackage;
+    const held = this.packages.find((parcel) => parcel.id === worker.heldId);
     if (!held) {
-      const parcel = this.nearestPackage();
+      const parcel = this.nearestPackage(worker);
       if (!parcel) {
         this.emit('wrong', 'Move closer to a parcel, then press SPACE', worker);
         return;
       }
-      const recovered = parcel.state === 'missed';
-      if (recovered) parcel.recovered = true;
-      parcel.state = 'held';
-      parcel.workerId = worker.id;
-      worker.heldId = parcel.id;
-      this.syncHeld(worker, parcel);
-      this.emit(recovered ? 'recover' : 'grab', recovered ? 'Recovered · deliver to clear the backlog' : ROUTE_NAMES[parcel.route], worker, parcel);
+      this.pickup(worker, parcel);
       return;
     }
 
@@ -498,7 +530,7 @@ export class ShiftModel {
       if (dock !== held.route) {
         this.combo = 0;
         if (!held.recovered) this.wrongSortErrors += 1;
-        this.emit('wrong', `This parcel needs ${ROUTE_NAMES[held.route]}`, worker, held);
+        this.emit('wrong', `${parcelAddress(held)} is outside this drop's range · check the truck signs`, worker, held);
       } else {
         this.release(worker, held);
         this.deliver(held);
@@ -536,26 +568,28 @@ export class ShiftModel {
   }
 
   /**
-   * Where the active worker's held parcel would go if thrown: always its own
-   * correct destination, so the choice is carry-or-throw rather than aim.
+   * Throw at the nearest physical drop. The address still has to match;
+   * throwing cannot reveal the parcel's correct truck for the player.
    */
   public throwTarget(worker: Worker = this.activeWorker): ThrowTarget | null {
     const held = this.packages.find((parcel) => parcel.id === worker.heldId);
     if (!held) return null;
-    const route = held.route;
+    const atStairTop = Math.abs(worker.y - SHIFT_LAYOUT.stairs.top) <= 16;
+    const route = atStairTop ? worker.side === 'left' ? 'T' : 'S'
+      : [...WORKER_ROUTES[worker.id], 'C' as const].sort((a, b) =>
+        distance(worker, this.destinationCenter(a, worker.side)) - distance(worker, this.destinationCenter(b, worker.side)))[0];
     const info = ROUTE_INFO[route];
     const target = this.destinationCenter(route, worker.side);
     const separation = distance(worker, target);
     const fragile = THROWING.fragileKinds.includes(held.kind);
+    const stairThrow = info.kind === 'floor' && atStairTop;
     const result: ThrowTarget = {
       ok: false, route, x: target.x, y: target.y, distance: separation,
-      breakChance: fragile ? THROWING.breakChance.fragile : THROWING.breakChance.ordinary, reason: '',
+      breakChance: stairThrow ? THROWING.stairBreakChance : fragile ? THROWING.breakChance.fragile : THROWING.breakChance.ordinary, reason: '',
     };
-    if (info.side !== 'both' && info.side !== worker.side) {
-      result.reason = `ROUTE ${route} is ${info.owner === 'termite' ? "TERMITE'S" : "SKANKY'S"} · put it on the belt and TAB`;
-    } else if (held.size === 'heavy' && !THROWING.heavyThrowable) {
+    if (held.size === 'heavy' && !THROWING.heavyThrowable) {
       result.reason = 'TOO HEAVY TO THROW · carry it';
-    } else if (this.currentDock(worker) === route) {
+    } else if (this.currentDock(worker) !== null && !stairThrow) {
       result.reason = 'ALREADY AT THE DROP · press SPACE';
     } else if (onLowerFloor(worker) && info.kind !== 'floor') {
       result.reason = "CAN'T THROW UP ONTO THE PLATFORM · carry it";
@@ -563,7 +597,7 @@ export class ShiftModel {
       result.reason = `TOO FAR TO THROW · ${Math.ceil((separation - THROWING.rangePx) / 32)} m closer, or carry it`;
     } else {
       result.ok = true;
-      result.reason = `THROW TO ${route} · ${Math.round(result.breakChance * 100)}% BREAK RISK`;
+      result.reason = `${stairThrow ? 'THROW DOWN STAIRS' : `THROW TO ${info.name}`} · ${streetRange(route)} · ${Math.round(result.breakChance * 100)}% BREAK RISK`;
     }
     return result;
   }
@@ -586,9 +620,18 @@ export class ShiftModel {
     held.state = 'thrown';
     held.flight = {
       fromX: held.x, fromY: held.y, toX: target.x, toY: target.y, elapsedMs: 0, durationMs: THROWING.flightMs,
-      downward: platformLevelAt(worker.x, worker.y) > 0.5 && ROUTE_INFO[held.route].kind === 'floor',
+      downward: platformLevelAt(worker.x, worker.y) > 0.5 && ROUTE_INFO[target.route].kind === 'floor',
+      breakChance: target.breakChance, route: target.route,
     };
-    this.emit('throw', `THROWN · ${held.label} → ${held.route}`, worker, held);
+    this.emit('throw', `THROWN · ${parcelAddress(held)} → ${ROUTE_INFO[target.route].name}`, worker, held);
+  }
+
+  /** Getting caught costs points once per accepted Mesa choice; the night continues. */
+  public penalizeMesaTheft(): number {
+    const penalty = Math.min(this.score, MESA_CATCH_PENALTY);
+    this.score -= penalty;
+    this.combo = 0;
+    return penalty;
   }
 
   public drainEvents(): ShiftEvent[] {
@@ -644,6 +687,8 @@ export class ShiftModel {
       if (parcel.y >= SHIFT_LAYOUT.beltBottom) this.miss(parcel);
     }
 
+    this.updateCoworker(deltaMs);
+
     if (this.pileup >= this.capacity) {
       this.finish(false, 'Recovery bay full · rescue parcels before five stack up');
       return;
@@ -658,8 +703,8 @@ export class ShiftModel {
         this.spawnElapsedMs -= this.nextSpawnIntervalMs;
         // A phase change applies to the next interval, so it cannot produce
         // an unexpected short gap immediately after the previous parcel.
-        this.nextSpawnIntervalMs = this.brianRemaining > 0 ? 1_900
-          : this.phase === 'lesson' ? 6_000 : this.phase === 'flow' ? 4_000 : 3_000;
+        this.nextSpawnIntervalMs = this.brianRemaining > 0 ? FREIGHT_FLOW.brianMs
+          : this.phase === 'lesson' ? FREIGHT_FLOW.lessonMs : this.phase === 'flow' ? FREIGHT_FLOW.flowMs : FREIGHT_FLOW.rushMs;
       }
     } else {
       // A parcel still in receiving is not on the shift's belt or score sheet.
@@ -680,13 +725,16 @@ export class ShiftModel {
     parcel.y = flight.fromY + (flight.toY - flight.fromY) * t;
     if (t < 1) return;
     parcel.flight = null;
-    const fragile = THROWING.fragileKinds.includes(parcel.kind);
-    const chance = fragile ? THROWING.breakChance.fragile : THROWING.breakChance.ordinary;
-    if (this.random() < chance) this.damage(parcel);
-    else {
+    if (this.random() < flight.breakChance) this.damage(parcel);
+    else if (flight.route === parcel.route) {
       parcel.thrownDelivery = true;
       this.thrownDeliveries += 1;
       this.deliver(parcel);
+    } else {
+      parcel.state = 'floor';
+      this.combo = 0;
+      this.wrongSortErrors += 1;
+      this.emit('wrong', `${parcelAddress(parcel)} is outside this drop's range · pick it up and check the signs`, parcel, parcel);
     }
   }
 
@@ -704,14 +752,13 @@ export class ShiftModel {
     this.emit('damage', `BROKEN · ${parcel.label} · -${THROWING.breakPenalty}`, parcel, parcel, -penalty);
   }
 
-  private moveWorker(deltaMs: number, move: { x: number; y: number }): void {
-    const worker = this.activeWorker;
+  private moveWorker(deltaMs: number, move: { x: number; y: number }, worker: Worker = this.activeWorker): void {
     const x = Number.isFinite(move.x) ? clamp(move.x, -1, 1) : 0;
     const y = Number.isFinite(move.y) ? clamp(move.y, -1, 1) : 0;
     const magnitude = Math.hypot(x, y);
     worker.moving = magnitude > 0;
     if (!worker.moving) return;
-    const held = this.heldPackage;
+    const held = this.packages.find((parcel) => parcel.id === worker.heldId);
     const speed = 235 * (held ? CARRY_MULTIPLIER[held.kind] : 1);
     const normalized = Math.max(1, magnitude);
     const previousX = worker.x;
@@ -740,8 +787,60 @@ export class ShiftModel {
   }
 
   private syncHeld(worker: Worker, parcel: Parcel): void {
-    parcel.x = worker.x + (worker.side === 'left' ? 18 : -18);
+    parcel.x = worker.x + (worker.side === 'left' ? 42 : -42);
     parcel.y = worker.y - 17;
+  }
+
+  private pickup(worker: Worker, parcel: Parcel): void {
+    const recovered = parcel.state === 'missed';
+    if (recovered) parcel.recovered = true;
+    parcel.state = 'held';
+    parcel.workerId = worker.id;
+    worker.heldId = parcel.id;
+    this.syncHeld(worker, parcel);
+    this.emit(recovered ? 'recover' : 'grab', `${recovered ? 'Recovered · ' : ''}${parcelAddress(parcel)} · read the truck ranges`, worker, parcel);
+  }
+
+  /** The worker you are not controlling sorts their own side and shared bulk. */
+  private updateCoworker(deltaMs: number): void {
+    const worker = this.workers[this.activeIndex === 0 ? 1 : 0];
+    worker.moving = false;
+    if (!this.autonomousCoworker) return;
+    const held = this.packages.find((parcel) => parcel.id === worker.heldId);
+    let target: { x: number; y: number };
+    if (held) {
+      const ownSide = ROUTE_INFO[held.route].side === 'both' || ROUTE_INFO[held.route].side === worker.side;
+      target = ownSide ? this.destinationCenter(held.route, worker.side)
+        : { x: worker.side === 'left' ? 400 : 560, y: 440 };
+      if ((ownSide && this.currentDock(worker) === held.route) || (!ownSide && distance(worker, target) < 4)) {
+        this.action(worker);
+        return;
+      }
+    } else {
+      const parcel = this.packages.filter((item) => {
+        if (!['belt', 'floor', 'missed'].includes(item.state)) return false;
+        if (ROUTE_INFO[item.route].side !== 'both' && ROUTE_INFO[item.route].side !== worker.side) return false;
+        return item.state !== 'floor' || (worker.side === 'left' ? item.x < 440 : item.x > 520);
+      }).sort((a, b) => Number(b.state === 'missed') - Number(a.state === 'missed') || b.y - a.y)[0];
+      if (!parcel) return;
+      if ((!onLowerFloor(worker) || parcel.state === 'floor') && distance(worker, parcel) <= SHIFT_LAYOUT.grabRadius) {
+        this.pickup(worker, parcel);
+        return;
+      }
+      target = { x: worker.side === 'left' ? 400 : 560, y: parcel.y };
+      if (parcel.state === 'floor' && onLowerFloor(parcel)) target.x = parcel.x;
+    }
+    // From the widened lower floor, line up with the stairs before climbing.
+    const lane = worker.side === 'left' ? SHIFT_LAYOUT.leftLane : SHIFT_LAYOUT.rightLane;
+    if (onLowerFloor(worker) && target.y < SHIFT_LAYOUT.stairs.bottom && (worker.x < lane.minX || worker.x > lane.maxX)) {
+      target = { x: clamp(worker.x, lane.minX + 8, lane.maxX - 8), y: SHIFT_LAYOUT.stairs.bottom + 12 };
+    }
+    const dx = target.x - worker.x;
+    const dy = target.y - worker.y;
+    const length = Math.hypot(dx, dy);
+    const step = Math.max(length, 235 * deltaMs / 1000);
+    this.moveWorker(deltaMs, { x: dx / step, y: dy / step }, worker);
+    if (held) this.syncHeld(worker, held);
   }
 
   private release(worker: Worker, parcel: Parcel): void {
@@ -805,11 +904,19 @@ export class ShiftModel {
   private nextParcelIdentity(plannedArrival: number): PendingIntake {
     const brianSending = this.brianRemaining > 0 || (!this.brianSent && plannedArrival >= 63_000);
     const brianIndex = this.brianRemaining > 0 ? BRIAN_BULK_SEQUENCE.length - this.brianRemaining : 0;
+    const slot = this.ordinaryFreightCount;
+    const everyday = !brianSending && slot % 3 !== 0;
+    const regular = everyday ? EVERYDAY_FREIGHT[Math.min(EVERYDAY_FREIGHT.length - 1, Math.floor(this.freightRandom() * EVERYDAY_FREIGHT.length))] : null;
+    const regularRoutes: readonly Route[] = regular && CARRY_MULTIPLIER[regular.kind] <= 0.7 ? ['A', 'B', 'C', 'D', 'E'] : ['A', 'B', 'D', 'E', 'T', 'S'];
     const { route, kind } = brianSending
       ? { route: 'C' as const, kind: BRIAN_BULK_SEQUENCE[brianIndex] }
-      : PARCEL_SEQUENCE[(this.nextId - 1) % PARCEL_SEQUENCE.length];
+      : regular ? { route: regularRoutes[Math.min(regularRoutes.length - 1, Math.floor(this.freightRandom() * regularRoutes.length))], kind: regular.kind }
+        : PARCEL_SEQUENCE[Math.floor(slot / 3) % PARCEL_SEQUENCE.length];
+    const range = ROUTE_INFO[route].streets;
+    const street = range ? range[0] + this.nextId * 17 % (range[1] - range[0] + 1) : undefined;
     return {
-      id: this.nextId, route, kind, label: PARCEL_LABELS[kind],
+      id: this.nextId, route, kind, label: regular?.label ?? PARCEL_LABELS[kind], street,
+      address: parcelAddress({ id: this.nextId, route, street }),
       size: CARRY_MULTIPLIER[kind] <= 0.7 ? 'heavy' : 'normal', brian: brianSending,
     };
   }
@@ -820,16 +927,17 @@ export class ShiftModel {
     // Once the unloaders show a parcel, its identity must survive a brake or
     // blocked intake. An ordinary reservation delayed past Brian's cue lands
     // first; all five Brian parcels follow without consuming one of his slots.
-    const { id, route, kind, label, size, brian } = this.pendingIntake ?? this.nextParcelIdentity(this.elapsedMs);
+    const { id, route, kind, label, size, address, street, brian } = this.pendingIntake ?? this.nextParcelIdentity(this.elapsedMs);
     this.nextId += 1;
     this.packages.push({
-      id, route, kind, label, size,
+      id, route, kind, label, size, address, street,
       x: SHIFT_LAYOUT.beltX, y: spawnY, state: 'belt', workerId: null,
       beltOffset: spawnY - this.beltTravel, recovered: false, missCounted: false,
       broken: false, breakY: kind === 'makeup' ? 220 + id * 73 % 301 : null,
     });
     this.pendingIntake = null;
     if (brian) this.brianRemaining -= 1;
+    else this.ordinaryFreightCount += 1;
     return true;
   }
 
@@ -845,7 +953,7 @@ export class ShiftModel {
     const phase: ShiftPhase = this.elapsedMs < 36_000 ? 'lesson' : this.elapsedMs < 126_000 ? 'flow' : this.elapsedMs < this.durationMs ? 'rush' : 'cleanup';
     if (phase === this.phase) return;
     this.phase = phase;
-    const message = phase === 'flow' ? 'STEADY FLOW · freight every 4 seconds' : phase === 'rush' ? 'LAST PUSH · freight every 3 seconds' : phase === 'cleanup' ? 'INTAKE CLOSED · 10 seconds to clear your freight' : 'Find your rhythm';
+    const message = phase === 'flow' ? 'STEADY FLOW · triple freight · coworker sorting' : phase === 'rush' ? 'LAST PUSH · freight every second' : phase === 'cleanup' ? 'INTAKE CLOSED · 10 seconds to clear your freight' : 'Find your rhythm';
     this.emit('phase', message, { x: 480, y: 122 });
   }
 

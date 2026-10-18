@@ -60,7 +60,7 @@ try {
   if (process.env.BELT_SCREENSHOT_DIR) await page.screenshot({ path: join(process.env.BELT_SCREENSHOT_DIR, 'after-3d-briefing.png') });
 
   // These checks cover the preserved shift; the mid-shift break has its own suite.
-  await read(() => window.fixtureApp.forceStory({ breakAtMs: 1e12 }));
+  await read(() => (window.fixtureApp.model.autonomousCoworker = false, window.fixtureApp.forceStory({ breakAtMs: 1e12 })));
   // The night opens outside UPS, then the scrum; ENTER skips each scene.
   await page.keyboard.press('Enter');
   await page.waitForFunction(() => window.fixtureApp.state === 'story' && window.fixtureApp.story.chapter === 'arrival');
@@ -71,6 +71,17 @@ try {
   assert.equal(await read(() => window.fixtureApp.model.elapsedMs), 0, 'the shift clock waits for 3, 2, 1, SORT!');
   await page.waitForFunction(() => window.fixtureApp.state === 'playing', null, { timeout: 90_000 });
   assert.deepEqual(await read(() => window.fixtureCountdown), ['3', '2', '1', 'SORT!'], 'the original countdown is shown in order');
+
+  await page.evaluate(() => {
+    // Keep the extra everyday freight out of the long reference-event fixtures.
+    // The gameplay-adjustments suite exercises the full default workload.
+    window.fixtureEverydayCleanup ??= setInterval(() => {
+      const model = window.fixtureApp?.model ?? window.fixtureGame?.scene.getScene('DepotScene')?.model;
+      if (!model) return;
+      const named = new Set(['MALLWOOD RD EAST','GOJI BERRIES','LIVE LOBSTERS','LE DUCK','MAKEUP LOTION','MESA BOOGIE','PANCHETTERS','SMALL ATV','ENVELOPE','SMALL BOX','PARCEL','BIG BOX','LONG BOX','THE SNAKES CELL']);
+      for (const parcel of model.packages) if (parcel.state === 'belt' && !named.has(parcel.label)) parcel.state = 'delivered';
+    }, 10);
+  });
 
   // Termite steps to the belt edge inside dock A with the real D key, grabs the
   // first parcel as it arrives and delivers it with a real Space press.
@@ -396,6 +407,7 @@ try {
 
   // Mesa steal (touch/click), safe roll: Skanky's thought, the bedroom dream, same shift resumes.
   const begin = async () => {
+    await read(() => { window.fixtureApp.model.autonomousCoworker = false; });
     await page.keyboard.press('Enter');
     await page.waitForFunction(() => window.fixtureApp.state === 'story');
     await page.keyboard.press('Enter');
@@ -429,20 +441,20 @@ try {
   assert.equal(await read(() => window.fixtureApp.model.sorted), sortedBefore, 'stolen freight is not a dispatch');
   assert.equal(await read(() => window.fixtureApp.mesa.rolls), 1);
 
-  // Mesa steal (keyboard Y), caught roll: BUSTED BY SHAN O MAC ends the run.
+  // Mesa caught by Shan: deduct points, resume this same shift.
   await read(() => window.fixtureApp.restart());
   assert.equal(await read(() => window.fixtureApp.crew.actors.get('ben').character.nameTag.visible), true, "a restart restores Ben's name tag");
   await begin();
   await clearFreight();
   await placeMesa(0.1);
+  await read(() => { window.fixtureApp.model.score = 1000; });
   await page.locator('button[data-action="steal"]').waitFor({ timeout: 60_000 });
   await page.keyboard.press('KeyY');
   await page.locator('.b3d-panel h1', { hasText: 'BUSTED BY SHAN O MAC' }).waitFor();
-  await page.waitForFunction(() => window.fixtureApp.state === 'ended', null, { timeout: 60_000 });
-  const caught = await page.locator('.b3d-panel').innerText();
-  assert.match(caught, /SHIFT TERMINATED/);
-  assert.match(caught, /Shan caught you and Vic trying to load the Mesa into the SUV\./);
-  assert.match(caught, /GAME OVER/);
+  assert.match(await page.locator('.b3d-panel').innerText(), /500 POINTS · SHIFT CONTINUES/);
+  await page.waitForFunction(() => window.fixtureApp.state === 'playing', null, { timeout: 60_000 });
+  assert.equal(await read(() => window.fixtureApp.model.score), 500);
+  assert.equal(await read(() => window.fixtureApp.model.ended), false);
   assert.deepEqual(errors, []);
   console.log('PASS 3D Mesa: keyboard leave, click steal into the bedroom dream and same-shift return, keyboard steal caught by Shan; no script errors');
 
@@ -471,7 +483,7 @@ console: ${touchConsole.slice(-10).join(' | ')}`); });
   assert.equal(await touchPage.locator('.b3d-fallback').count(), 0, `touch page fell back to 2D; console: ${touchConsole.slice(-10).join(' | ')}`);
   assert.match(await touchPage.locator('.b3d-panel').innerText(), /The stick moves\. SWITCH changes worker\./, 'touch players get touch instructions');
   assert.equal(await touchPage.locator('.b3d-touch').isVisible(), false, 'controls wait for the shift to start');
-  await readTouch(() => window.fixtureApp.forceStory({ breakAtMs: 1e12 }));
+  await readTouch(() => (window.fixtureApp.model.autonomousCoworker = false, window.fixtureApp.forceStory({ breakAtMs: 1e12 })));
   await touchPage.getByRole('button', { name: /START THE NIGHT/ }).tap();
   // Story scenes are skipped with the on-screen SKIP SCENE button.
   await waitTouch(() => window.fixtureApp.state === 'story');

@@ -4,7 +4,7 @@ The Belt is a browser game built with Three.js, Phaser, TypeScript and Vite.
 Players switch between workers, pick up packages and sort them to the appropriate
 dock. The game includes keyboard, mouse and touch controls.
 
-This private repository contains the current development snapshot (`0.0.0`). It
+This private repository contains the current development snapshot (`0.1.0`). It
 has a working production build and a browser smoke suite, with no published
 release. Review playability in the browser when changing game behavior.
 
@@ -40,14 +40,19 @@ SORT!** countdown starts the shift.
 
 - WASD / arrows move; Tab or right-click switches workers.
 - Space or left-click grabs, delivers inside a dock, or puts a parcel down.
-- F (or THROW) throws a held parcel to its destination. Throws can break
-  parcels: a breakage earns nothing and costs points once, and Shan yells.
+- F (or THROW) throws toward the nearest drop. At the top of the stairs it
+  throws to the lower-floor drop with a 30% break chance. A break earns nothing,
+  costs up to 150 points once, and Shan runs over yelling.
 - The belt and both workers stand on a raised loading platform; trucks back
   against its edge, and stairs at the belt's end lead to the lower floor.
-- Termite sorts A (HERES UR SOVICE), D (DOWNTOWN) and his lower-floor drop T;
-  Skanky sorts B (PAYTMAN), E (EASTSIDE) and his lower-floor drop S. Heavy C
-  freight still goes to the shared bulk pile at the belt's end. Letters, names
-  and colors identify every route.
+- Read parcel street addresses and compare them with the ranges on the truck
+  signs. Termite covers Mill Woods (10–49 ST), Downtown (90–109 ST) and the
+  Westmount floor drop (110–129 ST). Skanky covers Bonnie Doon (50–89 ST),
+  West End (130–169 ST) and the Northside floor drop (170–199 ST). Oversize
+  freight goes to shared bulk. These are synthetic game districts.
+- The other worker automatically collects and delivers their side. Regular
+  freight arrives three times as often, with randomized everyday packages
+  mixed between the original named joke parcels. See [address sorting](docs/address-sorting.md).
 - Deliver anywhere inside the larger painted drop zones. The bulk zone extends
   farther down, with the recovery tray and more walking room below it.
 - E brakes the belt for two seconds, with an eight-second cooldown.
@@ -85,6 +90,7 @@ Mesa retains its existing paused choice and dream.
 
 Vic's Mesa offer supports Y/N and touch. Leaving keeps the parcel; stealing
 has a fresh 20% catch chance per attempt, so consecutive catches are possible.
+Getting caught costs up to 500 points and resumes the shift.
 A successful theft shows the upgraded bedroom dream: Trmyte plays Lumines on
 the PS3 while long-haired Skanky plays guitar through the Mesa amp. The original
 posters and computer remain in the room. The dream resumes this shift.

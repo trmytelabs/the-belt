@@ -38,7 +38,7 @@ try {
   const spoken = (line) => wait((copy) => window.fixtureApp.overlay.history.includes(copy), line);
   const name = (speaker) => ({ shan: "SHAN O'MAC", fruitloop: 'FRUIT LOOP', cashier: 'CASHIER' }[speaker] ?? speaker.toUpperCase());
   const freshRun = async (choices) => {
-    await read((c) => { if (window.fixtureApp.state !== 'briefing') window.fixtureApp.restart(); window.fixtureApp.forceStory(c); }, choices);
+    await read((c) => { if (window.fixtureApp.state !== 'briefing') window.fixtureApp.restart(); window.fixtureApp.model.autonomousCoworker = false; window.fixtureApp.forceStory(c); }, choices);
     await wait(() => window.fixtureApp.state === 'briefing');
   };
   const clearFreight = () => read(() => {
@@ -219,10 +219,10 @@ try {
   await clearFreight();
   await read(() => { window.fixtureApp.model.workers[0].heldId = null; for (const p of window.fixtureApp.model.packages) if (p.state === 'held') p.state = 'delivered'; });
   // A clean throw into Termite's second truck.
-  const cleanId = await holdFor('D', 'smallbox', { x: 380, y: 560 });
+  const cleanId = await holdFor('D', 'smallbox', { x: 380, y: 690 });
   await read(() => { window.fixtureApp.model.random = () => 0.99; });
   await page.waitForTimeout(150);
-  assert.match(await page.locator('.b3d-hint').innerText(), /\[F\] THROW TO D · 15% BREAK RISK/);
+  assert.match(await page.locator('.b3d-hint').innerText(), /\[F\] THROW TO DOWNTOWN · 90–109 ST · 15% BREAK RISK/);
   assert.equal(await read(() => window.fixtureApp.throwArc.visible), true, 'the throw preview shows where it lands');
   const scoreBefore = await read(() => window.fixtureApp.model.score);
   await page.keyboard.press('KeyF');

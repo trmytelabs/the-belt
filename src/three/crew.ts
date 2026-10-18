@@ -710,7 +710,7 @@ export class CrewLife {
   }
 
   /**
-   * A thrown parcel broke: Shan walks over to the worker and yells while the
+   * A thrown parcel broke: Shan runs over to the worker and yells while the
    * belt keeps moving. A second break during the visit only adds a new line.
    */
   public shanBreakage(worker: { x: number; y: number; side: 'left' | 'right' }, time: number): void {
@@ -737,17 +737,17 @@ export class CrewLife {
     const shan = this.actor('shan');
     const e = t - visit.start;
     shan.root.visible = true;
-    const p = e < 1200 ? e / 1200 : e < 4800 ? 1 : 1 - (e - 4800) / 1200;
+    const p = e < 650 ? e / 650 : e < 4800 ? 1 : 1 - (e - 4800) / 1200;
     shan.place(mix(visit.from.x, visit.to.x, p), mix(visit.from.y, visit.to.y, p));
-    shan.faceAngle = e >= 1200 && e < 4800 ? Math.atan2(0, 1) : null;
-    const yelling = e >= 1200 && e < 4800;
+    shan.faceAngle = e >= 650 && e < 4800 ? Math.atan2(0, 1) : null;
+    const yelling = e >= 650 && e < 4800;
     if (yelling && !visit.spoken) {
       visit.spoken = true;
       this.say('shan', visit.line, 3400);
       shan.poseStart = wallTime;
     }
     shan.pose = yelling ? 'shout' : 'none';
-    shan.character.skinMaterial.color.setHex(0xe8b98f).lerp(new THREE.Color(0xd8453a), yelling ? Math.min(1, (e - 1200) / 1500) : 0);
+    shan.character.skinMaterial.color.setHex(0xe8b98f).lerp(new THREE.Color(0xd8453a), yelling ? Math.min(1, (e - 650) / 1500) : 0);
     return true;
   }
 

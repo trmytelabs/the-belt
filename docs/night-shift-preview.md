@@ -4,7 +4,7 @@ This is one playable section for direction review, not a replacement of the
 full game or a release. Termite, Skanky, the warehouse crew, special parcels and
 adaptations of the original comic incidents are part of this preview itself.
 The original scene and its randomized event timing also remain accessible
-from the briefing and at `?mode=classic`. The repository remains a private 0.0.0
+from the briefing and at `?mode=classic`. The repository remains a private 0.1.0
 snapshot.
 
 ## Why this direction
@@ -26,9 +26,9 @@ inconsistent shadows, and unrelated shape styles obscured the play lane.
 
 The new scene uses a restrained midnight freight palette, a consistent shallow
 overhead view, illustrated steel and timber, kraft parcels, and warm task lights.
-Route letters accompany cyan, sage, and amber accents. Art and functional
-affordances share the same language: lit approach bays, contact shadows,
-selection brackets, and a short dotted delivery guide.
+Parcel street addresses are compared with inclusive ranges on neutral truck
+and floor signs. The correct destination is not highlighted. Lit approach bays,
+contact shadows and selection brackets keep physical interactions readable.
 
 ## The warehouse's personality
 
@@ -52,7 +52,7 @@ during a surviving shift. These have different editable artwork, including
 moving lobster claws, lotion that breaks and spills during transport, and
 Mallwood's curry-colored stink. Generic envelopes, small boxes, parcels, big
 boxes and long boxes also have distinct shapes. The nearby-parcel hint
-shows their full names while the route letter remains readable on each object.
+shows their full names alongside the street address on each object.
 Brian's "SENDING 5 DOWN" is an actual five-parcel bulk burst, not just dialogue.
 
 `DepotLife.ts` and `DepotRoutines.ts` stage everyday scenes against simulation time. The
@@ -78,7 +78,7 @@ shows MESA AT HOME and a redrawn bedroom with BULK RULES, PAYTMAN SUCKS,
 NO REPEATS and BUILT THE BELT. Trmyte plays Lumines on a TV connected to a visible
 PS3, with animated controller thumbs, falling blocks and a sweeping timeline.
 Long-haired Skanky strums an electric guitar connected to the Mesa amp beside him.
-The dream returns to this shift instead of restarting it. The original source
+The dream returns to this shift instead of restarting it. Getting caught deducts up to 500 points and resumes the same shift. The original source
 advertised a one-in-five Shan capture risk
 but never called its capture path; the preview completes that unfinished risk.
 This is a deliberate behavior change, not a claim of restoring working logic.
@@ -143,10 +143,12 @@ per-cue buffer creation and does not consume gameplay randomness. Filtering,
 envelopes, event throttles and compression keep overlapping cues controlled;
 the music scheduler skips missed beats after a stalled tab.
 
-The first six parcels teach A, B, and C at six-second intervals. Flow increases
-after 36 seconds. Brian announces a rush at 63 seconds: five heavy bulk parcels
-arrive at 1.9-second intervals, then four-second intake resumes; the final rush
-uses three-second intake after 126 seconds. Speed
+Regular freight now arrives at triple the original frequency: two-second intake,
+then 1⅓-second flow after 36 seconds and one-second rush intake after 126 seconds.
+Two randomized everyday parcels separate each authored reference parcel. Brian
+announces five bulk parcels at 63 seconds, using one-second intervals. The
+automatic coworker handles the uncontrolled side. Address ranges replace the
+visible routing letters and matching colours; see [address sorting](address-sorting.md). Speed
 ramps smoothly and brakes stop the scheduled intake as well as belt travel.
 New freight stops at 180 seconds, with up to ten seconds of cleanup. Twenty-four
 dispatches meets the target. Five simultaneous missed parcels fill the recovery

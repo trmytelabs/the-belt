@@ -8,7 +8,7 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import { MESA } from '../game/slice/DepotReferences';
 import { KeyReturnModel, MallModel, MALL_RULES, type MallEvent } from '../game/slice/MallModel';
 import {
-  ROUTE_INFO, SHIFT_LAYOUT, ShiftModel, THROWING, floorPileSlot, type Parcel, type Route, type ShiftEvent, type WorkerId,
+  ROUTE_INFO, SHIFT_LAYOUT, ShiftModel, THROWING, floorPileSlot, parcelAddress, type Parcel, type Route, type ShiftEvent, type WorkerId,
 } from '../game/slice/ShiftModel';
 import { Cutscene, StoryRun, type StoryChoices } from '../game/slice/StoryModel';
 import {
@@ -106,6 +106,7 @@ export class Belt3d {
   /** Broken parcels stay in view where they landed for a while. */
   private readonly broken = new Map<number, number>();
   private readonly throwers = new Map<number, WorkerId>();
+  private readonly throwStarts = new Map<number, THREE.Vector3>();
   private readonly seenRoutes = new Set<Route>();
   private readonly activeRing: THREE.Mesh;
   private readonly sleepTag: THREE.Sprite;
@@ -115,7 +116,7 @@ export class Belt3d {
   private readonly keys = new Set<string>();
   private readonly reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   private overview = false;
-  private hint = 'Approach the belt · match letter to dock';
+  private hint = 'Approach the belt · read the street address';
   private chapterHint = '';
   private countdownMs = 0;
   private time = 0;
@@ -176,7 +177,7 @@ export class Belt3d {
       say: (id, copy, ms) => this.say(id, copy, ms),
       thought: () => this.overlay.say('skanky-thought', 'SKANKY', MESA.thought, 850, this.speakerAnchor('skanky'), true),
       dream: () => this.beginDream(),
-      caught: () => this.showMesaCaught(),
+      caught: (penalty) => this.showMesaCaught(penalty),
       resume: () => {
         this.state = 'playing';
         this.model.paused = false;
@@ -211,7 +212,7 @@ export class Belt3d {
     this.activeRing = new THREE.Mesh(new THREE.RingGeometry(0.42, 0.5, 40), new THREE.MeshBasicMaterial({ color: 0xf3e6c6, transparent: true, opacity: 0.85 }));
     this.activeRing.rotation.x = -Math.PI / 2;
     this.world.scene.add(this.activeRing);
-    this.sleepTag = textSprite(['zZz'], 0.3, { width: 60, height: 30, color: '#d8e2d0' });
+    this.sleepTag = textSprite(['SORTING'], 0.22, { width: 110, height: 30, color: '#d8e2d0' });
     this.world.scene.add(this.sleepTag);
     this.marker = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.3, 4), new THREE.MeshStandardMaterial({ color: 0xf3e6c6, emissive: 0xf3e6c6, emissiveIntensity: 0.8 }));
     this.marker.rotation.x = Math.PI;
@@ -331,8 +332,7 @@ export class Belt3d {
   }
 
   private routeLegend(): string {
-    const chip = (route: Route): string => `<i style="background:${ROUTE_INFO[route].color}">${route}</i>`;
-    return `TERMITE ${chip('A')}${chip('D')}${chip('T')} · SKANKY ${chip('B')}${chip('E')}${chip('S')} · BOTH ${chip('C')}`;
+    return 'READ THE ADDRESS · MATCH THE STREET TO A TRUCK RANGE · TAB SWITCHES · COWORKER SORTS';
   }
 
   private showBriefing(): void {
@@ -341,12 +341,13 @@ export class Belt3d {
       <div class="kicker">TERMITE &amp; SKANKY  /  ONE MORE OVERNIGHT</div>
       <h1>ANOTHER NIGHT ON THE BELT.</h1>
       <p><b>Get in, survive the scrum, dispatch 24 parcels, then Skanky still has a mall run.</b></p>
-      <p>TERMITE loads A and D at his trucks and T down the stairs. SKANKY loads B, E and S. C goes to BULK at the belt end.</p>
+      <p>Read each parcel's street address and compare it with the ranges posted on the trucks. Termite covers Mill Woods, Downtown and Westmount; Skanky covers Bonnie Doon, West End and Northside. Oversize freight goes to BULK.</p>
+      <p>Triple freight. Your other worker automatically collects and delivers their side.</p>
       ${this.touch.enabled ? `
       <p>The stick moves. SWITCH changes worker. GRAB / DELIVER picks up and delivers. THROW risks it to save the walk.</p>
       <p>BRAKE holds the belt. VIEW shows the whole warehouse. In story scenes, NEXT or SKIP.</p>` : `
       <p>WASD / arrows move. TAB or right-click switches. SPACE or click grabs and delivers.</p>
-      <p>F throws a held parcel to its drop: faster, but it can break. E brakes. V overview.</p>
+      <p>F throws toward the nearest drop. At the top of the stairs, throw down with a 30% break risk. E brakes. V overview.</p>
       <p>Story scenes: SPACE next line, ENTER skips the scene, ESC pauses.</p>`}
       <button type="button">START THE NIGHT  ↵</button>
       <a href="${window.location.pathname}?mode=2d">PLAY THE 2D DEPOT</a>
@@ -514,18 +515,9 @@ export class Belt3d {
     audioSystem.startMusic('results');
   }
 
-  private showMesaCaught(): void {
-    this.state = 'ended';
-    this.model.paused = true;
-    this.story.go('results');
+  private showMesaCaught(penalty: number): void {
     audioSystem.play('wrong');
-    this.overlay.showPanel(`
-      <div class="kicker">SHIFT TERMINATED</div>
-      <h1 class="caught">${MESA.caught}</h1>
-      <p>${MESA.caughtDetail}</p>
-      <p><b>GAME OVER</b></p>
-      <p>Vic offered a one-in-five risk. This time Shan caught you both.</p>
-      <button type="button">ANOTHER SHIFT  ↵</button>`, () => this.restart());
+    this.overlay.showToast(`${MESA.caught} · −${penalty} points · back to work`, 3500);
   }
 
   /** A replay starts clean: no leftover scenes, parcels, timers, speech or input. */
@@ -536,6 +528,7 @@ export class Belt3d {
     this.departing.length = 0;
     this.broken.clear();
     this.throwers.clear();
+    this.throwStarts.clear();
     this.seenRoutes.clear();
     this.bulkVisible = 0;
     this.pileVisible.T = this.pileVisible.S = 0;
@@ -564,7 +557,7 @@ export class Belt3d {
     this.overlay.clearSpeech();
     this.keys.clear();
     this.touch.reset();
-    this.hint = 'Approach the belt · match letter to dock';
+    this.hint = 'Approach the belt · read the street address';
     this.state = 'briefing';
     this.snapCamera();
     this.showBriefing();
@@ -702,7 +695,7 @@ export class Belt3d {
       sorted: m.sorted, goal: m.goal, score: m.score, timeLeftMs: m.timeLeftMs, backlog: m.pileup, capacity: m.capacity,
       phase: this.state === 'interlude' ? 'BEN  /  DODGE TRAINING' : PHASE_LABELS[m.phase] ?? '', combo: m.combo, worker: m.activeWorker.id,
       hint: this.state === 'interlude' ? 'Belt held · your freight is safe' : this.state === 'mesa' ? 'Y steals the Mesa · N leaves it'
-        : held ? `${held.label} → ${held.route} · ${ROUTE_INFO[held.route].name}${throwHint}` : this.hint,
+        : held ? `${parcelAddress(held)} · ${held.label}${throwHint}` : this.hint,
       overview: this.overview, routes: this.routeLegend(),
       brake: m.brakeRemainingMs > 0 ? '■ BELT HELD' : m.brakeCooldownMs > 0 ? `[E] RECHARGE ${Math.ceil(m.brakeCooldownMs / 1000)}s` : '[E] BRAKE READY',
     });
@@ -775,7 +768,11 @@ export class Belt3d {
     if (event.type === 'sort' && event.score) {
       this.overlay.pop(`+${event.score}`, ROUTE_COLORS[event.route ?? 'A'], toWorld(event, surfaceAt(event.x, event.y) + 1.8));
     }
-    if (event.type === 'throw' && event.packageId !== undefined && event.workerId) this.throwers.set(event.packageId, event.workerId);
+    if (event.type === 'throw' && event.packageId !== undefined && event.workerId) {
+      this.throwers.set(event.packageId, event.workerId);
+      const view = this.parcels.get(event.packageId);
+      if (view) this.throwStarts.set(event.packageId, view.root.position.clone());
+    }
     if (event.type === 'damage') {
       const parcel = this.model.packages.find((item) => item.id === event.packageId);
       const lost = Math.abs(event.score ?? 0);
@@ -788,10 +785,11 @@ export class Belt3d {
         this.world.puffs.emit(at, { color: parcel?.kind === 'makeup' ? 0xda8db6 : 0xb8875a, size: 0.12, life: 0.9, velocity: new THREE.Vector3((Math.random() - 0.5) * 2, 1.2, (Math.random() - 0.5) * 2), opacity: 0.8, grow: 1.4, spread: 0.3 });
       }
     }
-    if (event.type === 'grab' || event.type === 'recover' || event.type === 'drop' || event.type === 'wrong' || event.type === 'miss' || event.type === 'brake' || event.type === 'throw') {
+    if ((!event.workerId || event.workerId === this.model.activeWorker.id) &&
+      (event.type === 'grab' || event.type === 'recover' || event.type === 'drop' || event.type === 'wrong' || event.type === 'miss' || event.type === 'brake' || event.type === 'throw')) {
       this.hint = event.message;
     } else if (event.type === 'sort' || event.type === 'damage') {
-      this.hint = 'Approach the belt · match letter to dock';
+      this.hint = 'Approach the belt · read the street address';
     }
     if (event.type === 'phase' || event.type === 'miss') this.overlay.showToast(event.message);
 
@@ -864,7 +862,7 @@ export class Belt3d {
     this.activeRing.visible = this.state !== 'story';
     const idle = this.workers[m.activeIndex === 0 ? 'skanky' : 'termite'];
     this.sleepTag.position.set(idle.root.position.x + 0.3, idle.root.position.y + 2.5 + Math.sin(this.time * 2) * 0.08, idle.root.position.z);
-    this.sleepTag.visible = this.state !== 'story';
+    this.sleepTag.visible = this.state === 'playing' && m.autonomousCoworker;
 
     // A marker above the parcel the active worker would grab.
     const nearest = m.heldPackage ? null : m.nearestPackage();
@@ -887,8 +885,8 @@ export class Belt3d {
     const color = new THREE.Color(ROUTE_COLORS[target.route]);
     (this.throwArc.material as THREE.LineDashedMaterial).color.copy(color);
     (this.throwRing.material as THREE.MeshBasicMaterial).color.copy(color);
-    const worker = this.workers[m.activeWorker.id].root.position;
-    const from = worker.clone().add(new THREE.Vector3(0, 1.2, 0));
+    const view = m.heldPackage ? this.parcels.get(m.heldPackage.id) : null;
+    const from = view?.root.position.clone() ?? this.workers[m.activeWorker.id].root.position.clone().add(new THREE.Vector3(0, 1.2, 0));
     const to = toWorld(target, surfaceAt(target.x, target.y) + 0.05);
     const positions = this.throwArc.geometry.attributes.position as THREE.BufferAttribute;
     for (let i = 0; i < positions.count; i += 1) {
@@ -909,7 +907,8 @@ export class Belt3d {
     if (parcel.state === 'held' && parcel.workerId) {
       const character = this.workers[parcel.workerId];
       const forward = new THREE.Vector3(Math.sin(character.root.rotation.y), 0, Math.cos(character.root.rotation.y));
-      return target.copy(character.root.position).addScaledVector(forward, 0.42).setY(character.root.position.y + 1.05 - view.height * 0.35);
+      return target.copy(character.root.position).addScaledVector(forward, 0.32 * character.root.scale.z + view.carryDepth)
+        .setY(character.root.position.y + 1.05 - view.height * 0.35);
     }
     if (parcel.state === 'missed') {
       const missed = this.model.packages.filter((item) => item.state === 'missed');
@@ -920,9 +919,11 @@ export class Belt3d {
       // An arc from the hands to the drop, dropping to floor level for a throw down the stairs.
       const flight = parcel.flight;
       const t = flight.elapsedMs / flight.durationMs;
-      const start = surfaceAt(flight.fromX, flight.fromY) + 1.0;
-      const end = surfaceAt(flight.toX, flight.toY) + 0.05;
-      return setFromModel(target, parcel, start + (end - start) * t + Math.sin(t * Math.PI) * 1.4);
+      const start = this.throwStarts.get(parcel.id) ?? toWorld({ x: flight.fromX, y: flight.fromY }, surfaceAt(flight.fromX, flight.fromY) + 1.0);
+      const end = toWorld({ x: flight.toX, y: flight.toY }, surfaceAt(flight.toX, flight.toY) + 0.05);
+      target.copy(start).lerp(end, t);
+      target.y += Math.sin(t * Math.PI) * 1.4;
+      return target;
     }
     return setFromModel(target, parcel, parcel.state === 'belt' ? BELT_HEIGHT + 0.01 : surfaceAt(parcel.x, parcel.y));
   }
@@ -1002,12 +1003,11 @@ export class Belt3d {
         audioSystem.play('package-spawn');
         if (NEW_ROUTES.includes(parcel.route) && !this.seenRoutes.has(parcel.route)) {
           this.seenRoutes.add(parcel.route);
-          const info = ROUTE_INFO[parcel.route];
-          this.overlay.showToast(`NEW: ${parcel.route} · ${info.name} · ${info.caption}`, 3600);
+          this.overlay.showToast('Read the street address · truck and floor signs show their ranges', 3600);
         }
       }
       this.parcelPosition(parcel, view, target);
-      const settle = parcel.state === 'belt' || parcel.state === 'thrown' ? 1 : Math.min(1, dt * 18);
+      const settle = parcel.state === 'belt' || parcel.state === 'thrown' || parcel.state === 'held' ? 1 : Math.min(1, dt * 18);
       view.root.position.lerp(target, settle);
       view.root.rotation.y = parcel.state === 'held' && parcel.workerId ? this.workers[parcel.workerId].root.rotation.y
         : parcel.state === 'thrown' && !this.reducedMotion ? this.time * 9 : 0;
@@ -1110,7 +1110,7 @@ export class Belt3d {
     const rate = m.packages.length === 0 ? 0 : Math.round(m.sorted / m.packages.length * 100);
     const home = this.lot?.done === true;
     const mall = this.mall;
-    const routes = (['A', 'D', 'T', 'B', 'E', 'S', 'C'] as const).map((route) => `${route} ${m.routeSorted[route]}`).join(' · ');
+    const routes = (['A', 'D', 'T', 'B', 'E', 'S', 'C'] as const).map((route) => `${ROUTE_INFO[route].name} ${m.routeSorted[route]}`).join(' · ');
     const total = m.score + this.mallBonus;
     this.overlay.showPanel(`
       <div class="grade">${m.won ? m.grade : 'F'}</div>

@@ -30,7 +30,7 @@ function walkTo(model, target, worker = model.activeWorker) {
 
 /** A held parcel of the given route and kind for the right worker, without waiting for the belt. */
 function holding(route, kind = 'smallbox', random = never) {
-  const model = new ShiftModel({ random });
+  const model = new ShiftModel({ random, autonomousCoworker: false, freightRandom: () => 0 });
   const parcel = model.packages[0];
   parcel.route = route;
   parcel.kind = kind;
@@ -56,8 +56,8 @@ test('each worker owns two trucks and one lower-floor drop, alongside the shared
   }
   assert.equal(ROUTE_INFO.C.kind, 'bulk');
   assert.equal(ROUTE_INFO.C.owner, 'shared', 'the bulk drop remains shared and distinct');
-  assert.equal(ROUTE_INFO.A.name, 'HERES UR SOVICE', 'existing truck identities are kept');
-  assert.equal(ROUTE_INFO.B.name, 'PAYTMAN');
+  assert.equal(ROUTE_INFO.A.name, 'MILL WOODS');
+  assert.equal(ROUTE_INFO.B.name, 'BONNIE DOON');
   for (const route of ROUTES) {
     assert.ok(ROUTE_INFO[route].name.length > 2 && ROUTE_INFO[route].route === route, `${route} has a readable identity`);
   }
@@ -115,7 +115,7 @@ test('every worker destination is reachable through public movement, down the st
 
 test('the bulk drop keeps its shared pile, 120 points and Ralph count alongside the new destinations', () => {
   for (const side of [0, 1]) {
-    const model = new ShiftModel();
+    const model = new ShiftModel({ autonomousCoworker: false, freightRandom: () => 0 });
     model.packages[0].route = 'C';
     if (side === 1) model.switchWorker();
     Object.assign(model.activeWorker, { x: side === 0 ? 400 : 560, y: 200 });
@@ -129,7 +129,7 @@ test('the bulk drop keeps its shared pile, 120 points and Ralph count alongside 
 });
 
 test('a worker cannot step off the platform: the only way down is the stairs, and back up the same way', () => {
-  const model = new ShiftModel();
+  const model = new ShiftModel({ autonomousCoworker: false, freightRandom: () => 0 });
   const worker = model.activeWorker;
   walkTo(model, { x: 365, y: 940 });
   assert.equal(platformLevelAt(worker.x, worker.y), 0);
@@ -147,14 +147,14 @@ test('a worker cannot step off the platform: the only way down is the stairs, an
 
 test('walking speed is the same on the platform, the stairs and the lower floor', () => {
   for (const y of [400, 830, 930]) {
-    const model = new ShiftModel();
+    const model = new ShiftModel({ autonomousCoworker: false, freightRandom: () => 0 });
     Object.assign(model.activeWorker, { x: 365, y });
     model.update(100, { x: 0, y: 1 });
     assert.ok(Math.abs(model.activeWorker.y - y - 23.5) < 1e-9, `normal speed at y=${y}`);
   }
 });
 
-test('lower-floor deliveries pile up in fixed slots that leave the painted letter clear', () => {
+test('lower-floor deliveries pile up in fixed slots that leave the painted range clear', () => {
   const zone = SHIFT_LAYOUT.dropAreas.T;
   const slots = Array.from({ length: 14 }, (_, index) => floorPileSlot('T', index));
   assert.equal(new Set(slots.slice(0, 12).map(({ x, y }) => `${x},${y}`)).size, 12);
@@ -170,30 +170,25 @@ test('lower-floor deliveries pile up in fixed slots that leave the painted lette
   assert.deepEqual({ x: model.packages[0].x, y: model.packages[0].y }, { x: slots[0].x, y: slots[0].y });
 });
 
-test('the opening freight still teaches A, B and C before the new destinations arrive', () => {
-  const model = new ShiftModel();
+test('authored reference destinations remain interleaved with everyday freight', () => {
+  const model = new ShiftModel({ autonomousCoworker: false, freightRandom: () => 0 });
   for (let time = 0; time < 60_000; time += 20) {
     for (const parcel of model.packages) parcel.state = 'delivered';
     model.update(20);
   }
-  assert.deepEqual(model.packages.map((parcel) => parcel.route).slice(0, 11), ['A', 'B', 'C', 'A', 'B', 'C', 'D', 'E', 'C', 'T', 'S']);
+  assert.deepEqual(model.packages.filter((_,i)=>i%3===0).map((parcel) => parcel.route).slice(0, 11), ['A', 'B', 'C', 'A', 'B', 'C', 'D', 'E', 'C', 'T', 'S']);
   assert.ok(model.packages.filter((parcel) => parcel.route === 'T' || parcel.route === 'S').every((parcel) => parcel.size === 'normal'),
     'heavy freight never has to be carried down the stairs');
 });
 
 // ---------------------------------------------------------------- throwing
 
-test('throw targets explain carry-only cases and only allow a reachable correct destination', () => {
+test('throw targets explain carry-only cases and select a reachable physical drop', () => {
   const heavy = holding('A', 'mallwood');
   assert.match(heavy.throwTarget().reason, /TOO HEAVY/);
   const far = holding('T');
   assert.equal(far.throwTarget().ok, false);
   assert.match(far.throwTarget().reason, /TOO FAR/);
-  const wrongSide = holding('A');
-  wrongSide.switchWorker();
-  Object.assign(wrongSide.activeWorker, { x: 560, y: 200 });
-  wrongSide.activeWorker.heldId = 1;
-  assert.match(wrongSide.throwTarget().reason, /TERMITE'S/);
   const inDock = holding('A');
   Object.assign(inDock.activeWorker, SHIFT_LAYOUT.dockA);
   assert.match(inDock.throwTarget().reason, /SPACE/);
@@ -211,7 +206,7 @@ test('throw targets explain carry-only cases and only allow a reachable correct 
   for (const y of [SHIFT_LAYOUT.lowerFloor.top, SHIFT_LAYOUT.lowerFloor.top + 30]) {
     const below = holding('A');
     Object.assign(below.activeWorker, { x: 380, y });
-    assert.match(below.throwTarget().reason, /CAN'T THROW UP/, `no throw up onto the platform from y=${y}`);
+    assert.equal(below.throwTarget().route, 'T', 'throws from the lower floor target its local floor drop');
   }
   const lastStep = holding('A');
   Object.assign(lastStep.activeWorker, { x: 380, y: SHIFT_LAYOUT.lowerFloor.top - 1 });
@@ -275,7 +270,7 @@ test('the penalty never takes the score below zero and the shift end ignores bro
 });
 
 test('one accident keeps the grade; repeated breakages count against it', () => {
-  const model = new ShiftModel();
+  const model = new ShiftModel({ autonomousCoworker: false, freightRandom: () => 0 });
   model.sorted = 24;
   assert.equal(model.grade, 'S');
   model.damaged = 1;
@@ -307,7 +302,7 @@ test('a pause or story freeze holds a parcel in mid-air without resolving it', (
 
 test('throwing down to the lower floor saves the stairs; light bulk freight can be thrown onto the pile', () => {
   const floor = holding('T', 'smallbox', never);
-  Object.assign(floor.activeWorker, { x: 380, y: 760 });
+  Object.assign(floor.activeWorker, { x: 380, y: 784 });
   assert.equal(floor.throwTarget().ok, true);
   floor.throwHeld();
   assert.equal(floor.packages[0].flight.downward, true);
@@ -316,7 +311,7 @@ test('throwing down to the lower floor saves the stairs; light bulk freight can 
   assert.equal(floor.packages[0].pileIndex, 0);
 
   const bulk = holding('C', 'panchetters', never);
-  Object.assign(bulk.activeWorker, { x: 400, y: 450 });
+  Object.assign(bulk.activeWorker, { x: 400, y: 680 });
   bulk.throwHeld();
   advance(bulk, THROWING.flightMs + 20);
   assert.equal(bulk.bulkSorted, 1, 'a thrown bulk parcel still counts toward Ralph');
@@ -326,10 +321,10 @@ test('throwing down to the lower floor saves the stairs; light bulk freight can 
   assert.equal(heavyBulk.heldPackage?.id, 1, 'heavy bulk freight must be carried');
 });
 
-test('a worker on the lower floor cannot throw back up onto the platform', () => {
+test('a worker on the lower floor targets the floor drop, never an upstairs truck', () => {
   const model = holding('A');
   Object.assign(model.activeWorker, { x: 380, y: 900 });
-  assert.match(model.throwTarget().reason, /CAN'T THROW UP/);
+  assert.equal(model.throwTarget().route, 'T');
 });
 
 // ---------------------------------------------------------------- story

@@ -133,8 +133,8 @@ Present in 3D:
     choice appears with the one-in-five risk. Y/N or a click chooses:
     - Leave: the parcel stays and the shift resumes.
     - Steal: Skanky's `MESA AT HOME` thought, then a fresh 20% roll.
-      - Caught: `BUSTED BY SHAN O MAC` ends the run with the original detail
-        and `GAME OVER`.
+      - Caught: `BUSTED BY SHAN O MAC` deducts up to 500 points, then resumes
+        the same shift.
       - Safe: the 5-second 3D bedroom dream, then the same shift resumes.
         The stolen Mesa is not a dispatch.
   - The bedroom keeps everything from the 2D dream:
@@ -197,7 +197,7 @@ checks:
     restart.
   - Mesa: leave by keyboard; a click steal into the dream and back to the
     same shift, with no dispatch credited; and a keyboard steal caught by
-    Shan, which ends the run.
+    Shan, which costs points and resumes the shift.
 
 `BELT_BROWSER_CPU_RATE=6` throttles the page like the 2D suites, to rehearse
 slow CI runners.

@@ -15,7 +15,7 @@ export interface MesaCallbacks {
   say(id: string, copy: string, durationMs: number): void;
   thought(): void;
   dream(): void;
-  caught(): void;
+  caught(penalty: number): void;
   resume(): void;
 }
 
@@ -26,6 +26,7 @@ export class MesaEncounter {
   public rolls = 0;
   private seen = false;
   private parcel: Parcel | null = null;
+  private model: ShiftModel | null = null;
   private timerMs = 0;
   private timerAction: (() => void) | null = null;
   private vicMs = 0;
@@ -47,6 +48,7 @@ export class MesaEncounter {
     this.stage = 'idle';
     this.seen = false;
     this.parcel = null;
+    this.model = null;
     this.timerAction = null;
     this.rolls = 0;
     this.overlay.showNotice(null);
@@ -59,6 +61,7 @@ export class MesaEncounter {
     if (!parcel) return false;
     this.seen = true;
     this.parcel = parcel;
+    this.model = model;
     this.stage = 'approach';
     this.vicMs = 0;
     model.paused = true;
@@ -146,16 +149,18 @@ export class MesaEncounter {
     audioSystem.play('switch');
     this.rolls += 1;
     if (this.roll() < 0.2) {
+      const penalty = this.model?.penalizeMesaTheft() ?? 0;
       this.stage = 'caught';
       audioSystem.play('warning');
       this.overlay.showPanel(`
         <h1 class="caught">${MESA.caught}</h1>
         <p>${MESA.caughtDetail}</p>
-        <p style="color:#edba6d"><b>GAME OVER</b></p>`);
+        <p style="color:#edba6d"><b>−${penalty} POINTS · SHIFT CONTINUES</b></p>`);
       this.schedule(1300, () => {
         this.overlay.clearCenter();
         this.stage = 'done';
-        this.callbacks.caught();
+        this.callbacks.resume();
+        this.callbacks.caught(penalty);
       });
       return;
     }

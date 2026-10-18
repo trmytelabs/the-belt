@@ -8,7 +8,7 @@ import { DepotReceiving } from '../slice/DepotReceiving';
 import { DepotStoryView, cueProgress } from '../slice/DepotStory';
 import { MESA } from '../slice/DepotReferences';
 import { KeyReturnModel, MallModel, MALL_RULES, type MallEvent } from '../slice/MallModel';
-import { ROUTE_INFO, ShiftModel, SHIFT_LAYOUT, type ShiftEvent, type Route, type WorkerId } from '../slice/ShiftModel';
+import { ROUTE_INFO, ShiftModel, SHIFT_LAYOUT, parcelAddress, streetRange, type ShiftEvent, type Route, type WorkerId } from '../slice/ShiftModel';
 import { Cutscene, StoryRun, type StoryChoices } from '../slice/StoryModel';
 import {
   DRIVE_TO_MALL, DRIVE_TO_UPS, GO_HOME, KEY_RETURN_LINES, MALL_ASSIGNMENT, MALL_INTRO, SCRUM, type StoryBeat, type StoryScene,
@@ -18,7 +18,6 @@ import { audioSystem, type SoundEffect } from '../systems/AudioSystem';
 const INK = '#edf0de';
 const MUTED = '#8da7ac';
 const ROUTE: Record<Route, number> = DEPOT_ROUTE_COLORS;
-const ROUTE_NAME = Object.fromEntries(Object.values(ROUTE_INFO).map((info) => [info.route, `${info.route} · ${info.name}`])) as Record<Route, string>;
 const BEAT_SOUNDS: Record<NonNullable<StoryBeat['sound']>, SoundEffect> = {
   engine: 'engine', cough: 'cough', horn: 'horn', gate: 'gate', door: 'button', spill: 'splash', register: 'register', truck: 'truck', sign: 'sign',
 };
@@ -130,7 +129,7 @@ export class DepotScene extends Phaser.Scene {
         if (this.lostFocus) this.togglePause();
         this.updateConsole();
       },
-      caught: () => this.showMesaCaught(),
+      caught: (penalty) => this.showMesaCaught(penalty),
       offer: visible => this.life.setMesaOffer(visible),
       thought: () => this.life.mesaThought(),
     });
@@ -536,13 +535,13 @@ export class DepotScene extends Phaser.Scene {
       }
       visibleIds.add(parcel.id);
       if (!view) {
-        view = { container: createParcelArt(this, parcel.route, parcel.size === 'heavy', parcel.kind), state: parcel.state, transferUntil: 0 };
+        view = { container: createParcelArt(this, parcel.route, parcel.size === 'heavy', parcel.kind, parcelAddress(parcel), parcel.label), state: parcel.state, transferUntil: 0 };
         view.container.setPosition(parcel.x, parcel.y);
         this.parcels.set(parcel.id, view);
         if (this.state === 'playing') audioSystem.play('package-spawn');
         if (NEW_ROUTES.includes(parcel.route) && !this.seenRoutes.has(parcel.route)) {
           this.seenRoutes.add(parcel.route);
-          this.tell(`NEW: ${parcel.route} · ${ROUTE_INFO[parcel.route].name} · ${ROUTE_INFO[parcel.route].caption}`, '#edba6d', 3600);
+          this.tell('Read the street address · truck and floor signs show their ranges', '#edba6d', 3600);
         }
       }
       if (view.state !== parcel.state) {
@@ -552,11 +551,7 @@ export class DepotScene extends Phaser.Scene {
       const container = view.container;
       updateParcelArt(container, parcel.kind, this.reducedMotion ? 0 : this.model.elapsedMs, parcel.broken, parcel.recovered);
       const isHeld = parcel.state === 'held';
-      if (isHeld && this.time.now < view.transferUntil) {
-        const blend = Math.min(1, delta / 30);
-        container.x += (parcel.x - container.x) * blend;
-        container.y += (parcel.y - container.y) * blend;
-      } else if (parcel.state === 'thrown' && parcel.flight) {
+      if (parcel.state === 'thrown' && parcel.flight) {
         // In the air: an arc above its ground track, spinning.
         const t = parcel.flight.elapsedMs / parcel.flight.durationMs;
         container.setPosition(parcel.x, parcel.y - Math.sin(t * Math.PI) * 40).setRotation(this.reducedMotion ? 0 : t * Math.PI * 2);
@@ -578,31 +573,13 @@ export class DepotScene extends Phaser.Scene {
     this.throwLabel.setVisible(false);
     const worker = this.model.activeWorker;
     const parcel = this.model.packages.find(item => item.id === worker.heldId);
-    this.depot.setDockActive(parcel?.route ?? null);
+    this.depot.setDockActive(null);
     if (this.state !== 'playing') return;
     if (parcel) {
-      const info = ROUTE_INFO[parcel.route];
-      const target = parcel.route === 'C'
-        ? worker.side === 'left' ? SHIFT_LAYOUT.bulkLeft : SHIFT_LAYOUT.bulkRight
-        : SHIFT_LAYOUT.dropAreas[parcel.route];
-      const targetX = target.x;
-      const targetY = target.y;
-      if (info.side === 'both' || info.side === worker.side) {
-        const throwTarget = this.model.throwTarget();
-        this.guide.lineStyle(2, ROUTE[parcel.route], 0.32);
-        const length = Phaser.Math.Distance.Between(worker.x, worker.y, targetX, targetY);
-        for (let distance = 24; distance < length - 20; distance += 15) {
-          const t = distance / length;
-          // A throwable parcel previews its arc; otherwise the dots trace the walk.
-          const lift = throwTarget?.ok ? Math.sin(t * Math.PI) * 36 : 0;
-          this.guide.fillStyle(ROUTE[parcel.route], throwTarget?.ok ? 0.85 : 0.55);
-          this.guide.fillCircle(Phaser.Math.Linear(worker.x, targetX, t), Phaser.Math.Linear(worker.y, targetY, t) - lift, 2);
-        }
-        this.guide.strokeCircle(targetX, targetY, 25);
-        if (throwTarget?.ok) {
-          this.throwLabel.setText(`F · THROW · ${Math.round(throwTarget.breakChance * 100)}% RISK`)
-            .setBackgroundColor(`#${ROUTE[parcel.route].toString(16).padStart(6, '0')}`).setPosition(targetX, targetY - 34).setVisible(true);
-        }
+      const throwTarget = this.model.throwTarget();
+      if (throwTarget?.ok) {
+        this.throwLabel.setText(`F · ${streetRange(throwTarget.route)} · ${Math.round(throwTarget.breakChance * 100)}% RISK`)
+          .setBackgroundColor('#d9ccab').setPosition(throwTarget.x, throwTarget.y - 34).setVisible(true);
       }
     } else {
       const nearest = this.model.nearestPackage();
@@ -650,7 +627,7 @@ export class DepotScene extends Phaser.Scene {
     this.label(640, 676, 'F  THROW', 11, MUTED, true);
     this.label(789, 676, 'ESC  PAUSE', 11, MUTED, true);
     this.label(28, 702, 'SORT FAST. MISS NOTHING. SURVIVE THE SHIFT.', 8, '#637f87', true).setLetterSpacing(1.5);
-    this.label(470, 700, 'TERMITE  A · D · T        SKANKY  B · E · S        BOTH  C · BULK', 9, '#b0c1c1', true).setLetterSpacing(1);
+    this.label(470, 700, 'READ THE ADDRESS · MATCH THE STREET TO A TRUCK RANGE · COWORKER SORTS', 9, '#b0c1c1', true).setLetterSpacing(1);
     this.toast = this.label(480, 157, '', 14, INK, true).setOrigin(0.5).setDepth(96)
       .setPadding(14, 9).setBackgroundColor('#10232a').setVisible(false);
   }
@@ -670,14 +647,10 @@ export class DepotScene extends Phaser.Scene {
     const held = m.packages.find(item => item.id === player.heldId);
     const nearby = m.nearestPackage();
     if (held) {
-      const info = ROUTE_INFO[held.route];
-      const wrongSide = info.side !== 'both' && info.side !== player.side;
-      const inDock = m.currentDock() === held.route;
+      const dock = m.currentDock();
       const target = m.throwTarget();
-      this.actionText.setText(wrongSide ? `ROUTE ${held.route} · return to belt, then TAB to hand off`
-        : inDock ? `[ SPACE ]  DELIVER ${ROUTE_NAME[held.route]}`
-        : `${held.label}  →  ${ROUTE_NAME[held.route]}  /  ${target?.ok ? `F THROWS (${Math.round(target.breakChance * 100)}% RISK)` : 'SPACE puts down'}`);
-    } else this.actionText.setText(nearby ? `[ SPACE ] ${nearby.state === 'missed' ? 'RECOVER' : 'GRAB'} ${nearby.label} · ${nearby.route}` : 'Approach the belt · match letter to dock');
+      this.actionText.setText(`${parcelAddress(held)} · ${dock ? `SPACE tries ${ROUTE_INFO[dock].name}` : target?.ok ? `F THROWS (${Math.round(target.breakChance * 100)}% RISK)` : 'read the truck ranges'}`);
+    } else this.actionText.setText(nearby ? `[ SPACE ] ${nearby.state === 'missed' ? 'RECOVER' : 'GRAB'} ${parcelAddress(nearby)} · ${nearby.label}` : 'Approach the belt · read the street address');
     this.brakeText.setText(m.eventStopped ? '■  VIC STOPPED THE BELT' : m.brakeRemainingMs > 0 ? '■  BELT BRAKED'
       : m.brakeCooldownMs > 0 ? `[ E ]  RECHARGE ${Math.ceil(m.brakeCooldownMs / 1000)}s` : '[ E ]  BRAKE READY');
     this.pauseText.setText(this.state === 'paused' ? '▶ RESUME' : 'Ⅱ PAUSE');
@@ -782,9 +755,9 @@ export class DepotScene extends Phaser.Scene {
   private showBriefing(): void {
     this.showPanel('TERMITE & SKANKY / ONE MORE OVERNIGHT', 'ANOTHER NIGHT ON THE BELT.', [
       `Get in, survive the scrum, dispatch ${this.model.goal} parcels, then Skanky has a mall run.`,
-      'TERMITE: A + D trucks, T down the stairs.   SKANKY: B + E trucks, S down the stairs.',
-      'C goes to BULK at the belt end. Move with WASD / arrows. TAB switches.',
-      'SPACE grabs and delivers. F throws to save the walk, but it can break.',
+      'Read parcel addresses. Match the street number to a range on the truck signs.',
+      'Termite covers Mill Woods. TAB switches. Your coworker sorts automatically.',
+      'Triple freight. SPACE grabs/delivers. F at the stair top throws down: 30% break risk.',
       'E brakes. V overview. Story: SPACE next line, ENTER skips the scene.',
     ], 'START THE NIGHT  ↵', () => this.startShift());
     const original = this.textButton(480, 543, 'O  /  PLAY THE ORIGINAL FULL SHIFT', () => this.scene.start('TitleScene'), 11).setOrigin(0.5);
@@ -813,14 +786,9 @@ export class DepotScene extends Phaser.Scene {
     this.overlay?.add(original);
   }
 
-  private showMesaCaught(): void {
-    this.state = 'results'; this.model.paused = true;
-    this.story.go('results');
+  private showMesaCaught(penalty: number): void {
     audioSystem.play('wrong');
-    this.showPanel('SHIFT TERMINATED', MESA.caught, [
-      MESA.caughtDetail, 'GAME OVER',
-      'Vic offered a one-in-five risk. This time Shan caught you both.',
-    ], 'ANOTHER SHIFT  ↵', () => this.scene.restart());
+    this.tell(`${MESA.caught} · −${penalty} points · back to work`, '#f3987c', 3500);
     this.updateConsole();
   }
 

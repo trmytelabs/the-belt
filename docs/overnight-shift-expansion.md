@@ -47,22 +47,22 @@ a cast shadow, the stairs are banded treads, and the lower floor is darker.
 
 Each worker now has two trucks and a lower-floor drop:
 
-| Letter | Destination | Worker | Where |
+| Destination | Worker | Street range | Drop |
 | --- | --- | --- | --- |
-| A | HERES UR SOVICE | Termite | existing truck, now flush with the platform edge |
-| D | DOWNTOWN *(provisional name)* | Termite | new truck, row below the bulk pile |
-| T | TERMITE FLOOR DROP | Termite | lower floor, down the west stairs |
-| B | PAYTMAN | Skanky | existing truck, now flush with the platform edge |
-| E | EASTSIDE *(provisional name)* | Skanky | new truck, row below the bulk pile |
-| S | SKANKY FLOOR DROP | Skanky | lower floor, down the east stairs |
-| C | BULK | both | unchanged shared pile at the belt end |
+| Mill Woods | Termite | 10–49 ST | First truck |
+| Downtown | Termite | 90–109 ST | Second truck |
+| Westmount | Termite | 110–129 ST | Lower floor, west stairs |
+| Bonnie Doon | Skanky | 50–89 ST | First truck |
+| West End | Skanky | 130–169 ST | Second truck |
+| Northside | Skanky | 170–199 ST | Lower floor, east stairs |
+| Bulk | Both | OVERSIZE | Shared platform pile |
 
-Every destination shows its letter and name on the floor, on the truck and on
-each parcel, so colour is never the only cue. Floor drops pile parcels in a
-grid that leaves the painted name clear, with a tall sign above the pile.
-Heavy freight never goes to the floor drops. The first six parcels still
-teach A, B and C; D, E, T and S follow, each announced the first time it
-appears. Names live in `ROUTE_INFO` in `ShiftModel.ts` and can be renamed there.
+These are synthetic Edmonton-inspired game districts. Parcels show street
+addresses; signs show inclusive street ranges. Neutral signs replace visible
+letters and matching colours, and guidance does not disclose the correct drop.
+See [address sorting](address-sorting.md) for the rules, triple freight and the
+automatic coworker. Lower-floor piles leave their signs clear. Heavy freight
+never goes to floor drops. Internal IDs remain in the model and layout only.
 
 Layout changes made to fit this:
 
@@ -78,15 +78,17 @@ Layout changes made to fit this:
 
 ## Throwing and breakage
 
-Holding a parcel, press **F** (or THROW on touch) to throw it straight to its
-own destination instead of walking it there. The arc and landing ring (3D) or
-the dotted arc and risk label (2D) show where it will land and the break risk.
+Holding a parcel, press **F** (or THROW on touch) to throw toward the nearest
+physical drop. You still need to check the address: a wrong drop earns no credit
+and leaves recoverable freight. The preview shows the selected throw's landing
+position and risk. From the top of the stairs, it targets that side's lower-floor
+drop with a 30% break risk, regardless of ordinary or fragile type.
 Carrying is unchanged and never breaks anything.
 
 - Heavy freight (bulk crates, the Mesa amp, the ATV, big and long boxes,
   Mallwood) must be carried. Light bulk freight can be thrown onto the pile.
-- A throw must be within range and from the worker's own side; from the lower
-  floor you cannot throw up onto the platform.
+- A throw must be within range; on the lower floor it targets the local
+  floor drop, never an upstairs truck.
 - A clean throw delivers with normal points and keeps the streak.
 - A broken parcel earns no delivery credit and costs points **once**. It stays
   visibly crushed with a BROKEN tag for a few seconds and can never be picked
@@ -100,6 +102,7 @@ Tuning (`THROWING` in `ShiftModel.ts`):
 | `rangePx` | 300 (about 9.4 m) | Farthest throw |
 | `breakChance.ordinary` | 0.15 | Break chance for ordinary freight |
 | `breakChance.fragile` | 0.55 | Break chance for fragile freight |
+| `stairBreakChance` | 0.30 | Either throwable type at the stair top |
 | `fragileKinds` | makeup, duck, mesa, lobsters | The fragile list (a simple two-level distinction) |
 | `breakPenalty` | 150 points | Charged once per broken parcel, never below zero |
 | `gradeForgivenBreaks` | 1 | Breakages beyond this count as errors in the grade |
