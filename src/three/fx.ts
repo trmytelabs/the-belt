@@ -59,4 +59,21 @@ export class PuffField {
       puff.sprite.material.opacity = puff.baseOpacity * Math.sin(Math.PI * Math.min(1, t * 1.4)) * (1 - t * 0.4);
     }
   }
+
+  /** Replays must not inherit the previous shift's smoke or stink. */
+  public clear(): void {
+    for (const puff of this.puffs) {
+      puff.sprite.removeFromParent();
+      puff.sprite.visible = false;
+      this.free.push(puff.sprite);
+    }
+    this.puffs.length = 0;
+  }
+
+  public dispose(): void {
+    this.clear();
+    for (const sprite of this.free) sprite.material.dispose();
+    this.free.length = 0;
+    this.texture.dispose();
+  }
 }
