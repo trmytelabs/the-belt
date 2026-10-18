@@ -40,6 +40,11 @@ Trucks, pallets, the belt, the conveyors and parcels stay code-built: Poly
 Haven has no suitable trucks, pallets or conveyors, and the belt and parcels
 are aligned with gameplay. See [Truck options](#truck-options) below.
 
+Before and after, rendered on a GPU from the same camera with the code-built
+stand-ins or the models shown: `docs/images/prop-models/` (front-west and
+front-east corners, wall lamps, Donna's husband's desk, the Mesa dream, the
+mall bench pod).
+
 ## Sources and licence
 
 Every model is from Poly Haven and released under
