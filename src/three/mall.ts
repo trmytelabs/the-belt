@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { MALL_LAYOUT } from '../game/slice/MallModel';
 import { MALL_STORES } from '../game/slice/StoryScript';
 import { mergeStatic } from './merge';
+import { placeProp } from './propModels';
 import { standard, textTexture } from './space';
 
 /**
@@ -458,6 +459,14 @@ export function buildSouthgateMall(scene: THREE.Scene, quality: 'high' | 'low', 
   box(scene, m.bronze, [totemX - 0.45, 0, -0.16, totemX + 0.45, 2.1, 0.16]);
   panel(scene, directoryFace, 0.8, 1.6, totemX, 1.15, 0.165, '+z');
   panel(scene, directoryFace, 0.8, 1.6, totemX, 1.15, -0.165, '-z');
+  if (quality === 'high') {
+    // A steel bin between the benches, inside the pod, so the cart never meets it.
+    const bin = new THREE.Group();
+    bin.position.set(bx0 + 0.55, 0.06, (bz0 + bz1) / 2);
+    bin.rotation.y = Math.PI / 2;
+    void placeProp(bin, 'trash-can');
+    scene.add(bin);
+  }
 
   // ---------------------------------------------------------------- the skylit barrel vault
   const span = front;

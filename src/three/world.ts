@@ -11,6 +11,8 @@ import {
   toWorld, toWorldX, toWorldZ,
 } from './space';
 import { SHAN_NAME } from '../game/slice/StoryScript';
+import { DEPOT_DRESSING } from './depotDressing';
+import { placeProp } from './propModels';
 
 const rounded = (w: number, h: number, d: number, material: THREE.Material, r = 0.05): THREE.Mesh =>
   new THREE.Mesh(new RoundedBoxGeometry(w, h, d, 2, Math.min(r, w / 2, h / 2, d / 2)), material);
@@ -79,6 +81,8 @@ export class DepotWorld {
   /** Emitters that need per-frame particles: cigarette, stink. */
   private readonly emitters: { anchor: THREE.Object3D; kind: 'smoke' | 'stink'; timer: number }[] = [];
   private readonly lamps: THREE.Mesh[] = [];
+  /** Realistic prop models replace code-built props (not on software renderers). */
+  private readonly models: boolean;
   private readonly fish: THREE.Mesh[] = [];
   private readonly beltRollers: THREE.Mesh[] = [];
   private readonly warcraft: THREE.CanvasTexture;
@@ -114,6 +118,7 @@ export class DepotWorld {
   }
 
   constructor(quality: 'high' | 'low') {
+    this.models = quality === 'high';
     const scene = this.scene;
     scene.background = new THREE.Color(0x0a1317);
     scene.fog = new THREE.Fog(0x0a1317, 26, 62);
@@ -133,6 +138,7 @@ export class DepotWorld {
     scene.add(this.bulkStack, this.intakeAnchor);
     this.addBulkCrates();
     this.addRalphTruck();
+    if (this.models) this.addDressing();
     this.mergeStaticGeometry();
   }
 
@@ -186,6 +192,14 @@ export class DepotWorld {
         lamp.position.copy(toWorld({ x, y }, 6.4));
         scene.add(lamp);
         this.lamps.push(lamp);
+        if (this.models) {
+          // An industrial wall lamp, scaled up to a high-bay fixture, facing into the depot.
+          const slot = new THREE.Group();
+          slot.position.set(Math.sign(lamp.position.x) * 15.0, 6.4 - 0.45, lamp.position.z);
+          slot.rotation.y = -Math.sign(lamp.position.x) * Math.PI / 2;
+          void placeProp(slot, 'wall-lamp', { fallback: lamp, size: { y: 0.9 } });
+          scene.add(slot);
+        }
       }
     }
   }
@@ -1022,14 +1036,16 @@ export class DepotWorld {
   private addDonnaHusband(): THREE.CanvasTexture {
     // Donna's husband at the computer, playing Warcraft.
     const desk = new THREE.Group();
+    const frame = new THREE.Group();
     const top = rounded(1.3, 0.08, 0.7, standard(0x5b4636, 0.7), 0.02);
     top.position.y = 0.74;
-    desk.add(top);
+    frame.add(top);
     for (const sx of [-1, 1]) {
       const leg = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.74, 0.6), standard(0x463528, 0.8));
       leg.position.set(sx * 0.6, 0.37, 0);
-      desk.add(leg);
+      frame.add(leg);
     }
+    desk.add(frame);
     const canvas = document.createElement('canvas');
     canvas.width = 256; canvas.height = 160;
     const screenTexture = new THREE.CanvasTexture(canvas);
@@ -1055,10 +1071,32 @@ export class DepotWorld {
     const chair = rounded(0.5, 0.08, 0.5, standard(0x2c2f34, 0.6), 0.03);
     chair.position.set(0, 0.42, 0.68);
     desk.add(chair, husband.root);
+    if (this.models) {
+      // A steel office desk and a school chair; the monitor stays code-built for its Warcraft screen.
+      const deskModel = new THREE.Group();
+      void placeProp(deskModel, 'office-desk', { fallback: frame, size: { x: 1.4, y: 0.78, z: 0.72 } });
+      const chairModel = new THREE.Group();
+      chairModel.position.set(0, 0, 0.68);
+      chairModel.rotation.y = Math.PI;
+      void placeProp(chairModel, 'school-chair', { fallback: chair });
+      desk.add(deskModel, chairModel);
+    }
     desk.position.copy(toWorld({ x: 905, y: 520 }));
     desk.rotation.y = -0.5;
     this.scene.add(shadowed(desk));
     return screenTexture;
+  }
+
+  /** Set dressing that exists only as models, in the front corners (see depotDressing.ts). */
+  private addDressing(): void {
+    for (const item of DEPOT_DRESSING) {
+      const slot = new THREE.Group();
+      slot.name = `dressing-${item.id}`;
+      slot.position.copy(toWorld(item));
+      slot.rotation.y = item.turn;
+      void placeProp(slot, item.id);
+      this.scene.add(slot);
+    }
   }
 
   private drawWarcraft(time: number): void {

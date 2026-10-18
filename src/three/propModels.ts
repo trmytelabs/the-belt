@@ -7,8 +7,9 @@ import * as THREE from 'three';
  * Every prop that has a model is still built in code first. `placeProp` loads
  * the model once, puts a copy in the prop's place and then hides the
  * code-built version, so a slow or failed download leaves the old prop in
- * place. Software renderers (no GPU, as on CI runners) keep the code-built
- * props, which are merged into a few draw calls, and download nothing.
+ * place. Callers skip it on software renderers (no GPU, as on CI runners),
+ * which keep the code-built props merged into few draw calls and download
+ * nothing.
  *
  * See docs/prop-models.md for the sources, licence and converting.
  */
@@ -45,17 +46,7 @@ export const PROP_MODELS: Record<PropId, PropModelSource> = {
 
 export const PROP_MODEL_URL = (id: PropId): string => `/models/props/${id}.glb`;
 
-let enabled = true;
 const loads = new Map<PropId, Promise<THREE.Object3D | null>>();
-
-/** Turns model loading off (software renderers) or back on. Props already placed keep their state. */
-export function setPropModelsEnabled(on: boolean): void {
-  enabled = on;
-}
-
-export function propModelsEnabled(): boolean {
-  return enabled;
-}
 
 function loadProp(id: PropId): Promise<THREE.Object3D | null> {
   let load = loads.get(id);
@@ -81,10 +72,11 @@ export interface PropPlacement {
   /** The code-built prop, hidden once the model is in place. */
   fallback?: THREE.Object3D;
   /**
-   * Uniform scale to a target size in metres along one axis of the model
-   * (x: width, y: height, z: depth). Without it the model keeps its real-world size.
+   * Target size in metres along the model's own axes (x: width, y: height,
+   * z: depth). An axis without a target takes the first given axis's scale;
+   * without any the model keeps its real-world size.
    */
-  fit?: { axis: 'x' | 'y' | 'z'; size: number };
+  size?: { x?: number; y?: number; z?: number };
 }
 
 /**
@@ -92,7 +84,6 @@ export interface PropPlacement {
  * centred on it, facing the slot's +Z. Resolves true once it is shown.
  */
 export function placeProp(slot: THREE.Object3D, id: PropId, placement: PropPlacement = {}): Promise<boolean> {
-  if (!enabled) return Promise.resolve(false);
   // Neither may be merged into static geometry: one appears and the other hides later.
   slot.userData.keep = true;
   if (placement.fallback) placement.fallback.userData.keep = true;
@@ -102,17 +93,16 @@ export function placeProp(slot: THREE.Object3D, id: PropId, placement: PropPlace
     model.name = `prop-${id}`;
     const bounds = new THREE.Box3().setFromObject(model);
     const size = bounds.getSize(new THREE.Vector3());
-    const scale = placement.fit ? placement.fit.size / Math.max(size[placement.fit.axis], 1e-6) : 1;
-    model.scale.multiplyScalar(scale);
+    const scale = new THREE.Vector3(1, 1, 1);
+    const target = placement.size ?? {};
+    const axes = (['x', 'y', 'z'] as const).filter((axis) => target[axis] !== undefined);
+    for (const axis of axes) scale[axis] = target[axis]! / Math.max(size[axis], 1e-6);
+    for (const axis of ['x', 'y', 'z'] as const) if (axes.length && !axes.includes(axis)) scale[axis] = scale[axes[0]];
+    model.scale.multiply(scale);
     const centre = bounds.getCenter(new THREE.Vector3());
-    model.position.set(-centre.x * scale, -bounds.min.y * scale, -centre.z * scale);
+    model.position.set(-centre.x * scale.x, -bounds.min.y * scale.y, -centre.z * scale.z);
     slot.add(model);
     if (placement.fallback) placement.fallback.visible = false;
     return true;
   });
-}
-
-/** Resolves when every model requested so far has loaded or failed (for checks). */
-export function propModelsSettled(): Promise<void> {
-  return Promise.all(loads.values()).then(() => undefined);
 }
