@@ -338,11 +338,13 @@ try {
   await at(first[0].x, first[0].side === 'north' ? 322 : 478);
   await page.keyboard.press('Space');
   assert.equal((await mallState()).delivered, 0, 'no delivery without the freight');
-  // A later run's bundle stays in the truck.
+  // Pointing at a later run's slot highlights an available current-run bundle.
   const later = stores.find((store) => store.run === 2);
   await at(70, await slotY(later.id));
   await page.keyboard.press('Space');
-  assert.equal((await mallState()).carrying, null, 'a later run cannot be loaded early');
+  const firstPickup = (await mallState()).carrying;
+  assert.equal(stores.find(store => store.id === firstPickup)?.run, 0, 'selection skips later-run bundles');
+  assert.ok(await read(id => window.fixtureApp.mall.truckBundles.includes(id), later.id), 'the later delivery stays in the truck');
   const deliver = async (store) => {
     const y = store.side === 'north' ? 322 : 478;
     await read(([x, ry]) => Object.assign(window.fixtureApp.mall.cart, { x: x + 30, y: ry, pushed: true, facing: 'right' }), [store.x, y]);
@@ -359,13 +361,15 @@ try {
     assert.deepEqual([again.delivered, again.signatures], [counts.delivered, counts.signatures], `${store.id} credits once`);
   };
   for (let run = 0; run < 3; run += 1) {
-    const manifest = stores.filter((store) => store.run === run);
+    const manifest = stores.filter((store) => store.run === run).sort((a, b) => Number(a.id !== firstPickup) - Number(b.id !== firstPickup));
     // Back at the truck: park the cart, then take each bundle and load it.
     await read(() => Object.assign(window.fixtureApp.mall.cart, { x: 150, y: 400, pushed: false, facing: 'up' }));
     for (const store of manifest) {
-      await at(70, await slotY(store.id));
-      await page.keyboard.press('Space');
-      await wait((id) => window.fixtureApp.mall.carrying === id, store.id);
+      if ((await mallState()).carrying !== store.id) {
+        await at(70, await slotY(store.id));
+        await page.keyboard.press('Space');
+        await wait((id) => window.fixtureApp.mall.carrying === id, store.id);
+      }
       await at(190, 400);
       await page.keyboard.press('Space');
       await wait((id) => window.fixtureApp.mall.cart.load.includes(id), store.id);
