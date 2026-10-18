@@ -55,11 +55,11 @@ hair, beard, clothes and role:
 | Termite (TERMITE, TRMYTE) | Professions/Delivery_Male_01 | `termite.glb` |
 | Skanky | Adults/Male_Adult_06 | `skanky.glb` |
 | Shan O'Mac | Professions/Business_Male_07 | `shan.glb` |
-| Kylie | Adults/Female_Adult_01 | `kylie.glb` |
+| Kylie | Adults/Male_Adult_10 | `kylie.glb` |
 | Vic | Adults/Male_Adult_05 | `vic.glb` |
 | John Rushton | Adults/Male_Adult_08 | `john-rushton.glb` |
 | Hussan | Adults/Male_Adult_17 | `hussan.glb` |
-| AJ | Professions/Sports_Male_01 | `aj.glb` |
+| AJ | Adults/Male_Adult_14 | `aj.glb` |
 | Ben | Adults/Male_Adult_02 | `ben.glb` |
 | Bannerman | Adults/Male_Adult_13 | `bannerman.glb` |
 | Fruit Loop | Adults/Male_Adult_01 | `fruit-loop.glb` |
@@ -82,6 +82,11 @@ licence (November 2020), Copyright (c) 2020 Microsoft; the licence text ships
 beside the models in `public/models/characters/ROCKETBOX-LICENSE.md`. The converted
 files keep the original meshes and skeletons; only formats and texture sizes
 change.
+
+Kylie uses the male avatar at 86% of normal height (about 1.53 m). AJ uses the
+bald, clothed male avatar with glasses fitted in front of the face; the glasses
+remain visible when the procedural figure is hidden. These two recasts replace
+only their own GLBs and retain their existing dialogue, props and animations.
 
 ## Converting Rocketbox avatars
 

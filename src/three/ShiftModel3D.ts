@@ -1,6 +1,6 @@
 import {
   ShiftModel, CARRY_MULTIPLIER, ROUTE_INFO, WORKER_ROUTES, THROWING,
-  type Parcel, type ParcelKind, type Route, type Worker, type ThrowTarget,
+  type Parcel, type ParcelKind, type Route, type Worker, type ThrowTarget, type ShiftGrade,
 } from '../game/slice/ShiftModel.ts';
 import { DEPOT_3D_LAYOUT, platformLevelAt, onLowerFloor, floorPileSlot, stairAt, truckInteriorAt, TRUCK_ROUTES, type TruckRoute } from './layout.ts';
 
@@ -23,6 +23,26 @@ export class ShiftModel3D extends ShiftModel {
   protected override surfaceLevelAt = platformLevelAt;
   protected override isLowerFloor = onLowerFloor;
   protected override pileSlot = floorPileSlot;
+
+  /** Recovery already costs base points and a combo; only unfinished freight remains an error. */
+  public get unshipped(): number { return Math.max(0, this.packages.length - this.sorted - this.damaged); }
+  public get recoveredDeliveries(): number { return this.packages.filter(parcel => parcel.state === 'delivered' && parcel.recovered).length; }
+  public get wrongDrops(): number { return this.wrongSortErrors; }
+  public get dispatchRate(): number { return this.packages.length ? this.sorted / this.packages.length * 100 : 0; }
+  public override get errors(): number { return this.unshipped + this.wrongDrops + this.gradedBreaks; }
+  public override get accuracy(): number {
+    const total = this.sorted + this.errors;
+    return total ? this.sorted / total * 100 : 0;
+  }
+  public override get grade(): ShiftGrade {
+    if (this.ended && !this.won) return 'F';
+    if (this.accuracy >= 95) return 'S';
+    if (this.accuracy >= 90) return 'A';
+    if (this.accuracy >= 80) return 'B';
+    if (this.accuracy >= 70) return 'C';
+    return 'F';
+  }
+  public override get gradeQuote(): string { return this.grade === 'S' ? 'OUTSTANDING SHIFT' : super.gradeQuote; }
 
   private canPickup(worker: Worker, parcel: Parcel): boolean {
     if (!['belt', 'floor', 'missed'].includes(parcel.state)) return false;
@@ -121,6 +141,13 @@ export class ShiftModel3D extends ShiftModel {
     const doorway = entering ? TRUCK_ROUTES.find(route => ROUTE_INFO[route].side === worker.side
       && Math.abs(worker.y - this.layout.playerTrucks[route].y) <= 52) : undefined;
     if (doorway) y = clamp((this.layout.playerTrucks[doorway].y - worker.y) / 16, -1, 1);
+    const { stairs } = this.layout;
+    const flight = stairs[worker.side];
+    const stairCenter = (stairs.minY + stairs.maxY) / 2;
+    const crossingStairs = x !== 0 && worker.x >= Math.min(flight.topX, flight.bottomX) - 80
+      && worker.x <= Math.max(flight.topX, flight.bottomX) + 80
+      && Math.abs(worker.y - stairCenter) <= 78;
+    if (crossingStairs) y = clamp((stairCenter - worker.y) / 12, -1, 1);
     const magnitude = Math.hypot(x, y);
     worker.moving = false;
     if (!magnitude) return;
@@ -135,7 +162,7 @@ export class ShiftModel3D extends ShiftModel {
     if (!this.walkable(worker.side, nextX, nextY)) nextY = previousY;
     worker.x = nextX; worker.y = nextY;
     worker.moving = nextX !== previousX || nextY !== previousY;
-    worker.facing = doorway || Math.abs(x) > Math.abs(y) ? x > 0 ? 'right' : 'left' : y > 0 ? 'down' : 'up';
+    worker.facing = doorway || crossingStairs || Math.abs(x) > Math.abs(y) ? x > 0 ? 'right' : 'left' : y > 0 ? 'down' : 'up';
   }
 
   public override walkBounds(side: 'left' | 'right', y: number): { minX: number; maxX: number } {

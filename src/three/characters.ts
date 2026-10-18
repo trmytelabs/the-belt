@@ -20,6 +20,9 @@ export interface CharacterSpec {
   scale?: number;
   barefoot?: boolean;
   glasses?: boolean;
+  /** Small model-specific fit adjustments for worn frames. */
+  glassesDepth?: number;
+  glassesHeight?: number;
   moustache?: boolean;
   beard?: boolean;
   tie?: number;
@@ -257,17 +260,22 @@ function buildFace(head: THREE.Group, spec: CharacterSpec, skin: THREE.Material,
     head.add(stache);
   }
   if (spec.glasses) {
+    const glasses = new THREE.Group();
+    glasses.name = 'glasses'; glasses.userData.keep = true;
+    glasses.position.set(0, (spec.glassesHeight ?? 0.141) - 0.141, (spec.glassesDepth ?? 0.107) - 0.107);
+    head.add(glasses);
     const frame = standard(0x1a1a1a, 0.3);
     for (const side of [-1, 1]) {
       const lens = new THREE.Mesh(new THREE.TorusGeometry(0.021, 0.0042, 6, 16), frame);
       lens.position.set(side * 0.037, 0.141, 0.107);
       const temple = box(0.004, 0.004, 0.1, frame, 0.0015);
       temple.position.set(side * 0.09, 0.145, 0.055);
-      head.add(lens, temple);
+      glasses.add(lens, temple);
     }
     const bridge = box(0.03, 0.005, 0.005, frame, 0.002);
     bridge.position.set(0, 0.146, 0.11);
-    head.add(bridge);
+    glasses.add(bridge);
+    glasses.traverse(child => { child.userData.headAccessory = true; });
   }
 }
 
@@ -450,7 +458,7 @@ export function createCharacter(spec: CharacterSpec): Character {
   shadowed(body, true, false);
   // Marks the figure itself, which an imported model hides; props added later stay visible.
   body.traverse((child) => {
-    if ((child as THREE.Mesh).isMesh) child.userData.figure = true;
+    if ((child as THREE.Mesh).isMesh) child.userData.figure = child.userData.headAccessory !== true;
   });
   // A relaxed stance: elbows slightly bent.
   leftArmParts.forearm.rotation.x = rightArmParts.forearm.rotation.x = -0.12;

@@ -377,11 +377,14 @@ try {
   await spoken('BRIAN: WHAT THE FUCK');
 
   // Near the end the drivers arrive: one engine, its exhaust, coughing, the rest, and Shan.
-  await jump(153_100);
+  await read(() => window.fixtureApp.crew.reset());
+  await jump(117_100);
   await page.waitForFunction(() => window.fixtureApp.crew.drivers.filter((driver) => driver.root.visible).length === window.fixtureApp.world.trucks.length);
   assert.equal(await crew(() => window.fixtureApp.world.trucks.length), 12, 'all ten original trucks plus the two new ones');
-  await jump(155_700);
-  await page.waitForFunction(() => window.fixtureApp.crew.runningEngines(window.fixtureApp.model.elapsedMs) === 1);
+  assert.equal(await crew(() => window.fixtureApp.crew.runningEngines(119_999)), 0);
+  assert.equal(await crew(() => window.fixtureApp.crew.runningEngines(120_000)), 1, 'the first engine starts with one minute left');
+  await jump(125_500);
+  await page.waitForFunction(() => window.fixtureApp.crew.runningEngines(window.fixtureApp.model.elapsedMs) === 12);
   for (const [at, line] of [[157_000, 'HUSSAN: COUGH!'], [158_400, "AJ: Could've waited five minutes."], [161_600, 'DORIS: HACK!'],
     [163_300, 'HUSSAN: COUGH COUGH!'], [165_400, "SHAN O'MAC: Belt's still moving."], [168_600, 'DORIS: UGH, EXHAUST!']]) {
     await jump(at - 50);

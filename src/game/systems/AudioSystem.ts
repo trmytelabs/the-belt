@@ -1,4 +1,4 @@
-type MusicMode = 'title' | 'game' | 'danger' | 'results';
+export type MusicMode = 'title' | 'game' | 'danger' | 'results';
 
 export type SoundEffect =
   | 'belt-start' | 'belt-stop' | 'bulk' | 'button' | 'correct'
@@ -20,12 +20,12 @@ const COOLDOWN: Partial<Record<SoundEffect, number>> = {
 /** Editable, original Web Audio foley and a restrained warehouse score.
  * No samples, purchased assets or external music. Noise has its own fixed seed,
  * so rendering sound never consumes gameplay's random rolls. */
-class AudioSystem {
-  private context: AudioContext | null = null;
+export class AudioSystem {
+  protected context: AudioContext | null = null;
   private masterGain: GainNode | null = null;
-  private musicGain: GainNode | null = null;
-  private sfxGain: GainNode | null = null;
-  private noiseBuffer: AudioBuffer | null = null;
+  protected musicGain: GainNode | null = null;
+  protected sfxGain: GainNode | null = null;
+  protected noiseBuffer: AudioBuffer | null = null;
   private noiseOffset = 0;
   private readonly musicVoices = new Set<AudioScheduledSourceNode>();
   private readonly lastPlayed = new Map<SoundEffect, number>();
@@ -33,7 +33,7 @@ class AudioSystem {
   private musicMode: MusicMode = 'title';
   private nextStepTime = 0;
   private musicStep = 0;
-  private muted = false;
+  protected muted = false;
   private unlockListenersInstalled = false;
 
   public installUnlockListeners(): void {
@@ -281,7 +281,7 @@ class AudioSystem {
     }
   }
 
-  private getContext(): AudioContext | null {
+  protected getContext(): AudioContext | null {
     if (typeof window === 'undefined') return null;
     if (this.context) return this.context;
     const AudioContextCtor = (window as AudioWindow).AudioContext ?? (window as AudioWindow).webkitAudioContext;
@@ -322,12 +322,12 @@ class AudioSystem {
     return context;
   }
 
-  private updateMusicVolume(): void {
+  protected updateMusicVolume(): void {
     const volume = this.musicMode === 'title' || this.musicMode === 'results' ? 0.28 : 0.22;
     this.fade(this.musicGain, this.muted || this.musicTimer === null ? 0 : volume, 0.08);
   }
 
-  private fade(node: GainNode | null, value: number, duration: number): void {
+  protected fade(node: GainNode | null, value: number, duration: number): void {
     if (!node || !this.context) return;
     const now = this.context.currentTime;
     const parameter = node.gain;
@@ -343,7 +343,7 @@ class AudioSystem {
     gain.gain.linearRampToValueAtTime(0, time + duration);
   }
 
-  private voice(frequency: number, duration: number, time: number, volume: number, options: VoiceOptions = {}): void {
+  protected voice(frequency: number, duration: number, time: number, volume: number, options: VoiceOptions = {}): void {
     const context = this.context;
     const destination = options.music ? this.musicGain : this.sfxGain;
     if (!context || !destination) return;
@@ -360,7 +360,7 @@ class AudioSystem {
     source.start(time); source.stop(time + duration + 0.01);
   }
 
-  private noise(time: number, duration: number, frequency: number, volume: number, music = false): void {
+  protected noise(time: number, duration: number, frequency: number, volume: number, music = false): void {
     const context = this.context;
     const destination = music ? this.musicGain : this.sfxGain;
     if (!context || !destination || !this.noiseBuffer) return;

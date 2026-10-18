@@ -33,6 +33,11 @@ Arms stay beside the torso with natural elbow bends during walking, carrying
 and gestures. Cars use two detailed sedan models, and the devil uses an animated
 horned, winged model. These compact CC0 models retain the existing story paths
 and have procedural fallbacks; see [prop sources](public/models/PROP-SOURCES.md).
+Kylie is a short Asian man; AJ is a clothed bald man with fitted glasses.
+The 3D soundtrack is a recorded chill lo-fi instrumental made in Google Flow
+Music, with smooth loop transitions, quieter package foley and music ducking
+under dialogue. M mutes both music and effects. Source details are in
+[music sources](public/audio/MUSIC-SOURCES.md).
 
 The legacy **2D Night Shift / Depot 07** is at `?mode=2d`. The current 3D game
 plays a whole night: one of three random
@@ -62,8 +67,8 @@ SORT!** countdown starts the shift.
   costs up to 150 points once, and Shan runs over yelling.
 - The raised platform ends at the back wall, behind both player truck rows.
   Stairs descend outward to the left and right, with tidy pallet drops below.
-- Read parcel street addresses and compare them with the ranges on the truck
-  signs. Termite covers Mill Woods (10–49 ST), Downtown (90–109 ST) and the
+- Read parcel street addresses and compare them with the ranges painted on the
+  floor beside each truck. Termite covers Mill Woods (10–49 ST), Downtown (90–109 ST) and the
   Westmount floor drop (110–129 ST). Skanky covers Bonnie Doon (50–89 ST),
   West End (130–169 ST) and the Northside floor drop (170–199 ST). Oversize
   freight goes to shared bulk. These are synthetic game districts.
@@ -71,7 +76,7 @@ SORT!** countdown starts the shift.
   you control collects bulk. Random everyday freight mixes with the original
   joke parcels. Arrivals allow more breathing room: every 4.8 seconds initially,
   3.2 seconds in flow and 2.4 seconds in rush.
-- Read street numbers painted on the floor and on physical signs. There are
+- Read street numbers painted on the floor. Floating location signs are removed. There are
   no safe-zone outlines or aiming guides. A wrong drop costs up to 10 points.
   See [address sorting and loading](docs/address-sorting.md).
 - E brakes the belt for two seconds, with an eight-second cooldown.
@@ -87,6 +92,15 @@ SORT!** countdown starts the shift.
   mostly on the platform, collecting and loading parcels on short work cycles;
   the original gags remain brief interruptions. Shan stays visible between reactions.
 - Pick up missed freight near the belt exit to recover it for half base points.
+- Recovered freight counts as dispatched for the 3D grade. S starts at 95%;
+  freight left behind, wrong drops and excess breakages lower the percentage.
+  Results show the calculation. Recovery still reduces points and breaks a streak.
+- Approaching either stair flight gently aligns the worker with its clear
+  centre, including while carrying bulky freight.
+- With one minute left, the trucks start their engines, illuminate headlights
+  and emit exhaust. Loaders occasionally cough while continuing their work.
+- Lunch starts with a whistle and a short **15 MINUTE LUNCH BREAK!** alert,
+  then the existing break scene; the shift and held freight remain paused.
 
 Touch devices have a movement stick and Switch, Grab / Deliver, and Brake
 buttons. Landscape gives a closer view; portrait reserves room below the game

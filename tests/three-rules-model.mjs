@@ -171,6 +171,73 @@ test('wrong 3D drops and intact wrong throws cost ten points per attempt, capped
   assert.equal(legacy.score, 100, 'legacy wrong-drop scoring is preserved');
 });
 
+test('3D grades recovered dispatches once: 56 of 57 freight with 17 belt-end incidents earns S', () => {
+  const m = new ShiftModel3D({ autonomousCoworker: false });
+  const template = m.packages[0];
+  m.packages.splice(0, m.packages.length, ...Array.from({ length: 57 }, (_, i) => ({
+    ...template, id: i + 1, state: i < 56 ? 'delivered' : 'missed', recovered: i < 16,
+  })));
+  Object.assign(m, { sorted: 56, missed: 17, score: 5950, bestCombo: 9, ended: true, won: true });
+  assert.equal(m.errors, 1, 'only the one parcel left behind counts');
+  assert.equal(m.recoveredDeliveries, 16);
+  assert.equal(m.dispatchRate, 56 / 57 * 100);
+  assert.equal(m.accuracy, m.dispatchRate);
+  assert.equal(m.grade, 'S');
+  assert.equal(m.gradeQuote, 'OUTSTANDING SHIFT');
+  assert.equal(m.score, 5950, 'recovery still earns its reduced points');
+});
+
+test('3D rank boundaries use the actual percentage and unfinished freight, with no lifetime miss cutoff', () => {
+  for (const [sorted, total, grade] of [[19,20,'S'],[18,19,'A'],[9,10,'A'],[8,10,'B'],[70,100,'C'],[69,100,'F']]) {
+    const m = new ShiftModel3D({ autonomousCoworker: false });
+    const template = m.packages[0];
+    m.packages.splice(0, m.packages.length, ...Array.from({ length: total }, (_, i) => ({
+      ...template, id: i + 1, state: i < sorted ? 'delivered' : ['held','floor','belt','missed'][i % 4],
+    })));
+    Object.assign(m, { sorted, missed: 500 });
+    assert.equal(m.grade, grade, `${sorted}/${total}`);
+  }
+  const m = new ShiftModel3D({ autonomousCoworker: false });
+  assert.equal(m.grade, 'F', 'no dispatches cannot earn a rank');
+  m.packages[0].state = 'delivered'; m.sorted = 1;
+  assert.equal(m.grade, 'S');
+  m.ended = true; m.won = false;
+  assert.equal(m.grade, 'F', 'a terminated shift stays failed');
+});
+
+test('wrong drops and excess breakages still reduce a recovered 3D shift grade', () => {
+  const m = new ShiftModel3D({ autonomousCoworker: false });
+  const template = m.packages[0];
+  m.packages.splice(0, m.packages.length, ...Array.from({ length: 20 }, (_, i) => ({ ...template, id: i + 1, state: 'delivered', recovered: true })));
+  m.sorted = 20; m.missed = 20;
+  assert.equal(m.grade, 'S');
+  for (let i = 0; i < 2; i++) { hold(m, 'D', L.dockA); m.action(); }
+  assert.equal(m.wrongDrops, 2);
+  assert.equal(m.grade, 'A');
+  const before = m.errors;
+  m.damaged = 2;
+  m.packages.push({ ...template, id: 100, state: 'damaged' }, { ...template, id: 101, state: 'damaged' });
+  assert.equal(m.errors, before + 1, 'the first break remains forgiven; later breaks count once');
+});
+
+test('stairs guide offset approaches down and up at ordinary speed while carrying on either side', () => {
+  for (const side of [0, 1]) for (const offset of [-48, -20, 0, 10]) for (const kind of ['smallbox', 'longbox', 'atv']) {
+    const m = new ShiftModel3D({ autonomousCoworker: false });
+    m.activeIndex = side; m.eventStopped = true;
+    const p = hold(m, side ? 'S' : 'T', { x: side ? 578 : 382, y: L.stairs.centerY - 10 + offset });
+    p.kind = kind;
+    const direction = side ? 1 : -1;
+    for (let i = 0; i < 400 && !onLowerFloor(m.activeWorker); i++) {
+      const previous = { ...m.activeWorker };
+      m.update(10, { x: direction, y: 0 });
+      assert.ok(Math.hypot(m.activeWorker.x - previous.x, m.activeWorker.y - previous.y) <= 2.350001);
+    }
+    assert.ok(onLowerFloor(m.activeWorker), `${kind}: side ${side}, offset ${offset} reaches the floor`);
+    for (let i = 0; i < 400 && (side ? m.activeWorker.x > 630 : m.activeWorker.x < 330); i++) m.update(10, { x: -direction, y: 0 });
+    assert.ok(side ? m.activeWorker.x <= 630 : m.activeWorker.x >= 330, 'returns to the platform');
+  }
+});
+
 test('truck freight requires entering the rear door and persists as individually placed cargo', () => {
   for (const [route, activeIndex] of [['A', 0], ['D', 0], ['B', 1], ['E', 1]]) {
     const m = new ShiftModel3D({ autonomousCoworker: false });

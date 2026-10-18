@@ -89,6 +89,7 @@ try {
   console.log('PASS the animated horned devil preserves emergence, drag, truck clearance and clean restart');
   assert.deepEqual(errors,[]);
 
+  await page.close();
   const fallback=await browser.newPage();
   await fallback.route('**/models/vehicles/**',route=>route.abort());await fallback.route('**/models/creatures/**',route=>route.abort());
   await fallback.addInitScript(()=>window.addEventListener('belt3d:ready',event=>{window.fixtureApp=event.detail;}));

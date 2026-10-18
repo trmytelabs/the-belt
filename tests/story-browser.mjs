@@ -184,6 +184,7 @@ try {
     assert.equal(await read(() => window.fixtureApp.story.chapter), 'break');
     const frozen = await read(() => ({ t: window.fixtureApp.model.elapsedMs, travel: window.fixtureApp.model.beltTravel, paused: window.fixtureApp.model.paused }));
     assert.equal(frozen.paused, true, 'the shift is paused for the break');
+    assert.equal(await read(() => window.fixtureApp.cutscene.scene.beats[0].direction), '15 MINUTE LUNCH BREAK!');
     if (index === 0 || index === 3) { await page.waitForTimeout(1200); await shot(`break-${id}`); }
     const lines = BREAK_SCENES[place][variant].beats.filter((beat) => beat.line).map((beat) => `${name(beat.speaker)}: ${beat.line}`);
     await stepScene(id);
@@ -408,6 +409,23 @@ try {
     ['shift', 'clockout', 'assignment', 'to-mall', 'mall', 'to-ups', 'return', 'home', 'results']);
   assert.deepEqual(errors, []);
   console.log('PASS 3D finale: shift completion into the mall assignment, three cart runs by real keys with no empty, early or duplicate credit, six drops and six signatures, return to the truck, five-ton back to UPS by key drop, home and results; no script errors');
+
+  // Regression for a near-complete night with recovered freight: the same mall
+  // and key-return objects have really completed, only the warehouse totals are synthetic.
+  await read(() => {
+    const app=window.fixtureApp,m=app.model,template=m.packages[0];
+    m.packages.splice(0,m.packages.length,...Array.from({length:57},(_,i)=>({...template,id:i+1,state:i<56?'delivered':'missed',recovered:i<16})));
+    Object.assign(m,{sorted:56,missed:17,score:5950,bestCombo:9,damaged:0,breakagePenalty:0,wrongSortErrors:0,won:true,ended:true,bulkSorted:12});
+    Object.assign(m.routeSorted,{A:9,D:8,T:5,B:8,E:7,S:7,C:12});
+    app.state='celebrating';app.showResults();
+  });
+  const recovered=await page.locator('.b3d-panel').innerText();
+  assert.match(recovered,/SHIFT COMPLETE \/ GRADE S/);
+  assert.match(recovered,/98% of freight dispatched · 16 recovered and dispatched/);
+  assert.match(recovered,/1 left behind · 0 wrong drops · GRADE 98\.2%/);
+  assert.match(recovered,/NIGHT TOTAL 06250.*OUTSTANDING SHIFT/);
+  await shot('recovered-s-rank');
+  console.log('PASS 56 of 57 dispatched, recovered freight and the completed mall run render S rank, an explicit grade breakdown and the correct 6250 night total');
 
   // ---- Restart and replay start clean.
   await page.keyboard.press('Enter');

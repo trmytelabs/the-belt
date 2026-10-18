@@ -217,7 +217,7 @@ try {
     await page.keyboard.up('KeyS');
     assert.ok(await read(() => Math.abs(window.fixtureApp.model.activeWorker.y - window.fixtureApp.model.layout.dockA.y) <= 3), 'the doorway guides a diagonal approach into the shelf aisle');
     await wait(() => window.fixtureApp.world.trucks.find(truck => truck.route === 'A').group.getObjectByName('truck-roof').material.opacity < 0.2);
-    assert.equal(await read(() => window.fixtureApp.world.trucks.find(truck => truck.route === 'A').group.getObjectByName('truck-roof-sign').visible), false, 'the roof sign must not hide the shelves');
+    assert.equal(await read(() => Boolean(window.fixtureApp.world.trucks.find(truck => truck.route === 'A').group.getObjectByName('truck-roof-sign'))), false, 'locations use floor numbers without floating truck signs');
     const carriedView = await read(() => window.fixtureApp.parcels.get(9100).root.uuid);
     await page.keyboard.press('Space');
     await wait(() => window.fixtureApp.model.truckLoads.has(9100));

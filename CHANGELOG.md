@@ -2,6 +2,16 @@
 
 ## 0.1.0 — development snapshot
 
+- Grade 3D recovered freight by its final dispatch outcome, with S at 95% and
+  a visible breakdown instead of permanent errors for belt-end incidents.
+- Guide carrying approaches through both stair flights and keep location street
+  ranges on the floor, removing floating truck, stair and floor-drop signs.
+- Recast Kylie as a short Asian man and AJ as a clothed bald man with glasses.
+- Add a recorded chill lo-fi soundtrack created in Google Flow Music, smooth
+  loop transitions, softer package foley and dialogue ducking in 3D.
+- Start 3D truck engines with one minute left, showing headlights, exhaust,
+  a continuous diesel idle and occasional loader coughs.
+- Announce lunch with a whistle and a multi-second 15 MINUTE LUNCH BREAK alert.
 - Combine the 3D gameplay with 23 rigged Microsoft Rocketbox characters,
   preserving their animations, attached props and software-renderer fallback.
 - Spread truck rows apart and stage crew events between them, keeping loading

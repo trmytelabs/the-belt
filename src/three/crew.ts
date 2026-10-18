@@ -5,7 +5,7 @@ import {
 } from '../game/slice/DepotReferences';
 import { DRIVERS, SHAN_BREAKAGE_LINES } from '../game/slice/StoryScript';
 import type { Parcel, ShiftEvent, ShiftModel } from '../game/slice/ShiftModel';
-import { audioSystem } from '../game/systems/AudioSystem';
+import { audioSystem } from './audio';
 import { animateCharacter, bendElbows, bendKnees, createCharacter, mergeCharacter, type Character } from './characters';
 import { createParcelView, type ParcelView } from './parcels';
 import { BELT_HEIGHT, actorSurfaceAt, setFromModel, standard, textSprite, toWorld } from './space';
@@ -27,6 +27,7 @@ const TRUCK_DOORS: Record<string, { x: number; y: number }> = {
   fruitloop: { x: 636, y: DEPOT.crewTruckRows[0] }, doris: { x: 636, y: DEPOT.crewTruckRows[1] }, brian: { x: 636, y: DEPOT.crewTruckRows[2] }, donna: { x: 636, y: DEPOT.crewTruckRows[3] },
 };
 const MASSAGE_TABLE = DEPOT.eventProps.massage;
+export const ENGINES_3D = { driversAt: 117_000, firstAt: 120_000, othersAt: 122_000, staggerMs: 300 } as const;
 export const mix = (a: number, b: number, t: number): number => a + (b - a) * THREE.MathUtils.clamp(t, 0, 1);
 
 /** A character placed in model space, facing the way it last moved. */
@@ -242,7 +243,7 @@ export class CrewLife {
       world.scene.add(character.root);
       this.actors.set(id, new Actor(character));
     }
-    // Kylie carries an (empty) coffee cup on her search.
+    // Kylie carries an (empty) coffee cup on his search.
     const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.045, 0.16, 12), standard(0xc23a2e, 0.6));
     cup.position.set(0, -0.085, 0.05);
     this.actor('kylie').character.rightHand.add(cup);
@@ -364,6 +365,8 @@ export class CrewLife {
     for (const view of this.crewFreight.values()) view.root.visible = false;
     this.towel.visible = false;
     this.world.departTrucks(0);
+    this.world.trucks.forEach((_, index) => this.world.setTruckRunning(index, false));
+    this.exhaustTimer = 0;
   }
 
   public onEvent(event: ShiftEvent, model: ShiftModel): void {
@@ -518,6 +521,10 @@ export class CrewLife {
         crate.position.copy(toWorld({ x: mix(start.x, end.x, transfer), y: mix(start.y, end.y, transfer) }, BELT_HEIGHT + 0.3));
       }
       crate.visible = cycle < 0.85;
+      const coughClock = model.elapsedMs - ENGINES_3D.firstAt - 9000 - index * 6500;
+      const coughing = coughClock >= 0 && coughClock % 19_000 < 1000 && !carrying;
+      worker.setPoseAt(coughing ? 'cough' : 'none', wallTime);
+      if (coughing) this.once(`unloader-cough-${index}-${Math.floor(coughClock / 19_000)}`, model.elapsedMs, 0, () => audioSystem.play('cough'));
       worker.animate(dt, wallTime, this.reducedMotion);
     });
     const preview = model.intakePreview;
@@ -670,9 +677,9 @@ export class CrewLife {
 
   /** When each truck's engine starts (shift ms): one first, then the rest in turn. */
   public engineStartAt(index: number): number {
-    if (index === CrewLife.FIRST_ENGINE) return DRIVERS.firstEngineAt;
+    if (index === CrewLife.FIRST_ENGINE) return ENGINES_3D.firstAt;
     const order = index < CrewLife.FIRST_ENGINE ? index : index - 1;
-    return DRIVERS.otherEnginesAt + order * DRIVERS.engineStaggerMs;
+    return ENGINES_3D.othersAt + order * ENGINES_3D.staggerMs;
   }
 
   /** Trucks whose engines are running at shift time t. */
@@ -682,26 +689,27 @@ export class CrewLife {
 
   private updateExhaust(t: number, dt: number, wallTime: number, model: ShiftModel): void {
     // Near the end of the shift the drivers bring their keys while the belt keeps running.
-    this.once('drivers', t, DRIVERS.arriveAt, () => audioSystem.play('truck'));
-    const driversVisible = t >= DRIVERS.arriveAt && t < DRIVERS.arriveAt + 5200;
+    this.once('drivers', t, ENGINES_3D.driversAt, () => audioSystem.play('truck'));
+    const driversVisible = t >= ENGINES_3D.driversAt && t < ENGINES_3D.driversAt + 5200;
     this.drivers.forEach((driver, index) => {
       const door = this.world.trucks[index].cabDoor;
       driver.root.visible = driversVisible;
       if (!driversVisible) return;
       // Drivers walk up to their cab fronts with the keys.
       const outward = door.x < 480 ? -1 : 1;
-      driver.place(door.x + outward * mix(34, 0, (t - DRIVERS.arriveAt - index * 70) / 2200), door.y);
-      driver.faceAngle = t - DRIVERS.arriveAt > 2200 + index * 70 ? (outward < 0 ? Math.PI / 2 : -Math.PI / 2) : null;
+      driver.place(door.x + outward * mix(34, 0, (t - ENGINES_3D.driversAt - index * 70) / 2200), door.y);
+      driver.faceAngle = t - ENGINES_3D.driversAt > 2200 + index * 70 ? (outward < 0 ? Math.PI / 2 : -Math.PI / 2) : null;
       driver.pose = 'keys';
       driver.animate(dt, wallTime, this.reducedMotion);
     });
     // One engine starts; its exhaust drifts onto the platform; the loaders nearby cough.
-    this.once('engine-first', t, DRIVERS.firstEngineAt, () => {
+    this.once('engine-first', t, ENGINES_3D.firstAt, () => {
       audioSystem.play('engine');
       this.caption('[ONE ENGINE STARTS]');
     });
-    this.once('engine-others', t, DRIVERS.otherEnginesAt, () => this.caption('[MORE ENGINES START]'));
+    this.once('engine-others', t, ENGINES_3D.othersAt, () => this.caption('[MORE ENGINES START]'));
     this.world.trucks.forEach((_, index) => {
+      this.world.setTruckRunning(index, t >= this.engineStartAt(index));
       if (index === CrewLife.FIRST_ENGINE) return;
       this.once(`engine-${index}`, t, this.engineStartAt(index), () => audioSystem.play('engine'));
     });
@@ -725,15 +733,16 @@ export class CrewLife {
     });
     // More of the crew react as the other trucks start: a cough, without a new line.
     (['fruitloop', 'bannerman', 'brian', 'donna'] as const).forEach((id, index) => {
-      const at = DRIVERS.otherEnginesAt + 900 + index * 1100;
+      const at = ENGINES_3D.firstAt + 6500 + index * 9000;
       this.once(`react-${id}`, t, at, () => {
         const actor = this.actor(id);
         actor.pose = 'cough';
         actor.poseStart = wallTime;
+        audioSystem.play('cough');
       });
       if (t >= at + 2200 && t < at + 2300 && this.actor(id).pose === 'cough') this.actor(id).pose = 'none';
     });
-    if (t >= DRIVERS.firstEngineAt && t < model.durationMs) this.emitExhaust(dt, t);
+    if (t >= ENGINES_3D.firstAt && t < model.durationMs) this.emitExhaust(dt, t);
   }
 
   /** Subtitles for sounds; main3d shows them so nothing depends on audio alone. */

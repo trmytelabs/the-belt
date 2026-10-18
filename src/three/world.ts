@@ -28,7 +28,7 @@ export const SKIN = { light: 0xe8b98f, tan: 0xc98d62, brown: 0x8d5a3b, pale: 0xf
 /** Original cast identities: see docs/reference-parity.md, cast table. */
 const RESIDENTS: [string, number, number, CharacterSpec][] = [
   ['hussan', 150, 198, { name: 'HUSSAN', skin: SKIN.olive, shirt: 0x3f78a8, pants: 0x2d3440, hair: 0x1b1612, hairStyle: 'short', beard: true }],
-  ['aj', 150, 294, { name: 'AJ', skin: SKIN.tan, shirt: SKIN.tan, pants: 0x4b5a66, hair: 0x6b4a2c, hairStyle: 'short', barefoot: true }],
+  ['aj', 150, 294, { name: 'AJ', skin: SKIN.light, shirt: 0x687876, pants: 0xb5a083, hair: 0x5b4634, hairStyle: 'bald', glasses: true, glassesDepth: 0.177, glassesHeight: 0.159, longSleeves: true }],
   ['ben', 150, 390, { name: 'BEN', skin: SKIN.pale, shirt: 0x5a6b48, pants: 0x34383d, hair: 0x5a3a22, hairStyle: 'slick' }],
   ['bannerman', 150, 486, { name: 'BANNERMAN', skin: SKIN.light, shirt: 0x8a6a3a, pants: 0x2f3b45, hair: 0x6e4c2e, hairStyle: 'short', glasses: true, moustache: true }],
   ['fruitloop', 810, 198, { name: 'FRUIT LOOP', skin: SKIN.light, shirt: 0x5fae4e, pants: 0x354052, hair: 0x2f2318, hairStyle: 'curly', scale: 0.78 }],
@@ -39,7 +39,7 @@ const RESIDENTS: [string, number, number, CharacterSpec][] = [
 export const RESIDENT_SPECS: Record<string, CharacterSpec> = Object.fromEntries(RESIDENTS.map(([id, , , spec]) => [id, spec]));
 
 export const VISITORS: Record<string, CharacterSpec & { x: number; y: number }> = {
-  kylie: { name: 'KYLIE', x: 850, y: 400, skin: SKIN.pale, shirt: 0xb24a6a, pants: 0x2b2f3a, hair: 0x83569a, hairStyle: 'bun' },
+  kylie: { name: 'KYLIE', x: 850, y: 400, skin: SKIN.light, shirt: 0x8e3232, pants: 0x2b2f3a, hair: 0x171310, hairStyle: 'short', scale: 0.86 },
   john: { name: 'JOHN RUSHTON', x: 77, y: 397, skin: 0xbf9672, shirt: 0x2f4f64, pants: 0x2b3038, hair: 0x3a2a19, hairStyle: 'short', scale: 0.92 },
   vic: { name: 'VIC', x: 132, y: 286, skin: 0xc29c7a, shirt: 0x727f83, pants: 0x34383d, hair: 0xb4b4a1, hairStyle: 'short', moustache: true },
   shan: { name: SHAN_NAME, dynamicSkin: true, x: 610, y: SHIFT_LAYOUT.eventBays.brian.y, skin: SKIN.light, shirt: 0xe9e4d6, pants: 0x30343c, hair: 0x8b8b88, hairStyle: 'bald', tie: 0x8a2630 },
@@ -413,11 +413,13 @@ export class DepotWorld {
           scene.add(post);
         }
       }
-      const sign = textPlane([side === 'left' ? '◀ STAIRS' : 'STAIRS ▶', streetRange(side === 'left' ? 'T' : 'S')], 1.6, 0.5, {
-        width: 190, height: 60, background: '#13252ce6', color: '#e8c04a', radius: 6,
+      const numbers = textPlane([streetRange(side === 'left' ? 'T' : 'S')], 1.8, 0.5, {
+        width: 300, height: 80, color: '#f2e6c8',
       });
-      sign.position.set(startX - direction * 0.6, PLATFORM_HEIGHT + 1.55, toWorldZ(stairs.minY) - 0.15);
-      scene.add(sign);
+      numbers.rotation.x = -Math.PI / 2;
+      numbers.position.set(startX - direction * 0.9, PLATFORM_HEIGHT + 0.012, toWorldZ(stairs.centerY - 60));
+      numbers.name = 'floor-street-range'; numbers.userData.keep = true;
+      scene.add(numbers);
     }
 
     // Short crew steps in the aisles between parked trucks: the outer-bay crew
@@ -546,6 +548,14 @@ export class DepotWorld {
   /** Each lower-floor drop shows one box per parcel delivered there. */
   public setFloorPile(route: 'T' | 'S', count: number): void {
     this.floorPiles[route].count = Math.min(count, this.floorPiles[route].instanceMatrix.count);
+  }
+
+  public setTruckRunning(index: number, running: boolean): void {
+    const truck = this.trucks[index];
+    truck.group.userData.engineRunning = running;
+    truck.group.traverse(child => {
+      if (child.name === 'truck-headlight') (child as THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>).material.emissiveIntensity = running ? 2.4 : 0.04;
+    });
   }
 
   /** Open the view into the currently occupied truck, restoring its roof on exit. */
@@ -766,7 +776,7 @@ export class DepotWorld {
     scene.add(trayTag);
   }
 
-  /** The two lower-floor drops: street numbers, pallets, tall signs and tidy piles. */
+  /** The two lower-floor drops: painted street numbers, pallets and tidy piles. */
   private addLowerFloor(): void {
     for (const route of ['T', 'S'] as const) {
       const area = SHIFT_LAYOUT.dropAreas[route];
@@ -780,21 +790,11 @@ export class DepotWorld {
         slat.position.copy(toWorld({ x: storage.x + offset, y: storage.y }, 0.08));
         this.scene.add(shadowed(slat));
       }
-      const street = textPlane([streetRange(route), ROUTE_INFO[route].name], 1.5, 0.9, { width: 300, height: 160, color: '#f2e6c8' });
+      const street = textPlane([streetRange(route)], 1.5, 0.65, { width: 300, height: 110, color: '#f2e6c8' });
       street.rotation.x = -Math.PI / 2;
       street.position.copy(toWorld(area, 0.012));
       street.name = 'floor-street-range'; street.userData.keep = true;
       this.scene.add(street);
-      // A tall sign post keeps the letter and name readable above the pile.
-      const center = toWorld(area);
-      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.4, 8), standard(0x3f4d53, 0.5, 0.4));
-      post.position.set(center.x + (route === 'T' ? -3.125 : 3.125), 1.2, center.z + 1.0);
-      const sign = textPlane([ROUTE_INFO[route].name, streetRange(route), 'FLOOR DROP'], 2.1, 0.9, {
-        width: 300, height: 120, background: '#d9ccab', color: '#14232a', radius: 8,
-      });
-      sign.position.set(post.position.x, 2.3, post.position.z);
-      sign.rotation.y = route === 'T' ? 0.3 : -0.3;
-      this.scene.add(shadowed(post), sign);
       // Up to 36 parcels show as a growing, orderly pile.
       const material = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9 });
       const pile = new THREE.InstancedMesh(new THREE.BoxGeometry(0.62, 0.42, 0.5), material, 36);
@@ -1190,7 +1190,8 @@ export function createTruck(name: string, color: number, cabColor: number, side:
   sideWindow.position.set(-facing * (length / 2 - cabLength / 2 - 0.05), 1.58, depth / 2 - 0.045);
   truck.add(cab, windshield, sideWindow);
   for (const sz of [-1, 1]) {
-    const headlight = new THREE.Mesh(new THREE.CircleGeometry(0.1, 12), new THREE.MeshStandardMaterial({ color: 0xfff3c8, emissive: 0xfff0c0, emissiveIntensity: 2.4 }));
+    const headlight = new THREE.Mesh(new THREE.CircleGeometry(0.1, 12), new THREE.MeshStandardMaterial({ color: 0xfff3c8, emissive: 0xfff0c0, emissiveIntensity: 0.04 }));
+    headlight.name = 'truck-headlight'; headlight.userData.keep = true;
     headlight.position.set(-facing * (length / 2 + 0.004), 0.7, sz * (depth / 2 - 0.3));
     headlight.rotation.y = -facing * Math.PI / 2;
     truck.add(headlight);
@@ -1220,19 +1221,13 @@ export function createTruck(name: string, color: number, cabColor: number, side:
       truck.add(wheel);
     }
   }
-  // District names and street ranges identify each player's open rear door.
-  if (route) {
-    const doorSign = textPlane([ROUTE_INFO[route].name, streetRange(route)], 2.1, 0.65, { width: 320, height: 100, background: '#d9ccab', color: '#12232a', radius: 6 });
-    doorSign.position.set(facing * (length / 2 + 0.04), floor + boxHeight + 0.3, 0);
-    doorSign.rotation.y = facing * Math.PI / 2;
-    truck.add(doorSign);
-  }
+  // Player destinations are identified by painted floor numbers only.
+  if (route) return shadowed(truck);
   // Nameplates on the roof (overview) and the south side (follow camera).
   const words = name.split(' ');
-  const lines = route ? [name, streetRange(route)] : name.length > 10 && words.length > 1 ? [words.slice(0, Math.ceil(words.length / 2)).join(' '), words.slice(Math.ceil(words.length / 2)).join(' ')] : [name];
+  const lines = name.length > 10 && words.length > 1 ? [words.slice(0, Math.ceil(words.length / 2)).join(' '), words.slice(Math.ceil(words.length / 2)).join(' ')] : [name];
   const plateOptions = { width: 300, height: 120, background: '#14262d', color: '#d9ccab', border: route ? ROUTE_COLORS[route] : '#a8946a', radius: 10 };
   const roof = textPlane(lines, boxLength * 0.84, depth * 0.62, plateOptions);
-  if (route) { roof.name = 'truck-roof-sign'; roof.userData.keep = true; }
   roof.rotation.x = -Math.PI / 2;
   roof.position.set(boxX, floor + boxHeight + 0.011, 0);
   // An open-topped cutaway keeps the freight inside readable from above.

@@ -18,7 +18,7 @@ import {
   DRIVE_TO_MALL, DRIVE_TO_UPS, GO_HOME, KEY_RETURN_LINES, MALL_ASSIGNMENT, MALL_INTRO, SCRUM, SPEAKER_NAMES,
   type StoryActor, type StoryBeat, type StoryScene,
 } from '../game/slice/StoryScript';
-import { audioSystem, type SoundEffect } from '../game/systems/AudioSystem';
+import { audioSystem, type SoundEffect } from './audio';
 import { syncCharacterModels, useCharacterModels, type CharacterModelEntry } from './characterModels';
 import { animateCharacter, createCharacter, mergeCharacter, type Character } from './characters';
 import { CrewLife } from './crew';
@@ -368,6 +368,7 @@ export class Belt3d {
   }
 
   private playScene(scene: StoryScene): void {
+    this.overlay.setLunchAlert(false);
     this.state = 'story';
     this.cutscene = new Cutscene(scene);
     this.keys.clear();
@@ -386,6 +387,7 @@ export class Belt3d {
 
   /** What follows each scene; a skipped scene takes the same path. */
   private finishScene(): void {
+    this.overlay.setLunchAlert(false);
     const scene = this.cutscene?.scene;
     this.cutscene = null;
     this.overlay.clearSpeech();
@@ -438,7 +440,10 @@ export class Belt3d {
     this.story.go('break');
     this.model.paused = true;
     audioSystem.stopMusic();
-    this.playScene(this.story.breakScene);
+    this.playScene({ ...this.story.breakScene, title: '15 MINUTE LUNCH BREAK!', beats: [
+      { direction: '15 MINUTE LUNCH BREAK!', cue: 'lunch-alert', ms: 3500 },
+      ...this.story.breakScene.beats,
+    ] });
   }
 
   private endBreak(): void {
@@ -475,6 +480,7 @@ export class Belt3d {
   }
 
   private pause(): void {
+    this.overlay.setLunchAlert(false);
     this.pausedFrom = this.state as Resumable;
     this.state = 'paused';
     this.model.paused = true;
@@ -488,6 +494,7 @@ export class Belt3d {
 
   private resume(): void {
     this.state = this.pausedFrom;
+    this.overlay.setLunchAlert(this.state === 'story' && this.cutscene?.beat.cue === 'lunch-alert');
     // The shift stays frozen through a story; only active sorting runs its clock.
     this.model.paused = this.state !== 'playing';
     if (this.mall) this.mall.paused = false;
@@ -683,6 +690,7 @@ export class Belt3d {
     this.mesa.update(dt * 1000, this.time);
 
     const running = this.state === 'playing' || this.state === 'celebrating' || this.state === 'ended';
+    audioSystem.setTruckIdle((this.state === 'playing' && m.elapsedMs >= 120_000) || this.state === 'celebrating');
     if (this.state === 'playing') this.crew.updateReceiving(m, dt, this.time);
     this.world.update(running ? dt : 0, this.time, m.beltTravel, this.reducedMotion);
     const depotStory = this.state === 'story' && this.cutscene?.scene.location === 'depot';
@@ -764,6 +772,8 @@ export class Belt3d {
 
   /** A story beat starts: its sound, its subtitles, and a bubble over the speaker. */
   private enterBeat(beat: StoryBeat): void {
+    this.overlay.setLunchAlert(beat.cue === 'lunch-alert');
+    if (beat.cue === 'lunch-alert') audioSystem.lunchWhistle();
     if (beat.sound) audioSystem.play(BEAT_SOUNDS[beat.sound]);
     const speaker = beat.speaker ? SPEAKER_NAMES[beat.speaker] : undefined;
     this.overlay.subtitle({ speaker, line: beat.line, direction: beat.direction, caption: beat.caption });
@@ -1129,7 +1139,7 @@ export class Belt3d {
     const m = this.model;
     audioSystem.startMusic('results');
     const overflow = m.pileup >= m.capacity;
-    const rate = m.packages.length === 0 ? 0 : Math.round(m.sorted / m.packages.length * 100);
+    const rate = Math.round(m.dispatchRate);
     const home = this.lot?.done === true;
     const mall = this.mall;
     const routes = (['A', 'D', 'T', 'B', 'E', 'S', 'C'] as const).map((route) => `${ROUTE_INFO[route].name} ${m.routeSorted[route]}`).join(' · ');
@@ -1139,7 +1149,8 @@ export class Belt3d {
       <div class="kicker">${m.won ? `SHIFT COMPLETE / GRADE ${m.grade}` : 'SHIFT TERMINATED / YOU FAILED THE SORT'}</div>
       <h1>${overflow ? 'PILE-UP OVERFLOW' : home ? 'HOME. FINALLY.' : m.gradeQuote}</h1>
       <p><b>${m.sorted} DISPATCHED · ${String(m.score).padStart(5, '0')} POINTS · ${m.bestCombo} BEST STREAK</b></p>
-      <p>${rate}% of freight dispatched · ${m.missed} parcels reached the belt end · ${m.bulkSorted} to bulk</p>
+      <p>${rate}% of freight dispatched · ${m.recoveredDeliveries} recovered and dispatched · ${m.bulkSorted} to bulk</p>
+      <p>${m.unshipped} left behind · ${m.wrongDrops} wrong drops · GRADE ${m.accuracy.toFixed(1)}% (S: 95%+)</p>
       <p>${escapeHtml(routes)}</p>
       <p>${m.thrownDeliveries} thrown in clean · ${m.damaged} broken (−${m.breakagePenalty} points${m.damaged > THROWING.gradeForgivenBreaks ? `, ${m.gradedBreaks} counted against the grade` : ''})</p>
       ${mall ? `<p>MALL RUN · ${mall.delivered}/6 delivered · ${mall.signatures}/6 signed · five-ton ${home ? 'returned' : 'not returned'} · +${this.mallBonus}</p>

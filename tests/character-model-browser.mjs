@@ -34,7 +34,7 @@ try {
   if (await page.evaluate(() => window.fixtureApp.quality) === 'low') {
     assert.deepEqual(requests, [], 'software renderers keep the procedural people and request no models');
   } else {
-    assert.ok(requests.every((request) => /\/models\/characters\/[a-z0-9-]+\.glb$/.test(request)), 'only crew models are requested');
+    assert.ok(requests.every((request) => /\/models\/(characters\/[a-z0-9-]+|vehicles\/sedan(?:-wide)?|creatures\/devil)\.glb$/.test(request)), 'only the shipped crew, cars and devil models are requested');
   }
 
   await page.evaluate(() => window.fixtureApp.useCharacterModels([{ names: ['TERMITE', 'SKANKY'], url: '/models/characters/fixture-humanoid.glb' }]));
