@@ -43,6 +43,7 @@ try {
     await wait(() => window.fixtureApp.model.heldPackage !== null && window.fixtureApp.deliveryHalo.visible);
     assert.match(await page.locator('[data-f="guide-detail"]').innerText(), /enter the open rear door/);
     assert.equal(await page.evaluate(() => window.fixtureApp.deliveryHalo.userData.route), 'A');
+    assert.deepEqual(await page.evaluate(() => window.fixtureApp.deliveryPrompt.children.map(label => label.visible)), [true, false, false], 'the doorway asks the player to enter');
     const tag = await page.evaluate(() => {
       const app = window.fixtureApp, tag = app.parcels.get(app.model.heldPackage.id).tag;
       return { street: tag.userData.street, height: tag.scale.y };
@@ -60,6 +61,7 @@ try {
     await wait(() => window.fixtureApp.model.currentDock() === 'A');
     await page.keyboard.up('KeyA');
     await wait(() => document.querySelector('[data-f="guide-detail"]').textContent.includes('load this truck'));
+    assert.deepEqual(await page.evaluate(() => window.fixtureApp.deliveryPrompt.children.map(label => label.visible)), [false, true, false], 'the loading cue appears inside');
     if (touch) await action.tap(); else await page.keyboard.press('Space');
     await wait(() => window.fixtureApp.model.sorted === 1 && !window.fixtureApp.deliveryHalo.visible);
     await page.keyboard.press('Escape');

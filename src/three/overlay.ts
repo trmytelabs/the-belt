@@ -40,14 +40,13 @@ const CSS = `
 .b3d.touch .b3d-toast { top: 244px; max-width: calc(100% - 28px); box-sizing: border-box; }
 .b3d.touch.scanner-pending .b3d-toast { top: 320px; }
 @media (max-width: 720px) { .b3d-guide b { font-size: 19px; } .b3d-guide span { font-size: 12px; } .b3d-guide { padding: 8px 10px; } }
-@media (max-height: 520px) { .b3d.touch .b3d-guide { top: 92px; left: auto; right: 10px; transform: none; width: min(340px, 48%); } .b3d-guide b { font-size: 16px; } }
+@media (max-height: 520px) { .b3d.touch .b3d-guide { top: 92px; left: auto; right: 10px; transform: none; width: min(340px, 48%); } .b3d.touch.scanner-pending .b3d-guide { display: none; } .b3d-guide b { font-size: 16px; } }
 .b3d-scanner { position: absolute; z-index: 2; top: 82px; left: 50%; transform: translateX(-50%); width: max-content;
   max-width: calc(100% - 32px); box-sizing: border-box; padding: 9px 14px; border: 2px solid #edb765;
   border-radius: 8px; background: #17282ef2; color: #ffe1a4; text-align: center; font-weight: 800; font-size: 14px; }
 .b3d-scanner[hidden] { display: none; }
 .b3d.scanner-pending .b3d-toast { top: 140px; }
 .b3d.touch .b3d-scanner { top: 142px; font-size: 12px; }
-.b3d.touch.scanner-pending .b3d-toast { top: 202px; }
 .b3d-brake { white-space: nowrap; }
 @media (max-width: 1180px) { .b3d-keys { display: none; } }
 .b3d-keys { color: #8eaaae; font-size: 11px; letter-spacing: 1px; }
@@ -388,8 +387,8 @@ export class Overlay {
   public sortingGuide(guide: { title: string; detail: string } | null): void {
     this.fields.guide.hidden = guide === null;
     if (!guide) return;
-    this.fields['guide-title'].textContent = guide.title;
-    this.fields['guide-detail'].textContent = guide.detail;
+    if (this.fields['guide-title'].textContent !== guide.title) this.fields['guide-title'].textContent = guide.title;
+    if (this.fields['guide-detail'].textContent !== guide.detail) this.fields['guide-detail'].textContent = guide.detail;
   }
 
   /** A speech bubble anchored to a point in the world, above its speaker. */
