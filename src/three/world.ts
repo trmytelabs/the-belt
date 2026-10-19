@@ -794,7 +794,7 @@ export class DepotWorld {
     // Permanent street lettering is a readable clue, without safe-zone outlines.
     for (const route of ['A', 'B', 'D', 'E'] as const) {
       const truck = SHIFT_LAYOUT.playerTrucks[route];
-      const street = textPlane([streetRange(route)], 2.0, 0.62, { width: 320, height: 90, color: '#f2e6c8', font: '900 SIZEpx "Segoe UI", Arial, sans-serif' });
+      const street = textPlane([ROUTE_INFO[route].name, streetRange(route)], 2.1, 0.9, { width: 360, height: 150, color: '#fff4d8', font: '900 SIZEpx "Segoe UI", Arial, sans-serif' });
       street.rotation.x = -Math.PI / 2;
       street.position.copy(toWorld({ x: truck.x < 480 ? 365 : 595, y: truck.y }, deck + 0.012));
       street.name = 'floor-street-range'; street.userData.keep = true;
