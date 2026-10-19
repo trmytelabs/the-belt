@@ -12,6 +12,7 @@ import { BELT_HEIGHT, actorSurfaceAt, setFromModel, standard, textSprite, toWorl
 import { SKIN, VISITORS, type DepotWorld } from './world';
 import { DEPOT_3D_LAYOUT as DEPOT } from './layout';
 import { platformWalkPath, walkPath, type WalkPoint } from './walking';
+import { RECEIVING_CROSSING_Y, RECEIVING_FEEDERS } from './receivingCollision';
 import { CrewPatrols, type PatrolId } from './crewPatrols';
 
 /**
@@ -447,7 +448,7 @@ export class CrewLife {
       // The east crew file past stationary workers and occupied work stations
       // along a separate corridor, then turn into their own bay.
       if (to.x > 480) {
-        if (points.length > 2) points.splice(2, 1, { x: 550, y: 128 }, { x: 550, y: to.y });
+        if (points.length > 2) points.splice(2, 1, { x: 550, y: RECEIVING_CROSSING_Y }, { x: 550, y: to.y });
         else points.splice(1, 0, { x: 550, y: from.y }, { x: 550, y: to.y });
       }
       const queueIndex = ['brian', 'fruitloop', 'doris', 'donna'].indexOf(id);
@@ -568,8 +569,9 @@ export class CrewLife {
       } else {
         // The released crate rolls down the feeder toward the dockhand.
         const transfer = Math.min(1, (cycle - 0.58) / 0.27);
-        const start = { x: trailerX + (480 - trailerX) * 0.12, y: -150 + 262 * 0.12 };
-        const end = { x: trailerX + (480 - trailerX) * 0.86, y: -150 + 262 * 0.86 };
+        const feeder = RECEIVING_FEEDERS[index];
+        const start = { x: mix(feeder.from.x, feeder.to.x, 0.12), y: mix(feeder.from.y, feeder.to.y, 0.12) };
+        const end = { x: mix(feeder.from.x, feeder.to.x, 0.86), y: mix(feeder.from.y, feeder.to.y, 0.86) };
         crate.position.copy(toWorld({ x: mix(start.x, end.x, transfer), y: mix(start.y, end.y, transfer) }, BELT_HEIGHT + 0.3));
       }
       crate.visible = cycle < 0.85;
@@ -581,7 +583,7 @@ export class CrewLife {
     });
     const preview = model.intakePreview;
     const dockhand = this.dockhand;
-    dockhand.place(430, (preview?.y ?? 127) + 12);
+    dockhand.place(416, (preview?.y ?? 127) + 12);
     dockhand.faceAngle = Math.PI / 2;
     dockhand.animate(dt, wallTime, this.reducedMotion);
     // Flies circle his head; a green haze follows him.

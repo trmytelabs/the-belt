@@ -5,6 +5,7 @@ import { preview } from 'vite';
 
 import { BREAK_SCENES, OPENERS, SCRUM } from '../src/game/slice/StoryScript.ts';
 import { DEPOT_3D_LAYOUT as L } from '../src/three/layout.ts';
+import { driveJourney } from './driving-helpers.mjs';
 
 // The overnight story in the 3D depot, played through the real app with real
 // keys. Synthetic fixtures only move the shift clock, place a parcel in hand,
@@ -323,6 +324,7 @@ try {
   await page.waitForTimeout(1500);
   await shot('drive-to-mall');
   await page.keyboard.press('Enter');
+  await driveJourney(page, 'mall');
   await wait(() => window.fixtureApp.cutscene?.scene.id === 'mall-intro');
   await page.keyboard.press('Enter');
   await wait(() => window.fixtureApp.state === 'mall');
@@ -398,6 +400,7 @@ try {
   await page.keyboard.press('Space');
   await wait(() => window.fixtureApp.cutscene?.scene.id === 'drive-to-ups');
   await page.keyboard.press('Enter');
+  await driveJourney(page, 'ups');
   await wait(() => window.fixtureApp.state === 'lot');
   await page.waitForTimeout(800);
   await shot('return-truck');
@@ -440,9 +443,13 @@ try {
   assert.match(recovered,/SHIFT COMPLETE \/ GRADE S/);
   assert.match(recovered,/98% of freight dispatched · 16 recovered and dispatched/);
   assert.match(recovered,/1 left behind · 0 wrong drops · GRADE 98\.2%/);
-  assert.match(recovered,/NIGHT TOTAL 06250.*OUTSTANDING SHIFT/);
+  const driveTotals = await read(() => ({ penalty: window.fixtureApp.drivingPenalty,
+    bumps: window.fixtureApp.drivingCollisions, redLights: window.fixtureApp.drivingRedLights }));
+  assert.equal(driveTotals.penalty, (driveTotals.bumps + driveTotals.redLights) * 100, 'road incidents retain their separate 100-point deduction');
+  const expectedNightTotal = String(Math.max(0, 6250 - driveTotals.penalty)).padStart(5, '0');
+  assert.match(recovered, new RegExp(`NIGHT TOTAL ${expectedNightTotal}.*OUTSTANDING SHIFT`));
   await shot('recovered-s-rank');
-  console.log('PASS 56 of 57 dispatched, recovered freight and the completed mall run render S rank, an explicit grade breakdown and the correct 6250 night total');
+  console.log(`PASS 56 of 57 dispatched, recovered freight and the completed mall run render S rank, an explicit grade breakdown and the correct ${expectedNightTotal} night total after driving deductions`);
 
   // ---- Restart and replay start clean.
   await page.keyboard.press('Enter');

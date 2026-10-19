@@ -134,7 +134,7 @@ function alongPath(points: [number, number][], t: number): { x: number; z: numbe
 }
 
 /** A small car whose nose points along local +X. */
-function createCar(color: number): THREE.Group {
+export function createCar(color: number): THREE.Group {
   const car = new THREE.Group();
   const paint = standard(color, 0.45, 0.35);
   const body = rounded(4.2, 0.72, 1.8, paint, 0.2);

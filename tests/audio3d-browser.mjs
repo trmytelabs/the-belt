@@ -46,8 +46,9 @@ try {
     ensure(metrics(rendered,after+.5).peak<.000001,'music stops cleanly after the fade');
 
     const cues=[];
-    for(const effect of ['grab','drop','correct','wrong','package-spawn','dig','whistle']){
-      const f=make(2);if(effect==='whistle')f.system.lunchWhistle();else f.system.play(effect);
+    for(const effect of ['grab','drop','correct','wrong','package-spawn','dig','whistle','drive-brake','drive-collision']){
+      const f=make(2);await f.system.preloadFoley();ensure(f.system.foleyBuffers.size===24,'all bundled recorded foley decodes');
+      if(effect==='whistle')f.system.lunchWhistle();else if(effect.startsWith('drive-'))f.system.drivingCue(effect.slice(6));else f.system.play(effect);
       const rendered=await f.offline.startRendering(),level=metrics(rendered);
       ensure(level.peak<.65 && level.rms>.0001,`${effect}: audible soft cue, no clipping`);
       ensure(metrics(rendered,1.8).peak<.000001,`${effect}: no hanging voice`);cues.push({effect,...level});
@@ -66,11 +67,21 @@ try {
     idle.clock.now=2;idle.system.stopMusic();ensure(idle.system.idleSources.length===0,'pause/lunch/replay stop the idle bed');
     const engine=await idle.offline.startRendering(),idleLevel=metrics(engine,1,1.9);
     ensure(idleLevel.rms>.0002&&idleLevel.rms<.004,`diesel idle stays audible and quiet below music: ${JSON.stringify(idleLevel)}`);ensure(metrics(engine,2.3).peak<.000001,'diesel fades to silence');
-    return{duration:s.trackBuffer.duration,music:level,seam,cues,idle:idleLevel};
+    const drive=make(5),d=drive.system;d.setDriving(0);const firstHum=d.drivingHum;d.setDriving(13.5);
+    ensure(d.drivingHum===firstHum,'speed changes reuse one engine source');
+    const driveMute=drive.offline.suspend(2).then(async()=>{drive.clock.now=drive.offline.currentTime;d.setMuted(true);d.drivingCue('collision');await drive.offline.resume();});
+    const driveResume=drive.offline.suspend(3).then(async()=>{drive.clock.now=drive.offline.currentTime;d.setMuted(false);d.setDriving(8);await drive.offline.resume();});
+    const driveStop=drive.offline.suspend(4).then(async()=>{drive.clock.now=drive.offline.currentTime;d.stopMusic();ensure(d.drivingHum===null,'pause/replay releases engine');await drive.offline.resume();});
+    const road=await drive.offline.startRendering();await Promise.all([driveMute,driveResume,driveStop]);
+    const driveLevel=metrics(road,1,1.9);ensure(driveLevel.rms>.0002&&driveLevel.rms<.02,'driving engine is quiet and audible');
+    ensure(metrics(road,2.3,2.9).peak<.000001,'mute stops the driving engine and bump cue');
+    ensure(metrics(road,3.3,3.9).rms>.0002,'unmute resumes a single engine');
+    ensure(metrics(road,4.3).peak<.000001,'road engine stops without a hanging voice');
+    return{duration:s.trackBuffer.duration,music:level,seam,cues,idle:idleLevel,driving:driveLevel};
   },depot);
   console.log(JSON.stringify(report));
   await page.route('**/audio/music/after-hours.mp3',route=>route.abort());
   const fallback=await page.evaluate(async compiled=>{const {DepotAudio}=await import(`data:text/javascript;base64,${btoa(compiled)}`);const s=new DepotAudio();s.startMusic('game');await s.trackLoad;s.stopMusic();return{recordings:s.recordings.size,timer:s.trackTimer,buffer:s.trackBuffer,oldTimer:s.musicTimer};},depot);
   assert.deepEqual(fallback,{recordings:0,timer:null,buffer:null,oldTimer:null});
-  console.log('PASS actual lo-fi decode, stereo playback and crossfade, mode transitions, headroom, soft package cues, lunch whistle, mute/resume, diesel idle cleanup and failed-download fallback');
+  console.log('PASS actual lo-fi decode, crossfade, soft foley, driving engine/brake/bump headroom, mute/resume, pause/replay cleanup and failed-download fallback');
 }finally{await browser.close();await server.httpServer.close();}

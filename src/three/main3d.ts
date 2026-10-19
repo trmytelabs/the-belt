@@ -29,6 +29,9 @@ import { MesaDream } from './dream';
 import { MesaEncounter } from './mesa';
 import { BEN_CAST, BEN_END, BEN_START, SetPieces } from './setpieces';
 import { StoryStage, directDepot } from './story';
+import { DrivingModel, type DriveDestination } from './DrivingModel';
+import { DrivingView } from './driving';
+import { BELT_SOLID_WIDTH, HEAD_DRIVE, clearReceiving } from './receivingCollision';
 import { TouchControls } from './touch';
 import { Overlay } from './overlay';
 import { alignParcelToSurface, createParcelView, setParcelCarried, type ParcelView } from './parcels';
@@ -38,8 +41,8 @@ import {
 } from './space';
 import { DepotWorld, SKANKY_SPEC, TERMITE_SPEC } from './world';
 
-type AppState = 'briefing' | 'story' | 'countdown' | 'playing' | 'break-alert' | 'interlude' | 'mesa' | 'dream' | 'paused' | 'celebrating' | 'mall' | 'lot' | 'ended';
-type Resumable = 'playing' | 'break-alert' | 'interlude' | 'story' | 'mall' | 'lot';
+type AppState = 'briefing' | 'story' | 'countdown' | 'playing' | 'break-alert' | 'interlude' | 'mesa' | 'dream' | 'paused' | 'celebrating' | 'driving' | 'mall' | 'lot' | 'ended';
+type Resumable = 'playing' | 'break-alert' | 'interlude' | 'story' | 'driving' | 'mall' | 'lot';
 
 const PHASE_LABELS: Record<string, string> = {
   lesson: '01  /  FIND YOUR RHYTHM', flow: '02  /  KEEP IT MOVING', rush: '03  /  LAST DISPATCH',
@@ -87,6 +90,15 @@ export class Belt3d {
   public cutscene: Cutscene | null = null;
   public mall: MallModel | null = null;
   public lot: KeyReturnModel | null = null;
+  public driving: DrivingModel | null = null;
+  public drivingView: DrivingView | null = null;
+  private drivingPenalty = 0;
+  private drivingCollisions = 0;
+  private drivingRedLights = 0;
+  private practiceDestination: DriveDestination | null = (() => {
+    const value = new URLSearchParams(window.location.search).get('drive');
+    return value === 'mall' || value === 'ups' ? value : null;
+  })();
   public readonly overlay: Overlay;
   public readonly world: DepotWorld;
   public readonly stage: StoryStage;
@@ -145,11 +157,13 @@ export class Belt3d {
   private readonly environment: THREE.WebGLRenderTarget;
   private tickTimer: number | undefined;
   private disposed = false;
-  private readonly depotSolids = depotSolidFootprints(SHIFT_LAYOUT, SHIFT_LAYOUT.crewTruckRows, SHIFT_LAYOUT.playerTruckDepth);
+  private readonly depotSolids = [...depotSolidFootprints(SHIFT_LAYOUT, SHIFT_LAYOUT.crewTruckRows, SHIFT_LAYOUT.playerTruckDepth).map(rect =>
+    rect.x === SHIFT_LAYOUT.beltX && rect.width === 104 ? { ...rect, width: BELT_SOLID_WIDTH, height: rect.height + 16 } : rect), HEAD_DRIVE];
 
   constructor(host: HTMLElement) {
     this.host = host;
     this.overlay = new Overlay(host);
+    void audioSystem.preloadFoley();
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     const gl = this.renderer.getContext();
     const debug = gl.getExtension('WEBGL_debug_renderer_info');
@@ -222,6 +236,7 @@ export class Belt3d {
       throwParcel: () => { if (this.state === 'playing') this.model.throwHeld(); },
       overview: () => { this.overview = !this.overview; },
       pause: () => { if (this.canPause()) this.pause(); },
+      mute: () => { audioSystem.toggleMuted(); },
     });
     this.overlay.onStoryButton((action) => {
       if (this.state !== 'story' || !this.cutscene) return;
@@ -276,6 +291,7 @@ export class Belt3d {
     this.touch.dispose();
     this.world.puffs.dispose();
     this.stage.dispose();
+    this.drivingView?.dispose();
     disposeObject3D(this.dream.scene);
     disposeObject3D(this.world.scene);
     this.environment.dispose();
@@ -307,11 +323,12 @@ export class Belt3d {
     this.camera.fov = width < height ? 58 : 38;
     this.camera.updateProjectionMatrix();
     this.stage.resize(width / height);
+    this.drivingView?.resize(width / height);
     this.dream?.resize(width / height);
   }
 
   private canPause(): boolean {
-    return this.state === 'playing' || this.state === 'break-alert' || this.state === 'interlude' || this.state === 'story' || this.state === 'mall' || this.state === 'lot';
+    return this.state === 'playing' || this.state === 'break-alert' || this.state === 'interlude' || this.state === 'story' || this.state === 'driving' || this.state === 'mall' || this.state === 'lot';
   }
 
   /** The primary action: grab/deliver on the belt, next line in a story, interact in the mall or lot. */
@@ -320,6 +337,7 @@ export class Belt3d {
     else if (this.state === 'story') this.cutscene?.userNext();
     else if (this.state === 'mall') this.mall?.action();
     else if (this.state === 'lot') this.lot?.action();
+    else if (this.state === 'driving') this.driving?.park();
   }
 
   private bindInput(): void {
@@ -336,7 +354,10 @@ export class Belt3d {
       if (event.code === 'Enter') {
         if (this.state === 'briefing') this.startNight();
         else if (this.state === 'story') this.cutscene?.skip();
-        else if (this.state === 'ended') this.restart();
+        else if (this.state === 'ended') {
+          if (this.practiceDestination) this.beginDriving(this.practiceDestination);
+          else this.restart();
+        }
         else if (this.state === 'paused') this.resume();
       } else if (event.code === 'KeyM') {
         audioSystem.toggleMuted();
@@ -345,6 +366,8 @@ export class Belt3d {
         else if (this.state === 'paused') this.resume();
       } else if (this.state === 'story') {
         if (event.code === 'Space') this.cutscene?.userNext();
+      } else if (this.state === 'driving') {
+        if (event.code === 'Space') this.act();
       } else if (this.state === 'mall') {
         if (event.code === 'Space') this.mall?.action();
         else if (event.code === 'KeyE') this.mall?.toggleCart();
@@ -381,11 +404,22 @@ export class Belt3d {
   }
 
   private showBriefing(): void {
+    if (this.practiceDestination) {
+      this.overlay.setMode('chapter');
+      this.overlay.storyTitle('TRY THE FIVE-TON', 'DRIVING PRACTICE', 'EXPLORE THE CITY');
+      this.overlay.showPanel(`<div class="kicker">THE BELT · 3D DRIVING PRACTICE</div><h1>TAKE THE FIVE-TON FOR A SPIN.</h1>
+        <p>Explore the expanded city or drive straight to Southgate Mall. Real intersections, alternate routes and no time limit. Direct trips take around 45 seconds.</p>
+        <p>${this.touch.enabled ? 'The stick steers. Hold GAS to accelerate and BRAKE to slow. Tap PARK in the lit bay.' : 'W / ↑ accelerates. A D / ← → steers. S / ↓ brakes. SPACE parks in the lit bay.'}</p>
+        <p>The green 3D compass points directly toward your destination. Choose streets that head that way. Bumps and red lights cost 100 points. Hold BRAKE / S to reverse. ESC / PAUSE holds the road; M / MUTE controls sound.</p>
+        <button type="button">START DRIVE  ↵</button><a href="${window.location.pathname}?mode=3d">PLAY THE FULL NIGHT</a>`, () => this.startNight());
+      return;
+    }
     this.overlay.setMode('shift');
     this.overlay.showPanel(`
       <div class="kicker">TERMITE &amp; SKANKY  /  ONE MORE OVERNIGHT</div>
       <h1>ANOTHER NIGHT ON THE BELT.</h1>
       <p><b>Get in, survive the scrum, dispatch ${this.model.goal} parcels, then Skanky still has a mall run.</b></p>
+      <p>Drive the five-ton to Southgate Mall and back. Choose streets toward the green 3D compass. W / ↑ accelerates, A D / ← → steers, S / ↓ brakes. Pull into the loading yard, stop in the lit bay and press SPACE to park. Bumps and red lights cost 100 points; cargo stays safe.</p>
       <p>Read each parcel's street address and compare it with the ranges painted on the floor. Termite covers Mill Woods, Downtown and Westmount; Skanky covers Bonnie Doon, West End and Northside. Oversize freight goes to BULK.</p>
       <p>You can only grab packages for your worker's routes, plus bulk. Your other worker sorts their own addresses; only the worker you control picks up bulk. Wrong drops cost 10 points. Read the floor numbers: there are no painted safe zones or aiming guides.</p>
       <p>Carry each truck parcel through its open rear door and press SPACE inside to load it. Face a shelf and load near where you stand. Packages stay on those shelves; full trucks overflow through the rear. The roof turns transparent while you are inside.</p>
@@ -399,6 +433,7 @@ export class Belt3d {
       <p>F throws toward the nearest drop. At the top of the stairs, throw down with a 30% break risk. E brakes. V overview.</p>
       <p>Story scenes: SPACE next line, ENTER skips the scene, ESC pauses.</p>`}
       <button type="button">START THE NIGHT  ↵</button>
+      <a href="${window.location.pathname}?mode=3d&amp;drive=mall">TRY JUST THE DRIVE · EXPLORE THE CITY</a>
       <a href="${window.location.pathname}?mode=2d">PLAY THE 2D DEPOT</a>
       <a href="${window.location.pathname}?mode=classic">PLAY THE ORIGINAL FULL SHIFT</a>`, () => this.startNight());
   }
@@ -409,12 +444,18 @@ export class Belt3d {
     if (this.state !== 'briefing') return;
     void audioSystem.unlock();
     audioSystem.play('ui-start');
+    audioSystem.startMusic('game');
+    if (this.practiceDestination) { this.beginDriving(this.practiceDestination); return; }
     this.overlay.clearCenter();
     this.story.go('arrival');
     this.playScene(this.story.opener);
   }
 
   private playScene(scene: StoryScene): void {
+    scene = { ...scene, title: scene.title.replace('MALLWOOD CENTRE', 'SOUTHGATE MALL') };
+    // The 3D road now has a playable journey after the departure and original quip.
+    // Keep shared cutscenes intact for both legacy versions.
+    if (scene.id === 'drive-to-mall' || scene.id === 'drive-to-ups') scene = { ...scene, beats: scene.beats.slice(0, 2) };
     this.overlay.setLunchAlert(false);
     this.state = 'story';
     this.cutscene = new Cutscene(scene);
@@ -451,13 +492,11 @@ export class Belt3d {
       this.story.go('to-mall');
       this.playScene(DRIVE_TO_MALL);
     } else if (scene.id === 'drive-to-mall') {
-      this.story.go('mall');
-      this.playScene(MALL_INTRO);
+      this.beginDriving('mall');
     } else if (scene.id === 'mall-intro') {
       this.beginMall();
     } else if (scene.id === 'drive-to-ups') {
-      this.story.go('return');
-      this.beginLot();
+      this.beginDriving('ups');
     } else if (scene.id === 'go-home') {
       this.showResults();
     }
@@ -515,9 +554,50 @@ export class Belt3d {
     this.stage.beginMall();
     this.state = 'mall';
     this.overlay.setMode('chapter');
-    this.overlay.storyTitle('MALLWOOD CENTRE', 'SKANKY · THE MALL RUN', '5:20 AM');
+    this.overlay.storyTitle('SOUTHGATE MALL', 'SKANKY · THE MALL RUN', '5:20 AM');
     this.chapterHint = 'Take a store bundle from the truck';
     audioSystem.startMusic('game');
+  }
+
+  private beginDriving(destination: DriveDestination): void {
+    this.driving = new DrivingModel(destination);
+    this.drivingView ??= new DrivingView(this.quality);
+    this.drivingView.resize(this.camera.aspect);
+    this.drivingView.begin(this.driving);
+    this.stage.end();
+    this.state = 'driving';
+    this.keys.clear(); this.touch.reset();
+    this.overlay.clearCenter(); this.overlay.clearSpeech();
+    this.overlay.setMode('chapter');
+    this.overlay.storyTitle(destination === 'mall' ? 'UPS → SOUTHGATE MALL' : 'SOUTHGATE MALL → UPS',
+      'SKANKY · FIVE-TON · FREE DRIVE', destination === 'mall' ? '5:05 AM' : '6:10 AM');
+    this.overlay.showToast(this.touch.enabled ? 'Green compass points to the bay · hold GAS · BRAKE / reverse' : 'Green compass points to the bay · W / ↑ GAS · A D / ← → STEER · S / ↓ BRAKE / reverse', 4500);
+    audioSystem.startMusic('game');
+  }
+
+  private finishDrive(): void {
+    const destination = this.driving?.destination;
+    audioSystem.setDriving(null);
+    this.keys.clear(); this.touch.reset();
+    if (this.practiceDestination && this.driving) {
+      const drive = this.driving;
+      this.practiceDestination = destination === 'mall' ? 'ups' : 'mall';
+      this.state = 'ended';
+      this.overlay.showPanel(`<div class="kicker">DRIVING PRACTICE · PARKED AT ${destination === 'mall' ? 'SOUTHGATE MALL' : 'UPS'}</div>
+        <h1>TRUCK PARKED. NICE.</h1><p>${drive.elapsed.toFixed(1)} seconds · ${drive.collisions} bumps · ${drive.redLights} red lights · −${drive.penalty} points · cargo safe.</p>
+        <p>Try the road in the other direction, or take the same drive again.</p>
+        <button type="button">DRIVE BACK  ↵</button>
+        <a href="${window.location.pathname}?mode=3d&amp;drive=${destination}">TRY THIS DRIVE AGAIN</a>
+        <a href="${window.location.pathname}?mode=3d">PLAY THE FULL NIGHT</a>`, () => this.beginDriving(this.practiceDestination!));
+      return;
+    }
+    if (destination === 'mall') {
+      this.story.go('mall');
+      this.playScene(MALL_INTRO);
+    } else {
+      this.story.go('return');
+      this.beginLot();
+    }
   }
 
   private beginLot(): void {
@@ -536,7 +616,9 @@ export class Belt3d {
     this.model.paused = true;
     if (this.mall) this.mall.paused = true;
     if (this.lot) this.lot.paused = true;
+    if (this.driving) this.driving.paused = true;
     this.keys.clear();
+    this.touch.reset();
     audioSystem.stopMusic();
     const kicker = this.pausedFrom === 'interlude' || this.pausedFrom === 'story' ? 'STORY PAUSED' : this.pausedFrom === 'playing' ? 'SHIFT PAUSED' : 'PAUSED';
     this.overlay.showPanel(`<div class="kicker">${kicker}</div><h1>BELT ON HOLD.</h1><p>Your freight stays exactly where it is.</p><button type="button">RESUME  ↵</button>`, () => this.resume());
@@ -549,8 +631,11 @@ export class Belt3d {
     this.model.paused = this.state !== 'playing';
     if (this.mall) this.mall.paused = false;
     if (this.lot) this.lot.paused = false;
+    if (this.driving) this.driving.paused = false;
+    this.keys.clear(); this.touch.reset();
     this.overlay.clearCenter();
-    if (this.state === 'playing' || this.state === 'mall') audioSystem.startMusic('game');
+    if (this.state === 'playing' || this.state === 'mall' || this.state === 'driving'
+      || this.state === 'story' && this.story.chapter !== 'break') audioSystem.startMusic('game');
   }
 
   /** Ben's robbery freezes the shift, belt, freight and crew until Paula leaves. */
@@ -588,6 +673,7 @@ export class Belt3d {
 
   /** A replay starts clean: no leftover scenes, parcels, timers, speech or input. */
   private restart(): void {
+    audioSystem.stopMusic();
     for (const view of this.parcels.values()) disposeObject3D(view.root);
     for (const item of this.departing) disposeObject3D(item.view.root);
     this.parcels.clear();
@@ -613,6 +699,8 @@ export class Belt3d {
     this.cutscene = null;
     this.mall = null;
     this.lot = null;
+    this.driving = null;
+    this.drivingPenalty = this.drivingCollisions = this.drivingRedLights = 0;
     this.mallBonus = 0;
     this.breakAlertMs = 0;
     this.overlay.setLunchAlert(false);
@@ -723,6 +811,23 @@ export class Belt3d {
         audioSystem.startMusic('game');
         this.mesa.dreamFinished();
       }
+    } else if (this.state === 'driving' && this.driving) {
+      const drive = this.driving, move = this.movement();
+      const wasBraking = drive.braking;
+      drive.update(dt, { steer: move.x, throttle: Math.max(0, -move.y, this.touch.pedals.throttle), brake: Math.max(0, move.y, this.touch.pedals.brake) });
+      if (drive.braking && !wasBraking) audioSystem.drivingCue('brake');
+      for (const event of drive.drainEvents()) {
+        if (event.type === 'collision') {
+          this.drivingPenalty += event.points; this.drivingCollisions++;
+          audioSystem.drivingCue('collision');
+          this.overlay.showToast(`EASY DOES IT · −${event.points} points · cargo safe`, 1600);
+        } else if (event.type === 'red-light') {
+          this.drivingPenalty += event.points; this.drivingRedLights++;
+          this.overlay.showToast(`RED LIGHT · −${event.points} points · brake before the line`, 1800);
+        }
+      }
+      this.drivingView?.update(drive, dt);
+      if (drive.parked) this.finishDrive();
     } else if (this.state === 'mall' && this.mall) {
       this.mall.update(dt * 1000, this.movement());
       for (const event of this.mall.drainEvents()) this.handleMallEvent(event);
@@ -748,6 +853,7 @@ export class Belt3d {
 
     const running = this.state === 'playing' || this.state === 'celebrating' || this.state === 'ended';
     audioSystem.setTruckIdle((this.state === 'playing' && m.elapsedMs >= 120_000) || this.state === 'celebrating');
+    audioSystem.setDriving(this.state === 'driving' && this.driving ? this.driving.speed : null);
     if (this.state === 'playing') this.crew.updateReceiving(m, dt, this.time);
     this.world.update(running ? dt : 0, this.time, m.beltTravel, this.reducedMotion);
     const depotStory = this.state === 'story' && this.cutscene?.scene.location === 'depot';
@@ -758,7 +864,7 @@ export class Belt3d {
     this.updateCamera(dt);
     this.updateHud();
     const size = this.renderer.getSize(new THREE.Vector2());
-    const speechClock = running || this.state === 'interlude' || this.state === 'mesa' || this.state === 'dream' || this.state === 'story' || this.state === 'mall' || this.state === 'lot';
+    const speechClock = running || this.state === 'interlude' || this.state === 'mesa' || this.state === 'dream' || this.state === 'story' || this.state === 'driving' || this.state === 'mall' || this.state === 'lot';
     const camera = this.activeCamera();
     // Bubbles project with the camera as it is now, whether or not a draw follows.
     camera.updateMatrixWorld();
@@ -787,7 +893,21 @@ export class Belt3d {
       overview: this.overview, routes: this.routeLegend(), scanner,
       brake: m.brakeRemainingMs > 0 ? '■ BELT HELD' : m.brakeCooldownMs > 0 ? `[E] RECHARGE ${Math.ceil(m.brakeCooldownMs / 1000)}s` : '[E] BRAKE READY',
     });
-    if (this.state === 'mall' && this.mall) {
+    this.overlay.drivingNavigation(this.state === 'driving' && this.driving ? {
+      destination: this.driving.destination === 'mall' ? 'SOUTHGATE MALL' : 'UPS DEPOT', distance: this.driving.remaining, instruction: this.driving.navigation.instruction,
+    } : null);
+    if (this.state === 'driving' && this.driving) {
+      const drive = this.driving;
+      const hint = this.touch.enabled ? drive.objective
+        .replace('W / ↑ gas · A D / ← → steer · S / ↓ brake', 'Hold GAS · stick steers · BRAKE slows')
+        .replace('SPACE to park', 'Tap PARK').replace('S / ↓ brake', 'BRAKE').replace('A / D to steer', 'Steer with the stick') : drive.objective;
+      this.overlay.chapterHud([
+        ['SPEED', `${Math.round(Math.abs(drive.speed) * 3.6)} km/h`], ['TO BAY', `${Math.ceil(drive.remaining)} m`],
+        [this.practiceDestination ? 'PENALTY' : 'NIGHT SCORE', this.practiceDestination ? `−${drive.penalty} PTS` : String(Math.max(0, m.score + this.mallBonus - this.drivingPenalty))],
+        ['CARGO', this.practiceDestination ? 'PRACTICE · SAFE' : drive.destination === 'mall' ? '6 BUNDLES · SAFE' : '6 / 6 SIGNED'],
+      ], hint,
+      'W / ↑ GAS · A D / ← → STEER · S / ↓ BRAKE · SPACE PARK · M MUTE · ESC PAUSE');
+    } else if (this.state === 'mall' && this.mall) {
       const mall = this.mall;
       this.overlay.chapterHud([
         ['RUN', `${Math.min(3, mall.run + 1)} / 3`], ['DELIVERED', `${mall.delivered} / 6`], ['SIGNED', `${mall.signatures} / 6`],
@@ -797,7 +917,10 @@ export class Belt3d {
       this.overlay.chapterHud([['MALL', '6 / 6 SIGNED'], ['FIVE-TON', this.lot.done ? 'RETURNED' : 'PARKED']],
         this.lot.atKeyDrop ? 'Press SPACE to drop the keys' : this.chapterHint, 'WASD MOVE · SPACE DROP KEYS · ESC PAUSE');
     }
-    const chapter = this.state === 'mall' || this.state === 'lot';
+    const driving = this.state === 'driving';
+    this.overlay.root.classList.toggle('driving', driving);
+    this.touch.setDriving(driving, driving && this.driving?.canPark === true);
+    const chapter = this.state === 'mall' || this.state === 'lot' || driving;
     this.touch.setLive(this.state === 'playing' || this.state === 'interlude' || chapter,
       chapter ? (this.state === 'mall' ? (this.mall?.cart.pushed ? 'PARK' : 'CART') : '—')
         : m.brakeRemainingMs > 0 ? 'HELD' : m.brakeCooldownMs > 0 ? `${Math.ceil(m.brakeCooldownMs / 1000)}s` : 'BRAKE',
@@ -805,7 +928,13 @@ export class Belt3d {
   }
 
   private activeCamera(): THREE.PerspectiveCamera {
+    if (this.usesDriving()) return this.drivingView!.camera;
     return this.usesStage() ? this.stage.camera : this.camera;
+  }
+
+  private usesDriving(): boolean {
+    const state = this.state === 'paused' ? this.pausedFrom : this.state;
+    return this.drivingView !== null && (state === 'driving' || state === 'ended' && this.practiceDestination !== null);
   }
 
   private usesStage(): boolean {
@@ -819,9 +948,9 @@ export class Belt3d {
     // A software renderer can take longer than a frame to draw; space its draws out.
     if (this.quality === 'low' && now - this.lastRender < Math.max(100, this.renderCost * 2)) return;
     this.lastRender = now;
-    const stageScene = this.usesStage() ? this.stage.scene : null;
+    const stageScene = this.usesDriving() ? this.drivingView!.scene : this.usesStage() ? this.stage.scene : null;
     const scene = stageScene ?? this.world.scene;
-    const camera = stageScene ? this.stage.camera : this.camera;
+    const camera = this.activeCamera();
     if (!stageScene && this.state !== 'dream') this.world.truckCutaway.update(camera,
       [...Object.values(this.workers).map(worker => worker.root), ...[...this.crew.actors.values()].map(actor => actor.root)]);
     syncCharacterModels(this.state === 'dream' ? this.dream.scene : scene);
@@ -986,7 +1115,12 @@ export class Belt3d {
       if (!actor.root.visible || actor.pose === 'massage' || actor.pose === 'sit' || Math.abs(actor.character.body.rotation.z) > 0.8) continue;
       const intended = { x: actor.root.position.x * 32 + 480, y: actor.root.position.z * 32 + 340 };
       const radius = actor.carrying ? DEPOT_CARRY_RADIUS : DEPOT_BODY_RADIUS;
-      const clear = clearDepotFootprint(intended, radius, occupied, this.depotSolids, SHIFT_LAYOUT);
+      let clear = clearDepotFootprint(intended, radius, occupied, this.depotSolids, SHIFT_LAYOUT);
+      for (let pass = 0; pass < 3; pass++) {
+        const equipment = clearReceiving(clear, radius);
+        if (Math.hypot(equipment.x - clear.x, equipment.y - clear.y) < 0.001) break;
+        clear = clearDepotFootprint(equipment, radius, occupied, this.depotSolids, SHIFT_LAYOUT);
+      }
       const height = actorSurfaceAt(clear.x, clear.y);
       const dy = height - actor.root.position.y;
       this.crew.translateActorFreight(id, (clear.x - intended.x) / 32, (clear.y - intended.y) / 32, dy);
@@ -1248,7 +1382,7 @@ export class Belt3d {
     const home = this.lot?.done === true;
     const mall = this.mall;
     const routes = (['A', 'D', 'T', 'B', 'E', 'S', 'C'] as const).map((route) => `${ROUTE_INFO[route].name} ${m.routeSorted[route]}`).join(' · ');
-    const total = m.score + this.mallBonus;
+    const total = Math.max(0, m.score + this.mallBonus - this.drivingPenalty);
     this.overlay.showPanel(`
       <div class="grade">${m.won ? m.grade : 'F'}</div>
       <div class="kicker">${m.won ? `SHIFT COMPLETE / GRADE ${m.grade}` : 'SHIFT TERMINATED / YOU FAILED THE SORT'}</div>
@@ -1259,6 +1393,7 @@ export class Belt3d {
       <p>${escapeHtml(routes)}</p>
       <p>${m.thrownDeliveries} thrown in clean · ${m.damaged} broken (−${m.breakagePenalty} points${m.damaged > THROWING.gradeForgivenBreaks ? `, ${m.gradedBreaks} counted against the grade` : ''})</p>
       ${mall ? `<p>MALL RUN · ${mall.delivered}/6 delivered · ${mall.signatures}/6 signed · five-ton ${home ? 'returned' : 'not returned'} · +${this.mallBonus}</p>
+      <p>DRIVING · ${this.drivingCollisions} bumps${this.drivingRedLights ? ` · ${this.drivingRedLights} red lights` : ''} · −${this.drivingPenalty} points · cargo safe</p>
       <p><b>NIGHT TOTAL ${String(total).padStart(5, '0')}</b> · ${m.gradeQuote}</p>` : ''}
       <button type="button">ANOTHER NIGHT  ↵</button>
       <a href="${window.location.pathname}?mode=2d">PLAY THE 2D DEPOT</a>`, () => this.restart());

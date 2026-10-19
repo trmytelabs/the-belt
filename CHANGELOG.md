@@ -2,6 +2,28 @@
 
 ## 0.1.0 — development snapshot
 
+- Add a driving-only practice start and freely connected streets with 42 real
+  intersections, twice the previous playable area, 127 buildings from small shops
+  to apartments and a 68-metre tower, 28 cars and locally served Kenney models.
+  Rename the 3D destination Southgate Mall. A large green compass turns in 3D
+  toward the actual destination, accounting for the chase camera's bearing.
+  Traffic steers through continuous curves and queues behind other cars.
+  Longer drives end inside separate lit loading yards at UPS and Southgate.
+  Brake at working lights and hold BRAKE to reverse; bumps and red crossings
+  cost 100 points while cargo stays safe. Detours have no deadline.
+- Match 3D receiving collisions to its angled feeder guards and head drive,
+  leaving a clear crossing and keeping the workers apart around the belt top.
+- Start the 3D lo-fi at START THE NIGHT and resume it after pausing the opening.
+  Replace handling, impact, latch and interface tones with 24 small local CC0
+  recordings, mix varied quiet foley, and use a pulsed diesel bed on the road.
+- Refresh lower-floor stack culling bounds as cartons arrive so delivered
+  freight stays visible, and remove invisible sorting-lane fences beside the
+  belt, recovery tray, bulk and stair approaches while retaining solid scenery.
+- Add two short 3D five-ton drives between UPS and the mall, with a raised chase
+  camera, traffic, cones, keyboard and held touch pedals.
+  Parking continues the existing deliveries and key return; driving deductions
+  stay separate from warehouse grading, while cargo and signatures stay safe. Retain
+  lo-fi music with quiet engine, brake and bump cues, pause, mute and clean replay.
 - Add John Rushton's two-lane patrol and random squat sets, plus Shan and Vic's
   loading-lane patrols with a brief slowdown when squeezing past them.
 - Let Space grab/park the 3D mall cart, highlight eligible truck bundles, skip

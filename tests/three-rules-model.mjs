@@ -4,6 +4,7 @@ import { ShiftModel, SHIFT_LAYOUT } from '../src/game/slice/ShiftModel.ts';
 import { ShiftModel3D, WRONG_DROP_PENALTY } from '../src/three/ShiftModel3D.ts';
 import { DEPOT_3D_LAYOUT as L, platformLevelAt, onLowerFloor, truckInteriorAt } from '../src/three/layout.ts';
 import { platformWalkPath, pathLength, walkPath } from '../src/three/walking.ts';
+import { RECEIVING_CROSSING_Y, RECEIVING_FEEDERS, receivingBlocked, clearReceiving } from '../src/three/receivingCollision.ts';
 
 const advance = (m, ms) => { for (let t = 0; t < ms; t += 10) m.update(10); };
 const hold = (m, route, at) => {
@@ -12,6 +13,38 @@ const hold = (m, route, at) => {
   Object.assign(w, at, { heldId: p.id });
   return p;
 };
+
+test('receiving feeders and head drive block bodies while the crossing stays open', () => {
+  const model = new ShiftModel3D();
+  for (const { from, to } of RECEIVING_FEEDERS) {
+    const middle = { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 };
+    assert.equal(receivingBlocked(middle, 12), true);
+    assert.equal(model.walkable(middle.x < 480 ? 'left' : 'right', middle.x, middle.y), false);
+  }
+  assert.equal(model.walkable('left', 432, 128), false, 'head motor is solid');
+  for (let x = 342; x <= 618; x += 4) assert.equal(receivingBlocked({ x, y: RECEIVING_CROSSING_Y }, 12), false, 'clear walkway around the head');
+  for (let x = 340; x <= 620; x += 14) for (let y = -150; y < 165; y += 13) {
+    const result = clearReceiving({ x, y }, 12);
+    assert.equal(receivingBlocked(result, 12), false, `nearest rotated edge clears ${x}/${y}`);
+  }
+});
+
+test('open deck beside the belt, bulk and stair approach has no invisible lane fence', () => {
+  const m = new ShiftModel3D();
+  for (const [side, sign] of [['left', 1], ['right', -1]]) {
+    const mirror = x => side === 'left' ? x : 960 - x;
+    for (const point of [{ x: 414, y: 700 }, { x: 430, y: 1040 }, { x: 432, y: 1132 }, { x: 350, y: 1080 }]) {
+      assert.equal(m.walkable(side, mirror(point.x), point.y), true, `open floor ${side}: ${JSON.stringify(point)}`);
+    }
+    for (const point of [{ x: 438, y: 700 }, { x: 430, y: 918 }, { x: 444, y: 1132 }]) {
+      assert.equal(m.walkable(side, mirror(point.x), point.y), false, 'visible equipment still blocks the body');
+    }
+    m.activeIndex = side === 'left' ? 0 : 1;
+    Object.assign(m.activeWorker, { x: mirror(400), y: 1040 });
+    for (let i = 0; i < 12; i++) m.moveWorker(16, { x: sign, y: 0 });
+    assert.ok(side === 'left' ? m.activeWorker.x > 430 : m.activeWorker.x < 530);
+  }
+});
 
 test('3D keeps truck rows before rear bulk, outward stairs and every drop before the terminal wall', () => {
   assert.ok(L.dockA.y < L.dockD.y && L.dockD.y < L.bulkPile.y);

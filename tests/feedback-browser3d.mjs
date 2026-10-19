@@ -117,9 +117,18 @@ try {
     app.overlay.clearCenter(); app.state = 'playing';
     Object.assign(app.model.packages[0], { y: 400, beltOffset: 400, route: 'A', state: 'belt' });
     Object.assign(app.model.activeWorker, { x: 400, y: 400 });
-    window.interactionOscillators = 0;
-    const original = AudioContext.prototype.createOscillator;
-    AudioContext.prototype.createOscillator = function (...args) { window.interactionOscillators++; return original.apply(this, args); };
+    window.interactionSounds = [];
+    for (const [method, kind] of [['createOscillator', 'oscillator'], ['createBufferSource', 'recording']]) {
+      const original = AudioContext.prototype[method];
+      AudioContext.prototype[method] = function (...args) {
+        const source = original.apply(this, args), start = source.start;
+        source.start = function (...times) {
+          window.interactionSounds.push({ kind, duration: this.buffer?.duration ?? 0, loop: this.loop === true });
+          return start.apply(this, times);
+        };
+        return source;
+      };
+    }
   });
   await wait(() => window.fixtureApp.pickupHalo.visible && window.fixtureApp.parcels.get(window.fixtureApp.model.packages[0].id)?.root.userData.pickable);
   assert.ok(await read(() => window.fixtureApp.pickupPrompt.visible));
@@ -129,19 +138,20 @@ try {
     const app = window.fixtureApp;
     app.model.activeWorker.heldId = null;
     for (const p of app.model.packages) p.state = 'delivered';
-    window.interactionOscillators = 0;
+    window.interactionSounds = [];
   });
   await page.keyboard.press('Space'); await page.waitForTimeout(100);
-  assert.equal(await read(() => window.interactionOscillators), 0, 'an empty grab emits no error tone');
+  assert.deepEqual(await read(() => window.interactionSounds), [], 'an empty grab emits no sound');
   await read(() => {
     const m = window.fixtureApp.model, p = m.packages[0];
     Object.assign(p, { route: 'D', state: 'held', workerId: 'termite' });
     Object.assign(m.activeWorker, { x: 264, y: m.layout.dockA.y, heldId: p.id });
-    m.score = 100; window.interactionOscillators = 0;
+    m.score = 100; window.interactionSounds = [];
   });
   await page.keyboard.press('Space'); await wait(() => window.fixtureApp.model.score === 90);
-  await wait(() => window.interactionOscillators >= 2);
-  console.log('PASS the pickable package has a halo and Space prompt; empty grabs stay quiet, while the wrong truck deducts ten points and sounds an error');
+  await wait(() => window.interactionSounds.some(sound => sound.kind === 'recording' && !sound.loop && sound.duration > 0 && sound.duration < 2));
+  assert.equal(await read(() => window.interactionSounds.some(sound => sound.kind === 'oscillator')), false, 'wrong drops use the recorded cue');
+  console.log('PASS the pickable package has a halo and Space prompt; empty grabs stay quiet, while the wrong truck deducts ten points and plays the short recorded error cue');
 
   await read(() => { const app = window.fixtureApp; app.restart(); app.overlay.clearCenter(); app.beginMall(); });
   await page.keyboard.press('Space'); await wait(() => window.fixtureApp.mall.cart.pushed);

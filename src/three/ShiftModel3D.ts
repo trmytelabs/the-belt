@@ -4,6 +4,7 @@ import {
 } from '../game/slice/ShiftModel.ts';
 import { ROUTE_INFO, PARCEL_LABELS, PARCEL_SEQUENCE, EVERYDAY_FREIGHT, parcelAddress, MESA_CATCH_PENALTY } from './addresses.ts';
 import { DEPOT_3D_LAYOUT, platformLevelAt, onLowerFloor, floorPileSlot, stairAt, truckInteriorAt, TRUCK_ROUTES, type TruckRoute } from './layout.ts';
+import { BELT_SOLID_WIDTH, receivingBlocked } from './receivingCollision.ts';
 
 export const WRONG_DROP_PENALTY = 10;
 export const ARRIVALS_3D = { lessonMs: 4_800, flowMs: 3_200, rushMs: 2_400, brianMs: 2_400 } as const;
@@ -212,11 +213,16 @@ export class ShiftModel3D extends ShiftModel {
   }
 
   public override walkBounds(side: 'left' | 'right', y: number): { minX: number; maxX: number } {
-    const lane = side === 'left' ? this.layout.leftLane : this.layout.rightLane;
+    // The old sorting lanes were navigation targets, not visible walls. Allow
+    // the open deck beside the belt, recovery tray and bulk pallet; walkable()
+    // checks the actual equipment footprint instead of fencing off that space.
+    const radius = this.layout.workerRadius;
+    const lane = side === 'left' ? { minX: this.layout.platform.left + radius, maxX: this.layout.beltX - radius }
+      : { minX: this.layout.beltX + radius, maxX: this.layout.platform.right - radius };
     if (TRUCK_ROUTES.some(route => ROUTE_INFO[route].side === side && Math.abs(y - this.layout.playerTrucks[route].y) <= 32)) {
       return side === 'left' ? { minX: 224, maxX: lane.maxX } : { minX: lane.minX, maxX: 736 };
     }
-    const floor = this.layout.lowerFloor, radius = this.layout.workerRadius;
+    const floor = this.layout.lowerFloor;
     if (y < floor.top + radius || y > floor.bottom - radius) return lane;
     return side === 'left' ? { minX: floor.left.minX + radius, maxX: lane.maxX }
       : { minX: lane.minX, maxX: floor.right.maxX - radius };
@@ -234,11 +240,20 @@ export class ShiftModel3D extends ShiftModel {
     if (truck && (side === 'left' ? x < 306 : x > 654)
       && Math.abs(y - this.layout.playerTrucks[truckInteriorAt({ x, y })!].y)
         > (this.workers.find(worker => worker.side === side)?.heldId == null ? 10 : 3)) return false;
-    const deck = x >= lane.minX && x <= lane.maxX;
+    const deck = x >= this.layout.platform.left + radius && x <= this.layout.platform.right - radius
+      && (side === 'left' ? x <= this.layout.beltX - radius : x >= this.layout.beltX + radius);
     const ground = x >= floor.minX + radius && x <= floor.maxX - radius && y >= lowerFloor.top + radius && y <= lowerFloor.bottom - radius;
     const flight = y >= stairs.minY + radius && y <= stairs.maxY - radius
       && (side === 'left' ? x >= floor.maxX - radius && x <= lane.minX : x >= lane.maxX && x <= floor.minX + radius);
     if (!deck && !ground && !flight && !truck) return false;
+    if (receivingBlocked({ x, y }, radius)) return false;
+    const equipment = [
+      { x: this.layout.beltX, y: (this.layout.beltTop + this.layout.beltBottom) / 2, width: BELT_SOLID_WIDTH, height: this.layout.beltBottom - this.layout.beltTop + 16 },
+      { ...this.layout.recoveryPile, width: 3.4 * 32, height: 1.6 * 32 },
+      { ...this.layout.bulkPile, width: 2 * 32, height: 2.5 * 32 },
+    ];
+    if (equipment.some(rect => Math.hypot(Math.max(0, Math.abs(x - rect.x) - rect.width / 2),
+      Math.max(0, Math.abs(y - rect.y) - rect.height / 2)) < radius)) return false;
     const storage = this.layout.floorStorage[side === 'left' ? 'T' : 'S'];
     return distance({ x, y }, { x: clamp(x, storage.x - storage.width / 2, storage.x + storage.width / 2),
       y: clamp(y, storage.y - storage.height / 2, storage.y + storage.height / 2) }) >= radius;
