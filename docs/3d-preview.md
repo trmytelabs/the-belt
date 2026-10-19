@@ -182,9 +182,9 @@ Present in 3D:
 
 - **Phase 4 touch and default:**
   - On touch screens (`touch.ts`), a movement stick and GRAB / DELIVER,
-    SWITCH and BRAKE buttons sit at the bottom, with VIEW and PAUSE at the
-    top left. They appear only while the shift is playable, and the BRAKE
-    button shows its cooldown. Mesa choices and panels are tapped. A tap on
+    SWITCH and STOP THE BELT buttons sit at the bottom, with VIEW and PAUSE at
+    the top left. They appear only while the shift is playable, and the STOP
+    THE BELT button shows its remaining uses and cooldown. Mesa choices and panels are tapped. A tap on
     the scene itself does nothing, so stray touches cannot grab.
   - The briefing gives touch instructions.
   - On phones the HUD collapses to one row in both orientations.

@@ -141,8 +141,8 @@ SORT!** countdown starts the shift.
   `?mode=3d&drive=mall` (or `drive=ups`); parking offers the trip back.
   See [the 3D driving mini-game](docs/3d-driving.md).
 
-Touch devices have a movement stick and Switch, Grab / Deliver, and Brake
-buttons. Landscape gives a closer view; portrait reserves room below the game
+Touch devices have a movement stick and Switch, Grab / Deliver, and Stop the
+Belt buttons. Landscape gives a closer view; portrait reserves room below the game
 for controls. The preview includes a restartable results screen.
 
 The new scene includes the source's specific references: all of Kylie's coffee

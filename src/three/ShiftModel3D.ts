@@ -64,7 +64,7 @@ export class ShiftModel3D extends ShiftModel {
   public override brake(): void {
     if (!this.canAct()) return;
     if (this.beltStopsRemaining <= 0) {
-      this.emit('wrong', 'No belt stops left · 3 per run', this.activeWorker);
+      this.emit('wrong', `No belt stops left · ${BELT_STOPS_3D.limit} per run`, this.activeWorker);
       return;
     }
     if (this.eventStopped) {
@@ -79,7 +79,7 @@ export class ShiftModel3D extends ShiftModel {
     this.brakeRemainingMs = BELT_STOPS_3D.durationMs;
     this.brakeCooldownMs = BELT_STOPS_3D.cooldownMs;
     this.beltSpeed = 0;
-    this.emit('brake', `Belt stopped · 2 seconds to catch up · ${this.beltStopsRemaining} stops left`, { x: 480, y: 180 });
+    this.emit('brake', `Belt stopped · ${BELT_STOPS_3D.durationMs / 1000} seconds to catch up · ${this.beltStopsRemaining} stops left`, { x: 480, y: 180 });
   }
 
   protected override freightIdentity(id: number, slot: number, brianKind: ParcelKind | null) {
