@@ -1,10 +1,13 @@
 # Address sorting and package flow
 
-The actively developed **3D depot** uses street addresses instead of visible route letters or
-matching colours. Read the second number in an address such as **2417 119 ST**,
-then compare **119** with the ranges posted on the trucks and floor drops.
-The building number does not select the route. Signs and parcel labels use the
-same neutral palette. Walking guidance and hints do not identify the answer.
+The actively developed **3D depot** uses street addresses and explicit destination
+guidance. In **2417 119 ST**, the prominent **119 ST** selects the route; the
+building number does not. Package tags show that street in large type, with the
+full address and freight name below. The three-step briefing explains grabbing,
+following the destination and loading inside a truck. A persistent guide names
+the district, street range and next walking direction; a gold marker identifies
+the correct rear door or floor drop while carrying. Truck floor markings show both
+district names and ranges. Signs and tags retain the neutral palette.
 Internal route IDs remain in the rules and tests only.
 
 These are simplified, synthetic Edmonton-inspired delivery districts for the
@@ -23,7 +26,7 @@ game, rather than geographic boundaries or real delivery assignments.
 Every boundary is inclusive. The ordinary address ranges do not overlap.
 An address and its shipping identity remain attached through receiving, pickup,
 handoff, put-down, recovery and delivery. A wrong truck keeps the parcel in hand
-and records a sorting error without revealing the correct destination. In 3D,
+and records a sorting error with a reminder of the correct district. In 3D,
 each wrong delivery attempt costs **10 points**, capped at the remaining score.
 An intact throw to a wrong drop also costs 10 points once at landing.
 
@@ -39,15 +42,24 @@ bounds, stairs, carrying speeds, delivery areas and scoring as the player.
 Tab immediately gives you control of that worker. Pausing and story scenes
 freeze both workers. The coworker carries rather than risking throws.
 
-3D arrivals run every 4.8 seconds during the opening, 3.2 seconds in flow and
-2.4 seconds during the final rush, about 17% fewer arrivals than the preceding
-half-speed setting. Two random
+3D arrivals run every 4.8 seconds during the opening, 3.6 seconds in flow and
+2.8 seconds during the final rush. A full uninterrupted shift supplies about
+52 packages for the unchanged 42-dispatch goal. Two random
 everyday parcels are interleaved between authored reference parcels. Sixteen
 ordinary labels include documents, books, shoes, clothing, kitchenware, spare
 parts and sports equipment, using five different package forms. Original joke
-freight and Brian's five actual bulk parcels remain. Brian's burst uses 2.4-second
+freight and Brian's five actual bulk parcels remain. Brian's burst uses 2.8-second
 intervals; the shared minimum belt spacing still applies, including speed ramps,
 brakes and blocked receiving.
+
+Recovery holds six packages safely; the seventh ends the shift. The HUD shows
+the live count out of seven, and rescuing a package frees space immediately.
+After intake closes, 3D allows up to 25 seconds to finish the remaining freight.
+Workers move at 265 model pixels per second; carrying retains at least 82% of
+that speed, and squeezing past a supervisor retains 75%. The belt opens at 50,
+then eases to 59.9 and 69.25 pixels per second. The controlled worker only moves
+on player input. Correct loading, recovering missed freight, the score/streak,
+scanner handovers and risky optional throws retain a modest challenge.
 
 Held 3D freight is placed in front of the worker using the actual scaled parcel
 depth. Its transform follows the worker's turn directly, preventing interpolation
@@ -60,9 +72,9 @@ and the central walking lanes remain clear. The warehouse and belt extend to
 fit the wider spacing; receiving stays at the front, and the two player truck
 rows come before the rear bulk platform. Stairs descend outward
 to the left and right. Both floor drops and all walking space remain in front
-of the final rear wall. No painted safe zones, lane guides, throw arc or landing
-ring identify where to stand. Street ranges appear on the floor and physical
-signs. Lower-floor drops have low wooden pallets, neutral pads and tidy stacks.
+of the final rear wall. The gold destination ring marks the door until the worker
+enters the correct truck, then marks the loading point inside. Lower-floor drops
+have low wooden pallets, neutral pads and tidy stacks.
 
 Truck deliveries require walking through the open rear door and pressing
 **SPACE / GRAB-DELIVER inside**. The roof turns transparent and its large sign
@@ -119,6 +131,10 @@ directions against both actual Rocketbox worker torsos, the exact stair risk
 boundary, wrong throws, Shan's visible visit, Mesa's keyboard/touch outcomes and
 clean restart. Cargo and clock fixtures are synthetic; the shipped character
 models and production rendering are exercised directly.
+The sorting-guide rules suite covers the seven-package boundary, recovery freeing
+space, cleanup deadline, carrying pace and all seven destination instructions.
+Its browser suite checks real pickup and truck loading, large address tags,
+desktop and portrait/landscape touch layouts, pause, overflow and clean restart.
 Physical touch-device usability and audible sound still need manual checks.
 
 The nearest eligible package has a neutral light halo and a **SPACE · GRAB**

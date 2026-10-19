@@ -7,7 +7,9 @@ import { DEPOT_3D_LAYOUT, platformLevelAt, onLowerFloor, floorPileSlot, stairAt,
 import { BELT_SOLID_WIDTH, receivingBlocked } from './receivingCollision.ts';
 
 export const WRONG_DROP_PENALTY = 10;
-export const ARRIVALS_3D = { lessonMs: 4_800, flowMs: 3_200, rushMs: 2_400, brianMs: 2_400 } as const;
+export const ARRIVALS_3D = { lessonMs: 4_800, flowMs: 3_600, rushMs: 2_800, brianMs: 2_800 } as const;
+export const WORKER_SPEED_3D = 265;
+export const MIN_CARRY_SPEED_3D = 0.82;
 export interface TruckLoad { route: TruckRoute; x: number; y: number; height: number; layer: number; column: number; row: number; cells: number; parcelHeight: number; overflow: boolean }
 // Conservative dimensions in model pixels for the actual parcel forms at their
 // normal render scale. Long boxes lie along the cargo bay, occupying two slots.
@@ -19,7 +21,12 @@ const distance = (a: { x: number; y: number }, b: { x: number; y: number }): num
 /** Current 3D rules. The legacy depots retain the base model's layout and behavior. */
 export class ShiftModel3D extends ShiftModel {
   public override readonly layout = DEPOT_3D_LAYOUT;
+  public override readonly capacity = 7;
+  public override readonly cleanupMs = 25_000;
   protected override get freightFlow() { return ARRIVALS_3D; }
+  protected override speedAt(elapsedMs: number): number {
+    return 50 + (super.speedAt(elapsedMs) - 50) * 0.55;
+  }
   private placement: { x: number; row: number } | null = null;
   public readonly truckLoads = new Map<number, TruckLoad>();
   public laneObstacles: readonly { x: number; y: number }[] = [];
@@ -74,7 +81,7 @@ export class ShiftModel3D extends ShiftModel {
     if (recovered) parcel.recovered = true;
     parcel.state = 'held'; parcel.workerId = worker.id; worker.heldId = parcel.id;
     this.syncHeld(worker, parcel);
-    this.emit(recovered ? 'recover' : 'grab', `${recovered ? 'Recovered · ' : ''}${parcelAddress(parcel)} · read the floor ranges`, worker, parcel);
+    this.emit(recovered ? 'recover' : 'grab', `${recovered ? 'Recovered · ' : ''}${parcelAddress(parcel)} → ${ROUTE_INFO[parcel.route].name}`, worker, parcel);
   }
 
   protected override canPickup(worker: Worker, parcel: Parcel): boolean {
@@ -134,7 +141,7 @@ export class ShiftModel3D extends ShiftModel {
     this.score -= penalty;
     this.combo = 0;
     this.wrongSortErrors += 1;
-    this.emit('wrong', `WRONG DROP · −${penalty} · check the street range`, at, parcel, -penalty);
+    this.emit('wrong', `WRONG DROP · −${penalty} · take it to ${ROUTE_INFO[parcel.route].name}`, at, parcel, -penalty);
   }
 
   public override throwTarget(worker: Worker = this.activeWorker): ThrowTarget | null {
@@ -199,7 +206,8 @@ export class ShiftModel3D extends ShiftModel {
       const dx = point.x - worker.x, dy = point.y - worker.y;
       return Math.hypot(dx, dy) < 32 && dx * x + dy * y > 0 && Math.abs(dx * y - dy * x) / magnitude < 22;
     });
-    const speed = 235 * (held ? CARRY_MULTIPLIER[held.kind] : 1) * deltaMs / 1000 * requestedSpeed / magnitude * (squeezed ? 0.55 : 1);
+    const speed = WORKER_SPEED_3D * (held ? Math.max(MIN_CARRY_SPEED_3D, CARRY_MULTIPLIER[held.kind]) : 1)
+      * deltaMs / 1000 * requestedSpeed / magnitude * (squeezed ? 0.75 : 1);
     const previousX = worker.x, previousY = worker.y;
     const maxY = held ? this.layout.stairs.maxY - this.layout.carriedClearance : this.layout.workerMaxY;
     let nextY = clamp(worker.y + y * speed, this.layout.workerMinY, maxY);
@@ -290,6 +298,11 @@ export class ShiftModel3D extends ShiftModel {
     return target;
   }
 
+  /** The actual loading point, including the controlled worker's side of bulk. */
+  public deliveryPoint(parcel: Parcel, worker: Worker = this.activeWorker): { x: number; y: number } {
+    return this.destinationCenter(parcel.route, worker.side);
+  }
+
   protected override updateCoworker(deltaMs: number): void {
     const worker = this.workers[1 - this.activeIndex];
     worker.moving = false;
@@ -324,7 +337,7 @@ export class ShiftModel3D extends ShiftModel {
     }
     target = this.navigationTarget(target, worker);
     const dx = target.x - worker.x, dy = target.y - worker.y;
-    const divisor = Math.max(Math.hypot(dx, dy), 235 * deltaMs / 1000);
+    const divisor = Math.max(Math.hypot(dx, dy), WORKER_SPEED_3D * deltaMs / 1000);
     this.moveWorker(deltaMs, { x: dx / divisor, y: dy / divisor }, worker);
     if (held) this.syncHeld(worker, held);
   }

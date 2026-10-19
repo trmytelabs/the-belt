@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { ShiftModel, SHIFT_LAYOUT } from '../src/game/slice/ShiftModel.ts';
-import { ShiftModel3D, WRONG_DROP_PENALTY } from '../src/three/ShiftModel3D.ts';
+import { ShiftModel3D, WRONG_DROP_PENALTY, WORKER_SPEED_3D } from '../src/three/ShiftModel3D.ts';
 import { DEPOT_3D_LAYOUT as L, platformLevelAt, onLowerFloor, truckInteriorAt } from '../src/three/layout.ts';
 import { platformWalkPath, pathLength, walkPath } from '../src/three/walking.ts';
 import { RECEIVING_CROSSING_Y, RECEIVING_FEEDERS, receivingBlocked, clearReceiving } from '../src/three/receivingCollision.ts';
@@ -263,7 +263,7 @@ test('stairs guide offset approaches down and up at ordinary speed while carryin
     for (let i = 0; i < 400 && !onLowerFloor(m.activeWorker); i++) {
       const previous = { ...m.activeWorker };
       m.update(10, { x: direction, y: 0 });
-      assert.ok(Math.hypot(m.activeWorker.x - previous.x, m.activeWorker.y - previous.y) <= 2.350001);
+      assert.ok(Math.hypot(m.activeWorker.x - previous.x, m.activeWorker.y - previous.y) <= WORKER_SPEED_3D / 100 + 1e-8);
     }
     assert.ok(onLowerFloor(m.activeWorker), `${kind}: side ${side}, offset ${offset} reaches the floor`);
     for (let i = 0; i < 400 && (side ? m.activeWorker.x > 630 : m.activeWorker.x < 330); i++) m.update(10, { x: -direction, y: 0 });
@@ -363,7 +363,7 @@ test('all four truck doors guide off-centre carrying approaches into the aisle a
     for (let step = 0; step < 400 && m.currentDock() !== route; step++) {
       const before = { x: worker.x, y: worker.y };
       m.update(10, { x: direction * strength, y: strength === 1 ? Math.sign(offset) : 0 });
-      assert.ok(Math.hypot(worker.x - before.x, worker.y - before.y) <= 2.35 * strength + 1e-8, 'door assistance never teleports or increases keyboard or partial-stick speed');
+      assert.ok(Math.hypot(worker.x - before.x, worker.y - before.y) <= WORKER_SPEED_3D / 100 * strength + 1e-8, 'door assistance never teleports or increases keyboard or partial-stick speed');
       assert.ok(m.walkable(worker.side, worker.x, worker.y));
     }
     assert.equal(m.currentDock(), route, `${route} accepts an approach ${offset}px off centre`);

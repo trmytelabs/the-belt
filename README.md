@@ -52,8 +52,8 @@ shows the next line and Enter skips the scene. See
 [the overnight shift expansion](docs/overnight-shift-expansion.md).
 
 The shift is one polished three-minute warehouse section, followed by
-up to ten seconds to clear remaining freight. Press Enter or tap **START THE NIGHT**. Dispatch
-42 parcels and keep the recovery backlog below five. The original **3, 2, 1,
+up to 25 seconds to clear remaining freight in 3D. Press Enter or tap **START THE NIGHT**. Dispatch
+42 parcels and keep the recovery backlog below seven (the seventh ends the shift). The original **3, 2, 1,
 SORT!** countdown starts the shift.
 
 - WASD / arrows move; Tab or right-click switches workers.
@@ -72,17 +72,22 @@ SORT!** countdown starts the shift.
   costs up to 150 points once, and Shan runs over yelling.
 - The raised platform ends at the back wall, behind both player truck rows.
   Stairs descend outward to the left and right, with tidy pallet drops below.
-- Read parcel street addresses and compare them with the ranges painted on the
-  floor beside each truck. Termite covers Mill Woods (10–49 ST), Downtown (90–109 ST) and the
+- The briefing teaches three steps: grab, follow the destination, then load inside
+  the truck. Package labels show the sorting street number in large type, with
+  the full address and freight name below. A persistent guide names the destination
+  and next direction; a gold marker highlights the correct truck door or floor drop.
+  Termite covers Mill Woods (10–49 ST), Downtown (90–109 ST) and the
   Westmount floor drop (110–129 ST). Skanky covers Bonnie Doon (50–89 ST),
   West End (130–169 ST) and the Northside floor drop (170–199 ST). Oversize
   freight goes to shared bulk. These are synthetic game districts.
 - The other worker automatically loads their own address ranges. Only the worker
   you control collects bulk. Random everyday freight mixes with the original
   joke parcels. Arrivals allow more breathing room: every 4.8 seconds initially,
-  3.2 seconds in flow and 2.4 seconds in rush.
-- Read street numbers painted on the floor. Floating location signs are removed. There are
-  no safe-zone outlines or aiming guides. A wrong drop costs up to 10 points.
+  3.6 seconds in flow and 2.8 seconds in rush. The later belt speed increases are
+  gentler, and heavier freight retains at least 82% of the quicker walking speed.
+- District names and street ranges are painted beside the truck doors. The
+  destination marker guides loading; throws still target the nearest physical drop
+  and retain their break risk. A wrong drop costs up to 10 points.
   See [address sorting and loading](docs/address-sorting.md).
 - E brakes the belt for two seconds, with an eight-second cooldown.
 - Escape pauses; M toggles sound. Losing focus pauses the preview automatically.

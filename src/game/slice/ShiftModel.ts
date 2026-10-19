@@ -378,9 +378,9 @@ export class ShiftModel {
   ];
   public readonly packages: Parcel[] = [];
   public readonly durationMs = 180_000;
-  public readonly cleanupMs = 10_000;
+  public readonly cleanupMs: number = 10_000;
   public readonly goal = 42;
-  public readonly capacity = 5;
+  public readonly capacity: number = 5;
   public activeIndex = 0;
   public elapsedMs = 0;
   public beltTravel = 0;
@@ -763,7 +763,7 @@ export class ShiftModel {
     }
 
     if (this.pileup >= this.capacity) {
-      this.finish(false, 'Recovery bay full · rescue parcels before five stack up');
+      this.finish(false, `Recovery bay full · rescue parcels before ${this.capacity === 5 ? 'five' : this.capacity} stack up`);
       return;
     }
     if (this.elapsedMs < this.durationMs) {
@@ -1086,7 +1086,7 @@ export class ShiftModel {
     return true;
   }
 
-  private speedAt(elapsedMs: number): number {
+  protected speedAt(elapsedMs: number): number {
     if (elapsedMs < 36_000) return 50;
     if (elapsedMs < 42_000) return 50 + 18 * smoothStep((elapsedMs - 36_000) / 6_000);
     if (elapsedMs < 126_000) return 68;
@@ -1098,7 +1098,7 @@ export class ShiftModel {
     const phase: ShiftPhase = this.elapsedMs < 36_000 ? 'lesson' : this.elapsedMs < 126_000 ? 'flow' : this.elapsedMs < this.durationMs ? 'rush' : 'cleanup';
     if (phase === this.phase) return;
     this.phase = phase;
-    const message = phase === 'flow' ? 'TEAM FLOW · freight every 2.8s · your partner sorts their own routes' : phase === 'rush' ? 'LAST PUSH · freight every 2.2 seconds' : phase === 'cleanup' ? 'INTAKE CLOSED · 10 seconds to clear your freight' : 'Find your rhythm';
+    const message = phase === 'flow' ? `TEAM FLOW · freight every ${this.freightFlow.flowMs / 1000}s · your partner sorts their own routes` : phase === 'rush' ? `LAST PUSH · freight every ${this.freightFlow.rushMs / 1000} seconds` : phase === 'cleanup' ? `INTAKE CLOSED · ${this.cleanupMs / 1000} seconds to clear your freight` : 'Find your rhythm';
     this.emit('phase', message, { x: 480, y: 122 });
   }
 

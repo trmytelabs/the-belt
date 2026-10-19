@@ -2,10 +2,10 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 
 import type { Parcel, ParcelKind } from '../game/slice/ShiftModel';
-import { parcelAddress } from './addresses';
+import { parcelAddress, parcelStreet } from './addresses';
 import { mergeStatic } from './merge';
 import { physicalBounds } from './collision3d';
-import { PALETTE, shadowed, standard, textPlane, textSprite } from './space';
+import { PALETTE, shadowed, standard, textPlane } from './space';
 
 const PARCEL_SCALE = 1.3;
 
@@ -80,7 +80,7 @@ function crate(w: number, h: number, d: number): THREE.Group {
 }
 
 function addressBadge(parcel: Parcel): THREE.Mesh {
-  const badge = textPlane([parcelAddress(parcel)], parcel.kind === 'longbox' ? 0.3 : 0.42, 0.18, { width: 240, height: 64, background: '#f1e5c4', color: '#12232a', radius: 6 });
+  const badge = textPlane([parcelStreet(parcel)], parcel.kind === 'longbox' ? 0.3 : 0.42, 0.22, { width: 160, height: 72, background: '#fff4d8', color: '#12232a', radius: 6 });
   badge.rotation.x = -Math.PI / 2;
   return badge;
 }
@@ -258,11 +258,7 @@ export function createParcelView(parcel: Parcel): ParcelView {
   root.add(group);
   const size = physicalBounds(group).getSize(new THREE.Vector3());
   // Every named freight shows its full authored name, as in the 2D depot.
-  const lines = [parcelAddress(parcel), ...splitLabel(parcel.label)];
-  const tag = textSprite(lines, 0.52, {
-    width: Math.max(90, Math.max(...lines.map((line) => line.length)) * 12 + 20),
-    height: 78, background: '#f1e5c4', border: '#9e8452', color: '#2b2116', radius: 5,
-  });
+  const tag = parcelTag(parcel);
   tag.position.y = Math.max(height * PARCEL_SCALE, size.y) + 0.38;
   tag.center.set(0.5, 0);
   root.add(tag);
@@ -290,4 +286,27 @@ function splitLabel(label: string): string[] {
   const words = label.split(' ');
   const half = Math.ceil(words.length / 2);
   return [words.slice(0, half).join(' '), words.slice(half).join(' ')];
+}
+
+function parcelTag(parcel: Parcel): THREE.Sprite {
+  const canvas = document.createElement('canvas');
+  canvas.width = 560; canvas.height = 280;
+  const ctx = canvas.getContext('2d')!;
+  ctx.scale(2, 2);
+  ctx.fillStyle = '#fff4d8'; ctx.beginPath(); ctx.roundRect(1, 1, 278, 138, 8); ctx.fill();
+  ctx.strokeStyle = '#9e8452'; ctx.lineWidth = 2; ctx.stroke();
+  ctx.fillStyle = '#12232a'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.font = '900 58px "Segoe UI", Arial, sans-serif';
+  ctx.fillText(parcelStreet(parcel), 140, 36, 260);
+  ctx.font = '700 21px "Segoe UI", Arial, sans-serif';
+  ctx.fillText(parcelAddress(parcel), 140, 79, 260);
+  ctx.font = '700 17px "Segoe UI", Arial, sans-serif';
+  splitLabel(parcel.label).forEach((line, index) => ctx.fillText(line, 140, 105 + index * 20, 260));
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace; texture.anisotropy = 4;
+  const tag = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, depthWrite: false }));
+  tag.scale.set(1.88, 0.94, 1);
+  tag.name = 'parcel-address-tag';
+  tag.userData.street = parcelStreet(parcel);
+  return tag;
 }

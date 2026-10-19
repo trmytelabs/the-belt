@@ -6,6 +6,12 @@ sorting, the rear platform and side stairs, player-only bulk, the 10-point wrong
 drop penalty and brighter night lighting. New 3D rules use `ShiftModel3D` and
 `layout.ts`; shared model extensions must preserve legacy behavior.
 
+The 3D briefing teaches grab → destination → load, and `sortingGuide.ts` supplies
+the live next step. Large street numbers, named truck floor markings and a gold
+delivery marker make matching freight easier. Recovery fails at seven packages;
+the shift retains its 42-dispatch goal with gentler intake, faster carrying and
+25 seconds of cleanup. The legacy modes retain their previous pacing and limits.
+
 The 3D depot is the default entry. It shows every reference in
 [reference parity](reference-parity.md), as the 2D depot does. The 2D depot is
 kept at `?mode=2d`, the original full shift at `?mode=classic`, and `?mode=3d`
