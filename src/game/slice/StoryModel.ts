@@ -6,9 +6,12 @@ import { BREAK_PLACES, BREAK_SCENES, OPENERS, type BreakPlace, type Opener, type
  *
  * arrival → scrum → countdown → shift (break, drivers inside it) → clockout →
  * assignment → to-mall → mall → to-ups → return → home → results
+ *
+ * The 3D night opens earlier, at Termite and Skanky's place: prologue, then
+ * either commute → arrival, or quit → results. Other versions start at arrival.
  */
 export type Chapter =
-  | 'briefing' | 'arrival' | 'scrum' | 'countdown' | 'shift' | 'break' | 'clockout' | 'assignment'
+  | 'briefing' | 'prologue' | 'commute' | 'quit' | 'arrival' | 'scrum' | 'countdown' | 'shift' | 'break' | 'clockout' | 'assignment'
   | 'to-mall' | 'mall' | 'to-ups' | 'return' | 'home' | 'results';
 
 /** When the single mid-shift break may begin (shift milliseconds). */

@@ -17,6 +17,8 @@ export const streetExtent = (x: number): { minZ: number; maxZ: number } => ({
 });
 export const DESTINATIONS = { ups: { x: -60, z: 98 }, mall: { x: 180, z: -298 } } as const;
 export const SPAWNS = { mall: { x: -60, z: 88, heading: Math.PI / 2 }, ups: { x: 180, z: -288, heading: -Math.PI / 2 } } as const;
+/** Termite and Skanky's street, for the 3D drive in to work: mid-block, facing toward UPS. */
+export const HOME_SPAWN = { x: 120, z: -130, heading: -Math.PI / 2 } as const;
 /** The paved part of a loading yard beyond the public street and sidewalk. */
 export function inLoadingYard(point: CityPoint, destination?: 'ups' | 'mall'): boolean {
   return (destination ? [destination] : ['ups', 'mall'] as const).some(id => {

@@ -39,7 +39,8 @@ export interface StoryBeat {
   ms: number;
 }
 
-export type StoryLocation = 'lot' | 'depot' | 'store' | 'coffee' | 'road' | 'mall' | 'home';
+/** `house` is Termite and Skanky's place, used only by the 3D prologue. */
+export type StoryLocation = 'lot' | 'depot' | 'store' | 'coffee' | 'road' | 'mall' | 'home' | 'house';
 
 export interface StoryScene {
   id: string;

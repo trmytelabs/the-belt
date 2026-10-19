@@ -1,6 +1,8 @@
 # Five-ton night drives
 
-The default 3D game adds two playable drives after the warehouse shift:
+The default 3D game opens with a drive in Skanky's car from home to the UPS
+loading yard when Termite and Skanky choose to go in; parking there starts the
+original arrival scenes. It also adds two playable drives after the warehouse shift:
 UPS to Southgate Mall before the existing six deliveries, and the city journey
 back to UPS after all six signatures and returning the cart to the truck.
 The legacy 2D depot and classic game retain their original road scenes.

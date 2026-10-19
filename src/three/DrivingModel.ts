@@ -1,7 +1,9 @@
-import { CITY, CITY_BUILDINGS, CITY_SIGNALS, DESTINATIONS, SPAWNS, TERMINALS, angleDelta, inLoadingYard, nearestRoad, separation, signalColor, trafficPose,
+import { CITY, CITY_BUILDINGS, CITY_SIGNALS, DESTINATIONS, HOME_SPAWN, SPAWNS, TERMINALS, angleDelta, inLoadingYard, nearestRoad, separation, signalColor, trafficPose,
   type CityAxis, type CityPoint, type CityPose, type CitySignal } from './drivingCity.ts';
 
 export type DriveDestination = 'mall' | 'ups';
+/** Where a drive begins: the other loading yard, or home for the 3D drive in to work. */
+export type DriveOrigin = 'depot' | 'home';
 export interface DriveInput { steer: number; throttle: number; brake: number }
 export interface RoadObstacle extends CityPoint { id: string; kind: 'car' | 'cone'; heading: number; speed: number; travel: number; route: number; hit: boolean }
 export type DriveEvent = { type: 'collision'; kind: 'car' | 'cone' | 'building'; points: number } | { type: 'red-light'; points: number } | { type: 'parked' };
@@ -32,6 +34,7 @@ function penetration(a: Box, b: Box): CityPoint | null {
 /** Free Cartesian driving. Roads are scenery and guidance, never a player rail. */
 export class DrivingModel {
   public readonly destination: DriveDestination;
+  public readonly origin: DriveOrigin;
   public x: number;
   public z: number;
   public heading: number;
@@ -54,9 +57,10 @@ export class DrivingModel {
   private readonly hitBuildings = new Set<number>();
   private readonly events: DriveEvent[] = [];
 
-  constructor(destination: DriveDestination) {
+  constructor(destination: DriveDestination, origin: DriveOrigin = 'depot') {
     this.destination = destination;
-    const spawn = SPAWNS[destination]; this.x = spawn.x; this.z = spawn.z; this.heading = spawn.heading;
+    this.origin = origin;
+    const spawn = origin === 'home' ? HOME_SPAWN : SPAWNS[destination]; this.x = spawn.x; this.z = spawn.z; this.heading = spawn.heading;
     this.obstacles = [
       ...[30, 36, 42, 48, 54, 60].map((x, i): RoadObstacle => ({ id: `cone-${i}`, kind: 'cone', x, z: -45.7,
         heading: 0, speed: 0, travel: 0, route: 0, hit: false })),
