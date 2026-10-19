@@ -13,7 +13,7 @@ import { buildSouthgateMall, mallX, mallZ, type SouthgateMall } from './mall';
 import { mergeStatic } from './merge';
 import { disposeObject3D } from './resources';
 import { physicalBounds } from './collision3d';
-import { actorSurfaceAt, setFromModel, shadowed, standard, textPlane, textSprite, textTexture, toWorld } from './space';
+import { actorSurfaceAt, setFromModel, shadowed, standard, textPlane, textSprite, toWorld } from './space';
 import { RESIDENT_SPECS, SKANKY_SPEC, SKIN, TERMITE_SPEC, VISITORS, createTruck } from './world';
 import { DEPOT_3D_LAYOUT as DEPOT } from './layout';
 
@@ -790,15 +790,30 @@ export class StoryStage {
     const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.21, 0.21, 0.58, 24), steel);
     barrel.position.y = 0.31;
     keg.add(barrel);
-    for (const y of [0.04, 0.22, 0.4, 0.58]) {
+    for (const y of [0.04, 0.58]) {
       const rib = new THREE.Mesh(new THREE.TorusGeometry(0.212, 0.014, 6, 24), steel);
       rib.rotation.x = Math.PI / 2;
       rib.position.y = y;
       keg.add(rib);
     }
-    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.214, 0.214, 0.12, 24, 1, true), new THREE.MeshStandardMaterial({
-      map: textTexture(['WARSTEINER'], { width: 512, height: 64, background: '#1d4a2e', color: '#f2e6c4' }), roughness: 0.6 }));
+    // A tall label wrapping the barrel three times, so the name always faces the camera.
+    const labelCanvas = document.createElement('canvas');
+    labelCanvas.width = 1536;
+    labelCanvas.height = 480;
+    const lctx = labelCanvas.getContext('2d')!;
+    lctx.fillStyle = '#163d26'; lctx.fillRect(0, 0, 1536, 480);
+    lctx.fillStyle = '#d8b25a'; lctx.fillRect(0, 22, 1536, 14); lctx.fillRect(0, 444, 1536, 14);
+    lctx.fillStyle = '#fbf2d6'; lctx.textAlign = 'center'; lctx.textBaseline = 'middle';
+    lctx.font = 'bold 118px Georgia, "Times New Roman", serif';
+    for (const x of [256, 768, 1280]) lctx.fillText('WARSTEINER', x, 250, 470);
+    const labelTexture = new THREE.CanvasTexture(labelCanvas);
+    labelTexture.colorSpace = THREE.SRGBColorSpace;
+    labelTexture.anisotropy = 4;
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.215, 0.215, 0.42, 36, 1, true), new THREE.MeshStandardMaterial({
+      map: labelTexture, emissiveMap: labelTexture, emissive: 0xffffff, emissiveIntensity: 0.3, roughness: 0.55 }));
     band.position.y = 0.31;
+    // Centre one name between the room and couch camera angles.
+    band.rotation.y = 0.87;
     const coupler = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.08, 12), standard(0x2a2c2e, 0.4, 0.6));
     coupler.position.y = 0.64;
     const hose = new THREE.Mesh(new THREE.TorusGeometry(0.16, 0.012, 6, 16, Math.PI), standard(0x1a1a1a, 0.6));
