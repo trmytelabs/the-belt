@@ -10,6 +10,7 @@ export const WRONG_DROP_PENALTY = 10;
 export const ARRIVALS_3D = { lessonMs: 4_800, flowMs: 3_600, rushMs: 2_800, brianMs: 2_800 } as const;
 export const WORKER_SPEED_3D = 265;
 export const MIN_CARRY_SPEED_3D = 0.82;
+export const BELT_STOPS_3D = { limit: 3, durationMs: 2_000, cooldownMs: 15_000 } as const;
 export interface TruckLoad { route: TruckRoute; x: number; y: number; height: number; layer: number; column: number; row: number; cells: number; parcelHeight: number; overflow: boolean }
 // Conservative dimensions in model pixels for the actual parcel forms at their
 // normal render scale. Long boxes lie along the cargo bay, occupying two slots.
@@ -23,6 +24,7 @@ export class ShiftModel3D extends ShiftModel {
   public override readonly layout = DEPOT_3D_LAYOUT;
   public override readonly capacity = 7;
   public override readonly cleanupMs = 25_000;
+  public beltStopsRemaining: number = BELT_STOPS_3D.limit;
   protected override get freightFlow() { return ARRIVALS_3D; }
   protected override speedAt(elapsedMs: number): number {
     return 50 + (super.speedAt(elapsedMs) - 50) * 0.55;
@@ -53,6 +55,32 @@ export class ShiftModel3D extends ShiftModel {
     return 'F';
   }
   public override get gradeQuote(): string { return this.grade === 'S' ? 'OUTSTANDING SHIFT' : super.gradeQuote; }
+
+  public get canStopBelt(): boolean {
+    return this.canAct() && !this.eventStopped && this.beltStopsRemaining > 0 && this.brakeCooldownMs <= 0;
+  }
+
+  /** Keep the shared input/event contract, with limits belonging only to 3D. */
+  public override brake(): void {
+    if (!this.canAct()) return;
+    if (this.beltStopsRemaining <= 0) {
+      this.emit('wrong', 'No belt stops left · 3 per run', this.activeWorker);
+      return;
+    }
+    if (this.eventStopped) {
+      this.emit('wrong', 'The belt is already stopped', this.activeWorker);
+      return;
+    }
+    if (this.brakeCooldownMs > 0) {
+      this.emit('wrong', `Wait ${Math.ceil(this.brakeCooldownMs / 1000)}s to stop the belt`, this.activeWorker);
+      return;
+    }
+    this.beltStopsRemaining -= 1;
+    this.brakeRemainingMs = BELT_STOPS_3D.durationMs;
+    this.brakeCooldownMs = BELT_STOPS_3D.cooldownMs;
+    this.beltSpeed = 0;
+    this.emit('brake', `Belt stopped · 2 seconds to catch up · ${this.beltStopsRemaining} stops left`, { x: 480, y: 180 });
+  }
 
   protected override freightIdentity(id: number, slot: number, brianKind: ParcelKind | null) {
     const everyday = brianKind === null && slot % 3 !== 0;

@@ -2,7 +2,7 @@ import * as THREE from 'three';
 
 const CSS = `
 .b3d { position: fixed; inset: 0; overflow: hidden; background: #0a1317; font-family: "Segoe UI", system-ui, Arial, sans-serif; color: #edf0de; }
-.b3d canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.b3d canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; outline: none; }
 .b3d-hud { position: absolute; inset: 0; pointer-events: none; }
 .b3d-lunch-alert { position: absolute; left: 50%; top: 36%; transform: translate(-50%, -50%); width: min(640px, 85%); box-sizing: border-box; padding: 28px 24px; border: 2px solid #e8b765; border-radius: 14px; background: #14262df2; color: #f3e6c6; text-align: center; font: 900 clamp(24px, 4vw, 40px)/1.15 "Segoe UI", sans-serif; box-shadow: 0 12px 50px #0006; pointer-events: none; }
 .b3d-top { position: absolute; top: 0; left: 0; right: 0; display: flex; align-items: center; gap: 28px; padding: 12px 22px;
@@ -205,7 +205,7 @@ export class Overlay {
         <div class="b3d-hint" data-f="hint"></div>
         <div class="b3d-brake" data-f="brake"></div>
         <div class="b3d-routes" data-f="routes"></div>
-        <div class="b3d-keys">WASD MOVE · TAB SWITCH · SPACE GRAB/DELIVER · F THROW · E BRAKE · V <span data-f="view"></span> · ESC PAUSE · M SOUND</div>
+        <div class="b3d-keys">WASD MOVE · TAB SWITCH · SPACE GRAB/DELIVER · F THROW · E STOP THE BELT · V <span data-f="view"></span> · ESC PAUSE · M SOUND</div>
       </div>`;
     this.hud.querySelectorAll<HTMLElement>('[data-f]').forEach((element) => { this.fields[element.dataset.f!] = element; });
     this.bubbles = this.div('b3d-bubbles', this.root);

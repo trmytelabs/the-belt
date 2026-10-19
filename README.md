@@ -24,7 +24,7 @@ npm run dev
 Open the local URL printed by Vite. The default entry is the **3D depot**: the
 night shift in a lit Three.js warehouse, with every original reference event and
 speech bubbles anchored to whoever is speaking. On touch screens it shows a
-movement stick and GRAB / DELIVER, SWITCH, BRAKE, VIEW and PAUSE buttons. It needs
+movement stick and GRAB / DELIVER, SWITCH, STOP THE BELT, VIEW and PAUSE buttons. It needs
 WebGL; without it the page links to the 2D depot. See
 [the 3D depot](docs/3d-preview.md). The crew uses 23 rigged Microsoft Rocketbox
 characters, with procedural figures on software graphics. Their animation,
@@ -92,7 +92,9 @@ SORT!** countdown starts the shift.
   destination marker guides loading; throws still target the nearest physical drop
   and retain their break risk. A wrong drop costs up to 10 points.
   See [address sorting and loading](docs/address-sorting.md).
-- E brakes the belt for two seconds, with an eight-second cooldown.
+- E / STOP THE BELT stops it for two seconds. You get three stops per 3D run,
+  with a 15-second cooldown starting on each use. The controls show stops left
+  and cooldown time; starting another night restores all three.
 - Escape pauses; M toggles sound. Losing focus pauses the preview automatically.
 - The closer camera follows your worker up and down the belt and reframes when
   you switch workers. V, or the Overview button, shows the whole warehouse.

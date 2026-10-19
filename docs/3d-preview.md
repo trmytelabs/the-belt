@@ -19,6 +19,12 @@ boxes visibly travel on the tread before the same box is lifted and carried.
 Their incoming freight stops with the belt. Destination circles have no floating
 action labels.
 
+E / STOP THE BELT gives a two-second stop, three times per run, with a 15-second
+cooldown from each press. Stops left and cooldown time stay visible; failed
+presses and story-controlled stops spend no uses. Replay restores all three.
+Starting and resuming focus the game canvas for keyboard input. A paused game
+explicitly says to click RESUME or press ENTER.
+
 The 3D depot is the default entry. It shows every reference in
 [reference parity](reference-parity.md), as the 2D depot does. The 2D depot is
 kept at `?mode=2d`, the original full shift at `?mode=classic`, and `?mode=3d`
@@ -99,7 +105,7 @@ Present in 3D:
   - Goji berries.
   - Panchetters.
 - Kylie's three Timmy Hortans lines, on his walk.
-- Shan's seven rants, cycling on each brake, as he reddens.
+- Shan's seven-rant pool, cycling on each belt stop, as he reddens.
 - Fruit Loop's `LIVE LOBSTERS?!`.
 - Brian's `SENDING 5 DOWN` and the active worker's reply.
 - The 3-2-1-SORT countdown.
@@ -199,7 +205,7 @@ checks:
 - A real-key grab and delivery of `MALLWOOD RD EAST`.
 - That Kylie's three lines arrive in order, with her bubble anchored above her
   in the overview.
-- Shan's first brake rant.
+- Shan's first belt-stop rant.
 - Pause and resume.
 - The worker handoff.
 - John's yell and crouch on the ordinary clock.
@@ -210,7 +216,7 @@ checks:
   twelve drivers, the United Way reaction without Ben, the dockhand's position,
   the eight clock-out lines, every truck's departure, and the results.
 - Touch, in a 390×844 touch browser: the touch briefing, stick movement,
-  GRAB / DELIVER, SWITCH, BRAKE, VIEW, and PAUSE / RESUME.
+  GRAB / DELIVER, SWITCH, STOP THE BELT, VIEW, and PAUSE / RESUME.
 - That the plain address opens the 3D depot; without WebGL it links to
   `?mode=2d`.
 - Every phase-3 set piece:

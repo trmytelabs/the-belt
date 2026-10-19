@@ -6,6 +6,64 @@ import { DEPOT_3D_LAYOUT as L, platformLevelAt, onLowerFloor, truckInteriorAt } 
 import { platformWalkPath, pathLength, walkPath } from '../src/three/walking.ts';
 import { RECEIVING_CROSSING_Y, RECEIVING_FEEDERS, receivingBlocked, clearReceiving } from '../src/three/receivingCollision.ts';
 
+test('3D allows exactly three two-second belt stops with a 15-second cooldown from each press', () => {
+  const model = new ShiftModel3D({ autonomousCoworker: false });
+  model.drainEvents();
+  for (const left of [2, 1, 0]) {
+    model.brake();
+    assert.equal(model.beltStopsRemaining, left);
+    assert.equal(model.beltSpeed, 0);
+    assert.equal(model.brakeCooldownMs, 15000);
+    const travel = model.beltTravel;
+    advance(model, 1990);
+    assert.equal(model.beltTravel, travel, 'parcels stay still for the stop');
+    assert.equal(model.brakeRemainingMs, 10);
+    advance(model, 10);
+    assert.ok(model.beltSpeed > 0, 'the belt restarts after two seconds');
+    advance(model, 12990);
+    assert.equal(model.canStopBelt, false);
+    model.brake();
+    assert.equal(model.beltStopsRemaining, left, 'an early press spends no use');
+    assert.equal(model.brakeCooldownMs, 10, 'an early press cannot restart the cooldown');
+    advance(model, 10);
+    assert.equal(model.canStopBelt, left > 0);
+  }
+  const travel = model.beltTravel;
+  model.brake();
+  advance(model, 100);
+  assert.ok(model.beltTravel > travel, 'a fourth press cannot stop the belt even after the cooldown');
+  const events = model.drainEvents();
+  assert.equal(events.filter(event => event.type === 'brake').length, 3);
+  assert.match(events.at(-1).message, /No belt stops left/);
+  assert.ok(events.every(event => !/brake/i.test(event.message)));
+});
+
+test('paused, finished and story-stopped shifts spend no stop; pausing freezes the cooldown', () => {
+  const model = new ShiftModel3D({ autonomousCoworker: false });
+  model.paused = true; model.brake();
+  assert.equal(model.beltStopsRemaining, 3);
+  model.paused = false; model.eventStopped = true; model.brake();
+  assert.equal(model.beltStopsRemaining, 3);
+  model.eventStopped = false; model.brake();
+  model.paused = true; advance(model, 15000);
+  assert.equal(model.brakeRemainingMs, 2000);
+  assert.equal(model.brakeCooldownMs, 15000);
+  model.paused = false; model.ended = true; model.brake();
+  assert.equal(model.beltStopsRemaining, 2);
+  assert.equal(new ShiftModel3D().beltStopsRemaining, 3);
+});
+
+test('legacy belt stops retain the eight-second cooldown and unlimited uses', () => {
+  const model = new ShiftModel();
+  for (let use = 0; use < 4; use++) {
+    model.brakeCooldownMs = 0;
+    model.brake();
+    assert.equal(model.brakeCooldownMs, 8000);
+    assert.equal(model.brakeRemainingMs, 2000);
+  }
+  assert.equal('beltStopsRemaining' in model, false);
+});
+
 const advance = (m, ms) => { for (let t = 0; t < ms; t += 10) m.update(10); };
 const hold = (m, route, at) => {
   const p = m.packages[0], w = m.activeWorker;
