@@ -1,0 +1,168 @@
+import * as THREE from 'three';
+
+/**
+ * Photo-based CC0 surface textures (Poly Haven and ambientCG, see
+ * docs/textures.md) for the code-built depot. Each surface has a colour map,
+ * an OpenGL normal map and a packed AO/roughness/metalness map, as three.js
+ * reads them (R, G, B). Textures are shared: one texture object per map keeps
+ * draw-call merging working (merge.ts keys on map identity), so meshes scale
+ * their own UVs to world size instead of setting a per-texture repeat.
+ */
+export type SurfaceName = 'concrete' | 'rubber' | 'steel' | 'paint' | 'cardboard';
+
+export interface Surface {
+  map: THREE.Texture;
+  normalMap: THREE.Texture;
+  armMap: THREE.Texture;
+}
+
+const NAMES: SurfaceName[] = ['concrete', 'rubber', 'steel', 'paint', 'cardboard'];
+const surfaces = new Map<SurfaceName, Surface>();
+let loading: Promise<void> | null = null;
+
+/**
+ * Load every surface before the depot is built. It never rejects: a missing
+ * or slow file leaves the flat colours the depot used before textures.
+ */
+export function loadSurfaces(timeoutMs = 8000): Promise<void> {
+  loading ??= (async () => {
+    const loader = new THREE.TextureLoader();
+    const base = `${import.meta.env.BASE_URL}textures/`;
+    const load = async (file: string, color: boolean): Promise<THREE.Texture> => {
+      const texture = await loader.loadAsync(`${base}${file}`);
+      texture.colorSpace = color ? THREE.SRGBColorSpace : THREE.NoColorSpace;
+      texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+      texture.anisotropy = 4;
+      // Shared by every material using it: disposeObject3D leaves it loaded.
+      texture.userData.shared = true;
+      return texture;
+    };
+    const all = Promise.all(NAMES.map(async (name) => {
+      const [map, normalMap, armMap] = await Promise.all([load(`${name}_color.webp`, true), load(`${name}_normal.webp`, false), load(`${name}_arm.webp`, false)]);
+      return [name, { map, normalMap, armMap }] as const;
+    }));
+    let timer = 0;
+    const timeout = new Promise<never>((_, reject) => { timer = window.setTimeout(() => reject(new Error('surface textures timed out')), timeoutMs); });
+    try {
+      for (const [name, surface] of await Promise.race([all, timeout])) surfaces.set(name, surface);
+    } catch (error) {
+      surfaces.clear();
+      console.warn('Depot surface textures unavailable; using flat colours.', error);
+    } finally {
+      window.clearTimeout(timer);
+    }
+  })();
+  return loading;
+}
+
+export const surfacesLoaded = (): boolean => surfaces.size === NAMES.length;
+
+export function getSurface(name: SurfaceName): Surface | undefined {
+  return surfaces.get(name);
+}
+
+/**
+ * Average colour (sRGB) and roughness/metalness (0-1) of each committed map
+ * set, measured from public/textures. Dividing by them keeps a textured
+ * material's average look equal to the flat material it replaces: the photo
+ * adds variation, relief and wear without changing the depot's palette.
+ */
+export const SURFACE_MEANS: Record<SurfaceName, { color: number; roughness: number; metalness: number }> = {
+  concrete: { color: 0x565754, roughness: 0.54, metalness: 0 },
+  rubber: { color: 0x2a2c31, roughness: 0.59, metalness: 0 },
+  steel: { color: 0x5f6161, roughness: 0.36, metalness: 1 },
+  paint: { color: 0xefb33d, roughness: 0.22, metalness: 0.08 },
+  cardboard: { color: 0xb98f4d, roughness: 0.64, metalness: 0 },
+};
+
+const cache = new Map<string, THREE.MeshStandardMaterial>();
+
+/**
+ * A PBR material for surface `name` standing in for the flat material `flat`,
+ * which is returned unchanged when textures are unavailable. With textures,
+ * the colour map is tinted (and roughness scaled) so the average matches
+ * `flat`. `colorMap: false` keeps only the relief, roughness and wear, for
+ * paint in its own colour such as truck bodies. Paint's bare-metal scratches
+ * stay metallic; other surfaces keep `flat.metalness`. Identical requests
+ * return one material, so their meshes still merge.
+ */
+export function surfaceMaterial(name: SurfaceName, flat: {
+  color: THREE.ColorRepresentation;
+  roughness: number;
+  metalness?: number;
+  emissive?: THREE.ColorRepresentation;
+  emissiveIntensity?: number;
+}, textured: { colorMap?: boolean; normalScale?: number } = {}): THREE.MeshStandardMaterial {
+  const surface = surfaces.get(name);
+  const colorMap = textured.colorMap ?? true;
+  const normalScale = textured.normalScale ?? 1;
+  const mean = SURFACE_MEANS[name];
+  const color = new THREE.Color(flat.color);
+  let roughness = flat.roughness;
+  let metalness = flat.metalness ?? 0;
+  if (surface) {
+    // Working-space (linear) colour ratios may exceed 1: the photo is darker than the flat colour.
+    if (colorMap) {
+      const average = new THREE.Color(mean.color);
+      color.setRGB(color.r / average.r, color.g / average.g, color.b / average.b);
+    }
+    roughness /= mean.roughness;
+    metalness = name === 'paint' ? 1 : mean.metalness ? metalness / mean.metalness : 0;
+  }
+  const emissive = new THREE.Color(flat.emissive ?? 0x000000);
+  const emissiveIntensity = flat.emissiveIntensity ?? 1;
+  const key = [name, surface ? 'pbr' : 'flat', ...color.toArray().map((v) => v.toFixed(4)), roughness.toFixed(3), metalness.toFixed(3), colorMap, normalScale, emissive.getHexString(), emissiveIntensity].join('|');
+  let material = cache.get(key);
+  if (material) return material;
+  material = new THREE.MeshStandardMaterial({ color, roughness, metalness, emissive, emissiveIntensity });
+  if (surface) {
+    if (colorMap) material.map = surface.map;
+    material.normalMap = surface.normalMap;
+    material.normalScale.setScalar(normalScale);
+    // The packed map scales these: roughness and metalness become per-texel.
+    material.roughnessMap = surface.armMap;
+    material.metalnessMap = surface.armMap;
+    if (name === 'concrete') material.aoMap = surface.armMap;
+  }
+  cache.set(key, material);
+  return material;
+}
+
+/** Photo cardboard for a carton of flat colour `color` (darker or redder cartons stay so). */
+export function cardboardMaterial(color: THREE.ColorRepresentation, roughness = 0.92): THREE.MeshStandardMaterial {
+  return surfaceMaterial('cardboard', { color, roughness });
+}
+
+/** Multiply a geometry's UVs, e.g. to make one texture tile span `tile` metres. */
+export function scaleUVs<T extends THREE.BufferGeometry>(geometry: T, u: number, v: number): T {
+  const uv = geometry.getAttribute('uv') as THREE.BufferAttribute | undefined;
+  if (!uv) return geometry;
+  for (let i = 0; i < uv.count; i += 1) uv.setXY(i, uv.getX(i) * u, uv.getY(i) * v);
+  uv.needsUpdate = true;
+  return geometry;
+}
+
+/**
+ * Box-project UVs from the geometry's own positions, so one texture tile
+ * spans `tile` metres on every face whatever the box's size. Each vertex uses
+ * the axis its normal faces most, which suits boxes and rounded boxes.
+ */
+export function boxUVs<T extends THREE.BufferGeometry>(geometry: T, tile: number): T {
+  const position = geometry.getAttribute('position');
+  const normal = geometry.getAttribute('normal');
+  if (!position || !normal) return geometry;
+  const uv = new Float32Array(position.count * 2);
+  for (let i = 0; i < position.count; i += 1) {
+    const ax = Math.abs(normal.getX(i));
+    const ay = Math.abs(normal.getY(i));
+    const az = Math.abs(normal.getZ(i));
+    const x = position.getX(i) / tile;
+    const y = position.getY(i) / tile;
+    const z = position.getZ(i) / tile;
+    const [u, v] = ax >= ay && ax >= az ? [z, y] : ay >= az ? [x, z] : [x, y];
+    uv[i * 2] = u;
+    uv[i * 2 + 1] = v;
+  }
+  geometry.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  return geometry;
+}

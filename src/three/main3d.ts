@@ -36,6 +36,7 @@ import { TouchControls } from './touch';
 import { Overlay } from './overlay';
 import { alignParcelToSurface, createParcelView, setParcelCarried, type ParcelView } from './parcels';
 import { disposeObject3D } from './resources';
+import { loadSurfaces } from './textures';
 import {
   BELT_HEIGHT, PLATFORM_HEIGHT, ROUTE_COLORS, actorSurfaceAt, setFromModel, surfaceAt, textSprite, toWorld, toWorldX, toWorldZ,
 } from './space';
@@ -1411,8 +1412,12 @@ export function startBelt3d(): void {
     window.dispatchEvent(new CustomEvent('belt3d:fallback'));
     return;
   }
-  const app = new Belt3d(host);
-  if (import.meta.hot) import.meta.hot.dispose(() => app.dispose());
-  // Browser checks observe the app through this event; nothing global is set.
-  window.dispatchEvent(new CustomEvent('belt3d:ready', { detail: app }));
+  // The depot's materials are built once, so its photo surfaces load first;
+  // a missing or slow texture leaves the flat colours (see textures.ts).
+  void loadSurfaces().then(() => {
+    const app = new Belt3d(host);
+    if (import.meta.hot) import.meta.hot.dispose(() => app.dispose());
+    // Browser checks observe the app through this event; nothing global is set.
+    window.dispatchEvent(new CustomEvent('belt3d:ready', { detail: app }));
+  });
 }

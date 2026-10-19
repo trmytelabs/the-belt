@@ -3,6 +3,8 @@ import * as THREE from 'three';
 /** Release an owned scene subtree, including canvas labels, when it leaves play.
  * Sprite geometry belongs to Three.js and is shared across all sprites.
  * Call only for exclusively owned subtrees; pooled effects own their texture.
+ * Textures flagged `userData.shared` (the photo surfaces in textures.ts) outlive
+ * any one owner and stay loaded.
  */
 export function disposeObject3D(root: THREE.Object3D): void {
   const geometries = new Set<THREE.BufferGeometry>();
@@ -14,7 +16,7 @@ export function disposeObject3D(root: THREE.Object3D): void {
     if (renderable.material) {
       for (const material of Array.isArray(renderable.material) ? renderable.material : [renderable.material]) {
         materials.add(material);
-        for (const value of Object.values(material)) if (value instanceof THREE.Texture) textures.add(value);
+        for (const value of Object.values(material)) if (value instanceof THREE.Texture && value.userData.shared !== true) textures.add(value);
       }
     }
     if (object instanceof THREE.Light) object.shadow?.dispose();

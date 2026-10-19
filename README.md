@@ -41,6 +41,8 @@ Package rustles, impacts, mechanical latches and tablet clicks use small local
 recordings, with subtle variation and controlled volume. M mutes both music and
 effects. Source details are in [music sources](public/audio/MUSIC-SOURCES.md)
 and [foley sources](public/audio/FOLEY-SOURCES.md).
+The floor, belt, rails, trucks and parcels use small CC0 photo textures; see
+[depot surface textures](docs/textures.md).
 
 The legacy **2D Night Shift / Depot 07** is at `?mode=2d`. The current 3D game
 plays a whole night: one of three random
