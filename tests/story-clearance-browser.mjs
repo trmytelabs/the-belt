@@ -16,7 +16,7 @@ try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
-  await page.addInitScript(() => window.addEventListener('belt3d:ready', event => { window.fixtureApp = event.detail; }));
+  await page.addInitScript(() => window.addEventListener('belt3d:ready', event => { window.fixtureApp = event.detail; event.detail.playPrologue = false; }));
   await page.goto(process.env.BELT_TEST_BASE_URL ?? server.resolvedUrls.local[0]);
   await page.waitForFunction(() => window.fixtureApp?.state === 'briefing', null, { timeout: 90_000 });
   for (const scene of OPENERS) {

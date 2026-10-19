@@ -11,7 +11,7 @@ const browser = await chromium.launch({ headless: true,
   args: process.env.BELT_3D_GPU ? ['--ignore-gpu-blocklist'] : ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
 });
 const observeAppAndMusic = () => {
-  window.addEventListener('belt3d:ready', e => { window.fixtureApp = e.detail; });
+  window.addEventListener('belt3d:ready', e => { window.fixtureApp = e.detail; e.detail.playPrologue = false; });
   window.fixtureMusicStarts = 0;
   const create = AudioContext.prototype.createBufferSource;
   AudioContext.prototype.createBufferSource = function (...args) {

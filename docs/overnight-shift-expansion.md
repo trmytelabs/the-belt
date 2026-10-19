@@ -16,6 +16,7 @@ clock-out departures.
 
 | Chapter | What happens | Where it lives |
 | --- | --- | --- |
+| Home (3D only) | Termite and Skanky decide: go in, or quit UPS. Quitting plays the night at home and ends the game; going in walks them to Skanky's car for a playable drive to the UPS yard. | `src/three/homeScript.ts` |
 | Arrival | One of three openers, chosen at random (see below). | `StoryScript.ts` `OPENERS` |
 | Morning scrum | The crew gathers at the head of the belt; Shan's three approved lines and the crew's two approved reactions. | `SCRUM` |
 | Countdown | The original **3, 2, 1, SORT!** | unchanged |

@@ -30,7 +30,8 @@ import { MesaDream } from './dream';
 import { MesaEncounter } from './mesa';
 import { BEN_CAST, BEN_END, BEN_START, SetPieces } from './setpieces';
 import { StoryStage, directDepot } from './story';
-import { DrivingModel, type DriveDestination } from './DrivingModel';
+import { DrivingModel, type DriveDestination, type DriveOrigin } from './DrivingModel';
+import { DECISION, HOME_DECISION, LEAVE_HOUSE, QUIT_ENDING, QUIT_NIGHT, type HomeBeat } from './homeScript';
 import { DrivingView } from './driving';
 import { BELT_SOLID_WIDTH, HEAD_DRIVE, clearReceiving } from './receivingCollision';
 import { TouchControls } from './touch';
@@ -43,7 +44,7 @@ import {
 } from './space';
 import { DepotWorld, SKANKY_SPEC, TERMITE_SPEC } from './world';
 
-type AppState = 'briefing' | 'story' | 'countdown' | 'playing' | 'break-alert' | 'interlude' | 'mesa' | 'dream' | 'paused' | 'celebrating' | 'driving' | 'mall' | 'lot' | 'ended';
+type AppState = 'briefing' | 'story' | 'decision' | 'countdown' | 'playing' | 'break-alert' | 'interlude' | 'mesa' | 'dream' | 'paused' | 'celebrating' | 'driving' | 'mall' | 'lot' | 'ended';
 type Resumable = 'playing' | 'break-alert' | 'interlude' | 'story' | 'driving' | 'mall' | 'lot';
 
 const PHASE_LABELS: Record<string, string> = {
@@ -58,6 +59,7 @@ const EVENT_SOUNDS: Partial<Record<ShiftEvent['type'], SoundEffect>> = {
 const BEAT_SOUNDS: Record<NonNullable<StoryBeat['sound']>, SoundEffect> = {
   engine: 'engine', cough: 'cough', horn: 'horn', gate: 'gate', door: 'button', spill: 'splash', register: 'register', truck: 'truck', sign: 'sign',
 };
+const HOME_SOUNDS: Record<NonNullable<HomeBeat['effect']>, SoundEffect> = { phone: 'event-alert', vomit: 'splash', keg: 'splash' };
 const FACING_ANGLE = { right: Math.PI / 2, left: -Math.PI / 2, down: 0, up: Math.PI } as const;
 const NEW_ROUTES: readonly Route[] = ['D', 'E', 'T', 'S'];
 /** How long a broken parcel stays visible where it landed, in seconds. */
@@ -154,6 +156,13 @@ export class Belt3d {
   private fumeTimer = 0;
   private mallBonus = 0;
   private breakAlertMs = 0;
+  /** The current story scene's heading, so a beat can move its clock. */
+  private storyHeading = { title: '', kicker: '' };
+  /**
+   * The night opens at Termite and Skanky's place. Checks of the later
+   * chapters turn this off to start at the arrival scenes, as before.
+   */
+  public playPrologue = true;
 
   private readonly host: HTMLElement;
   private readonly inputAbort = new AbortController();
@@ -361,6 +370,12 @@ export class Belt3d {
         event.preventDefault();
         return;
       }
+      if (this.state === 'decision') {
+        if (event.code === 'KeyG') this.decide('go');
+        else if (event.code === 'KeyQ') this.decide('quit');
+        else if (event.code === 'KeyM') audioSystem.toggleMuted();
+        return;
+      }
       if (event.code === 'Enter') {
         if (['briefing', 'story', 'ended', 'paused'].includes(this.state)) event.preventDefault();
         if (this.state === 'briefing') this.startNight();
@@ -445,7 +460,7 @@ export class Belt3d {
       <p>WASD / arrows move. TAB or right-click switches. SPACE or click grabs and delivers.</p>
       <p>F throws toward the nearest drop. At the top of the stairs, throw down with a 30% break risk. E stops the belt. V overview.</p>
       <p>Story scenes: SPACE next line, ENTER skips the scene, ESC pauses.</p>`}
-      <p>After the shift: drive the five-ton to Southgate Mall and finish the deliveries. Driving controls appear when you get there.</p>
+      <p>The night starts at home: go in to work, or quit UPS. After the shift, drive the five-ton to Southgate Mall and finish the deliveries. Driving controls appear when you get there.</p>
       <button type="button">START THE NIGHT  ↵</button>
       <a href="${window.location.pathname}?mode=3d&amp;drive=mall">TRY JUST THE DRIVE · EXPLORE THE CITY</a>
       <a href="${window.location.pathname}?mode=2d">PLAY THE 2D DEPOT</a>
@@ -462,6 +477,11 @@ export class Belt3d {
     audioSystem.startMusic('game');
     if (this.practiceDestination) { this.beginDriving(this.practiceDestination); return; }
     this.overlay.clearCenter();
+    if (this.playPrologue) {
+      this.story.go('prologue');
+      this.playScene(HOME_DECISION);
+      return;
+    }
     this.story.go('arrival');
     this.playScene(this.story.opener);
   }
@@ -478,7 +498,8 @@ export class Belt3d {
     this.touch.reset();
     this.overlay.clearSpeech();
     this.overlay.setMode('story');
-    const kicker = scene.location === 'depot' ? 'THE DEPOT' : scene.location === 'road' ? 'ON THE ROAD' : scene.location === 'mall' ? 'THE MALL RUN' : scene.location === 'home' ? 'FINALLY' : 'THE NIGHT SHIFT';
+    const kicker = scene.location === 'depot' ? 'THE DEPOT' : scene.location === 'road' ? 'ON THE ROAD' : scene.location === 'mall' ? 'THE MALL RUN' : scene.location === 'home' ? 'FINALLY' : scene.location === 'house' ? 'AT HOME' : 'THE NIGHT SHIFT';
+    this.storyHeading = { title: scene.title, kicker };
     this.overlay.storyTitle(scene.title, kicker, scene.clock ?? '');
     if (scene.location === 'depot') {
       this.stage.end();
@@ -495,7 +516,14 @@ export class Belt3d {
     this.cutscene = null;
     this.overlay.clearSpeech();
     if (!scene) return;
-    if (scene.id.startsWith('opener')) {
+    if (scene.id === 'home-decision') {
+      this.showDecision();
+    } else if (scene.id === 'leave-house') {
+      this.story.go('commute');
+      this.beginDriving('ups', 'home');
+    } else if (scene.id === 'quit-night') {
+      this.showQuitEnding();
+    } else if (scene.id.startsWith('opener')) {
       this.story.go('scrum');
       this.playScene(SCRUM);
     } else if (scene.id === 'scrum') {
@@ -515,6 +543,42 @@ export class Belt3d {
     } else if (scene.id === 'go-home') {
       this.showResults();
     }
+  }
+
+  /** Termite and Skanky choose: go in to work, or quit UPS. */
+  private showDecision(): void {
+    this.state = 'decision';
+    this.keys.clear(); this.touch.reset();
+    this.overlay.clearSpeech();
+    this.overlay.showPanel(`<div class="kicker">${DECISION.kicker}</div>
+      <h1>${DECISION.title}</h1>
+      <p>${DECISION.body}</p>
+      <p style="color:#8da7ac;font-size:12px;letter-spacing:1px">${this.touch.enabled ? 'TAP A CHOICE' : 'G GOES IN · Q QUITS · OR CLICK A CHOICE'}</p>
+      <div class="b3d-choices"><button type="button" class="steal" data-action="go">${DECISION.go}</button><button type="button" class="leave" data-action="quit">${DECISION.quit}</button></div>`,
+    { go: () => this.decide('go'), quit: () => this.decide('quit') });
+  }
+
+  private decide(choice: 'go' | 'quit'): void {
+    if (this.state !== 'decision') return;
+    audioSystem.play('button');
+    this.overlay.clearCenter();
+    if (choice === 'go') this.playScene(LEAVE_HOUSE);
+    else {
+      this.story.go('quit');
+      this.playScene(QUIT_NIGHT);
+    }
+  }
+
+  /** The quit ending: no shift and no results to grade. The morning living room stays in view. */
+  private showQuitEnding(): void {
+    this.state = 'ended';
+    this.overlay.setMode('shift');
+    this.story.go('results');
+    audioSystem.startMusic('results');
+    this.overlay.showPanel(`<div class="kicker">${QUIT_ENDING.kicker}</div>
+      <h1>${QUIT_ENDING.title}</h1>
+      <p>${QUIT_ENDING.body}</p>
+      <button type="button">ANOTHER NIGHT  ↵</button>`, () => this.restart());
   }
 
   private startCountdown(): void {
@@ -574,17 +638,18 @@ export class Belt3d {
     audioSystem.startMusic('game');
   }
 
-  private beginDriving(destination: DriveDestination): void {
-    this.driving = new DrivingModel(destination);
+  private beginDriving(destination: DriveDestination, origin: DriveOrigin = 'depot'): void {
+    this.driving = new DrivingModel(destination, origin);
     this.drivingView ??= new DrivingView(this.quality);
     this.drivingView.resize(this.camera.aspect);
-    this.drivingView.begin(this.driving);
+    this.drivingView.begin(this.driving, origin === 'home' ? 'car' : 'truck');
     this.stage.end();
     this.state = 'driving';
     this.keys.clear(); this.touch.reset();
     this.overlay.clearCenter(); this.overlay.clearSpeech();
     this.overlay.setMode('chapter');
-    this.overlay.storyTitle(destination === 'mall' ? 'UPS → SOUTHGATE MALL' : 'SOUTHGATE MALL → UPS',
+    if (origin === 'home') this.overlay.storyTitle('HOME → UPS', 'SKANKY · DRIVING TO WORK', '12:40 AM');
+    else this.overlay.storyTitle(destination === 'mall' ? 'UPS → SOUTHGATE MALL' : 'SOUTHGATE MALL → UPS',
       'SKANKY · FIVE-TON · FREE DRIVE', destination === 'mall' ? '5:05 AM' : '6:10 AM');
     this.overlay.showToast(this.touch.enabled ? 'Green compass points to the bay · hold GAS · BRAKE / reverse' : 'Green compass points to the bay · W / ↑ GAS · A D / ← → STEER · S / ↓ BRAKE / reverse', 4500);
     audioSystem.startMusic('game');
@@ -606,7 +671,11 @@ export class Belt3d {
         <a href="${window.location.pathname}?mode=3d">PLAY THE FULL NIGHT</a>`, () => this.beginDriving(this.practiceDestination!));
       return;
     }
-    if (destination === 'mall') {
+    if (this.driving?.origin === 'home') {
+      // Parked at work: the night continues with the original arrival scenes.
+      this.story.go('arrival');
+      this.playScene(this.story.opener);
+    } else if (destination === 'mall') {
       this.story.go('mall');
       this.playScene(MALL_INTRO);
     } else {
@@ -839,7 +908,7 @@ export class Belt3d {
         if (event.type === 'collision') {
           this.drivingPenalty += event.points; this.drivingCollisions++;
           audioSystem.drivingCue('collision');
-          this.overlay.showToast(`EASY DOES IT · −${event.points} points · cargo safe`, 1600);
+          this.overlay.showToast(`EASY DOES IT · −${event.points} points${drive.origin === 'home' ? '' : ' · cargo safe'}`, 1600);
         } else if (event.type === 'red-light') {
           this.drivingPenalty += event.points; this.drivingRedLights++;
           this.overlay.showToast(`RED LIGHT · −${event.points} points · brake before the line`, 1800);
@@ -921,13 +990,15 @@ export class Belt3d {
     } : null);
     if (this.state === 'driving' && this.driving) {
       const drive = this.driving;
-      const hint = this.touch.enabled ? drive.objective
+      const objective = drive.origin === 'home' ? drive.objective.replace(' · cargo safe', '') : drive.objective;
+      const hint = this.touch.enabled ? objective
         .replace('W / ↑ gas · A D / ← → steer · S / ↓ brake', 'Hold GAS · stick steers · BRAKE slows')
-        .replace('SPACE to park', 'Tap PARK').replace('S / ↓ brake', 'BRAKE').replace('A / D to steer', 'Steer with the stick') : drive.objective;
+        .replace('SPACE to park', 'Tap PARK').replace('S / ↓ brake', 'BRAKE').replace('A / D to steer', 'Steer with the stick') : objective;
       this.overlay.chapterHud([
         ['SPEED', `${Math.round(Math.abs(drive.speed) * 3.6)} km/h`], ['TO BAY', `${Math.ceil(drive.remaining)} m`],
         [this.practiceDestination ? 'PENALTY' : 'NIGHT SCORE', this.practiceDestination ? `−${drive.penalty} PTS` : String(Math.max(0, m.score + this.mallBonus - this.drivingPenalty))],
-        ['CARGO', this.practiceDestination ? 'PRACTICE · SAFE' : drive.destination === 'mall' ? '6 BUNDLES · SAFE' : '6 / 6 SIGNED'],
+        drive.origin === 'home' ? ['IN THE CAR', 'TERMITE + SKANKY']
+          : ['CARGO', this.practiceDestination ? 'PRACTICE · SAFE' : drive.destination === 'mall' ? '6 BUNDLES · SAFE' : '6 / 6 SIGNED'],
       ], hint,
       'W / ↑ GAS · A D / ← → STEER · S / ↓ BRAKE · SPACE PARK · M MUTE · ESC PAUSE');
     } else if (this.state === 'mall' && this.mall) {
@@ -962,7 +1033,8 @@ export class Belt3d {
 
   private usesStage(): boolean {
     const state = this.state === 'paused' ? this.pausedFrom : this.state;
-    if (state === 'mall' || state === 'lot') return true;
+    if (state === 'mall' || state === 'lot' || state === 'decision') return true;
+    if (state === 'ended') return this.stage.active === 'house';
     return state === 'story' && this.stage.active !== null;
   }
 
@@ -989,6 +1061,9 @@ export class Belt3d {
   /** A story beat starts: its sound, its subtitles, and a bubble over the speaker. */
   private enterBeat(beat: StoryBeat): void {
     if (beat.sound) audioSystem.play(BEAT_SOUNDS[beat.sound]);
+    const home = beat as HomeBeat;
+    if (home.effect) audioSystem.play(HOME_SOUNDS[home.effect]);
+    if (home.clock) this.overlay.storyTitle(this.storyHeading.title, this.storyHeading.kicker, home.clock);
     const speaker = beat.speaker ? SPEAKER_NAMES[beat.speaker] : undefined;
     this.overlay.subtitle({ speaker, line: beat.line, direction: beat.direction, caption: beat.caption });
     if (beat.line && beat.speaker) {

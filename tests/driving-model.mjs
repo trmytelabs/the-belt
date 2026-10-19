@@ -3,7 +3,7 @@ import test from 'node:test';
 import * as THREE from 'three';
 import { DrivingNavigation } from '../src/three/drivingNavigation.ts';
 import { DrivingModel, DRIVING } from '../src/three/DrivingModel.ts';
-import { CITY, DESTINATIONS, SPAWNS, TERMINALS, CITY_SIGNALS, cityRoute, signalColor, nearestRoad, separation, angleDelta, trafficPose, inLoadingYard } from '../src/three/drivingCity.ts';
+import { CITY, DESTINATIONS, HOME_SPAWN, SPAWNS, TERMINALS, CITY_SIGNALS, cityRoute, signalColor, nearestRoad, separation, angleDelta, trafficPose, inLoadingYard } from '../src/three/drivingCity.ts';
 import { makeDriver, driverState } from './driving-input.mjs';
 const gas = { steer: 0, throttle: 1, brake: 0 };
 const advance = (m, seconds, input = gas) => { for (let t = 0; t < seconds; t += 1 / 60) m.update(Math.min(1 / 60, seconds - t), input); };
@@ -29,6 +29,19 @@ for (const destination of ['mall', 'ups']) {
     assert.equal(m.park(), false);
   });
 }
+
+test('the 3D drive in to work starts on a street near home and parks in the UPS yard', () => {
+  const m = new DrivingModel('ups', 'home');
+  assert.equal(m.origin, 'home');
+  assert.deepEqual({ x: m.x, z: m.z, heading: m.heading }, HOME_SPAWN);
+  assert.ok(nearestRoad(m).distance < 1, 'home is on a public street');
+  assert.equal(inLoadingYard(m), false);
+  finish(m);
+  assert.ok(m.canPark && inLoadingYard(m, 'ups'), 'parks in the UPS loading yard');
+  assert.ok(m.elapsed >= 20 && m.elapsed <= 65, `duration ${m.elapsed}`);
+  assert.equal(m.redLights, 0, 'the driver brakes for a red signal');
+  assert.equal(new DrivingModel('ups').origin, 'depot', 'the drive back from the mall still starts at Southgate');
+});
 
 test('intersections offer real branches and a long detour can still reach the same mall', () => {
   const direct = finish(new DrivingModel('mall'));

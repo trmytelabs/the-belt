@@ -13,7 +13,7 @@ try {
   page.on('pageerror',error=>errors.push(error.message));
   await page.route('https://fonts.googleapis.com/**',route=>route.fulfill({body:''}));
   await page.route('https://fonts.gstatic.com/**',route=>route.fulfill({body:''}));
-  await page.addInitScript(()=>window.addEventListener('belt3d:ready',event=>{window.fixtureApp=event.detail;}));
+  await page.addInitScript(()=>window.addEventListener('belt3d:ready',event=>{window.fixtureApp=event.detail;event.detail.playPrologue=false;}));
   await page.goto(server.resolvedUrls.local[0]);
   const read=(fn,arg)=>page.evaluate(fn,arg);
   const wait=fn=>page.waitForFunction(fn,null,{polling:10,timeout:90_000});
@@ -92,7 +92,7 @@ try {
   await page.close();
   const fallback=await browser.newPage();
   await fallback.route('**/models/vehicles/**',route=>route.abort());await fallback.route('**/models/creatures/**',route=>route.abort());
-  await fallback.addInitScript(()=>window.addEventListener('belt3d:ready',event=>{window.fixtureApp=event.detail;}));
+  await fallback.addInitScript(()=>window.addEventListener('belt3d:ready',event=>{window.fixtureApp=event.detail;event.detail.playPrologue=false;}));
   await fallback.goto(server.resolvedUrls.local[0]);
   await fallback.waitForFunction(()=>window.fixtureApp?.state==='briefing',null,{polling:10,timeout:90_000});
   const procedural=await fallback.evaluate(async()=>{

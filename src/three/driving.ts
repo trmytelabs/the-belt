@@ -14,6 +14,8 @@ export class DrivingView {
   public readonly scene = new THREE.Scene();
   public readonly camera = new THREE.PerspectiveCamera(54, 1, 0.1, 180);
   public readonly truck = createTruck('5 TON', 0x5a4632, 0x4a3a2a, 'right');
+  /** Skanky's own car, for the drive in to work. */
+  public readonly car = createCar(0x8f3f34);
   public readonly ready: Promise<void>;
   public buildingCount = 0;
   public readonly navigation: DrivingNavigation;
@@ -153,13 +155,14 @@ export class DrivingView {
     const rearBadge = textPlane(['UPS · 5 TON'], 1.5, 0.45, { width: 320, height: 96, background: '#493726', color: '#f1cb79' });
     rearBadge.position.set(-3.13, 1.95, 0); rearBadge.rotation.y = -Math.PI / 2; this.truck.add(rearBadge);
     scene.add(this.truck);
+    this.car.userData.keep = true; this.car.visible = false; scene.add(this.car);
     this.headlight = new THREE.SpotLight(0xffe2ae, quality === 'high' ? 95 : 65, 40, 0.55, 0.65, 1.3);
     this.headlight.position.set(3.2, 1.1, 0);
     this.headlight.target.position.set(24, 0, 0);
     this.truck.add(this.headlight, this.headlight.target);
     this.pool = new THREE.PointLight(0xffc58b, 35, 24, 1.4);
     scene.add(this.pool);
-    const objects = new Set<THREE.Object3D>([this.truck, this.pool]);
+    const objects = new Set<THREE.Object3D>([this.truck, this.car, this.pool]);
     mergeStatic(scene, object => objects.has(object) || object.userData.keep === true || (object as THREE.Light).isLight === true);
     this.ready = Promise.all(loads).then(() => {
       if (this.disposed) return;
@@ -207,7 +210,15 @@ export class DrivingView {
     }
   }
 
-  public begin(model: DrivingModel): void {
+  /** The vehicle the player drives: the five-ton by default, or Skanky's car. */
+  public get vehicle(): THREE.Group { return this.car.visible ? this.car : this.truck; }
+
+  public begin(model: DrivingModel, vehicle: 'truck' | 'car' = 'truck'): void {
+    this.truck.visible = vehicle === 'truck';
+    this.car.visible = vehicle === 'car';
+    // The beam follows whichever nose is in front of the player.
+    this.vehicle.add(this.headlight, this.headlight.target);
+    this.headlight.position.set(vehicle === 'car' ? 2.2 : 3.2, vehicle === 'car' ? 0.8 : 1.1, 0);
     // Reuse owned props on both legs and replays, including asynchronously upgraded cars.
     for (const obstacle of model.obstacles) {
       if (obstacle.kind === 'car') {
@@ -240,7 +251,7 @@ export class DrivingView {
 
   public update(model: DrivingModel, dt: number): void {
     const p = model.pose;
-    this.truck.position.set(p.x, 0, p.z); this.truck.rotation.y = p.heading;
+    this.vehicle.position.set(p.x, 0, p.z); this.vehicle.rotation.y = p.heading;
     this.tailMaterial.emissiveIntensity = model.braking || model.canPark ? 3 : 0.6;
     this.pool.position.set(p.x, 7, p.z);
     for (const { signal, axis, bulbs } of this.signalProps) {

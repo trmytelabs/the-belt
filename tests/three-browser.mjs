@@ -44,7 +44,7 @@ try {
   await page.route('https://fonts.googleapis.com/**', (route) => route.fulfill({ body: '' }));
   await page.route('https://fonts.gstatic.com/**', (route) => route.fulfill({ body: '' }));
   await page.addInitScript(() => {
-    window.addEventListener('belt3d:ready', (event) => { window.fixtureApp = event.detail; });
+    window.addEventListener('belt3d:ready', (event) => { window.fixtureApp = event.detail; event.detail.playPrologue = false; });
     // Each countdown step is recorded as it is drawn; SORT! is on screen for only 350 ms.
     window.fixtureCountdown = [];
     new MutationObserver(() => {
@@ -502,7 +502,7 @@ try {
   const touchWait = touchPage.waitForFunction.bind(touchPage);
   const waitTouch = (fn, arg, options = {}) => touchWait(fn, arg, { polling: 10, ...options });
   const readTouch = (fn, arg) => touchPage.evaluate(fn, arg);
-  await touchPage.addInitScript(() => window.addEventListener('belt3d:ready', (event) => { window.fixtureApp = event.detail; }));
+  await touchPage.addInitScript(() => window.addEventListener('belt3d:ready', (event) => { window.fixtureApp = event.detail; event.detail.playPrologue = false; }));
   await touchPage.goto(url);
   await waitTouch(() => window.fixtureApp?.state === 'briefing' || document.querySelector('.b3d-fallback'), null, { timeout: 60_000 })
     .catch((error) => { throw new Error(`touch page did not start: ${error.message}
@@ -576,7 +576,7 @@ console: ${touchConsole.slice(-10).join(' | ')}`); });
   // The narrowest common phone keeps the stick and the action buttons apart.
   const small = await browser.newContext({ viewport: { width: 320, height: 640 }, isMobile: true, hasTouch: true });
   const smallPage = await small.newPage();
-  await smallPage.addInitScript(() => window.addEventListener('belt3d:ready', (event) => { window.fixtureApp = event.detail; }));
+  await smallPage.addInitScript(() => window.addEventListener('belt3d:ready', (event) => { window.fixtureApp = event.detail; event.detail.playPrologue = false; }));
   await smallPage.goto(url);
   await smallPage.waitForFunction(() => window.fixtureApp?.state === 'briefing', null, { polling: 10, timeout: 60_000 });
   await smallPage.getByRole('button', { name: /START THE NIGHT/ }).tap();

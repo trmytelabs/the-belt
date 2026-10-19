@@ -45,7 +45,9 @@ The floor, belt, rails, trucks and parcels use small CC0 photo textures; see
 [depot surface textures](docs/textures.md).
 
 The legacy **2D Night Shift / Depot 07** is at `?mode=2d`. The current 3D game
-plays a whole night: one of three random
+plays a whole night: it starts at home, where Termite and Skanky decide whether
+to go in or quit UPS (quitting ends the night on the couch with a Wii; going in
+means driving Skanky's car to work), then one of three random
 arrivals outside the locked gate, Shan's morning scrum, the warehouse shift
 with a Tim Hortons or 7-Eleven break, then Skanky's mall run in the five-ton
 (a 3D mall inspired by Edmonton's Southgate Centre),

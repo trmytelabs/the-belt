@@ -23,7 +23,7 @@ try {
   page.on('request', (request) => { if (request.url().includes('/models/props/')) requests.push(request.url()); });
   await page.route('https://fonts.googleapis.com/**', (route) => route.fulfill({ body: '' }));
   await page.route('https://fonts.gstatic.com/**', (route) => route.fulfill({ body: '' }));
-  await page.addInitScript(() => window.addEventListener('belt3d:ready', (event) => { window.fixtureApp = event.detail; }));
+  await page.addInitScript(() => window.addEventListener('belt3d:ready', (event) => { window.fixtureApp = event.detail; event.detail.playPrologue = false; }));
   await page.goto(process.env.BELT_TEST_BASE_URL ?? server.resolvedUrls.local[0]);
   await page.waitForFunction(() => window.fixtureApp?.state === 'briefing', null, { timeout: 90_000 });
 

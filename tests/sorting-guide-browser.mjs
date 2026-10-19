@@ -17,7 +17,7 @@ try {
     const context = await browser.newContext({ viewport, hasTouch: touch, isMobile: touch });
     const page = await context.newPage(), errors = [];
     page.on('pageerror', error => errors.push(error.message));
-    await page.addInitScript(() => window.addEventListener('belt3d:ready', event => { window.fixtureApp = event.detail; }));
+    await page.addInitScript(() => window.addEventListener('belt3d:ready', event => { window.fixtureApp = event.detail; event.detail.playPrologue = false; }));
     await page.goto(server.resolvedUrls.local[0]);
     const wait = (fn, arg) => page.waitForFunction(fn, arg, { polling: 10, timeout: 90000 });
     await wait(() => window.fixtureApp?.state === 'briefing');
