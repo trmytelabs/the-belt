@@ -1,10 +1,68 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { ShiftModel, SHIFT_LAYOUT } from '../src/game/slice/ShiftModel.ts';
-import { ShiftModel3D, WRONG_DROP_PENALTY } from '../src/three/ShiftModel3D.ts';
+import { ShiftModel3D, WRONG_DROP_PENALTY, WORKER_SPEED_3D } from '../src/three/ShiftModel3D.ts';
 import { DEPOT_3D_LAYOUT as L, platformLevelAt, onLowerFloor, truckInteriorAt } from '../src/three/layout.ts';
 import { platformWalkPath, pathLength, walkPath } from '../src/three/walking.ts';
 import { RECEIVING_CROSSING_Y, RECEIVING_FEEDERS, receivingBlocked, clearReceiving } from '../src/three/receivingCollision.ts';
+
+test('3D allows exactly three two-second belt stops with a 15-second cooldown from each press', () => {
+  const model = new ShiftModel3D({ autonomousCoworker: false });
+  model.drainEvents();
+  for (const left of [2, 1, 0]) {
+    model.brake();
+    assert.equal(model.beltStopsRemaining, left);
+    assert.equal(model.beltSpeed, 0);
+    assert.equal(model.brakeCooldownMs, 15000);
+    const travel = model.beltTravel;
+    advance(model, 1990);
+    assert.equal(model.beltTravel, travel, 'parcels stay still for the stop');
+    assert.equal(model.brakeRemainingMs, 10);
+    advance(model, 10);
+    assert.ok(model.beltSpeed > 0, 'the belt restarts after two seconds');
+    advance(model, 12990);
+    assert.equal(model.canStopBelt, false);
+    model.brake();
+    assert.equal(model.beltStopsRemaining, left, 'an early press spends no use');
+    assert.equal(model.brakeCooldownMs, 10, 'an early press cannot restart the cooldown');
+    advance(model, 10);
+    assert.equal(model.canStopBelt, left > 0);
+  }
+  const travel = model.beltTravel;
+  model.brake();
+  advance(model, 100);
+  assert.ok(model.beltTravel > travel, 'a fourth press cannot stop the belt even after the cooldown');
+  const events = model.drainEvents();
+  assert.equal(events.filter(event => event.type === 'brake').length, 3);
+  assert.match(events.at(-1).message, /No belt stops left/);
+  assert.ok(events.every(event => !/brake/i.test(event.message)));
+});
+
+test('paused, finished and story-stopped shifts spend no stop; pausing freezes the cooldown', () => {
+  const model = new ShiftModel3D({ autonomousCoworker: false });
+  model.paused = true; model.brake();
+  assert.equal(model.beltStopsRemaining, 3);
+  model.paused = false; model.eventStopped = true; model.brake();
+  assert.equal(model.beltStopsRemaining, 3);
+  model.eventStopped = false; model.brake();
+  model.paused = true; advance(model, 15000);
+  assert.equal(model.brakeRemainingMs, 2000);
+  assert.equal(model.brakeCooldownMs, 15000);
+  model.paused = false; model.ended = true; model.brake();
+  assert.equal(model.beltStopsRemaining, 2);
+  assert.equal(new ShiftModel3D().beltStopsRemaining, 3);
+});
+
+test('legacy belt stops retain the eight-second cooldown and unlimited uses', () => {
+  const model = new ShiftModel();
+  for (let use = 0; use < 4; use++) {
+    model.brakeCooldownMs = 0;
+    model.brake();
+    assert.equal(model.brakeCooldownMs, 8000);
+    assert.equal(model.brakeRemainingMs, 2000);
+  }
+  assert.equal('beltStopsRemaining' in model, false);
+});
 
 const advance = (m, ms) => { for (let t = 0; t < ms; t += 10) m.update(10); };
 const hold = (m, route, at) => {
@@ -263,7 +321,7 @@ test('stairs guide offset approaches down and up at ordinary speed while carryin
     for (let i = 0; i < 400 && !onLowerFloor(m.activeWorker); i++) {
       const previous = { ...m.activeWorker };
       m.update(10, { x: direction, y: 0 });
-      assert.ok(Math.hypot(m.activeWorker.x - previous.x, m.activeWorker.y - previous.y) <= 2.350001);
+      assert.ok(Math.hypot(m.activeWorker.x - previous.x, m.activeWorker.y - previous.y) <= WORKER_SPEED_3D / 100 + 1e-8);
     }
     assert.ok(onLowerFloor(m.activeWorker), `${kind}: side ${side}, offset ${offset} reaches the floor`);
     for (let i = 0; i < 400 && (side ? m.activeWorker.x > 630 : m.activeWorker.x < 330); i++) m.update(10, { x: -direction, y: 0 });
@@ -363,7 +421,7 @@ test('all four truck doors guide off-centre carrying approaches into the aisle a
     for (let step = 0; step < 400 && m.currentDock() !== route; step++) {
       const before = { x: worker.x, y: worker.y };
       m.update(10, { x: direction * strength, y: strength === 1 ? Math.sign(offset) : 0 });
-      assert.ok(Math.hypot(worker.x - before.x, worker.y - before.y) <= 2.35 * strength + 1e-8, 'door assistance never teleports or increases keyboard or partial-stick speed');
+      assert.ok(Math.hypot(worker.x - before.x, worker.y - before.y) <= WORKER_SPEED_3D / 100 * strength + 1e-8, 'door assistance never teleports or increases keyboard or partial-stick speed');
       assert.ok(m.walkable(worker.side, worker.x, worker.y));
     }
     assert.equal(m.currentDock(), route, `${route} accepts an approach ${offset}px off centre`);

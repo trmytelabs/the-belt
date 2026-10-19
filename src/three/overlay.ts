@@ -2,7 +2,7 @@ import * as THREE from 'three';
 
 const CSS = `
 .b3d { position: fixed; inset: 0; overflow: hidden; background: #0a1317; font-family: "Segoe UI", system-ui, Arial, sans-serif; color: #edf0de; }
-.b3d canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.b3d canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; outline: none; }
 .b3d-hud { position: absolute; inset: 0; pointer-events: none; }
 .b3d-lunch-alert { position: absolute; left: 50%; top: 36%; transform: translate(-50%, -50%); width: min(640px, 85%); box-sizing: border-box; padding: 28px 24px; border: 2px solid #e8b765; border-radius: 14px; background: #14262df2; color: #f3e6c6; text-align: center; font: 900 clamp(24px, 4vw, 40px)/1.15 "Segoe UI", sans-serif; box-shadow: 0 12px 50px #0006; pointer-events: none; }
 .b3d-top { position: absolute; top: 0; left: 0; right: 0; display: flex; align-items: center; gap: 28px; padding: 12px 22px;
@@ -26,13 +26,27 @@ const CSS = `
 .b3d-worker { font-weight: 800; letter-spacing: 1px; min-width: 120px; }
 .b3d-worker.termite { color: #76cbd1; } .b3d-worker.skanky { color: #a6cc9a; }
 .b3d-hint { flex: 1; min-width: 0; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.b3d-guide { position: absolute; left: 50%; bottom: 68px; transform: translateX(-50%); width: min(620px, calc(100% - 28px)); box-sizing: border-box;
+  padding: 10px 16px; border: 1px solid #e8b765; border-radius: 10px; background: #10232af0; text-align: center; }
+.b3d-guide[hidden] { display: none; }
+.b3d-guide b { display: block; font-size: 22px; color: #ffe1a4; }
+.b3d-guide span { display: block; margin-top: 4px; font-size: 14px; line-height: 1.35; }
+.b3d-backlog { font-size: 12px; color: #b7cecb; margin-top: 3px; white-space: nowrap; }
+.b3d-backlog.urgent { color: #ffb09c; }
+.b3d-steps { padding-left: 23px; color: #edf0de; line-height: 1.5; font-size: 15px; }
+.b3d-steps li { margin: 7px 0; }
+.b3d.touch .b3d-guide { top: 142px; bottom: auto; }
+.b3d.touch.scanner-pending .b3d-guide { top: 218px; }
+.b3d.touch .b3d-toast { top: 244px; max-width: calc(100% - 28px); box-sizing: border-box; }
+.b3d.touch.scanner-pending .b3d-toast { top: 320px; }
+@media (max-width: 720px) { .b3d-guide b { font-size: 19px; } .b3d-guide span { font-size: 12px; } .b3d-guide { padding: 8px 10px; } }
+@media (max-height: 520px) { .b3d.touch .b3d-guide { top: 92px; left: auto; right: 10px; transform: none; width: min(340px, 48%); } .b3d.touch.scanner-pending .b3d-guide { display: none; } .b3d-guide b { font-size: 16px; } }
 .b3d-scanner { position: absolute; z-index: 2; top: 82px; left: 50%; transform: translateX(-50%); width: max-content;
   max-width: calc(100% - 32px); box-sizing: border-box; padding: 9px 14px; border: 2px solid #edb765;
   border-radius: 8px; background: #17282ef2; color: #ffe1a4; text-align: center; font-weight: 800; font-size: 14px; }
 .b3d-scanner[hidden] { display: none; }
 .b3d.scanner-pending .b3d-toast { top: 140px; }
 .b3d.touch .b3d-scanner { top: 142px; font-size: 12px; }
-.b3d.touch.scanner-pending .b3d-toast { top: 202px; }
 .b3d-brake { white-space: nowrap; }
 @media (max-width: 1180px) { .b3d-keys { display: none; } }
 .b3d-keys { color: #8eaaae; font-size: 11px; letter-spacing: 1px; }
@@ -181,16 +195,17 @@ export class Overlay {
         <div class="b3d-stat"><small>DISPATCHED</small><b data-f="sorted">00</b><div class="b3d-progress"><i data-f="bar"></i></div></div>
         <div class="b3d-stat"><small>YOUR SCORE</small><b data-f="score">00000</b></div>
         <div class="b3d-stat time"><small>TIME LEFT</small><b data-f="time">03:00</b></div>
-        <div class="b3d-stat"><small>BACKLOG</small><div class="b3d-pips" data-f="pips"></div></div>
+        <div class="b3d-stat"><small>RECOVERY</small><div class="b3d-pips" data-f="pips"></div><span class="b3d-backlog" data-f="backlog"></span></div>
         <div class="b3d-phase"><span data-f="phase"></span><em data-f="combo"></em></div>
       </div>
       <div class="b3d-scanner" data-f="scanner" role="status" aria-live="polite" hidden></div>
+      <div class="b3d-guide" data-f="guide" hidden><b data-f="guide-title"></b><span data-f="guide-detail"></span></div>
       <div class="b3d-bottom">
         <div class="b3d-worker" data-f="worker"></div>
         <div class="b3d-hint" data-f="hint"></div>
         <div class="b3d-brake" data-f="brake"></div>
         <div class="b3d-routes" data-f="routes"></div>
-        <div class="b3d-keys">WASD MOVE · TAB SWITCH · SPACE GRAB/DELIVER · F THROW · E BRAKE · V <span data-f="view"></span> · ESC PAUSE · M SOUND</div>
+        <div class="b3d-keys">WASD MOVE · TAB SWITCH · SPACE GRAB/DELIVER · F THROW · E STOP THE BELT · V <span data-f="view"></span> · ESC PAUSE · M SOUND</div>
       </div>`;
     this.hud.querySelectorAll<HTMLElement>('[data-f]').forEach((element) => { this.fields[element.dataset.f!] = element; });
     this.bubbles = this.div('b3d-bubbles', this.root);
@@ -351,6 +366,10 @@ export class Overlay {
     f.time.textContent = `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
     if (f.pips.childElementCount !== state.capacity) f.pips.innerHTML = '<i></i>'.repeat(state.capacity);
     [...f.pips.children].forEach((pip, index) => pip.classList.toggle('on', index < state.backlog));
+    f.backlog.textContent = `${state.backlog} / ${state.capacity}`;
+    f.backlog.setAttribute('aria-label', `${state.backlog} in recovery; ${state.capacity} ends the shift`);
+    f.backlog.title = `${state.capacity} packages in recovery ends the shift`;
+    f.backlog.classList.toggle('urgent', state.backlog >= state.capacity - 2);
     f.phase.textContent = state.phase;
     f.combo.textContent = state.combo > 1 ? `${state.combo} IN A ROW  /  +${Math.min(state.combo, 10) * 15} NEXT` : `TARGET  /  ${state.goal} CLEAN DISPATCHES`;
     f.worker.textContent = `● ${state.worker.toUpperCase()}`;
@@ -363,6 +382,13 @@ export class Overlay {
     f.scanner.hidden = !scanner;
     this.root.classList.toggle('scanner-pending', !!scanner);
     if (state.routes !== undefined && f.routes.innerHTML !== state.routes) f.routes.innerHTML = state.routes;
+  }
+
+  public sortingGuide(guide: { title: string; detail: string } | null): void {
+    this.fields.guide.hidden = guide === null;
+    if (!guide) return;
+    if (this.fields['guide-title'].textContent !== guide.title) this.fields['guide-title'].textContent = guide.title;
+    if (this.fields['guide-detail'].textContent !== guide.detail) this.fields['guide-detail'].textContent = guide.detail;
   }
 
   /** A speech bubble anchored to a point in the world, above its speaker. */

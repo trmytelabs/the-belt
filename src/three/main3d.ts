@@ -1,5 +1,6 @@
 import { DEPOT_3D_LAYOUT as SHIFT_LAYOUT, floorPileSlot, truckInteriorAt } from './layout';
-import { ShiftModel3D } from './ShiftModel3D';
+import { ARRIVALS_3D, ShiftModel3D } from './ShiftModel3D';
+import { sortingGuide } from './sortingGuide';
 import { pathLength, platformWalkPath, walkPath, type WalkPoint } from './walking';
 import * as THREE from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
@@ -134,6 +135,7 @@ export class Belt3d {
   private readonly marker: THREE.Mesh;
   private readonly pickupHalo: THREE.Mesh;
   private readonly pickupPrompt: THREE.Sprite;
+  private readonly deliveryHalo: THREE.Mesh;
   private readonly keys = new Set<string>();
   private readonly reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   private overview = false;
@@ -177,6 +179,8 @@ export class Belt3d {
     this.renderer.shadowMap.type = this.quality === 'high' ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.18;
+    this.renderer.domElement.tabIndex = 0;
+    this.renderer.domElement.setAttribute('aria-label', 'The Belt game');
     this.overlay.root.prepend(this.renderer.domElement);
 
     this.world = new DepotWorld(this.quality);
@@ -251,7 +255,7 @@ export class Belt3d {
     this.world.scene.add(this.activeRing);
     this.sleepTag = textSprite(['SORTING'], 0.22, { width: 110, height: 30, color: '#d8e2d0' });
     this.world.scene.add(this.sleepTag);
-    this.marker = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.3, 4), new THREE.MeshStandardMaterial({ color: 0xf3e6c6, emissive: 0xf3e6c6, emissiveIntensity: 0.8 }));
+    this.marker = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.4, 4), new THREE.MeshStandardMaterial({ color: 0xffd47c, emissive: 0xffd47c, emissiveIntensity: 0.8 }));
     this.marker.rotation.x = Math.PI;
     this.world.scene.add(this.marker);
     this.pickupHalo = new THREE.Mesh(new THREE.RingGeometry(0.44, 0.49, 40), new THREE.MeshBasicMaterial({
@@ -259,8 +263,13 @@ export class Belt3d {
     }));
     this.pickupHalo.name = 'pickup-highlight'; this.pickupHalo.rotation.x = -Math.PI / 2;
     this.pickupHalo.renderOrder = 8; this.pickupHalo.visible = false; this.world.scene.add(this.pickupHalo);
-    this.pickupPrompt = textSprite(['SPACE · GRAB'], 0.19, { width: 150, height: 30, color: '#ffefc1', background: '#172b30' });
+    this.pickupPrompt = textSprite([this.touch.enabled ? 'TAP GRAB' : 'SPACE · GRAB'], 0.19, { width: 150, height: 30, color: '#ffefc1', background: '#172b30' });
     this.pickupPrompt.visible = false; this.world.scene.add(this.pickupPrompt);
+    this.deliveryHalo = new THREE.Mesh(new THREE.RingGeometry(0.64, 0.76, 40), new THREE.MeshBasicMaterial({
+      color: 0xffd47c, transparent: true, opacity: 0.9, depthTest: false, depthWrite: false, side: THREE.DoubleSide,
+    }));
+    this.deliveryHalo.name = 'delivery-highlight'; this.deliveryHalo.rotation.x = -Math.PI / 2;
+    this.deliveryHalo.renderOrder = 8; this.deliveryHalo.visible = false; this.world.scene.add(this.deliveryHalo);
     this.bindInput();
     this.resize();
     window.addEventListener('resize', () => this.resize(), { signal: this.inputAbort.signal });
@@ -353,6 +362,7 @@ export class Belt3d {
         return;
       }
       if (event.code === 'Enter') {
+        if (['briefing', 'story', 'ended', 'paused'].includes(this.state)) event.preventDefault();
         if (this.state === 'briefing') this.startNight();
         else if (this.state === 'story') this.cutscene?.skip();
         else if (this.state === 'ended') {
@@ -388,6 +398,7 @@ export class Belt3d {
     const canvas = this.renderer.domElement;
     canvas.addEventListener('contextmenu', (event) => event.preventDefault());
     canvas.addEventListener('pointerdown', (event) => {
+      canvas.focus({ preventScroll: true });
       void audioSystem.unlock();
       // On touch screens the on-screen buttons act; a tap on the scene does not.
       if (event.pointerType === 'touch') return;
@@ -419,20 +430,22 @@ export class Belt3d {
     this.overlay.showPanel(`
       <div class="kicker">TERMITE &amp; SKANKY  /  ONE MORE OVERNIGHT</div>
       <h1>ANOTHER NIGHT ON THE BELT.</h1>
-      <p><b>Get in, survive the scrum, dispatch ${this.model.goal} parcels, then Skanky still has a mall run.</b></p>
-      <p>Drive the five-ton to Southgate Mall and back. Choose streets toward the green 3D compass. W / ↑ accelerates, A D / ← → steers, S / ↓ brakes. Pull into the loading yard, stop in the lit bay and press SPACE to park. Bumps and red lights cost 100 points; cargo stays safe.</p>
-      <p>Read each parcel's street address and compare it with the ranges painted on the floor. Termite covers Mill Woods, Downtown and Westmount; Skanky covers Bonnie Doon, West End and Northside. Oversize freight goes to BULK.</p>
-      <p>You can only grab packages for your worker's routes, plus bulk. Your other worker sorts their own addresses; only the worker you control picks up bulk. Wrong drops cost 10 points. Read the floor numbers: there are no painted safe zones or aiming guides.</p>
-      <p>Carry each truck parcel through its open rear door and press SPACE inside to load it. Face a shelf and load near where you stand. Packages stay on those shelves; full trucks overflow through the rear. The roof turns transparent while you are inside.</p>
-      <p>The bulk platform is at the back. The stairs descend left and right to Westmount and Northside.</p>
-      <p>Occasionally their scanner needs a reset. Switch to the worker named on screen, then ${this.touch.enabled ? 'tap RESET SCANNER' : 'press SPACE'} to get them sorting again. Carried freight stays safe.</p>
-      <p>Partner deliveries count toward dispatch; your own deliveries earn the points and streak. Reset a stopped scanner by switching to that worker and pressing SPACE.</p>
+      <p><b>HOW TO PLAY · Dispatch ${this.model.goal} packages together in three minutes.</b></p>
+      <ol class="b3d-steps">
+        <li><b>Move beside a package.</b> ${this.touch.enabled ? 'Use the stick. Tap GRAB / DELIVER' : 'Use WASD / arrows. Press SPACE'} to grab the glowing parcel.</li>
+        <li><b>Follow its destination.</b> The big street number chooses the truck: <b>27 ST → MILL WOODS (10–49 ST)</b>. The guide and gold marker show where to go.</li>
+        <li><b>Walk through the truck’s open rear door.</b> ${this.touch.enabled ? 'Tap GRAB / DELIVER' : 'Press SPACE'} inside to load. OVERSIZE goes to BULK at the back; floor freight goes down the side stairs.</li>
+      </ol>
+      <p><b>Missed one? Recover it at the belt end.</b> The shift ends at ${this.model.capacity} packages in recovery. ${this.touch.enabled ? 'STOP THE BELT' : 'E / STOP THE BELT'} gives you two seconds to catch up: 3 stops per run, with a 15-second cooldown after each use. You get ${this.model.cleanupMs / 1000} seconds to finish after intake closes.</p>
+      <p>Your partner sorts their side automatically. ${this.touch.enabled ? 'SWITCH' : 'TAB / right-click'} changes worker; only your controlled worker picks up bulk. Partner deliveries count toward the goal. Wrong drops cost 10 points; throws can break freight.</p>
+      <p>If a scanner stops, switch to the worker named on screen and ${this.touch.enabled ? 'tap RESET SCANNER' : 'press SPACE'}. Freight stays in hand.</p>
       ${this.touch.enabled ? `
       <p>The stick moves. SWITCH changes worker. GRAB / DELIVER picks up and delivers. THROW risks it to save the walk.</p>
-      <p>BRAKE holds the belt. VIEW shows the whole warehouse. In story scenes, NEXT or SKIP.</p>` : `
+      <p>STOP THE BELT gives you a moment to catch up. VIEW shows the whole warehouse. In story scenes, NEXT or SKIP.</p>` : `
       <p>WASD / arrows move. TAB or right-click switches. SPACE or click grabs and delivers.</p>
-      <p>F throws toward the nearest drop. At the top of the stairs, throw down with a 30% break risk. E brakes. V overview.</p>
+      <p>F throws toward the nearest drop. At the top of the stairs, throw down with a 30% break risk. E stops the belt. V overview.</p>
       <p>Story scenes: SPACE next line, ENTER skips the scene, ESC pauses.</p>`}
+      <p>After the shift: drive the five-ton to Southgate Mall and finish the deliveries. Driving controls appear when you get there.</p>
       <button type="button">START THE NIGHT  ↵</button>
       <a href="${window.location.pathname}?mode=3d&amp;drive=mall">TRY JUST THE DRIVE · EXPLORE THE CITY</a>
       <a href="${window.location.pathname}?mode=2d">PLAY THE 2D DEPOT</a>
@@ -443,6 +456,7 @@ export class Belt3d {
 
   private startNight(): void {
     if (this.state !== 'briefing') return;
+    this.renderer.domElement.focus({ preventScroll: true });
     void audioSystem.unlock();
     audioSystem.play('ui-start');
     audioSystem.startMusic('game');
@@ -622,7 +636,7 @@ export class Belt3d {
     this.touch.reset();
     audioSystem.stopMusic();
     const kicker = this.pausedFrom === 'interlude' || this.pausedFrom === 'story' ? 'STORY PAUSED' : this.pausedFrom === 'playing' ? 'SHIFT PAUSED' : 'PAUSED';
-    this.overlay.showPanel(`<div class="kicker">${kicker}</div><h1>BELT ON HOLD.</h1><p>Your freight stays exactly where it is.</p><button type="button">RESUME  ↵</button>`, () => this.resume());
+    this.overlay.showPanel(`<div class="kicker">${kicker}</div><h1>GAME PAUSED.</h1><p>Click RESUME or press ENTER to keep playing.</p><p>Your packages and timers are safe while paused.</p><button type="button">RESUME  ↵</button>`, () => this.resume());
   }
 
   private resume(): void {
@@ -635,6 +649,7 @@ export class Belt3d {
     if (this.driving) this.driving.paused = false;
     this.keys.clear(); this.touch.reset();
     this.overlay.clearCenter();
+    this.renderer.domElement.focus({ preventScroll: true });
     if (this.state === 'playing' || this.state === 'mall' || this.state === 'driving'
       || this.state === 'story' && this.story.chapter !== 'break') audioSystem.startMusic('game');
   }
@@ -769,8 +784,11 @@ export class Belt3d {
       if (this.countdownMs >= 3350) {
         this.overlay.clearCenter();
         this.state = 'playing';
+        // Resuming an opening scene keeps sorting paused until this handoff.
+        m.paused = false;
+        this.renderer.domElement.focus({ preventScroll: true });
         this.story.go('shift');
-        this.overlay.showToast(`You are ${m.activeWorker.id.toUpperCase()} · TAB switches · read the street address`, 3200);
+        this.overlay.showToast(`You are ${m.activeWorker.id.toUpperCase()} · ${this.touch.enabled ? 'SWITCH' : 'TAB'} changes worker · follow the package guide`, 3200);
         audioSystem.startMusic('game');
       }
     }
@@ -880,6 +898,9 @@ export class Belt3d {
     const scanner = scannerWorker ? `${scannerWorker.toUpperCase()} NEEDS A SCANNER RESET · ${scannerSelected
       ? this.touch.enabled ? 'TAP RESET SCANNER' : 'SPACE TO RESET'
       : this.touch.enabled ? 'SWITCH, THEN RESET SCANNER' : 'TAB TO SWITCH, THEN SPACE'}` : '';
+    this.overlay.sortingGuide(this.state === 'playing' ? scannerSelected
+      ? { title: 'RESET YOUR SCANNER', detail: `${this.touch.enabled ? 'Tap RESET SCANNER' : 'Press SPACE'} · then keep sorting; your package stays in hand` }
+      : sortingGuide(m, this.touch.enabled) : null);
     const target = this.state === 'playing' && held ? m.throwTarget() : null;
     const throwHint = target ? (target.ok ? ` · [F] ${target.reason}` : ` · ${target.reason}`) : '';
     const truck = truckInteriorAt(m.activeWorker);
@@ -892,7 +913,8 @@ export class Belt3d {
         : scannerSelected ? `${this.touch.enabled ? 'RESET SCANNER' : 'SPACE resets scanner'} · carried freight stays in hand`
         : held ? `${parcelAddress(held)} · ${held.label}${throwHint}${loadingHint ? ` · ${loadingHint}` : ''}` : loadingHint || this.hint,
       overview: this.overview, routes: this.routeLegend(), scanner,
-      brake: m.brakeRemainingMs > 0 ? '■ BELT HELD' : m.brakeCooldownMs > 0 ? `[E] RECHARGE ${Math.ceil(m.brakeCooldownMs / 1000)}s` : '[E] BRAKE READY',
+      brake: m.brakeRemainingMs > 0 || m.eventStopped ? `■ BELT STOPPED · ${m.beltStopsRemaining} LEFT`
+        : `[E] STOP THE BELT · ${m.beltStopsRemaining} LEFT${m.beltStopsRemaining > 0 && m.brakeCooldownMs > 0 ? ` · ${Math.ceil(m.brakeCooldownMs / 1000)}s` : ''}`,
     });
     this.overlay.drivingNavigation(this.state === 'driving' && this.driving ? {
       destination: this.driving.destination === 'mall' ? 'SOUTHGATE MALL' : 'UPS DEPOT', distance: this.driving.remaining, instruction: this.driving.navigation.instruction,
@@ -924,8 +946,8 @@ export class Belt3d {
     const chapter = this.state === 'mall' || this.state === 'lot' || driving;
     this.touch.setLive(this.state === 'playing' || this.state === 'interlude' || chapter,
       chapter ? (this.state === 'mall' ? (this.mall?.cart.pushed ? 'PARK' : 'CART') : '—')
-        : m.brakeRemainingMs > 0 ? 'HELD' : m.brakeCooldownMs > 0 ? `${Math.ceil(m.brakeCooldownMs / 1000)}s` : 'BRAKE',
-      chapter ? this.state === 'mall' : this.state === 'playing' && m.brakeCooldownMs <= 0, chapter, scannerSelected);
+        : `${m.beltStopsRemaining} LEFT${m.beltStopsRemaining > 0 && m.brakeCooldownMs > 0 ? ` · ${Math.ceil(m.brakeCooldownMs / 1000)}s` : ''}`,
+      chapter ? this.state === 'mall' : this.state === 'playing' && m.canStopBelt, chapter, scannerSelected);
   }
 
   private activeCamera(): THREE.PerspectiveCamera {
@@ -1014,7 +1036,7 @@ export class Belt3d {
     }
     if (event.type === 'phase') {
       const caption = this.model.phase === 'flow' ? 'STEADY FLOW · read the street ranges · coworker loading'
-        : this.model.phase === 'rush' ? 'LAST PUSH · freight every 2.4 seconds' : event.message;
+        : this.model.phase === 'rush' ? `LAST PUSH · freight every ${ARRIVALS_3D.rushMs / 1000} seconds` : event.message;
       this.overlay.showToast(caption);
     } else if (event.type === 'miss' || (event.type === 'scanner' && this.model.pendingScannerWorker === null)) this.overlay.showToast(event.message);
 
@@ -1099,11 +1121,21 @@ export class Belt3d {
     this.pickupHalo.visible = this.pickupPrompt.visible = this.marker.visible;
     for (const [id, parcelView] of this.parcels) parcelView.root.userData.pickable = this.marker.visible && id === nearest?.id;
     if (view) {
-      this.marker.position.copy(view.root.position).add(new THREE.Vector3(0, view.height + 1.0 + Math.sin(this.time * 6) * 0.06, 0));
+      this.marker.position.copy(view.root.position).add(new THREE.Vector3(0, view.height + 1.55 + Math.sin(this.time * 6) * 0.06, 0));
       this.marker.rotation.y += dt * 3;
       this.pickupHalo.position.copy(view.root.position).y += 0.025;
       this.pickupHalo.scale.setScalar(Math.max(0.8, view.width, view.depth) + 0.2);
-      this.pickupPrompt.position.copy(view.root.position).y += view.height + 0.65;
+      this.pickupPrompt.position.copy(view.root.position).y += view.height + 1.75;
+    }
+    const held = m.heldPackage;
+    this.deliveryHalo.visible = this.state === 'playing' && held !== null;
+    this.deliveryHalo.userData.route = held?.route ?? null;
+    if (held) {
+      const point = m.deliveryPoint(held);
+      const route = ROUTE_INFO[held.route];
+      const atDoor = route.kind === 'truck' && truckInteriorAt(m.activeWorker) !== held.route;
+      if (atDoor) point.x = m.activeWorker.side === 'left' ? 330 : 630;
+      this.deliveryHalo.position.copy(toWorld(point, surfaceAt(point.x, point.y) + 0.04));
     }
   }
 
@@ -1174,6 +1206,7 @@ export class Belt3d {
   private syncParcels(dt: number): void {
     const m = this.model;
     const seen = new Set<number>();
+    for (const view of this.parcels.values()) { view.highlight.visible = false; view.root.userData.assignedToPlayer = false; }
     const target = new THREE.Vector3();
     const intake = m.intakePreview;
     if (intake) {
@@ -1268,6 +1301,10 @@ export class Belt3d {
         }
       }
       this.parcelPosition(parcel, view, target);
+      const assigned = parcel.route === 'C' || ROUTE_INFO[parcel.route].side === m.activeWorker.side;
+      view.highlight.visible = this.state === 'playing' && assigned && ['belt', 'floor', 'missed'].includes(parcel.state)
+        && (parcel.state !== 'floor' || (m.activeWorker.side === 'left' ? parcel.x < 440 : parcel.x > 520));
+      view.root.userData.assignedToPlayer = view.highlight.visible;
       // Rules own contact: smoothing a pickup/drop through the worker or deck
       // briefly intersected solids, especially after a long frame.
       view.root.position.copy(target);

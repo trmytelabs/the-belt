@@ -44,6 +44,11 @@ export function parcelAddress(parcel: Pick<Parcel, 'id' | 'route' | 'address' | 
   return range ? `${1000 + Math.abs(parcel.id * 137) % 9000} ${parcel.street ?? range[0] + Math.abs(parcel.id * 17) % (range[1] - range[0] + 1)} ST` : 'OVERSIZE · BULK';
 }
 
+/** Emphasize the street used for sorting, while retaining the full shipping tag. */
+export function parcelStreet(parcel: Pick<Parcel, 'id' | 'route' | 'address' | 'street'>): string {
+  return parcelAddress(parcel).match(/\b\d+ ST$/)?.[0] ?? 'OVERSIZE';
+}
+
 export const PARCEL_LABELS: Record<ParcelKind, string> = {
   envelope: 'ENVELOPE',
   smallbox: 'SMALL BOX',

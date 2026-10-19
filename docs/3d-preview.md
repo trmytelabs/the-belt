@@ -6,6 +6,27 @@ sorting, the rear platform and side stairs, player-only bulk, the 10-point wrong
 drop penalty and brighter night lighting. New 3D rules use `ShiftModel3D` and
 `layout.ts`; shared model extensions must preserve legacy behavior.
 
+The 3D briefing teaches grab → destination → load, and `sortingGuide.ts` supplies
+the live next step. Large street numbers, named truck floor markings and a gold
+delivery marker make matching freight easier. Recovery fails at seven packages;
+the shift retains its 42-dispatch goal with gentler intake, faster carrying and
+25 seconds of cleanup. The legacy modes retain their previous pacing and limits.
+
+All freight for the selected worker has a bright cyan ring, including packages
+still out of reach; switching workers changes the rings immediately. Other
+workers' packages remain visible without player markings. Residents' routine
+boxes visibly travel on the tread before the same box is lifted and carried.
+Their incoming freight stops with the belt. Destination circles have no floating
+action labels.
+
+E / STOP THE BELT gives a two-second stop, three times per run, with a 15-second
+cooldown from each press. Stops left and cooldown time stay visible; failed
+presses and story-controlled stops spend no uses. Replay restores all three.
+Starting and resuming focus the game canvas for keyboard input. A paused game
+explicitly says to click RESUME or press ENTER.
+The countdown-to-play transition releases any pause left by resuming an opening
+scene, and restores keyboard focus, so WASD, arrows and pickup work immediately.
+
 The 3D depot is the default entry. It shows every reference in
 [reference parity](reference-parity.md), as the 2D depot does. The 2D depot is
 kept at `?mode=2d`, the original full shift at `?mode=classic`, and `?mode=3d`
@@ -86,7 +107,7 @@ Present in 3D:
   - Goji berries.
   - Panchetters.
 - Kylie's three Timmy Hortans lines, on his walk.
-- Shan's seven rants, cycling on each brake, as he reddens.
+- Shan's seven-rant pool, cycling on each belt stop, as he reddens.
 - Fruit Loop's `LIVE LOBSTERS?!`.
 - Brian's `SENDING 5 DOWN` and the active worker's reply.
 - The 3-2-1-SORT countdown.
@@ -113,8 +134,8 @@ Present in 3D:
     real parcel onto the belt. Two unloaders carry crates from the trailers
     onto the feeders. Receiving runs on belt travel, so it stops when the
     belt stops.
-  - The crew's 18-second freight trips from the belt side to their own
-    trucks, paused while a coworker is busy with a gag.
+  - The crew's eight-second loading trips, with visible incoming boxes and a wait
+    for the actual belt arrival, paused while a coworker is busy with a gag.
   - The winning clock-out: Termite and Skanky's lines, all eight resident
     lines, the crew cheering, and every named truck driving out through its
     dock bay.
@@ -161,9 +182,9 @@ Present in 3D:
 
 - **Phase 4 touch and default:**
   - On touch screens (`touch.ts`), a movement stick and GRAB / DELIVER,
-    SWITCH and BRAKE buttons sit at the bottom, with VIEW and PAUSE at the
-    top left. They appear only while the shift is playable, and the BRAKE
-    button shows its cooldown. Mesa choices and panels are tapped. A tap on
+    SWITCH and STOP THE BELT buttons sit at the bottom, with VIEW and PAUSE at
+    the top left. They appear only while the shift is playable, and the STOP
+    THE BELT button shows its remaining uses and cooldown. Mesa choices and panels are tapped. A tap on
     the scene itself does nothing, so stray touches cannot grab.
   - The briefing gives touch instructions.
   - On phones the HUD collapses to one row in both orientations.
@@ -186,7 +207,7 @@ checks:
 - A real-key grab and delivery of `MALLWOOD RD EAST`.
 - That Kylie's three lines arrive in order, with her bubble anchored above her
   in the overview.
-- Shan's first brake rant.
+- Shan's first belt-stop rant.
 - Pause and resume.
 - The worker handoff.
 - John's yell and crouch on the ordinary clock.
@@ -197,7 +218,7 @@ checks:
   twelve drivers, the United Way reaction without Ben, the dockhand's position,
   the eight clock-out lines, every truck's departure, and the results.
 - Touch, in a 390×844 touch browser: the touch briefing, stick movement,
-  GRAB / DELIVER, SWITCH, BRAKE, VIEW, and PAUSE / RESUME.
+  GRAB / DELIVER, SWITCH, STOP THE BELT, VIEW, and PAUSE / RESUME.
 - That the plain address opens the 3D depot; without WebGL it links to
   `?mode=2d`.
 - Every phase-3 set piece:

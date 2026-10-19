@@ -1,6 +1,6 @@
 /**
  * On-screen controls for touch devices: a movement stick, GRAB / DELIVER,
- * SWITCH and BRAKE, plus VIEW (overview) and PAUSE. They mirror the
+ * SWITCH and STOP THE BELT, plus VIEW (overview) and PAUSE. They mirror the
  * keyboard bindings and appear only while the shift can be played.
  */
 const CSS = `
@@ -46,6 +46,9 @@ const CSS = `
 }
 .b3d-actions button.down, .b3d-corner button.down { background: #edba6d; color: #10232a; }
 .b3d-actions .brake[disabled] { opacity: .55; }
+.b3d-actions .brake { min-height: 44px; }
+.b3d-actions .brake > span { display: block; font-size: 10px; line-height: 1.05; letter-spacing: .4px; }
+.b3d-actions .brake > small { display: block; font-size: 9px; line-height: 1.05; letter-spacing: 0; }
 .b3d-corner { position: absolute; left: max(12px, env(safe-area-inset-left)); top: 96px; display: flex; gap: 8px; }
 .b3d-corner button { width: 58px; height: 38px; font-size: 11px; }
 .b3d.touch .b3d-bottom { bottom: auto; top: 54px; background: none; justify-content: center; padding: 0 12px; pointer-events: none; gap: 10px; }
@@ -91,6 +94,8 @@ export class TouchControls {
   private readonly root: HTMLDivElement;
   private readonly knob: HTMLDivElement;
   private readonly brakeButton: HTMLButtonElement;
+  private readonly brakeLabel: HTMLElement;
+  private readonly brakeStatus: HTMLElement;
   private readonly style = document.createElement('style');
   private stickPointer: number | null = null;
 
@@ -107,7 +112,7 @@ export class TouchControls {
       <div class="b3d-actions">
         <button type="button" class="switch" data-touch="switch">SWITCH</button>
         <button type="button" class="grab" data-touch="grab" aria-label="Grab or deliver">GRAB /<br>DELIVER</button>
-        <button type="button" class="brake" data-touch="brake">BRAKE</button>
+        <button type="button" class="brake" data-touch="brake" aria-label="Stop the belt, 3 left"><span>STOP THE BELT</span><small>3 LEFT</small></button>
         <button type="button" class="throw" data-touch="throw">THROW</button>
       </div>
       <div class="b3d-corner">
@@ -123,6 +128,8 @@ export class TouchControls {
     host.append(this.root);
     this.knob = this.root.querySelector('.b3d-knob')!;
     this.brakeButton = this.root.querySelector('.brake')!;
+    this.brakeLabel = this.brakeButton.querySelector('span')!;
+    this.brakeStatus = this.brakeButton.querySelector('small')!;
 
     const actions: Record<string, () => void> = {
       grab: handlers.action, switch: handlers.switchWorker, brake: handlers.brake, throw: handlers.throwParcel, view: handlers.overview, pause: handlers.pause, mute: handlers.mute,
@@ -207,7 +214,7 @@ export class TouchControls {
 
   /**
    * Shows the controls while something is playable: the shift, or the mall and
-   * lot chapters (where GRAB acts, BRAKE takes the cart and SWITCH, THROW and
+   * lot chapters (where GRAB acts, CART takes the cart and SWITCH, THROW and
    * VIEW are hidden). Releases the stick otherwise.
    */
   public setLive(live: boolean, brakeLabel: string, brakeReady: boolean, chapter = false, scannerReset = false): void {
@@ -220,7 +227,12 @@ export class TouchControls {
       grab.setAttribute('aria-label', chapter ? 'Act' : scannerReset ? 'Reset scanner' : 'Grab or deliver');
     }
     if (!live) this.reset();
-    if (this.brakeButton.textContent !== brakeLabel) this.brakeButton.textContent = brakeLabel;
+    const label = chapter ? brakeLabel : 'STOP THE BELT';
+    if (this.brakeLabel.textContent !== label) this.brakeLabel.textContent = label;
+    const status = chapter ? '' : brakeLabel;
+    if (this.brakeStatus.textContent !== status) this.brakeStatus.textContent = status;
+    this.brakeStatus.hidden = chapter;
+    this.brakeButton.setAttribute('aria-label', chapter ? label : `Stop the belt, ${status.toLowerCase()}`);
     this.brakeButton.disabled = !brakeReady;
   }
 

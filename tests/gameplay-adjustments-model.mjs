@@ -41,7 +41,7 @@ test('slower 3D freight mixes ordinary items with named references and keeps bel
     if (time === 4_000) assert.equal(model.packages.length, 1);
     if (time === 4_800) assert.equal(model.packages.length, 2);
   }
-  assert.ok(model.packages.length >= 55 && model.packages.length <= 70, 'slower intake still provides a full shift');
+  assert.ok(model.packages.length >= model.goal + 8 && model.packages.length <= 56, 'gentler intake still supplies the goal plus room for mistakes');
   const labels = new Set(model.packages.map(parcel => parcel.label));
   for (const label of ['BOOKS','CLOTHING','SPORTS EQUIPMENT','DOCUMENTS','MESA BOOGIE','LE DUCK','MAKEUP LOTION']) assert.ok(labels.has(label), label);
   for (const parcel of model.packages) if (parcel.route !== 'C') {
