@@ -186,7 +186,8 @@ following were written for review and are easy to change in `StoryScript.ts`:
 - Shan's breakage reactions (`SHAN_BREAKAGE_LINES`).
 - The mall assignment, the drives, the mall intro, the store clerks, the key
   return and the trip home.
-- The new truck names DOWNTOWN and EASTSIDE, the mall MALLWOOD CENTRE and its
+- The new truck names DOWNTOWN and EASTSIDE, the mall SOUTHGATE MALL in 3D
+  (MALLWOOD CENTRE in the legacy story) and its
   stores (built from the game's own references: TIMMY HORTANS, MESA MUSIC,
   LE DUCK, GOJI HUT, GLAMOUR LOTION, PANCHETTERS).
 

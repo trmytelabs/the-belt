@@ -419,7 +419,7 @@ export class Belt3d {
       <div class="kicker">TERMITE &amp; SKANKY  /  ONE MORE OVERNIGHT</div>
       <h1>ANOTHER NIGHT ON THE BELT.</h1>
       <p><b>Get in, survive the scrum, dispatch ${this.model.goal} parcels, then Skanky still has a mall run.</b></p>
-      <p>Drive the five-ton to the mall and back: two short trips with gentle turn assist. W / ↑ accelerates, A D / ← → steers, S / ↓ brakes. Stop in the lit bay and press SPACE to park. Bumps cost 5 points; cargo stays safe.</p>
+      <p>Drive the five-ton to Southgate Mall and back. Choose streets toward the green 3D compass. W / ↑ accelerates, A D / ← → steers, S / ↓ brakes. Pull into the loading yard, stop in the lit bay and press SPACE to park. Bumps and red lights cost 100 points; cargo stays safe.</p>
       <p>Read each parcel's street address and compare it with the ranges painted on the floor. Termite covers Mill Woods, Downtown and Westmount; Skanky covers Bonnie Doon, West End and Northside. Oversize freight goes to BULK.</p>
       <p>You can only grab packages for your worker's routes, plus bulk. Your other worker sorts their own addresses; only the worker you control picks up bulk. Wrong drops cost 10 points. Read the floor numbers: there are no painted safe zones or aiming guides.</p>
       <p>Carry each truck parcel through its open rear door and press SPACE inside to load it. Face a shelf and load near where you stand. Packages stay on those shelves; full trucks overflow through the rear. The roof turns transparent while you are inside.</p>
