@@ -7,6 +7,7 @@ import { audioSystem } from './audio';
 import { createCharacter } from './characters';
 import { mix, type Actor, type CrewLife, type Say } from './crew';
 import { setFromModel, standard, textSprite, toWorld, toWorldX } from './space';
+import { boxUVs, cardboardMaterial, surfacesLoaded } from './textures';
 import { RALPH_BAY, type DepotWorld } from './world';
 import { DevilModel } from './propModels';
 
@@ -76,7 +77,9 @@ export class SetPieces {
     this.muzzle.visible = false;
     this.gunman.character.rightHand.add(this.muzzle);
 
-    this.ralphBox = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.42, 0.5), standard(0xb8875a, 0.9));
+    // The same photo cardboard as the bulk crates he loads.
+    this.ralphBox = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.42, 0.5), cardboardMaterial(0xb8875a, 0.9));
+    if (surfacesLoaded()) boxUVs(this.ralphBox.geometry, 0.6);
     this.ralphBox.castShadow = true;
     this.ralphBox.visible = false;
     world.scene.add(this.ralphBox);

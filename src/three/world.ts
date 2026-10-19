@@ -16,9 +16,44 @@ import { SHAN_NAME } from '../game/slice/StoryScript';
 import { TruckCutaway } from './truckCutaway';
 import { DEPOT_DRESSING } from './depotDressing';
 import { DevilModel, placeProp } from './propModels';
+import { SURFACE_MEANS, boxUVs, cardboardMaterial, getSurface, scaleUVs, surfaceMaterial, surfacesLoaded } from './textures';
 
 const rounded = (w: number, h: number, d: number, material: THREE.Material, r = 0.05): THREE.Mesh =>
   new THREE.Mesh(new RoundedBoxGeometry(w, h, d, 2, Math.min(r, w / 2, h / 2, d / 2)), material);
+
+/** Real-world size, in metres, of one tile of each photo surface (docs/textures.md). */
+const CONCRETE_TILE = 3;
+const STEEL_TILE = 1;
+const PAINT_TILE = 1.5;
+const RUBBER_TILE = 1;
+const CARDBOARD_TILE = 0.6;
+
+/**
+ * Resize UVs for the photo surfaces only: the canvas fallbacks keep the UVs
+ * and texture repeats they were drawn for.
+ */
+const photoUVs = <T extends THREE.BufferGeometry>(geometry: T, resize: (geometry: T) => void): T => {
+  if (surfacesLoaded()) resize(geometry);
+  return geometry;
+};
+/** Box-projected UVs, so one texture tile spans `tile` metres on each face. */
+const tiled = <T extends THREE.Mesh>(mesh: T, tile: number): T => {
+  photoUVs(mesh.geometry, (geometry) => boxUVs(geometry, tile));
+  return mesh;
+};
+/** A cylinder's UVs: around its circumference and along its height. */
+const tiledCylinder = <T extends THREE.Mesh>(mesh: T, tile: number): T => {
+  const { radiusTop, radiusBottom, height } = (mesh.geometry as THREE.CylinderGeometry).parameters;
+  photoUVs(mesh.geometry, (geometry) => scaleUVs(geometry, Math.PI * (radiusTop + radiusBottom) / tile, height / tile));
+  return mesh;
+};
+
+/** Steel for the belt frame, rollers and chassis, falling back to the old flat metal. */
+const steel = (color: number, roughness: number, metalness: number): THREE.MeshStandardMaterial =>
+  surfaceMaterial('steel', { color, roughness, metalness });
+/** Painted vehicle panels: their own colour, with the photo paint's dents, scratches and sheen. */
+const paint = (color: THREE.ColorRepresentation, roughness: number, metalness = 0): THREE.MeshStandardMaterial =>
+  surfaceMaterial('paint', { color, roughness, metalness }, { colorMap: false });
 
 export interface Resident {
   id: string;
@@ -90,6 +125,8 @@ export class DepotWorld {
   private readonly models: boolean;
   private readonly fish: THREE.Mesh[] = [];
   private readonly beltRollers: THREE.Mesh[] = [];
+  /** Every belt surface map and the world length of one of its tiles; all scroll together. */
+  private readonly beltMaps: { texture: THREE.Texture; tile: number }[] = [];
   private readonly warcraft: THREE.CanvasTexture;
   private warcraftClock = 0;
   /** Actual rendered surfaces retained for collision/height regression checks. */
@@ -210,6 +247,16 @@ export class DepotWorld {
     }
   }
 
+  /**
+   * Photo concrete matched on average to `base`, or the generated canvas
+   * concrete when surface textures are unavailable. Meshes using the photo
+   * set size their UVs to CONCRETE_TILE metres; `repeat` is for the canvas.
+   */
+  private concrete(base: string, repeat: number): THREE.MeshStandardMaterial {
+    if (getSurface('concrete')) return surfaceMaterial('concrete', { color: base, roughness: 0.86 });
+    return new THREE.MeshStandardMaterial({ map: this.concreteTexture(base, repeat), roughness: 0.86, metalness: 0.05 });
+  }
+
   private concreteTexture(base: string, repeat: number): THREE.CanvasTexture {
     const size = 1024;
     const canvas = document.createElement('canvas');
@@ -255,7 +302,8 @@ export class DepotWorld {
     // The lower ground: truck courts, the outer bays and the lower floor.
     const groundTop = -23;
     const groundEnd = toWorldZ(SHIFT_LAYOUT.bulkRearWall.y - SHIFT_LAYOUT.bulkRearWall.height / 2);
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(40, groundEnd - groundTop), new THREE.MeshStandardMaterial({ map: this.concreteTexture('#3d494c', 6), roughness: 0.86, metalness: 0.05 }));
+    const floorDepth = groundEnd - groundTop;
+    const floor = new THREE.Mesh(photoUVs(new THREE.PlaneGeometry(40, floorDepth), (geometry) => scaleUVs(geometry, 40 / CONCRETE_TILE, floorDepth / CONCRETE_TILE)), this.concrete('#3d494c', 6));
     floor.rotation.x = -Math.PI / 2;
     floor.position.z = (groundTop + groundEnd) / 2;
     floor.receiveShadow = true;
@@ -361,10 +409,10 @@ export class DepotWorld {
     const x1 = toWorldX(platform.right);
     const z0 = toWorldZ(platform.top);
     const z1 = toWorldZ(platform.bottom);
-    const deck = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, PLATFORM_HEIGHT, z1 - z0), [
-      standard(0x27353a, 0.85), standard(0x27353a, 0.85),
-      new THREE.MeshStandardMaterial({ map: this.concreteTexture('#55666a', 3), roughness: 0.8, metalness: 0.05 }),
-      standard(0x27353a, 0.85), standard(0x27353a, 0.85), standard(0x27353a, 0.85),
+    // Cast concrete on every face when the photo set is loaded; darker on the sides.
+    const deckSide = surfaceMaterial('concrete', { color: 0x27353a, roughness: 0.85 });
+    const deck = new THREE.Mesh(photoUVs(new THREE.BoxGeometry(x1 - x0, PLATFORM_HEIGHT, z1 - z0), (geometry) => boxUVs(geometry, CONCRETE_TILE)), [
+      deckSide, deckSide, this.concrete('#55666a', 3), deckSide, deckSide, deckSide,
     ]);
     deck.position.set((x0 + x1) / 2, PLATFORM_HEIGHT / 2, (z0 + z1) / 2);
     deck.receiveShadow = true;
@@ -383,12 +431,13 @@ export class DepotWorld {
     for (const x of [x0 + 0.06, x1 - 0.06]) edge(x, (z0 + z1) / 2, 0.12, z1 - z0);
     edge((x0 + x1) / 2, z1 - 0.06, x1 - x0, 0.12);
     // Guard rails leave the side stair entrances open.
-    const railMaterial = new THREE.MeshStandardMaterial({ color: 0xe0b23c, roughness: 0.4, metalness: 0.3, emissive: 0x3a2a08, emissiveIntensity: 0.4 });
+    // Scratched yellow paint over steel; the faint glow keeps the rails readable in the dark.
+    const railMaterial = surfaceMaterial('paint', { color: 0xe0b23c, roughness: 0.4, metalness: 0.3, emissive: 0x3a2a08, emissiveIntensity: 0.4 });
     const railRun = (ax: number, az: number, bx: number, bz: number): void => {
       const length = Math.hypot(bx - ax, bz - az);
       for (const h of [0.55, 1.05]) {
         // A cylinder laid along local Z, turned to run from a to b.
-        const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, length, 8), railMaterial);
+        const bar = tiledCylinder(new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, length, 8), railMaterial), PAINT_TILE);
         bar.rotation.x = Math.PI / 2;
         const pivot = new THREE.Group();
         pivot.position.set((ax + bx) / 2, PLATFORM_HEIGHT + h, (az + bz) / 2);
@@ -398,7 +447,7 @@ export class DepotWorld {
       }
       const posts = Math.max(1, Math.round(length / 1.6));
       for (let i = 0; i <= posts; i += 1) {
-        const post = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 1.05, 8), railMaterial);
+        const post = tiledCylinder(new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 1.05, 8), railMaterial), PAINT_TILE);
         post.position.set(ax + (bx - ax) * i / posts, PLATFORM_HEIGHT + 0.525, az + (bz - az) * i / posts);
         scene.add(post);
       }
@@ -413,7 +462,7 @@ export class DepotWorld {
     // exactly the shared model's discrete heights; the last interval is floor.
     const steps = stairs.steps;
     const rise = PLATFORM_HEIGHT / steps;
-    const tread = standard(0x5d6d70, 0.6, 0.3);
+    const tread = steel(0x5d6d70, 0.6, 0.3);
     const nose = new THREE.MeshStandardMaterial({ color: PALETTE.safety, emissive: PALETTE.safety, emissiveIntensity: 0.3 });
     const flightDepth = (stairs.maxY - stairs.minY) * WORLD_SCALE;
     const centerZ = toWorldZ((stairs.minY + stairs.maxY) / 2);
@@ -426,7 +475,7 @@ export class DepotWorld {
       const run = length / steps;
       for (let i = 0; i < steps - 1; i += 1) {
         const height = PLATFORM_HEIGHT - rise * (i + 1);
-        const step = new THREE.Mesh(new THREE.BoxGeometry(run, height, flightDepth), tread);
+        const step = tiled(new THREE.Mesh(new THREE.BoxGeometry(run, height, flightDepth), tread), STEEL_TILE);
         step.position.set(startX + direction * run * (i + 0.5), height / 2, centerZ);
         step.receiveShadow = true;
         step.userData.keep = true;
@@ -438,7 +487,7 @@ export class DepotWorld {
       // Rails sit outside the full physical flight width, clear of shoulders.
       for (const edgeY of [stairs.minY - 2, stairs.maxY + 0.5]) {
         const railZ = toWorldZ(edgeY);
-        const hand = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, Math.hypot(length, PLATFORM_HEIGHT), 8), railMaterial);
+        const hand = tiledCylinder(new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, Math.hypot(length, PLATFORM_HEIGHT), 8), railMaterial), PAINT_TILE);
         hand.position.set((startX + endX) / 2, PLATFORM_HEIGHT / 2 + 0.9, railZ);
         hand.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(endX - startX, -PLATFORM_HEIGHT, 0).normalize());
         hand.userData.keep = true;
@@ -446,7 +495,7 @@ export class DepotWorld {
         scene.add(hand);
         for (const t of [0.05, 0.5, 0.95]) {
           const ground = PLATFORM_HEIGHT * (1 - t);
-          const post = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.9, 8), railMaterial);
+          const post = tiledCylinder(new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.9, 8), railMaterial), PAINT_TILE);
           post.position.set(startX + (endX - startX) * t, ground + 0.45, railZ);
           post.userData.keep = true;
           this.stairRails.push(post);
@@ -488,27 +537,58 @@ export class DepotWorld {
     const x = toWorldX(SHIFT_LAYOUT.beltX);
     const deck = PLATFORM_HEIGHT;
 
+    const rubber = getSurface('rubber');
+    // One colour-map tile spans the belt's width and one world unit of its length.
     const canvas = document.createElement('canvas');
-    canvas.width = 128; canvas.height = 128;
+    canvas.width = rubber ? 512 : 128; canvas.height = rubber ? 256 : 128;
     const ctx = canvas.getContext('2d')!;
-    ctx.fillStyle = '#1f2427';
-    ctx.fillRect(0, 0, 128, 128);
+    const { width: w, height: h } = canvas;
+    if (rubber) {
+      // Photo rubber, RUBBER_TILE metres per image, under the original slat
+      // joints and bolts so the belt's movement stays easy to read.
+      const image = rubber.map.image as CanvasImageSource;
+      const tileW = w * RUBBER_TILE / BELT_WIDTH;
+      const tileH = h * RUBBER_TILE;
+      for (let tx = 0; tx < w; tx += tileW) for (let ty = 0; ty < h; ty += tileH) ctx.drawImage(image, tx, ty, tileW, tileH);
+    } else {
+      ctx.fillStyle = '#1f2427';
+      ctx.fillRect(0, 0, w, h);
+    }
+    const slat = h / 4;
     for (let i = 0; i < 4; i += 1) {
-      ctx.fillStyle = '#2c3338';
-      ctx.fillRect(0, i * 32 + 2, 128, 26);
-      ctx.fillStyle = '#3a4248';
-      ctx.fillRect(0, i * 32 + 2, 128, 3);
-      ctx.fillStyle = '#121618';
-      ctx.fillRect(0, i * 32 + 28, 128, 4);
+      if (!rubber) {
+        ctx.fillStyle = '#2c3338';
+        ctx.fillRect(0, i * slat + slat / 16, w, slat * 13 / 16);
+      }
+      ctx.fillStyle = rubber ? 'rgba(160,176,184,0.16)' : '#3a4248';
+      ctx.fillRect(0, i * slat + slat / 16, w, slat * 3 / 32);
+      ctx.fillStyle = rubber ? 'rgba(6,8,9,0.85)' : '#121618';
+      ctx.fillRect(0, i * slat + slat * 7 / 8, w, slat / 8);
       ctx.fillStyle = '#4b555b';
-      for (const bolt of [10, 118]) ctx.fillRect(bolt - 2, i * 32 + 13, 4, 4);
+      for (const bolt of [10 / 128, 118 / 128]) ctx.fillRect(bolt * w - slat / 16, i * slat + slat * 13 / 32, slat / 8, slat / 8);
     }
     const tread = new THREE.CanvasTexture(canvas);
     tread.colorSpace = THREE.SRGBColorSpace;
     tread.wrapS = tread.wrapT = THREE.RepeatWrapping;
     tread.repeat.set(1, length / 1.0);
     tread.anisotropy = 8;
-    const surface = new THREE.Mesh(new THREE.PlaneGeometry(BELT_WIDTH, length), new THREE.MeshStandardMaterial({ map: tread, roughness: 0.7, metalness: 0.15 }));
+    const material = new THREE.MeshStandardMaterial({ map: tread, roughness: 0.7, metalness: 0.15 });
+    this.beltMaps.push({ texture: tread, tile: 1 });
+    if (rubber) {
+      // Clones share the uploaded images but scroll with this belt alone.
+      const relief = (texture: THREE.Texture): THREE.Texture => {
+        const clone = texture.clone();
+        clone.repeat.set(BELT_WIDTH / RUBBER_TILE, length / RUBBER_TILE);
+        this.beltMaps.push({ texture: clone, tile: RUBBER_TILE });
+        return clone;
+      };
+      material.normalMap = relief(rubber.normalMap);
+      material.roughnessMap = relief(rubber.armMap);
+      // Keep the old belt's average roughness; the map varies it.
+      material.roughness = 0.7 / SURFACE_MEANS.rubber.roughness;
+      material.metalness = 0;
+    }
+    const surface = new THREE.Mesh(new THREE.PlaneGeometry(BELT_WIDTH, length), material);
     surface.rotation.x = -Math.PI / 2;
     surface.position.set(x, BELT_HEIGHT, center);
     surface.receiveShadow = true;
@@ -516,12 +596,12 @@ export class DepotWorld {
     this.beltSurface = surface;
     scene.add(surface);
 
-    const rail = standard(PALETTE.metal, 0.38, 0.75);
-    const railDark = standard(PALETTE.metalDark, 0.5, 0.6);
+    const rail = steel(PALETTE.metal, 0.38, 0.75);
+    const railDark = steel(PALETTE.metalDark, 0.5, 0.6);
     for (const side of [-1, 1]) {
-      const sideRail = rounded(0.14, 0.34, length + 0.5, rail, 0.04);
+      const sideRail = tiled(rounded(0.14, 0.34, length + 0.5, rail, 0.04), STEEL_TILE);
       sideRail.position.set(x + side * (BELT_WIDTH / 2 + 0.07), BELT_HEIGHT - 0.05, center);
-      const skirt = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.42, length), railDark);
+      const skirt = tiled(new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.42, length), railDark), STEEL_TILE);
       skirt.position.set(x + side * (BELT_WIDTH / 2 - 0.02), BELT_HEIGHT - 0.26, center);
       // A thin safety-yellow lip, emissive enough to read in the dark.
       const lip = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.03, length + 0.5), new THREE.MeshStandardMaterial({ color: PALETTE.safety, emissive: PALETTE.safety, emissiveIntensity: 0.35 }));
@@ -529,15 +609,15 @@ export class DepotWorld {
       scene.add(shadowed(sideRail), skirt, lip);
       // The legs stand on the platform deck: the belt is at working height for the crew beside it.
       for (let z = top + 0.4; z < bottom; z += 1.6) {
-        const leg = rounded(0.12, BELT_WORK_HEIGHT - 0.2, 0.12, railDark, 0.03);
+        const leg = tiled(rounded(0.12, BELT_WORK_HEIGHT - 0.2, 0.12, railDark, 0.03), STEEL_TILE);
         leg.position.set(x + side * (BELT_WIDTH / 2), deck + (BELT_WORK_HEIGHT - 0.2) / 2, z);
-        const foot = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.04, 0.26), railDark);
+        const foot = tiled(new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.04, 0.26), railDark), STEEL_TILE);
         foot.position.set(leg.position.x, deck + 0.02, z);
         scene.add(shadowed(leg), foot);
       }
     }
     for (const z of [top, bottom]) {
-      const roller = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, BELT_WIDTH + 0.04, 18), standard(0x8d979c, 0.3, 0.85));
+      const roller = tiledCylinder(new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, BELT_WIDTH + 0.04, 18), steel(0x8d979c, 0.3, 0.85)), STEEL_TILE);
       roller.rotation.z = Math.PI / 2;
       roller.position.set(x, BELT_HEIGHT - 0.2, z);
       scene.add(shadowed(roller));
@@ -631,7 +711,7 @@ export class DepotWorld {
 
   private addBulkCrates(): void {
     for (let index = 0; index < 12; index += 1) {
-      const crate = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.42, 0.5), standard(index % 2 ? 0xb8875a : 0xa47650, 0.9));
+      const crate = tiled(new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.42, 0.5), cardboardMaterial(index % 2 ? 0xb8875a : 0xa47650, 0.9)), CARDBOARD_TILE);
       crate.castShadow = crate.receiveShadow = true;
       crate.position.set(-0.6 + (index % 3) * 0.6, 0.21 + Math.floor(index / 6) * 0.43, -0.3 + (Math.floor(index / 3) % 2) * 0.6);
       crate.rotation.y = (index * 0.37) % 0.3 - 0.15;
@@ -646,23 +726,23 @@ export class DepotWorld {
     const length = 148 * WORLD_SCALE;
     const depth = SHIFT_LAYOUT.truckDepth * WORLD_SCALE;
     const lift = PLATFORM_HEIGHT - 0.975;
-    const body = standard(0x69777b, 0.5, 0.3);
-    const trim = standard(0xa2b0a7, 0.5, 0.3);
-    const accent = standard(0xc6ad62, 0.45, 0.2);
-    const cab = rounded(1.2, 1.8, depth - 0.1, body, 0.18);
+    const body = paint(0x69777b, 0.5, 0.3);
+    const trim = paint(0xa2b0a7, 0.5, 0.3);
+    const accent = paint(0xc6ad62, 0.45, 0.2);
+    const cab = tiled(rounded(1.2, 1.8, depth - 0.1, body, 0.18), PAINT_TILE);
     cab.position.set(length / 2 - 0.6, 1.25 + lift / 2, 0);
     const windshield = new THREE.Mesh(new THREE.PlaneGeometry(depth - 0.4, 0.62), standard(0x9cc8dc, 0.05, 0.6));
     windshield.position.set(length / 2 + 0.003, 1.6 + lift / 2, 0);
     windshield.rotation.y = Math.PI / 2;
-    const stripe = new THREE.Mesh(new THREE.BoxGeometry(1.22, 0.16, depth - 0.06), accent);
+    const stripe = tiled(new THREE.Mesh(new THREE.BoxGeometry(1.22, 0.16, depth - 0.06), accent), PAINT_TILE);
     stripe.position.set(length / 2 - 0.6, 0.9 + lift / 2, 0);
-    const bed = rounded(length - 1.3, 0.25, depth, trim, 0.05);
+    const bed = tiled(rounded(length - 1.3, 0.25, depth, trim, 0.05), PAINT_TILE);
     bed.position.set(-0.65, 0.85 + lift, 0);
     const frame = new THREE.Mesh(new THREE.BoxGeometry(length - 1.4, lift + 0.2, depth - 0.4), standard(0x2a2f33, 0.6, 0.4));
     frame.position.set(-0.65, 0.62 + lift / 2, 0);
     truck.add(cab, windshield, stripe, bed, frame);
     for (const sz of [-1, 1]) {
-      const rail = new THREE.Mesh(new THREE.BoxGeometry(length - 1.3, 0.3, 0.08), accent);
+      const rail = tiled(new THREE.Mesh(new THREE.BoxGeometry(length - 1.3, 0.3, 0.08), accent), PAINT_TILE);
       rail.position.set(-0.65, 1.12 + lift, sz * (depth / 2 - 0.04));
       truck.add(rail);
       for (const along of [length / 2 - 0.6, -length / 2 + 0.7, -length / 2 + 1.6]) {
@@ -678,7 +758,7 @@ export class DepotWorld {
       const mark = new THREE.Mesh(new THREE.PlaneGeometry(0.56, depth - 0.5), new THREE.MeshStandardMaterial({ color: 0xc6ad62, transparent: true, opacity: 0.35 }));
       mark.rotation.x = -Math.PI / 2;
       mark.position.set(x, 0.985 + lift, 0);
-      const crate = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.42, 0.5), standard(slot % 2 ? 0xb8875a : 0xa47650, 0.9));
+      const crate = tiled(new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.42, 0.5), cardboardMaterial(slot % 2 ? 0xb8875a : 0xa47650, 0.9)), CARDBOARD_TILE);
       crate.position.set(x, 1.2 + lift, 0);
       crate.castShadow = true;
       crate.visible = false;
@@ -1152,8 +1232,8 @@ export class DepotWorld {
       truck.group.rotation.x = idle ? Math.sin(time * 19 + index * 2.3) * 0.0015 : 0;
     });
     if (this.residents.get('ben')?.character.root.visible) this.shoulderDevil?.update('Idle', dt, reducedMotion);
-    // One texture repeat spans one world unit of belt.
-    this.tread.offset.y = beltTravel * WORLD_SCALE;
+    // Each map moves by the belt's travel, measured in its own tiles.
+    for (const { texture, tile } of this.beltMaps) texture.offset.y = beltTravel * WORLD_SCALE / tile;
     for (const roller of this.beltRollers) roller.rotation.x = -beltTravel * WORLD_SCALE / 0.2;
     this.fish.forEach((fish, index) => {
       const t = time * (0.5 + index * 0.13) + index * 1.7;
@@ -1201,7 +1281,7 @@ export function createTruck(name: string, color: number, cabColor: number, side:
   const floor = PLATFORM_HEIGHT;
   truck.userData.cargoFloorY = floor;
   const facing = side === 'left' ? 1 : -1; // the rear door faces the platform
-  const body = standard(color, 0.62, 0.1);
+  const body = paint(color, 0.62, 0.1);
   const boxX = facing * (length / 2 - boxLength / 2);
   // The box is an open-backed shell so its rear opening reads as real depth.
   const wall = 0.08;
@@ -1213,7 +1293,7 @@ export function createTruck(name: string, color: number, cabColor: number, side:
     [facing * (length / 2 - boxLength) + facing * wall / 2, floor + boxHeight / 2, 0, wall, boxHeight, depth],
   ];
   for (const [x, y, z, w, h, d] of shell) {
-    const panel = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), body);
+    const panel = tiled(new THREE.Mesh(new THREE.BoxGeometry(w, h, d), body), PAINT_TILE);
     panel.position.set(x, y, z);
     truck.add(panel);
   }
@@ -1260,7 +1340,7 @@ export function createTruck(name: string, color: number, cabColor: number, side:
     truck.add(lining);
   }
   // The rolled-up door at the top of the rear opening, and a bright door frame.
-  const rolled = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.28, depth - 0.04), standard(0xb7bcbf, 0.4, 0.6));
+  const rolled = tiled(new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.28, depth - 0.04), steel(0xb7bcbf, 0.4, 0.6)), STEEL_TILE);
   rolled.position.set(facing * (length / 2 - 0.08), floor + boxHeight - 0.2, 0);
   const frame = new THREE.MeshStandardMaterial({ color: PALETTE.safety, emissive: PALETTE.safety, emissiveIntensity: 0.25, roughness: 0.5 });
   for (const z of [depth / 2 - 0.03, -depth / 2 + 0.03]) {
@@ -1271,16 +1351,16 @@ export function createTruck(name: string, color: number, cabColor: number, side:
   truck.add(rolled);
   // Outer reinforcing ribs leave the cargo opening clear. A single box across
   // the entire width here used to form eight solid barriers inside every truck.
-  const ribMaterial = standard(new THREE.Color(color).multiplyScalar(0.82), 0.7);
+  const ribMaterial = paint(new THREE.Color(color).multiplyScalar(0.82), 0.7);
   for (let i = 1; i < 9; i += 1) {
     for (const side of [-1, 1]) {
-      const rib = new THREE.Mesh(new THREE.BoxGeometry(0.05, boxHeight - 0.2, 0.035), ribMaterial);
+      const rib = tiled(new THREE.Mesh(new THREE.BoxGeometry(0.05, boxHeight - 0.2, 0.035), ribMaterial), PAINT_TILE);
       rib.position.set(facing * (length / 2 - boxLength) + facing * boxLength * i / 9, floor + boxHeight / 2, side * (depth / 2 + 0.02));
       truck.add(rib);
     }
   }
   // The chassis rails carry the raised box over the wheels.
-  const chassis = new THREE.Mesh(new THREE.BoxGeometry(length - 0.3, floor - 0.45, depth - 0.5), standard(0x24292c, 0.6, 0.4));
+  const chassis = tiled(new THREE.Mesh(new THREE.BoxGeometry(length - 0.3, floor - 0.45, depth - 0.5), steel(0x24292c, 0.6, 0.4)), STEEL_TILE);
   chassis.position.set(0, 0.45 + (floor - 0.45) / 2, 0);
   truck.add(chassis);
   // Rubber dock bumpers where the truck meets the platform.
@@ -1289,8 +1369,8 @@ export function createTruck(name: string, color: number, cabColor: number, side:
     bumper.position.set(facing * (length / 2 + 0.06), floor - 0.2, z);
     truck.add(bumper);
   }
-  const cabMaterial = standard(cabColor, 0.45, 0.25);
-  const cab = rounded(cabLength, 1.7, depth - 0.1, cabMaterial, 0.18);
+  const cabMaterial = paint(cabColor, 0.45, 0.25);
+  const cab = tiled(rounded(cabLength, 1.7, depth - 0.1, cabMaterial, 0.18), PAINT_TILE);
   cab.position.set(-facing * (length / 2 - cabLength / 2), 1.2, 0);
   const windshield = new THREE.Mesh(new THREE.PlaneGeometry(depth - 0.4, 0.62), new THREE.MeshStandardMaterial({ color: 0x9cc8dc, roughness: 0.05, metalness: 0.6, emissive: 0x16303c, emissiveIntensity: 0.6 }));
   windshield.position.set(-facing * (length / 2 + 0.003), 1.55, 0);

@@ -72,6 +72,10 @@ export function mergeStatic(root: THREE.Object3D, keep: (object: THREE.Object3D)
 function materialKey(material: THREE.MeshStandardMaterial, mesh: THREE.Mesh): string {
   return [
     material.map?.uuid ?? '', material.emissiveMap?.uuid ?? '',
+    // Photo surfaces (textures.ts) also carry relief and packed AO/roughness/
+    // metalness maps; tinted paint has these without a colour map.
+    material.normalMap?.uuid ?? '', material.normalScale.x.toFixed(2),
+    material.roughnessMap?.uuid ?? '', material.metalnessMap?.uuid ?? '', material.aoMap?.uuid ?? '',
     // Close roughness/metalness values share a draw call; the difference is not visible.
     Math.round(material.roughness * 4) / 4, Math.round(material.metalness * 4) / 4,
     material.emissive.getHexString(), material.emissiveIntensity.toFixed(2),

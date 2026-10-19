@@ -6,6 +6,7 @@ import { parcelAddress, parcelStreet } from './addresses';
 import { mergeStatic } from './merge';
 import { physicalBounds } from './collision3d';
 import { PALETTE, shadowed, standard, textPlane } from './space';
+import { boxUVs, cardboardMaterial, surfacesLoaded } from './textures';
 
 const PARCEL_SCALE = 1.3;
 
@@ -28,19 +29,22 @@ export interface ParcelView {
 const rounded = (w: number, h: number, d: number, material: THREE.Material, r = 0.03): THREE.Mesh =>
   new THREE.Mesh(new RoundedBoxGeometry(w, h, d, 2, Math.min(r, w / 2, h / 2, d / 2)), material);
 
-const cardboard = standard(PALETTE.cardboard, 0.92);
-const cardboardDark = standard(PALETTE.cardboardDark, 0.92);
+/** One photo-cardboard tile spans this many metres (docs/textures.md). */
+const CARDBOARD_TILE = 0.6;
 const tape = standard(0xd9c08a, 0.55);
 const crateWood = standard(0xa77a46, 0.85);
 const crateDark = standard(0x7a5530, 0.9);
 
-function carton(w: number, h: number, d: number, material = cardboard): THREE.Group {
+// Cardboard materials are requested per carton, not at import: surface
+// textures load after this module does. Identical requests share a material.
+function carton(w: number, h: number, d: number, material = cardboardMaterial(PALETTE.cardboard)): THREE.Group {
   const group = new THREE.Group();
   const shell = rounded(w, h, d, material, 0.025);
+  if (surfacesLoaded()) boxUVs(shell.geometry, CARDBOARD_TILE);
   shell.position.y = h / 2;
   const strip = new THREE.Mesh(new THREE.BoxGeometry(w * 0.2, 0.005, d + 0.004), tape);
   strip.position.y = h + 0.002;
-  const flap = new THREE.Mesh(new THREE.BoxGeometry(w + 0.004, 0.012, 0.01), cardboardDark);
+  const flap = new THREE.Mesh(new THREE.BoxGeometry(w + 0.004, 0.012, 0.01), cardboardMaterial(PALETTE.cardboardDark));
   flap.position.set(0, h - 0.005, 0);
   group.add(shell, strip, flap);
   const endTape = new THREE.Mesh(new THREE.BoxGeometry(w * 0.2, h * 0.32, 0.005), tape);
@@ -100,7 +104,7 @@ function buildBody(parcel: Parcel, parts: Record<string, THREE.Object3D>): { gro
     case 'bigbox': group.add(carton(0.7, 0.58, 0.6)); return { group, height: 0.58, top: 0.58 };
     case 'longbox': group.add(carton(0.36, 0.3, 1.0)); return { group, height: 0.3, top: 0.3 };
     case 'panchetters': {
-      group.add(carton(0.52, 0.42, 0.46, standard(0xc9a477, 0.9)));
+      group.add(carton(0.52, 0.42, 0.46, cardboardMaterial(0xc9a477, 0.9)));
       const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.53, 0.1, 0.47), standard(0xb2463e, 0.7));
       stripe.position.y = 0.2;
       group.add(stripe);
@@ -108,7 +112,7 @@ function buildBody(parcel: Parcel, parts: Record<string, THREE.Object3D>): { gro
     }
     case 'mallwood': {
       // Mallwood's own curry-coloured fumes are spawned by the parcel FX.
-      group.add(carton(0.56, 0.44, 0.48, standard(0xa9794b, 0.95)));
+      group.add(carton(0.56, 0.44, 0.48, cardboardMaterial(0xa9794b, 0.95)));
       const stain = new THREE.Mesh(new THREE.CircleGeometry(0.11, 14), standard(0xc98a2a, 0.9));
       stain.position.set(0.1, 0.25, 0.241);
       group.add(stain);
