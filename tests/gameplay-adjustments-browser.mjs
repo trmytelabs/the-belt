@@ -16,7 +16,7 @@ try {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.addInitScript(() => {
-    window.addEventListener('belt3d:ready', event => { window.fixtureApp = event.detail; });
+    window.addEventListener('belt3d:ready', event => { window.fixtureApp = event.detail; event.detail.playPrologue = false; });
     let phaser;
     Object.defineProperty(window, 'Phaser', { configurable: true, get: () => phaser, set: value => {
       phaser = value;

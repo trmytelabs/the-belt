@@ -27,7 +27,7 @@ try {
   await page.route('https://fonts.gstatic.com/**', (route) => route.fulfill({ body: '' }));
   await page.route('**/models/characters/fixture-humanoid.glb', (route) => route.fulfill({ body: glb, contentType: 'model/gltf-binary' }));
   await page.addInitScript(() => {
-    window.addEventListener('belt3d:ready', (event) => { window.fixtureApp = event.detail; });
+    window.addEventListener('belt3d:ready', (event) => { window.fixtureApp = event.detail; event.detail.playPrologue = false; });
   });
   await page.goto(url);
   await page.waitForFunction(() => window.fixtureApp?.state === 'briefing');
