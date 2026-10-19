@@ -12,6 +12,13 @@ delivery marker make matching freight easier. Recovery fails at seven packages;
 the shift retains its 42-dispatch goal with gentler intake, faster carrying and
 25 seconds of cleanup. The legacy modes retain their previous pacing and limits.
 
+All freight for the selected worker has a bright cyan ring, including packages
+still out of reach; switching workers changes the rings immediately. Other
+workers' packages remain visible without player markings. Residents' routine
+boxes visibly travel on the tread before the same box is lifted and carried.
+Their incoming freight stops with the belt. Destination circles have no floating
+action labels.
+
 The 3D depot is the default entry. It shows every reference in
 [reference parity](reference-parity.md), as the 2D depot does. The 2D depot is
 kept at `?mode=2d`, the original full shift at `?mode=classic`, and `?mode=3d`
@@ -119,8 +126,8 @@ Present in 3D:
     real parcel onto the belt. Two unloaders carry crates from the trailers
     onto the feeders. Receiving runs on belt travel, so it stops when the
     belt stops.
-  - The crew's 18-second freight trips from the belt side to their own
-    trucks, paused while a coworker is busy with a gag.
+  - The crew's eight-second loading trips, with visible incoming boxes and a wait
+    for the actual belt arrival, paused while a coworker is busy with a gag.
   - The winning clock-out: Termite and Skanky's lines, all eight resident
     lines, the crew cheering, and every named truck driving out through its
     dock bay.

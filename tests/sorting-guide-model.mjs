@@ -60,12 +60,13 @@ test('the guide names all seven destinations and only asks to load inside the co
     m.activeWorker.heldId = p.id;
     assert.match(sortingGuide(m, false).title, new RegExp(info.name));
     if (info.kind === 'truck') {
-      assert.match(sortingGuide(m, false).detail, /enter the open rear door/);
+      assert.ok(sortingGuide(m, false).detail.includes(info.caption));
+      assert.doesNotMatch(sortingGuide(m, false).detail, /enter/i);
       Object.assign(m.activeWorker, { x: m.activeIndex ? 630 : 330, y: L.playerTrucks[route].y });
       assert.match(sortingGuide(m, false).detail, /^2 ·/);
     }
     Object.assign(m.activeWorker, m.deliveryPoint(p));
-    assert.match(sortingGuide(m, false).detail, /^3 · SPACE to/);
+    assert.match(sortingGuide(m, false).detail, /^3 · SPACE ·/);
     assert.match(sortingGuide(m, true).detail, /GRAB \/ DELIVER/);
   }
   assert.equal(parcelStreet({ id: 1, route: 'T', address: '2417 119 ST' }), '119 ST');

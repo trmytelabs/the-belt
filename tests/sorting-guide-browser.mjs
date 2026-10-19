@@ -36,14 +36,39 @@ try {
       m.eventStopped = true; m.autonomousCoworker = false; app.benStarted = true;
       Object.assign(m.packages[0], { y: 788, beltOffset: 788 - m.beltTravel });
       Object.assign(m.activeWorker, { x: 400, y: 788 });
+      const streets = { A: 27, B: 67, C: null, D: 99, E: 140, T: 119, S: 180 };
+      for (const [index, route] of ['A', 'B', 'C', 'D', 'E', 'T', 'S'].entries()) {
+        const street = streets[route];
+        m.packages.push({ ...m.packages[0], id: 9900 + index, route, street: street ?? undefined,
+          address: street ? `${4000 + index} ${street} ST` : 'OVERSIZE · BULK', kind: 'smallbox', label: 'PARCEL', size: 'normal',
+          y: 220 + index * 70, beltOffset: 220 + index * 70 - m.beltTravel });
+      }
     });
+    await wait(() => window.fixtureApp.parcels.has(9906));
+    const rings = () => page.evaluate(() => ['A', 'B', 'C', 'D', 'E', 'T', 'S'].filter((route, index) => window.fixtureApp.parcels.get(9900 + index).highlight.visible));
+    assert.deepEqual(await rings(), ['A', 'C', 'D', 'T'], 'all active-worker freight stands out even beyond grabbing range');
+    if (shots) {
+      await page.evaluate(() => {
+        const app = window.fixtureApp; app.model.activeWorker.y = 500;
+        app.syncWorkers(0); app.snapCamera(); app.lastRender = -Infinity; app.draw();
+      });
+      await page.screenshot({ path: join(shots, `assigned-packages-${viewport.width}.png`) });
+      await page.evaluate(() => { const app = window.fixtureApp; app.model.activeWorker.y = 788; app.syncWorkers(0); });
+    }
+    await page.keyboard.press('Tab');
+    await wait(() => window.fixtureApp.parcels.get(9901).highlight.visible && !window.fixtureApp.parcels.get(9900).highlight.visible);
+    assert.deepEqual(await rings(), ['B', 'C', 'E', 'S'], 'switching workers immediately changes the marked packages');
+    assert.ok(await page.evaluate(() => [...window.fixtureApp.crew.crewFreight.values()].every(view => !view.highlight.visible)), 'resident crew boxes remain unmarked');
+    await page.keyboard.press('Tab');
+    await page.evaluate(() => window.fixtureApp.model.packages.splice(1));
     await wait(() => document.querySelector('[data-f="guide-title"]').textContent === '27 ST → MILL WOODS');
     const action = page.getByRole('button', { name: 'Grab or deliver', exact: true });
     if (touch) await action.tap(); else await page.keyboard.press('Space');
     await wait(() => window.fixtureApp.model.heldPackage !== null && window.fixtureApp.deliveryHalo.visible);
-    assert.match(await page.locator('[data-f="guide-detail"]').innerText(), /enter the open rear door/);
+    assert.match(await page.locator('[data-f="guide-detail"]').innerText(), /TERMITE'S TRUCK 1/);
+    assert.doesNotMatch(await page.locator('[data-f="guide-detail"]').innerText(), /enter/i);
     assert.equal(await page.evaluate(() => window.fixtureApp.deliveryHalo.userData.route), 'A');
-    assert.deepEqual(await page.evaluate(() => window.fixtureApp.deliveryPrompt.children.map(label => label.visible)), [true, false, false], 'the doorway asks the player to enter');
+    assert.equal(await page.evaluate(() => window.fixtureApp.deliveryPrompt), undefined, 'the destination uses only a circle');
     const tag = await page.evaluate(() => {
       const app = window.fixtureApp, tag = app.parcels.get(app.model.heldPackage.id).tag;
       return { street: tag.userData.street, height: tag.scale.y };
@@ -60,8 +85,8 @@ try {
     await page.keyboard.down('KeyA');
     await wait(() => window.fixtureApp.model.currentDock() === 'A');
     await page.keyboard.up('KeyA');
-    await wait(() => document.querySelector('[data-f="guide-detail"]').textContent.includes('load this truck'));
-    assert.deepEqual(await page.evaluate(() => window.fixtureApp.deliveryPrompt.children.map(label => label.visible)), [false, true, false], 'the loading cue appears inside');
+    await wait(() => document.querySelector('[data-f="guide-detail"]').textContent.startsWith('3 ·'));
+    assert.equal(await page.evaluate(() => window.fixtureApp.deliveryHalo.visible), true, 'the loading circle remains visible inside');
     if (touch) await action.tap(); else await page.keyboard.press('Space');
     await wait(() => window.fixtureApp.model.sorted === 1 && !window.fixtureApp.deliveryHalo.visible);
     await page.keyboard.press('Escape');
@@ -86,7 +111,7 @@ try {
     assert.equal(await page.evaluate(() => window.fixtureApp.model.capacity), 7);
     await page.locator('.b3d-guide').waitFor({ state: 'hidden' });
     assert.deepEqual(errors, []);
-    console.log(`PASS ${viewport.width}×${viewport.height}: three-step briefing, large street tag, destination marker, real pickup/load, pause, seven-parcel failure and clean restart`);
+    console.log(`PASS ${viewport.width}×${viewport.height}: all assigned packages marked, switching updates rings, circle-only destination, real pickup/load, pause, seven-parcel failure and restart`);
     await context.close();
   }
 } finally {

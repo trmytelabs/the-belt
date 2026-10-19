@@ -7,7 +7,8 @@ import { DRIVERS, SHAN_BREAKAGE_LINES } from '../game/slice/StoryScript';
 import type { Parcel, ShiftEvent, ShiftModel } from '../game/slice/ShiftModel';
 import { audioSystem } from './audio';
 import { animateCharacter, bendElbows, bendKnees, createCharacter, mergeCharacter, type Character } from './characters';
-import { createParcelView, type ParcelView } from './parcels';
+import { alignParcelToSurface, createParcelView, type ParcelView } from './parcels';
+import { CrewFreightTrip } from './crewFreight';
 import { BELT_HEIGHT, actorSurfaceAt, setFromModel, standard, textSprite, toWorld } from './space';
 import { SKIN, VISITORS, type DepotWorld } from './world';
 import { DEPOT_3D_LAYOUT as DEPOT } from './layout';
@@ -223,6 +224,7 @@ export class CrewLife {
   private readonly cellCaption: THREE.Sprite;
   private readonly crewFreight = new Map<string, ParcelView>();
   private readonly crewEpoch = new Map<string, number>();
+  private readonly crewTrips = new Map<string, CrewFreightTrip>();
   private readonly workWalks = new Map<string, { points: WalkPoint[]; distance: number; delay: number }>();
   private readonly patrols = new CrewPatrols();
   private readonly drivers: Actor[] = [];
@@ -284,6 +286,7 @@ export class CrewLife {
       view.tag.visible = false;
       view.root.scale.setScalar(0.85);
       view.root.visible = false;
+      view.root.name = 'crew-parcel'; view.root.userData.owner = id;
       world.scene.add(view.root);
       this.crewFreight.set(id, view);
     });
@@ -363,6 +366,7 @@ export class CrewLife {
     this.actor('ben').root.rotation.set(0, 0, 0);
     this.actor('ben').root.scale.setScalar(1);
     this.crewEpoch.clear();
+    this.crewTrips.clear();
     this.workWalks.clear();
     this.patrols.reset();
     this.world.shoulderDevil?.reset();
@@ -510,7 +514,7 @@ export class CrewLife {
     this.updateCell(t, wallTime, model, reserved);
     this.updateUnitedWay(t, wallTime);
     this.updateExhaust(t, dt, wallTime, model);
-    this.updateCrewFreight(t, reserved);
+    this.updateCrewFreight(t, reserved, model);
 
     // Shan walks the loading lane between his original announcements and breakage reactions.
     const shan = this.actor('shan');
@@ -860,21 +864,39 @@ export class CrewLife {
     return true;
   }
 
-  private updateCrewFreight(t: number, reserved: Set<string>): void {
+  private updateCrewFreight(t: number, reserved: Set<string>, model: ShiftModel): void {
     RESIDENT_IDS.forEach((id, index) => {
       const actor = this.actor(id);
       const view = this.crewFreight.get(id)!;
       if (reserved.has(id) || this.staged.has(id) || (id === 'ben' && this.benGone)) {
         view.root.visible = false;
+        this.crewTrips.delete(id);
         this.crewEpoch.set(id, t + 1000);
         return;
       }
       const start = this.workStation(id);
       const period = 8_000;
-      const clock = Math.max(0, t - (this.crewEpoch.get(id) ?? (700 + index * 250)));
-      const cycle = clock % period;
+      let trip = this.crewTrips.get(id);
+      if (!trip && t >= (this.crewEpoch.get(id) ?? (700 + index * 250)) && model.beltSpeed > 0) {
+        const spawnY = CrewFreightTrip.spawnY(start.y, model.beltSpeed);
+        const gap = 44;
+        const occupied = model.packages.some(parcel => parcel.state === 'belt' && Math.abs(parcel.y - spawnY) < gap)
+          || [...this.crewTrips.values()].some(other => {
+            const state = other.sample(t, model.beltTravel);
+            return state.cycle < 1650 && Math.abs(state.beltY - spawnY) < gap;
+          })
+          || this.snakeState === 'belt' && Math.abs(164 + model.beltTravel - this.cellTravel - spawnY) < gap;
+        const intakeClearMs = Math.max(0, model.layout.beltTop + 26 + gap - spawnY) / Math.max(50, model.beltSpeed) * 1000 + 350;
+        if (!occupied && (spawnY > model.layout.beltTop + 26 + gap || model.nextArrivalInMs > intakeClearMs)) {
+          trip = new CrewFreightTrip(t, model.beltTravel, start.y, model.beltSpeed);
+          this.crewTrips.set(id, trip);
+        }
+      }
+      const state = trip?.sample(t, model.beltTravel);
+      const cycle = state?.cycle ?? 0;
+      const clock = trip ? t - trip.startedAt : 0;
       const door = TRUCK_DOORS[id];
-      const pickup = { x: start.x < 480 ? 400 : 560, y: start.y };
+      const pickup = { x: start.x < 480 ? 428 : 532, y: start.y };
       const approach = { x: start.x, y: door.y };
       let from = start; let to = start; let amount = 0;
       if (clock > 0 && cycle < 900) { to = pickup; amount = cycle / 900; }
@@ -891,11 +913,20 @@ export class CrewLife {
       const carrying = clock > 0 && cycle >= 1300 && cycle < 4300;
       actor.carrying = carrying;
       if (id === 'hussan' && actor.pose !== 'cough' && actor.pose !== 'swear') actor.pose = atRest && cycle > 7500 ? 'phone' : 'none';
-      view.root.visible = carrying;
+      view.root.visible = !!trip && cycle < 4300;
+      view.root.userData.state = carrying ? 'held' : trip && cycle < 1300 ? 'belt' : 'hidden';
       if (carrying) {
         const forward = new THREE.Vector3(Math.sin(actor.root.rotation.y), 0, Math.cos(actor.root.rotation.y));
         view.root.position.copy(actor.root.position).addScaledVector(forward, 0.32 * actor.root.scale.z + view.carryDepth * view.root.scale.z).setY(actor.root.position.y + 0.82);
+        if (state && state.lift < 1) view.root.position.lerp(toWorld({ x: 480, y: state.beltY }, BELT_HEIGHT + 0.01), 1 - state.lift);
         view.root.rotation.y = actor.root.rotation.y;
+      } else if (state && cycle < 1300) {
+        setFromModel(view.root.position, { x: 480, y: state.beltY }, BELT_HEIGHT + 0.01);
+        view.root.rotation.y = 0;
+        alignParcelToSurface(view, BELT_HEIGHT + 0.01);
+      }
+      if (cycle >= period) {
+        this.crewTrips.delete(id); this.crewEpoch.set(id, t);
       }
     });
   }
@@ -909,13 +940,14 @@ export class CrewLife {
   public hideCrewFreight(id: string): void {
     const view = this.crewFreight.get(id);
     if (view) view.root.visible = false;
+    this.crewTrips.delete(id);
     this.actor(id).carrying = false;
   }
 
   /** Freight is a scene child, so it follows any final clearance correction. */
   public translateActorFreight(id: string, dx: number, dz: number, dy = 0): void {
     const view = this.crewFreight.get(id);
-    if (view?.root.visible) {
+    if (view?.root.visible && view.root.userData.state === 'held') {
       view.root.position.x += dx;
       view.root.position.y += dy;
       view.root.position.z += dz;

@@ -15,11 +15,11 @@ export function sortingGuide(model: ShiftModel3D, touch: boolean): SortingGuide 
   const info = ROUTE_INFO[parcel.route];
   const title = `${parcelStreet(parcel)} → ${info.name}`;
   if (!held) return { title, detail: `1 · ${action} to grab${parcel.state === 'missed' ? ' from recovery' : ''} · your partner handles the other side` };
-  if (model.currentDock() === parcel.route) return { title, detail: `3 · ${action} to ${info.kind === 'truck' ? 'load this truck' : 'deliver here'}` };
+  if (model.currentDock() === parcel.route) return { title, detail: `3 · ${action} · ${info.caption}` };
   const waypoint = model.navigationTarget(model.deliveryPoint(parcel));
   const dx = waypoint.x - model.activeWorker.x, dy = waypoint.y - model.activeWorker.y;
   const direction = Math.abs(dy) > Math.abs(dx) ? dy > 0 ? '↓ Down' : '↑ Up' : dx > 0 ? '→ Right' : '← Left';
-  const destination = info.kind === 'truck' ? `${info.caption} · ${streetRange(parcel.route)} · enter the open rear door`
+  const destination = info.kind === 'truck' ? `${info.caption} · ${streetRange(parcel.route)}`
     : info.kind === 'floor' ? `down the ${model.activeWorker.side} stairs to the floor drop` : 'shared bulk pile at the back';
   return { title, detail: `2 · ${direction} toward ${destination}` };
 }

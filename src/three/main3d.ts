@@ -135,7 +135,6 @@ export class Belt3d {
   private readonly pickupHalo: THREE.Mesh;
   private readonly pickupPrompt: THREE.Sprite;
   private readonly deliveryHalo: THREE.Mesh;
-  private readonly deliveryPrompt: THREE.Group;
   private readonly keys = new Set<string>();
   private readonly reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   private overview = false;
@@ -253,7 +252,7 @@ export class Belt3d {
     this.world.scene.add(this.activeRing);
     this.sleepTag = textSprite(['SORTING'], 0.22, { width: 110, height: 30, color: '#d8e2d0' });
     this.world.scene.add(this.sleepTag);
-    this.marker = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.3, 4), new THREE.MeshStandardMaterial({ color: 0xf3e6c6, emissive: 0xf3e6c6, emissiveIntensity: 0.8 }));
+    this.marker = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.4, 4), new THREE.MeshStandardMaterial({ color: 0xffd47c, emissive: 0xffd47c, emissiveIntensity: 0.8 }));
     this.marker.rotation.x = Math.PI;
     this.world.scene.add(this.marker);
     this.pickupHalo = new THREE.Mesh(new THREE.RingGeometry(0.44, 0.49, 40), new THREE.MeshBasicMaterial({
@@ -268,11 +267,6 @@ export class Belt3d {
     }));
     this.deliveryHalo.name = 'delivery-highlight'; this.deliveryHalo.rotation.x = -Math.PI / 2;
     this.deliveryHalo.renderOrder = 8; this.deliveryHalo.visible = false; this.world.scene.add(this.deliveryHalo);
-    this.deliveryPrompt = new THREE.Group();
-    for (const text of ['ENTER TO LOAD', 'LOAD HERE', 'DELIVER HERE']) {
-      this.deliveryPrompt.add(textSprite([text], 0.28, { width: 200, height: 34, color: '#ffe1a4', background: '#172b30' }));
-    }
-    this.deliveryPrompt.visible = false; this.world.scene.add(this.deliveryPrompt);
     this.bindInput();
     this.resize();
     window.addEventListener('resize', () => this.resize(), { signal: this.inputAbort.signal });
@@ -1123,17 +1117,14 @@ export class Belt3d {
       this.pickupPrompt.position.copy(view.root.position).y += view.height + 1.75;
     }
     const held = m.heldPackage;
-    this.deliveryHalo.visible = this.deliveryPrompt.visible = this.state === 'playing' && held !== null;
+    this.deliveryHalo.visible = this.state === 'playing' && held !== null;
     this.deliveryHalo.userData.route = held?.route ?? null;
     if (held) {
       const point = m.deliveryPoint(held);
       const route = ROUTE_INFO[held.route];
       const atDoor = route.kind === 'truck' && truckInteriorAt(m.activeWorker) !== held.route;
       if (atDoor) point.x = m.activeWorker.side === 'left' ? 330 : 630;
-      const prompt = route.kind !== 'truck' ? 2 : atDoor ? 0 : 1;
-      this.deliveryPrompt.children.forEach((label, index) => { label.visible = index === prompt; });
       this.deliveryHalo.position.copy(toWorld(point, surfaceAt(point.x, point.y) + 0.04));
-      this.deliveryPrompt.position.copy(this.deliveryHalo.position).y += 1.6;
     }
   }
 
@@ -1204,6 +1195,7 @@ export class Belt3d {
   private syncParcels(dt: number): void {
     const m = this.model;
     const seen = new Set<number>();
+    for (const view of this.parcels.values()) { view.highlight.visible = false; view.root.userData.assignedToPlayer = false; }
     const target = new THREE.Vector3();
     const intake = m.intakePreview;
     if (intake) {
@@ -1298,6 +1290,10 @@ export class Belt3d {
         }
       }
       this.parcelPosition(parcel, view, target);
+      const assigned = parcel.route === 'C' || ROUTE_INFO[parcel.route].side === m.activeWorker.side;
+      view.highlight.visible = this.state === 'playing' && assigned && ['belt', 'floor', 'missed'].includes(parcel.state)
+        && (parcel.state !== 'floor' || (m.activeWorker.side === 'left' ? parcel.x < 440 : parcel.x > 520));
+      view.root.userData.assignedToPlayer = view.highlight.visible;
       // Rules own contact: smoothing a pickup/drop through the worker or deck
       // briefly intersected solids, especially after a long frame.
       view.root.position.copy(target);

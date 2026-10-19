@@ -7,7 +7,11 @@ full address and freight name below. The three-step briefing explains grabbing,
 following the destination and loading inside a truck. A persistent guide names
 the district, street range and next walking direction; a gold marker identifies
 the correct rear door or floor drop while carrying. Truck floor markings show both
-district names and ranges. Signs and tags retain the neutral palette.
+district names and ranges. The gold destination circle has no floating action
+words. Signs and tags retain the neutral palette, while bright cyan rings mark
+all loose, missed and belt freight assigned to the selected worker. Switching
+workers updates those rings immediately; the nearest eligible parcel retains
+its stronger gold arrow and pickup prompt. Other workers' packages stay visible.
 Internal route IDs remain in the rules and tests only.
 
 These are simplified, synthetic Edmonton-inspired delivery districts for the
@@ -137,7 +141,12 @@ Its browser suite checks real pickup and truck loading, large address tags,
 desktop and portrait/landscape touch layouts, pause, overflow and clean restart.
 Physical touch-device usability and audible sound still need manual checks.
 
-The nearest eligible package has a neutral light halo and a **SPACE · GRAB**
+Resident crew boxes ride the actual belt travel before pickup, then the same
+visible object lifts into the worker's hands. Brakes and machinery stops hold
+incoming crew freight still; an empty-handed worker waits for its box. These
+routine boxes do not add to the player's workload, goal, recovery or score.
+
+The nearest eligible package has a bright halo and a **SPACE · GRAB**
 prompt. Empty or out-of-reach actions do not play an error sound. A wrong drop
 still sounds its error and deducts points.
 

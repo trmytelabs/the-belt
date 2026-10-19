@@ -66,12 +66,30 @@ try {
   const work = await read(() => {
     const app = window.fixtureApp, crew = app.crew;
     app.state = 'paused'; crew.reset();
-    const totals = { samples:0, platform:0, carrying:0, working:0, hidden:0 };
+    const totals = { samples:0, platform:0, carrying:0, working:0, hidden:0, belt:0, pickups:0 };
     const previous = new Map();
-    for (let time = 10000; time < 20000; time += 100) {
+    const previousState = new Map();
+    const previousFreight = new Map();
+    app.model.beltTravel = 0; app.model.beltSpeed = 50;
+    for (const parcel of app.model.packages) parcel.state = 'delivered';
+    for (let time = 0; time < 20000; time += 100) {
+      app.model.beltTravel += 5;
       app.model.elapsedMs = time; crew.update(0.1, app.model, time / 1000);
       for (const id of app.world.residents.keys()) {
         const actor = crew.actor(id), before = previous.get(id), root = actor.root;
+        const freight = crew.crewFreight.get(id);
+        if (freight.root.userData.state === 'belt' && freight.root.visible) {
+          totals.belt++;
+          if (freight.root.position.x !== 0) throw new Error('the actual resident box must ride on the belt');
+          if (freight.highlight.visible) throw new Error('NPC freight must have no player ring');
+        }
+        if (previousState.get(id) === 'belt' && freight.root.userData.state === 'held') {
+          if (previousFreight.get(id) !== freight.root.uuid) throw new Error('pickup must keep the same visible parcel');
+          totals.pickups++;
+        }
+        previousState.set(id, freight.root.userData.state);
+        previousFreight.set(id, freight.root.uuid);
+        if (time < 10000) { previous.set(id, root.position.clone()); continue; }
         const x = root.position.x * 32 + 480;
         totals.samples++;
         if (x >= 318 && x <= 642) totals.platform++;
@@ -87,7 +105,8 @@ try {
   assert.equal(work.platform, work.samples, 'ordinary loading routes stay on the platform and at the rear doors');
   assert.ok(work.carrying/work.samples > 0.28, 'the crew regularly carry visible parcels');
   assert.ok(work.working/work.samples > 0.72, 'handling freight occupies most of the ordinary routine');
-  console.log('PASS 3D crew spend most of their routine handling freight on the platform');
+  assert.ok(work.belt > 50 && work.pickups >= 8, 'visible belt freight transitions into crew pickups');
+  console.log('PASS 3D crew handle visible belt parcels, pick up the same freight and carry it along their ordinary platform routine');
 
   // A synthetic camera/actor position measures the actual rendered window,
   // comparing an occluded torso with the same unobstructed reference pixels.

@@ -502,6 +502,9 @@ export class ShiftModel {
     return this.packages.find((parcel) => parcel.id === this.activeWorker.heldId) ?? null;
   }
 
+  /** Moving-belt time until the next intake, for the 3D crew's visual freight. */
+  public get nextArrivalInMs(): number { return Math.max(0, this.nextSpawnIntervalMs - this.spawnElapsedMs); }
+
   public get intakePreview(): IntakePreview | null {
     if (!this.pendingIntake || this.ended || this.elapsedMs >= this.durationMs) return null;
     const { id, route, kind, label, size, address, street } = this.pendingIntake;

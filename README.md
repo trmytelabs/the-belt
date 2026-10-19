@@ -59,7 +59,9 @@ SORT!** countdown starts the shift.
 - WASD / arrows move; Tab or right-click switches workers.
 - Space or left-click grabs, loads inside a truck, delivers at a floor drop,
   or puts a parcel down. Carry truck freight through its open rear door.
-  The parcel Space will grab has a bright halo and a GRAB prompt. Empty button
+  All packages for the selected worker have bright cyan rings, including ones
+  still travelling toward them. The parcel Space will grab also has a gold arrow
+  and a GRAB prompt. Other workers' freight stays visible without those rings. Empty button
   presses stay quiet; incorrect deliveries still sound an error and cost points.
 - Inside a truck the roof turns transparent. Face a shelf and load near where
   you stand; the actual parcels remain on the shelves. Full shelves overflow
@@ -75,7 +77,8 @@ SORT!** countdown starts the shift.
 - The briefing teaches three steps: grab, follow the destination, then load inside
   the truck. Package labels show the sorting street number in large type, with
   the full address and freight name below. A persistent guide names the destination
-  and next direction; a gold marker highlights the correct truck door or floor drop.
+  and next direction; a gold circle highlights the correct truck door or floor drop,
+  without floating action labels.
   Termite covers Mill Woods (10–49 ST), Downtown (90–109 ST) and the
   Westmount floor drop (110–129 ST). Skanky covers Bonnie Doon (50–89 ST),
   West End (130–169 ST) and the Northside floor drop (170–199 ST). Oversize
@@ -100,6 +103,8 @@ SORT!** countdown starts the shift.
   Incoming articulated semis occupy the receiving area above those rows.
 - After the morning scrum, the same crew walk to their stations. They stay
   mostly on the platform, collecting and loading parcels on short work cycles;
+  their boxes visibly ride the belt before the same box is lifted into their hands.
+  Braking holds those boxes on the tread and the crew wait for them to arrive;
   the original gags remain brief interruptions. Shan stays visible between reactions.
 - John Rushton walks both sides of the belt, crossing around its head and stopping
   for occasional sets of squats. Shan O'Mack and Vic patrol the loading lanes

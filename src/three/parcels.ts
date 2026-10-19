@@ -13,6 +13,7 @@ export interface ParcelView {
   root: THREE.Group;
   body: THREE.Group;
   tag: THREE.Sprite;
+  highlight: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial>;
   /** Animated sub-parts (lobster claws, makeup spill) keyed by role. */
   parts: Record<string, THREE.Object3D>;
   height: number;
@@ -262,7 +263,14 @@ export function createParcelView(parcel: Parcel): ParcelView {
   tag.position.y = Math.max(height * PARCEL_SCALE, size.y) + 0.38;
   tag.center.set(0.5, 0);
   root.add(tag);
-  return { root, body: group, tag, parts, height: size.y, carryDepth, carrySideDepth, width: size.x, depth: size.z, kind: parcel.kind };
+  const highlight = new THREE.Mesh(new THREE.RingGeometry(0.53, 0.64, 36), new THREE.MeshBasicMaterial({
+    color: 0x87f5ff, transparent: true, opacity: 0.85, depthTest: false, depthWrite: false, side: THREE.DoubleSide,
+  }));
+  highlight.name = 'player-parcel-highlight'; highlight.userData.solid = false;
+  highlight.rotation.x = -Math.PI / 2; highlight.position.y = 0.025;
+  highlight.scale.setScalar(Math.max(0.85, size.x, size.z));
+  highlight.renderOrder = 7; highlight.visible = false; root.add(highlight);
+  return { root, body: group, tag, highlight, parts, height: size.y, carryDepth, carrySideDepth, width: size.x, depth: size.z, kind: parcel.kind };
 }
 
 /** Carry the long edge across the hands and keep the back face ahead of the
