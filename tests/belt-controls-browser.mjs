@@ -29,17 +29,40 @@ try {
     await page.getByRole('button', { name: /START THE NIGHT/ }).click();
     await wait(() => window.fixtureApp.state === 'story');
     assert.equal(await page.evaluate(() => document.activeElement === document.querySelector('.b3d canvas')), true);
+    // A window switch during the opening pauses it. Resuming must not leave
+    // the sorting model frozen after the story and countdown have finished.
+    await page.keyboard.press('Escape');
+    await wait(() => window.fixtureApp.state === 'paused');
+    await page.keyboard.press('Enter');
+    await wait(() => window.fixtureApp.state === 'story');
+    const countdownY = await page.evaluate(() => window.fixtureApp.model.activeWorker.y);
     for (const scene of ['arrival', 'scrum']) {
       await wait(id => window.fixtureApp.state === 'story' && (id === 'arrival' || window.fixtureApp.cutscene?.scene.id === id), scene);
+      if (scene === 'scrum') await page.keyboard.down('KeyW');
       if (touch) await page.locator('[data-story="skip"]').tap();
       else await page.keyboard.press('Enter');
     }
     await wait(() => window.fixtureApp.state === 'playing');
+    assert.equal(await page.evaluate(() => window.fixtureApp.model.paused), false,
+      'resuming the opening must release the sorting model when the countdown finishes');
+    assert.equal(await page.evaluate(() => document.activeElement === document.querySelector('.b3d canvas')), true,
+      'live play receives keyboard focus after the opening');
+    await wait(start => window.fixtureApp.model.activeWorker.y < start - 8, countdownY);
+    await page.keyboard.up('KeyW');
     // No clock or position fixtures: ordinary startup must accept movement.
     const x = await page.evaluate(() => window.fixtureApp.model.activeWorker.x);
     await page.keyboard.down('KeyD');
     await wait(start => window.fixtureApp.model.activeWorker.x > start + 8, x);
     await page.keyboard.up('KeyD');
+    const y = await page.evaluate(() => window.fixtureApp.model.activeWorker.y);
+    await page.keyboard.down('ArrowDown');
+    await wait(start => window.fixtureApp.model.activeWorker.y > start + 8, y);
+    await page.keyboard.up('ArrowDown');
+    if (!touch) {
+      await wait(() => window.fixtureApp.model.nearestPackage() !== null);
+      await page.keyboard.press('Space');
+      await wait(() => window.fixtureApp.model.heldPackage !== null);
+    }
     await page.keyboard.press('Tab');
     await wait(() => window.fixtureApp.model.activeWorker.id === 'skanky');
     await page.keyboard.press('Tab');
@@ -93,7 +116,7 @@ try {
     await wait(() => window.fixtureApp.state === 'briefing');
     assert.deepEqual(await page.evaluate(() => [window.fixtureApp.model.beltStopsRemaining, window.fixtureApp.model.brakeCooldownMs]), [3, 0]);
     assert.deepEqual(errors, []);
-    console.log(`PASS ${viewport.width}px ${await page.evaluate(() => window.fixtureApp.quality)}: normal startup, focus, movement, switching, stop control, pause/resume and replay${touch ? '' : ', all three uses and real 15-second cooldowns'}`);
+    console.log(`PASS ${viewport.width}px ${await page.evaluate(() => window.fixtureApp.quality)}: paused opening into live play, held WASD through countdown, arrows, focus, switching, stop control and replay${touch ? '' : ', real Space pickup and all three stop uses with real cooldowns'}`);
     await context.close();
   }
 } finally {

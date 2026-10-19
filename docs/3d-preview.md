@@ -24,6 +24,8 @@ cooldown from each press. Stops left and cooldown time stay visible; failed
 presses and story-controlled stops spend no uses. Replay restores all three.
 Starting and resuming focus the game canvas for keyboard input. A paused game
 explicitly says to click RESUME or press ENTER.
+The countdown-to-play transition releases any pause left by resuming an opening
+scene, and restores keyboard focus, so WASD, arrows and pickup work immediately.
 
 The 3D depot is the default entry. It shows every reference in
 [reference parity](reference-parity.md), as the 2D depot does. The 2D depot is

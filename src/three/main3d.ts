@@ -783,6 +783,9 @@ export class Belt3d {
       if (this.countdownMs >= 3350) {
         this.overlay.clearCenter();
         this.state = 'playing';
+        // Resuming an opening scene keeps sorting paused until this handoff.
+        m.paused = false;
+        this.renderer.domElement.focus({ preventScroll: true });
         this.story.go('shift');
         this.overlay.showToast(`You are ${m.activeWorker.id.toUpperCase()} · ${this.touch.enabled ? 'SWITCH' : 'TAB'} changes worker · follow the package guide`, 3200);
         audioSystem.startMusic('game');
