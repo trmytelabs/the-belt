@@ -59,7 +59,7 @@ const EVENT_SOUNDS: Partial<Record<ShiftEvent['type'], SoundEffect>> = {
 const BEAT_SOUNDS: Record<NonNullable<StoryBeat['sound']>, SoundEffect> = {
   engine: 'engine', cough: 'cough', horn: 'horn', gate: 'gate', door: 'button', spill: 'splash', register: 'register', truck: 'truck', sign: 'sign',
 };
-const HOME_SOUNDS: Record<NonNullable<HomeBeat['effect']>, SoundEffect> = { phone: 'event-alert', vomit: 'splash', can: 'button' };
+const HOME_SOUNDS: Record<NonNullable<HomeBeat['effect']>, SoundEffect> = { phone: 'event-alert', vomit: 'splash', keg: 'splash' };
 const FACING_ANGLE = { right: Math.PI / 2, left: -Math.PI / 2, down: 0, up: Math.PI } as const;
 const NEW_ROUTES: readonly Route[] = ['D', 'E', 'T', 'S'];
 /** How long a broken parcel stays visible where it landed, in seconds. */

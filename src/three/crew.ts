@@ -22,7 +22,7 @@ import { CrewPatrols, type PatrolId } from './crewPatrols';
  * Times are shift milliseconds unless named otherwise.
  */
 export type Say = (id: string, copy: string, durationMs: number) => void;
-export type Pose = 'none' | 'shout' | 'crouch' | 'squat' | 'massage' | 'dance' | 'swear' | 'cough' | 'cheer' | 'announce' | 'push' | 'phone' | 'keys' | 'aim' | 'carry' | 'press' | 'handup' | 'sit' | 'shrug';
+export type Pose = 'none' | 'shout' | 'crouch' | 'squat' | 'massage' | 'dance' | 'swear' | 'cough' | 'cheer' | 'announce' | 'push' | 'phone' | 'keys' | 'aim' | 'carry' | 'press' | 'handup' | 'sit' | 'shrug' | 'wii' | 'sip';
 
 const RESIDENT_IDS = ['hussan', 'aj', 'ben', 'bannerman', 'fruitloop', 'doris', 'brian', 'donna'] as const;
 const TRUCK_DOORS: Record<string, { x: number; y: number }> = {
@@ -193,6 +193,21 @@ export function applyPose(c: Character, pose: Pose, t: number, still: boolean): 
       c.rightArm.rotation.set(-0.5, 0, -0.1);
       bendElbows(c, -0.9);
       break;
+    case 'wii':
+      // Seated play: both hands out in front, the remote hand flicking.
+      c.leftArm.rotation.set(-0.4, 0, 0.1);
+      c.rightArm.rotation.set(-0.45 + wave(5, 0.1), 0, -0.1);
+      bendElbows(c, -1.1, -1.2 + wave(7.5, 0.22));
+      break;
+    case 'sip': {
+      // Resting with a beer, lifting it to the mouth every few seconds.
+      const lift = still ? 0 : Math.max(0, Math.sin(t * 1.1)) ** 3;
+      c.rightArm.rotation.set(-0.5, 0, -0.1);
+      c.leftArm.rotation.set(-0.45 - 0.55 * lift, 0, 0.1 + 0.3 * lift);
+      bendElbows(c, -1.0 - 1.1 * lift, -0.9);
+      c.head.rotation.x = -0.25 * lift;
+      break;
+    }
     case 'shrug':
       c.leftArm.rotation.set(-0.15, 0, 0.35);
       c.rightArm.rotation.set(-0.15, 0, -0.35);

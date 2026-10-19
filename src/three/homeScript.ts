@@ -12,7 +12,7 @@ export interface HomeBeat extends StoryBeat {
   /** Moves the on-screen clock, so a night can pass inside one scene. */
   clock?: string;
   /** A 3D-only sound for this beat. */
-  effect?: 'phone' | 'vomit' | 'can';
+  effect?: 'phone' | 'vomit' | 'keg';
 }
 
 export interface HomeScene extends StoryScene {
@@ -27,7 +27,7 @@ export const HOME_DECISION: HomeScene = {
     { speaker: 'skanky', line: "I'm not feeling it tonight.", direction: 'Skanky does not get up off the couch.', ms: 2400 },
     { speaker: 'termite', line: "Shan's doing the scrum.", ms: 2000 },
     { speaker: 'skanky', line: "Shan's always doing the scrum.", ms: 2200 },
-    { speaker: 'skanky', line: 'I bought a twelve-pack. Twilight Princess is right there.', cue: 'skanky-pitch', direction: 'Skanky holds up a Wii remote.', ms: 3200 },
+    { speaker: 'skanky', line: 'I got a Warsteiner keg. And Eggies. Twilight Princess is right there.', cue: 'skanky-pitch', direction: 'Skanky holds up a Wii remote.', ms: 3400 },
     { direction: 'Termite looks at the door. Then at the Wii.', cue: 'tempted', ms: 2600 },
     { speaker: 'termite', line: 'We could just... not go.', ms: 2200 },
     { speaker: 'skanky', line: 'Ever.', cue: 'choose', ms: 1800 },
@@ -47,33 +47,35 @@ export const LEAVE_HOUSE: HomeScene = {
 export const QUIT_NIGHT: HomeScene = {
   id: 'quit-night', title: 'WE QUIT', location: 'house', clock: '12:40 AM',
   beats: [
-    { direction: 'Skanky cracks two cans. Termite drops onto the couch and grabs the other Wii remote.', cue: 'crack', effect: 'can', caption: '[CANS CRACK OPEN]', ms: 3000 },
+    { direction: 'Skanky pours two beers from the keg. Termite drops onto the couch and grabs the other Wii remote.', cue: 'pour', effect: 'keg', caption: '[KEG TAP HISSES]', ms: 3000 },
     { speaker: 'skanky', line: 'To not working at UPS.', ms: 2200 },
-    { direction: 'Twilight Princess loads up on the TV. The twelve-pack starts to empty.', cue: 'play', ms: 3000 },
+    { direction: "Twilight Princess loads up on the TV. Termite tears open the Hershey's Eggies.", cue: 'play', ms: 3000 },
     { speaker: 'termite', line: 'How do you get out of the wolf?', clock: '2:10 AM', ms: 2400 },
     { speaker: 'skanky', line: 'You stay the wolf. The wolf is good.', ms: 2400 },
-    { direction: 'More cans. Another dungeon.', cue: 'drink', clock: '3:45 AM', ms: 2600 },
+    { direction: 'Skanky swaps the Wii for Heavy Metal. Back to the keg.', cue: 'movie', clock: '3:15 AM', ms: 3000 },
+    { speaker: 'termite', line: 'Is this a kids movie?', ms: 2000 },
+    { speaker: 'skanky', line: 'Absolutely not.', cue: 'round', clock: '3:50 AM', ms: 2000 },
     { speaker: 'skanky', line: "I don't feel good.", cue: 'woozy', clock: '4:30 AM', ms: 2200 },
     { direction: 'Skanky leans over the side of the couch and throws up.', cue: 'vomit', effect: 'vomit', caption: '[RETCHING]', ms: 2800 },
     { speaker: 'termite', line: 'Not on the Wii.', ms: 1900 },
-    { direction: 'The sun comes up. They are both asleep on the couch.', cue: 'morning', clock: '8:15 AM', ms: 3200 },
+    { direction: 'The sun comes up. Nobody has slept. The keg is nearly empty.', cue: 'morning', clock: '8:15 AM', ms: 3200 },
     { direction: "Termite's phone rings. The screen says SHAN O'MAC.", cue: 'ring', effect: 'phone', caption: '[PHONE RINGING]', ms: 3000 },
     { direction: 'Termite answers. Shan is already yelling.', cue: 'answer', ms: 2400 },
     { speaker: 'termite', line: 'We no longer work for UPS.', cue: 'quit-line', ms: 2600 },
-    { direction: 'Termite hangs up and goes back to sleep.', cue: 'hang-up', ms: 2600 },
+    { direction: 'Termite hangs up and takes another sip.', cue: 'hang-up', ms: 2600 },
   ],
 };
 
 export const DECISION = {
   kicker: 'TERMITE & SKANKY · 12:24 AM',
   title: 'GO IN, OR QUIT UPS?',
-  body: 'The shift starts at one. Skanky has a twelve-pack and Twilight Princess. Termite has the car keys.',
+  body: "The shift starts at one. Skanky has a Warsteiner keg, Hershey's Eggies and Twilight Princess. Termite has the car keys.",
   go: 'GO IN',
   quit: 'QUIT UPS',
 } as const;
 
 export const QUIT_ENDING = {
-  kicker: 'ENDING · THE WII NIGHT',
+  kicker: 'ENDING · THE KEG NIGHT',
   title: 'WE NO LONGER WORK FOR UPS.',
-  body: 'Termite and Skanky never made it to the belt. No scrum, no sort, no mall run. One very long game of Zelda.',
+  body: 'Termite and Skanky never made it to the belt. No scrum, no sort, no mall run. Just Zelda, Heavy Metal, Eggies and a Warsteiner keg until sunrise.',
 } as const;

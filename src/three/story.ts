@@ -13,7 +13,7 @@ import { buildSouthgateMall, mallX, mallZ, type SouthgateMall } from './mall';
 import { mergeStatic } from './merge';
 import { disposeObject3D } from './resources';
 import { physicalBounds } from './collision3d';
-import { actorSurfaceAt, setFromModel, shadowed, standard, textPlane, textSprite, toWorld } from './space';
+import { actorSurfaceAt, setFromModel, shadowed, standard, textPlane, textSprite, textTexture, toWorld } from './space';
 import { RESIDENT_SPECS, SKANKY_SPEC, SKIN, TERMITE_SPEC, VISITORS, createTruck } from './world';
 import { DEPOT_3D_LAYOUT as DEPOT } from './layout';
 
@@ -699,6 +699,13 @@ export class StoryStage {
     wall(1.2, 0.5, -4, 2.9, 1.0, 0.16); wall(1.2, 2.65, -4, 2.9, 0.3, 0.16);
     wall(-5, 1.4, 0, 0.16, 2.8, 8.16);
     wall(5, 1.4, -1.8, 0.16, 2.8, 4.4); wall(5, 1.4, 3.0, 0.16, 2.8, 2.0); wall(5, 2.45, 1.4, 0.16, 0.7, 1.2);
+    // The ceiling faces down only, so the roof still shows from outside.
+    const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(10.16, 16), standard(0xd9d3c2, 0.9));
+    ceiling.rotation.x = Math.PI / 2;
+    ceiling.position.set(0, 2.8, 3.9);
+    const fixture = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.32, 0.08, 18), new THREE.MeshStandardMaterial({ color: 0xf4ecd8, emissive: 0xffe2b0, emissiveIntensity: 0.5 }));
+    fixture.position.set(0, 2.76, 0);
+    scene.add(ceiling, fixture);
     const frontWall = new THREE.Mesh(new THREE.BoxGeometry(10.16, 2.8, 0.16), standard(0x5d6a72, 0.9));
     frontWall.position.set(0, 1.4, 4);
     const frontWindow = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 1.1), new THREE.MeshStandardMaterial({ color: 0x40301c, emissive: 0xffc27a, emissiveIntensity: 0.9 }));
@@ -746,6 +753,7 @@ export class StoryStage {
     screen.rotation.y = Math.PI / 2;
     screen.userData.menu = screen.material.map;
     screen.userData.game = this.tvTexture('game');
+    screen.userData.movie = this.tvTexture('movie');
     scene.add(screen);
     props.tvScreen = screen;
     const wii = rounded(0.21, 0.05, 0.16, standard(0xf2f2ee, 0.3), 0.012);
@@ -776,30 +784,86 @@ export class StoryStage {
       leg.position.set(x, 0.19, z);
       scene.add(leg);
     }
-    // The twelve-pack, and the cans as they empty over the night.
-    const pack = rounded(0.4, 0.13, 0.28, standard(0x2a62b0, 0.6), 0.01);
-    pack.position.set(-1.55, 0.5, -0.25);
-    scene.add(pack);
-    props.twelvePack = pack;
-    const cans = new THREE.Group();
-    const canSpots: [number, number, number][] = [
-      [-1.4, 0.49, 0.2], [-1.7, 0.49, 0.3], [-1.35, 0.49, 0.45], [-1.75, 0.49, 0.05], [-1.5, 0.49, 0.35],
-      [-0.9, 0.035, 1.6], [-1.3, 0.49, -0.45], [-0.7, 0.035, -1.5], [-1.8, 0.49, -0.45], [0.0, 0.035, 1.9],
-      [-1.0, 0.035, -1.8], [-0.4, 0.035, 1.4],
-    ];
-    for (const [i, [x, y, z]] of canSpots.entries()) {
-      const can = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.12, 10), standard(i % 3 === 0 ? 0xc8ccd2 : 0x2a62b0, 0.35, 0.6));
-      can.position.set(x, y, z);
-      // Empties on the floor lie on their sides.
-      if (y < 0.1) can.rotation.set(Math.PI / 2, 0, i * 1.3);
-      can.visible = false;
-      cans.add(can);
+    // Skanky's Warsteiner keg behind the couch, with its tap.
+    const keg = new THREE.Group();
+    const steel = standard(0xb8bec4, 0.28, 0.85);
+    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.21, 0.21, 0.58, 24), steel);
+    barrel.position.y = 0.31;
+    keg.add(barrel);
+    for (const y of [0.04, 0.22, 0.4, 0.58]) {
+      const rib = new THREE.Mesh(new THREE.TorusGeometry(0.212, 0.014, 6, 24), steel);
+      rib.rotation.x = Math.PI / 2;
+      rib.position.y = y;
+      keg.add(rib);
     }
-    scene.add(cans);
-    props.cans = cans;
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.214, 0.214, 0.12, 24, 1, true), new THREE.MeshStandardMaterial({
+      map: textTexture(['WARSTEINER'], { width: 512, height: 64, background: '#1d4a2e', color: '#f2e6c4' }), roughness: 0.6 }));
+    band.position.y = 0.31;
+    const coupler = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.08, 12), standard(0x2a2c2e, 0.4, 0.6));
+    coupler.position.y = 0.64;
+    const hose = new THREE.Mesh(new THREE.TorusGeometry(0.16, 0.012, 6, 16, Math.PI), standard(0x1a1a1a, 0.6));
+    hose.position.set(0.16, 0.64, 0);
+    const tap = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.14, 0.05), standard(0x1a1a1a, 0.5));
+    tap.position.set(0.32, 0.6, 0);
+    keg.add(band, coupler, hose, tap);
+    keg.position.set(-0.5, 0, -2.1);
+    scene.add(shadowed(keg));
+    // A bag of Hershey's Eggies on the table; the eggs spill out once it's open.
+    const eggies = new THREE.Group();
+    const bag = rounded(0.2, 0.26, 0.06, standard(0xe9c64a, 0.6), 0.02);
+    bag.position.y = 0.13;
+    const label = textPlane(["HERSHEY'S", 'EGGIES'], 0.18, 0.12, { width: 180, height: 120, background: '#5a3420', color: '#fbe7a8' });
+    label.position.set(0, 0.15, 0.031);
+    eggies.add(bag, label);
+    eggies.position.set(-1.62, 0.43, -0.28);
+    eggies.rotation.set(-0.35, 0.5, 0);
+    scene.add(eggies);
+    const eggs = new THREE.Group();
+    const pastel = [0xf4b8c8, 0xb8d8f4, 0xf4e6a0, 0xc8f0c0, 0xe0c8f4];
+    for (let i = 0; i < 14; i += 1) {
+      const egg = new THREE.Mesh(new THREE.SphereGeometry(0.018, 10, 8), standard(pastel[i % pastel.length], 0.35));
+      egg.scale.set(1, 0.8, 1.3);
+      egg.position.set(-1.45 + Math.sin(i * 2.3) * 0.14, 0.445, -0.2 + Math.cos(i * 1.7) * 0.16);
+      egg.rotation.y = i;
+      eggs.add(egg);
+    }
+    eggs.visible = false;
+    scene.add(eggs);
+    props.eggs = eggs;
+    // Empty plastic cups pile up on the table and floor through the night.
+    const cupMaterial = standard(0xc8282a, 0.5);
+    const cupGeometry = new THREE.CylinderGeometry(0.045, 0.032, 0.12, 12, 1, true);
+    const cups = new THREE.Group();
+    const cupSpots: [number, number, number][] = [
+      [-1.4, 0.49, 0.2], [-1.7, 0.49, 0.3], [-1.35, 0.49, 0.45], [-1.75, 0.49, 0.05], [-1.5, 0.49, 0.35],
+      [-0.9, 0.045, 1.6], [-1.3, 0.49, -0.45], [-0.7, 0.045, -1.5], [-1.8, 0.49, -0.45], [0.0, 0.045, 1.9],
+      [-1.0, 0.045, -1.8], [-0.4, 0.045, 1.4],
+    ];
+    for (const [i, [x, y, z]] of cupSpots.entries()) {
+      const cup = new THREE.Mesh(cupGeometry, cupMaterial);
+      cup.position.set(x, y, z);
+      // Empties on the floor lie on their sides.
+      if (y < 0.1) cup.rotation.set(Math.PI / 2, 0, i * 1.3);
+      cup.visible = false;
+      cups.add(cup);
+    }
+    scene.add(cups);
+    props.cups = cups;
+    // The full cups they drink from, carried in the left hand.
+    for (const id of ['termite', 'skanky']) {
+      const cup = new THREE.Group();
+      const shell = new THREE.Mesh(cupGeometry, cupMaterial);
+      const beer = new THREE.Mesh(new THREE.CircleGeometry(0.04, 12), standard(0xe8b040, 0.3));
+      beer.rotation.x = -Math.PI / 2;
+      beer.position.y = 0.045;
+      cup.add(shell, beer);
+      cup.visible = false;
+      scene.add(cup);
+      props[`cup-${id}`] = cup;
+    }
     // Wii remotes, Termite's phone and the mess.
     for (const id of ['termite', 'skanky']) {
-      const remote = rounded(0.04, 0.03, 0.15, standard(0xf2f2ee, 0.3), 0.01);
+      const remote = rounded(0.04, 0.15, 0.03, standard(0xf2f2ee, 0.3), 0.01);
       scene.add(remote);
       props[`remote-${id}`] = remote;
     }
@@ -812,12 +876,6 @@ export class StoryStage {
     puddle.visible = false;
     scene.add(puddle);
     props.puddle = puddle;
-    for (const id of ['termite', 'skanky']) {
-      const sleep = textSprite(['zZz'], 0.3, { width: 70, height: 34, color: '#d8e2d0' });
-      sleep.visible = false;
-      scene.add(sleep);
-      props[`sleep-${id}`] = sleep;
-    }
     const car = createCar(0x8f3f34);
     this.placeCar(car, 9.2, 0.6, -Math.PI / 2);
     scene.add(car);
@@ -837,8 +895,8 @@ export class StoryStage {
     this.cast(stage, ['termite', 'skanky']);
   }
 
-  /** The TV picture: the Wii menu, or a twilit field with a little hero in green. */
-  private tvTexture(kind: 'menu' | 'game'): THREE.CanvasTexture {
+  /** The TV picture: the Wii menu, a twilit field with a little hero in green, or the movie. */
+  private tvTexture(kind: 'menu' | 'game' | 'movie'): THREE.CanvasTexture {
     const canvas = document.createElement('canvas');
     canvas.width = 256;
     canvas.height = 144;
@@ -851,6 +909,23 @@ export class StoryStage {
       }
       ctx.fillStyle = '#5a6a7a'; ctx.font = 'bold 14px sans-serif'; ctx.textAlign = 'center';
       ctx.fillText('12:20', 128, 136);
+    } else if (kind === 'movie') {
+      // An animated sci-fi movie: a glowing green orb over a red desert, a rider on a winged beast.
+      const sky = ctx.createLinearGradient(0, 0, 0, 110);
+      sky.addColorStop(0, '#0a0418'); sky.addColorStop(1, '#5a1830');
+      ctx.fillStyle = sky; ctx.fillRect(0, 0, 256, 144);
+      const glow = ctx.createRadialGradient(190, 40, 4, 190, 40, 34);
+      glow.addColorStop(0, '#eaffd0'); glow.addColorStop(0.35, '#6af04a'); glow.addColorStop(1, 'rgba(60,200,40,0)');
+      ctx.fillStyle = glow; ctx.fillRect(150, 0, 90, 90);
+      ctx.fillStyle = '#a8402a';
+      ctx.beginPath(); ctx.moveTo(0, 112); ctx.lineTo(40, 96); ctx.lineTo(70, 98); ctx.lineTo(80, 84); ctx.lineTo(120, 84); ctx.lineTo(130, 100);
+      ctx.lineTo(256, 104); ctx.lineTo(256, 144); ctx.lineTo(0, 144); ctx.fill();
+      ctx.fillStyle = '#120a10';
+      ctx.beginPath(); ctx.moveTo(60, 60); ctx.quadraticCurveTo(80, 40, 104, 58); ctx.quadraticCurveTo(84, 54, 82, 66);
+      ctx.quadraticCurveTo(78, 52, 60, 60); ctx.fill();
+      ctx.fillRect(80, 54, 3, 8);
+      ctx.fillStyle = '#e8e8f0'; ctx.font = 'bold 20px serif'; ctx.textAlign = 'center';
+      ctx.fillText('HEAVY METAL', 128, 134);
     } else {
       const sky = ctx.createLinearGradient(0, 0, 0, 100);
       sky.addColorStop(0, '#2a1840'); sky.addColorStop(0.6, '#d0703a'); sky.addColorStop(1, '#f0b060');
@@ -1336,6 +1411,12 @@ export class StoryStage {
       actor.at(x, z);
       actor.faceAngle = face;
     };
+    // Hand-held props ride the hand pivots, which also drive the imported models' hands.
+    const put = (prop: THREE.Object3D, parent: THREE.Object3D, x: number, y: number, z: number, rx = 0, ry = 0, rz = 0): void => {
+      if (prop.parent !== parent) parent.add(prop);
+      prop.position.set(x, y, z);
+      prop.rotation.set(rx, ry, rz);
+    };
     const car = props.homeCar;
     this.placeCar(car, 9.2, 0.6, -Math.PI / 2);
     const headlights = (on: boolean): void => {
@@ -1343,18 +1424,19 @@ export class StoryStage {
     };
     headlights(false);
     let outside = false;
-    let cansOpen = 0;
+    let emptyCups = 0;
     let morning = 0;
-    let screen: 'menu' | 'game' = 'menu';
+    let screen: 'menu' | 'game' | 'movie' = 'menu';
     let onPhone = false;
+    // Who is playing Zelda with a remote, and who has a beer in hand.
+    let gaming = id === 'home-decision' ? new Set(['skanky']) : new Set<string>();
+    let drinking = new Set<string>();
     props.puddle.visible = false;
-    props.twelvePack.visible = true;
+    props.eggs.visible = false;
     props.door.rotation.y = 0;
-    props['sleep-termite'].visible = props['sleep-skanky'].visible = false;
     const phone = props.phone as THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
     phone.material.emissiveIntensity = 0;
-    phone.position.set(-1.45, 0.435, 0.05);
-    phone.rotation.set(0, 0.3, 0);
+    put(phone, stage.scene, -1.45, 0.435, 0.05, 0, 0.3);
 
     if (id === 'home-decision') {
       sit(skanky, -0.55);
@@ -1387,80 +1469,76 @@ export class StoryStage {
           stand(skanky, out > 0 ? path.x : mix(0.45, -0.4, up), out > 0 ? path.z : -0.55, out <= 0 ? -Math.PI / 2 : out >= 1 ? Math.PI / 2 : null);
           skanky.setPose(cueProgress(cutscene, 'keys') > 0 ? 'keys' : 'none', time);
         }
+        if (up <= 0) gaming = new Set(['skanky']);
         const path = alongPath([[2.6, 1.4], [4.4, 1.4], [5.0, 1.4], [6.6, 1.6], [10.0, 2.8], [10.0, 0.6]], Math.max(0, (out - 0.1) / 0.9));
         stand(termite, path.x, path.z, out <= 0 || out >= 1 ? -Math.PI / 2 : null);
         termite.setPose('none', time);
       }
     } else {
-      const crack = cueProgress(cutscene, 'crack');
+      const pour = cueProgress(cutscene, 'pour');
+      const play = cueProgress(cutscene, 'play');
+      const movie = cueProgress(cutscene, 'movie');
+      const woozy = cueProgress(cutscene, 'woozy');
       const vomit = cueProgress(cutscene, 'vomit');
       const ring = cueProgress(cutscene, 'ring');
       const answer = cueProgress(cutscene, 'answer');
       const hangUp = cueProgress(cutscene, 'hang-up');
       morning = ease(cueProgress(cutscene, 'morning'));
-      screen = cueProgress(cutscene, 'play') > 0 ? 'game' : 'menu';
-      cansOpen = Math.min(12, Math.round(2 * crack + 2 * cueProgress(cutscene, 'play') + 5 * cueProgress(cutscene, 'drink')
-        + 2 * cueProgress(cutscene, 'woozy') + vomit));
-      props.twelvePack.visible = cansOpen < 12;
+      screen = movie > 0 ? 'movie' : play > 0 ? 'game' : 'menu';
+      props.eggs.visible = play > 0;
+      emptyCups = Math.min(12, Math.round(2 * play + 3 * movie + 2 * cueProgress(cutscene, 'round') + 2 * woozy + vomit + 2 * morning));
       sit(skanky, -0.55);
       // Termite comes over from the door and takes the other end of the couch.
-      if (crack < 0.5) {
-        const walk = alongPath([[2.6, 1.4], [-0.4, 1.7], [-0.4, 0.55]], ease(crack * 2));
+      const seated = pour >= 0.5;
+      if (!seated) {
+        const walk = alongPath([[2.6, 1.4], [-0.4, 1.7], [-0.4, 0.55]], ease(pour * 2));
         stand(termite, walk.x, walk.z, null);
       } else sit(termite, 0.55);
       onPhone = answer > 0 && hangUp < 0.4;
-      termite.setPose(crack < 0.5 ? 'none' : onPhone ? 'phone' : morning > 0 ? 'sit' : 'press', time);
+      // Zelda until Heavy Metal goes on; after that, just the beer.
+      const zelda = movie <= 0;
+      termite.setPose(!seated ? 'none' : onPhone ? 'phone' : zelda ? 'wii' : 'sip', time);
       const sick = vomit > 0 && vomit < 1;
       // Skanky turns to the side of the couch to be sick.
       skanky.faceAngle = sick ? Math.PI : -Math.PI / 2;
-      skanky.setPose(sick || cueProgress(cutscene, 'woozy') > 0 && vomit <= 0 ? 'cough' : morning > 0 ? 'sit' : 'press', time);
+      const queasy = sick || woozy > 0 && vomit <= 0;
+      skanky.setPose(queasy ? 'cough' : zelda ? 'wii' : 'sip', time);
       if (sick && vomit < 0.7 && Math.random() < 0.7) {
         stage.puffs.emit(new THREE.Vector3(0.4, 0.9, -1.2), { color: 0xa8a838, size: 0.07, life: 0.6, velocity: new THREE.Vector3((Math.random() - 0.5) * 0.3, -1.3, -0.5), opacity: 0.95, grow: 1.4 });
       }
       props.puddle.visible = vomit > 0.25;
       props.puddle.scale.setScalar(Math.min(1, 0.2 + (vomit - 0.25) * 1.6));
-      // Asleep from sunrise; Termite wakes for the call and nods off again after.
-      const termiteAsleep = morning > 0.4 && ring <= 0 || hangUp >= 0.4;
-      for (const [who, actor, asleep] of [['termite', termite, termiteAsleep], ['skanky', skanky, morning > 0.4]] as const) {
-        const sleep = props[`sleep-${who}`];
-        sleep.visible = asleep;
-        sleep.position.copy(actor.root.position).add(new THREE.Vector3(0, 1.55 + Math.sin(time * 2 + (who === 'skanky' ? 1 : 0)) * 0.06, 0));
-      }
+      gaming = new Set(zelda ? ['skanky', ...(seated ? ['termite'] : [])] : []);
+      drinking = new Set([...(queasy ? [] : ['skanky']), ...(seated ? ['termite'] : [])]);
       // The phone buzzes on the table, then goes to Termite's ear.
       const ringing = ring > 0 && answer <= 0;
       phone.material.emissiveIntensity = ringing ? (Math.sin(time * 14) > 0 ? 2.4 : 0.6) : onPhone ? 1.2 : 0;
       if (onPhone) {
-        phone.position.copy(termite.root.position).add(new THREE.Vector3(0.05, 1.25, -0.14));
-        phone.rotation.set(Math.PI / 2, 0, 0);
+        put(phone, termite.character.rightHand, 0, -0.07, 0.03, Math.PI / 2);
       } else if (ringing) {
         phone.position.x += Math.sin(time * 60) * 0.008;
         phone.rotation.y = Math.sin(time * 45) * 0.08;
       }
     }
-    for (const [i, can] of props.cans.children.entries()) can.visible = i < cansOpen;
-    // Remotes sit in their hands while they play; otherwise on the table or the floor.
+    for (const [i, cup] of props.cups.children.entries()) cup.visible = i < emptyCups;
     for (const [who, actor] of [['termite', termite], ['skanky', skanky]] as const) {
+      // Remotes in the right hand while they play; otherwise on the couch, table or floor.
       const remote = props[`remote-${who}`];
-      const held = actor.seatedIn === couch && morning <= 0 && (who === 'skanky' || id === 'quit-night');
-      if (held) {
-        const face = actor.root.rotation.y;
-        const lift = actor.pose === 'handup' ? 1.65 : actor.pose === 'press' ? 0.95 : 0.62;
-        remote.position.copy(actor.root.position).add(new THREE.Vector3(Math.sin(face) * 0.4, lift, Math.cos(face) * 0.4));
-        remote.rotation.set(0, face, 0);
-      } else if (who === 'skanky' && morning > 0) {
-        remote.position.set(-0.6, 0.02, -0.9); remote.rotation.set(0, 1.2, 0);
-      } else if (who === 'skanky') {
-        remote.position.set(0.5, 0.45, -0.1); remote.rotation.set(0, 0.6, 0);
-      } else {
-        remote.position.set(-1.5, 0.45, 0.32); remote.rotation.set(0, 0.2, 0);
-      }
+      if (gaming.has(who)) put(remote, actor.character.rightHand, 0, -0.07, 0.03);
+      else if (who === 'skanky' && id === 'quit-night') put(remote, stage.scene, 0.5, 0.44, -0.05, Math.PI / 2, 0, 0.4);
+      else if (who === 'skanky') put(remote, stage.scene, 0.5, 0.44, -0.1, Math.PI / 2, 0, 0.6);
+      else put(remote, stage.scene, -1.5, 0.445, 0.32, Math.PI / 2, 0, 0.2);
+      // A beer in the left hand, kept upright as the arm moves.
+      const cup = props[`cup-${who}`];
+      cup.visible = drinking.has(who);
+      if (cup.visible) actor.character.leftHand.getWorldPosition(cup.position).add(new THREE.Vector3(0, -0.08, 0));
     }
     // Lamp and TV at night; the sun through the back window in the morning.
     const lights = this.houseLights!;
     const tv = props.tvScreen as THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
     tv.material.map = tv.userData[screen] as THREE.Texture;
-    lights.tvGlow.color.set(screen === 'game' ? 0xf0a060 : 0x9fc0ff);
-    lights.tvGlow.intensity = (screen === 'game' ? 6 + Math.sin(time * 7) * 1.2 : 4) * (1 - morning * 0.5);
+    lights.tvGlow.color.set(screen === 'game' ? 0xf0a060 : screen === 'movie' ? 0x8af06a : 0x9fc0ff);
+    lights.tvGlow.intensity = (screen === 'menu' ? 4 : 6 + Math.sin(time * 7) * 1.2) * (1 - morning * 0.5);
     lights.lamp.intensity = 9 * (1 - morning);
     lights.sun.intensity = morning * 2.2;
     const window = props.backWindow as THREE.Mesh<THREE.PlaneGeometry, THREE.MeshStandardMaterial>;
@@ -1476,10 +1554,8 @@ export class StoryStage {
     this.houseCloseUp = closeUp;
     if (outside) this.cameraTo(new THREE.Vector3(15.5, 4.2, 10.5), new THREE.Vector3(7.2, 1.0, 0.6), this.frameDt, snap);
     // From the TV side for the long night and the call, so both faces show.
-    else if (closeUp) {
-      this.cameraTo(new THREE.Vector3(-2.7, 1.9, 2.7), new THREE.Vector3(0.45, 0.9, -0.3), this.frameDt, snap);
-    }
-    else this.cameraTo(new THREE.Vector3(0.3, 3.6, 9.5), new THREE.Vector3(-0.6, 0.9, -0.3), this.frameDt, snap);
+    else if (closeUp) this.cameraTo(new THREE.Vector3(-2.7, 1.9, 2.7), new THREE.Vector3(0.45, 0.9, -0.3), this.frameDt, snap);
+    else this.cameraTo(new THREE.Vector3(0.3, 2.35, 9.5), new THREE.Vector3(-0.6, 0.9, -0.3), this.frameDt, snap);
   }
 
   // ------------------------------------------------------------------ mall and lot gameplay

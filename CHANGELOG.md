@@ -3,8 +3,9 @@
 ## 0.1.0 — development snapshot
 
 - Open the 3D night at Termite and Skanky's place. They choose to go in or quit
-  UPS. Quitting plays a night of beer and Twilight Princess on the Wii, Skanky
-  being sick and Shan's morning call, which Termite ends with "We no longer work
+  UPS. Quitting plays an all-nighter with a Warsteiner keg, Hershey's Eggies,
+  Twilight Princess on the Wii and Heavy Metal, Skanky being sick and Shan's
+  morning call, which Termite ends with "We no longer work
   for UPS." Going in walks them out to Skanky's car for a playable drive from
   home to the UPS yard, followed by the original arrival scenes. The 2D depot and
   classic game keep their original openings.
