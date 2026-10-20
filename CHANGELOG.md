@@ -2,6 +2,22 @@
 
 ## 0.1.0 — development snapshot
 
+- Make the 3D night's models more realistic. The twelve depot trucks are
+  rebuilt as cab-over box trucks: riveted aluminium-white boxes with rub and
+  cap rails, livery bands and cabs in each crew member's colour (Paula Abdul's
+  stays purple), fleet-brown cabs on the player's four, raked windshields,
+  door seams, mirrors, roof and side markers, grilles, chrome bumpers, dual
+  rear wheels, fuel tanks, battery boxes and mud flaps. Twelve more Poly Haven
+  CC0 models join on GPU renderers: a photographed cardboard box stands in for
+  the plain parcels, the bulk stock, Ralph's load, the receiving cargo and the
+  unloaders' crates; metal racks join the depot's front corners; the UPS lot
+  gets a real chain-link fence (with its gate) and lamp posts; the living room
+  a leather sofa, armchair, coffee table, bookcase and wall clock; Tim Hortons
+  a wall clock. A half-resolution screen-space ambient-occlusion pass, fed by
+  the main render's own depth so it draws the scene no second time, grounds
+  the scene without letting tags, rings or snow cast false shadows. The
+  converter keeps alpha cut-outs as PNG; software renderers keep every
+  code-built stand-in and download nothing.
 - Polish the 3D depot's motion, camera and feedback. Walking leans and sways
   the torso; a heavy box leans the carrier back and lowers the arms; grabbing,
   loading and putting down dip the knees and a throw swings the arms; Termite

@@ -9,6 +9,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 
+import { DepotAmbientOcclusion } from './ambientOcclusion';
 import { MESA } from './references';
 import { clearDepotFootprint, DEPOT_BODY_RADIUS, DEPOT_CARRY_RADIUS, depotSolidFootprints, type FootprintCircle } from '../game/slice/DepotClearance';
 import { KeyReturnModel, MALL_RULES, type MallEvent } from '../game/slice/MallModel';
@@ -37,7 +38,7 @@ import { DrivingView } from './driving';
 import { BELT_SOLID_WIDTH, HEAD_DRIVE, clearReceiving } from './receivingCollision';
 import { TouchControls } from './touch';
 import { Overlay } from './overlay';
-import { alignParcelToSurface, createParcelView, setParcelCarried, type ParcelView } from './parcels';
+import { alignParcelToSurface, createParcelView, setParcelCarried, setParcelModels, type ParcelView } from './parcels';
 import { disposeObject3D } from './resources';
 import { loadSurfaces } from './textures';
 import {
@@ -111,6 +112,7 @@ export class Belt3d {
   private readonly renderer: THREE.WebGLRenderer;
   private readonly composer: EffectComposer | null;
   private readonly renderPass: RenderPass | null;
+  private readonly gtao: DepotAmbientOcclusion | null;
   private readonly camera = new THREE.PerspectiveCamera(38, 1, 0.1, 140);
   private readonly cameraTarget = new THREE.Vector3();
   private readonly workers: Record<WorkerId, Character>;
@@ -190,8 +192,9 @@ export class Belt3d {
     const rendererName = debug ? String(gl.getParameter(debug.UNMASKED_RENDERER_WEBGL)) : '';
     this.quality = /swiftshader|llvmpipe|software|basic render/i.test(rendererName) ? 'low' : 'high';
     this.renderer.setPixelRatio(this.quality === 'high' ? Math.min(window.devicePixelRatio, 2) : 0.6);
-    // Software renderers keep the lighter procedural people and download no models.
+    // Software renderers keep the lighter procedural people and cartons and download no models.
     if (this.quality === 'low') void useCharacterModels([]);
+    setParcelModels(this.quality === 'high');
     this.renderer.shadowMap.enabled = this.quality === 'high';
     this.renderer.shadowMap.type = this.quality === 'high' ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -211,15 +214,24 @@ export class Belt3d {
     this.stage = new StoryStage(this.quality);
 
     if (this.quality === 'high') {
-      const target = new THREE.WebGLRenderTarget(1, 1, { samples: 4, type: THREE.HalfFloatType });
+      // The scene's depth is kept for the ambient-occlusion pass, which reads it instead of drawing the scene again.
+      const depthTexture = DepotAmbientOcclusion.depthTexture();
+      const target = new THREE.WebGLRenderTarget(1, 1, { samples: 4, type: THREE.HalfFloatType, depthTexture });
       this.composer = new EffectComposer(this.renderer, target);
       this.renderPass = new RenderPass(this.world.scene, this.camera);
       this.composer.addPass(this.renderPass);
+      // Ambient occlusion: contact shading under trucks, freight, shelves and
+      // people, which the merged, flat-lit geometry otherwise lacks.
+      // The composer clones its target, and the render pass draws into the clone (its read buffer), so the pass reads that clone's depth.
+      const sceneDepth = this.composer.readBuffer.depthTexture ?? depthTexture;
+      this.gtao = new DepotAmbientOcclusion(this.world.scene, this.camera, sceneDepth);
+      this.composer.addPass(this.gtao);
       this.composer.addPass(new UnrealBloomPass(new THREE.Vector2(1, 1), 0.55, 0.5, 0.96));
       this.composer.addPass(new OutputPass());
     } else {
       this.composer = null;
       this.renderPass = null;
+      this.gtao = null;
     }
 
     this.workers = { termite: createCharacter(TERMITE_SPEC), skanky: createCharacter(SKANKY_SPEC) };
@@ -1087,6 +1099,7 @@ export class Belt3d {
     else if (this.composer && this.renderPass) {
       this.renderPass.scene = scene;
       this.renderPass.camera = camera;
+      if (this.gtao) { this.gtao.scene = scene; this.gtao.camera = camera; }
       this.composer.render();
     } else this.renderer.render(scene, camera);
     this.renderCost = performance.now() - now;

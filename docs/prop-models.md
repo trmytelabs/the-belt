@@ -29,16 +29,28 @@ as before and, on GPU renderers, calls `placeProp(slot, id, { fallback })`:
 | Donna's husband | wooden desk and chair seat | `office-desk`, `school-chair` (the Warcraft monitor stays code-built) |
 | Mesa dream | Skanky's stool, the desk under BUILT THE BELT | `metal-stool`, `office-desk` |
 | Mall bench pod | none (new) | `trash-can` between the benches |
-| Depot front corners | none (new) | storage cart, tool chest, five barrels, a wet-floor sign, two fire extinguishers, a hand truck, a bin |
+| Depot front corners | none (new) | storage cart, tool chest, five barrels, a wet-floor sign, two fire extinguishers, two metal racks, a hand truck, a bin |
+| Depot cartons | code-built boxes on the bulk pallet (12), Ralph's flatbed (5), in the receiving trailers (12) and in the unloaders' hands (2) | `cardboard-box`, scaled to each box's size |
+| Plain parcels | the carton under every untinted `smallbox`, `standard` and `bigbox` parcel | `cardboard-box` at the parcel's size (`setParcelModels`); tinted cartons and named freight stay code-built |
+| UPS lot (arrivals, key return) | a drawn chain-link run and poles, the sliding gate's mesh, three lamp poles | `chainlink-panel` × 12 and `chainlink-post` × 13 per run, three panels inside the gate frame, `street-lamp` × 3 |
+| Living room | the drawn couch, coffee table, bookcase, armchair and clock | `sofa`, `coffee-table`, `bookshelf`, `armchair`, `wall-clock` |
+| Tim Hortons | none (new) | `wall-clock` over the counter |
 
 The depot dressing is listed in `src/three/depotDressing.ts`. It stands in the
 two corners by the receiving wall, beside the raised platform, where no crew
 route, visitor or truck goes. The mall bin stands inside the bench pod's
-obstacle rectangle, which the cart and Skanky cannot enter.
+obstacle rectangle, which the cart and Skanky cannot enter. The depot's carton
+count (`DEPOT_CARTON_MODELS`, in the same file) is what the browser check
+expects a GPU-quality depot to place.
 
-Trucks, pallets, the belt, the conveyors and parcels stay code-built: Poly
-Haven has no suitable trucks, pallets or conveyors, and the belt and parcels
-are aligned with gameplay. See [Truck options](#truck-options) below.
+Trucks, pallets, the belt and the conveyors stay code-built: Poly Haven has no
+suitable trucks, pallets or conveyors, and the belt is aligned with gameplay.
+The code-built trucks are cab-over box trucks with aluminium-white riveted
+boxes, livery bands and cabs in each crew member's colour (Paula Abdul's stays
+purple all over), fleet-brown cabs on the four player trucks, raked
+windshields, mirrors, roof markers, grilles, chrome bumpers, dual rear wheels,
+fuel tanks and mud flaps. See [Truck options](#truck-options) below for
+bought or CC BY models.
 
 Before and after, rendered on a GPU from the same camera with the code-built
 stand-ins or the models shown: `docs/images/prop-models/` (front-west and
@@ -66,18 +78,35 @@ required, credit given here anyway). The conversion source is each asset's
 | `tool-chest.glb` | [metal_tool_chest](https://polyhaven.com/a/metal_tool_chest) | Yann Kervran, John Hutcheson | `8fdd3f7409ad7cfd5a4fc3091933d1e1d3785b0e` | 13,360 | 468 KB |
 | `storage-cart.glb` | [industrial_storage_cart](https://polyhaven.com/a/industrial_storage_cart) | Jule Bielitz | `1885782cd204ad6fed4d96111bd713aee14fd4bf` | 18,902 | 629 KB |
 | `trash-can.glb` | [metal_trash_can](https://polyhaven.com/a/metal_trash_can) (clean bin only) | GurJas Studios | `3ecbee3adbcc53b4af3c8f010e76e10c5b7558a2` | 6,428 | 344 KB |
+| `cardboard-box.glb` | [cardboard_box_01](https://polyhaven.com/a/cardboard_box_01) | Rahul Chaudhary | `2a37ded0aeebc15100db0e1d285ad36cf40b8f42` | 16,952 | 436 KB |
+| `metal-rack.glb` | [worn_metal_rack](https://polyhaven.com/a/worn_metal_rack) | Luca B | `352dfdcf30b7a585c2708b04970bb9e1524363e1` | 6,372 | 336 KB |
+| `chainlink-panel.glb` | [modular_chainlink_fence](https://polyhaven.com/a/modular_chainlink_fence) (the two-metre panel; PNG cut-out) | James Ray Cock, Amal Kumar | `a876696fcfd57a434e5d1dd68baa03e15475b97e` | 3,054 | 904 KB |
+| `chainlink-post.glb` | [modular_chainlink_fence](https://polyhaven.com/a/modular_chainlink_fence) (the post) | James Ray Cock, Amal Kumar | `a876696fcfd57a434e5d1dd68baa03e15475b97e` | 1,134 | 94 KB |
+| `street-lamp.glb` | [street_lamp_01](https://polyhaven.com/a/street_lamp_01) | Josh Dean | `002d697fa195d73f627e82804612208853212519` | 30,610 | 614 KB |
+| `sofa.glb` | [sofa_02](https://polyhaven.com/a/sofa_02) | Kirill Sannikov | `d7e2bb41e7bca3c320b837961bd7f71a064b6fe9` | 2,728 | 206 KB |
+| `armchair.glb` | [modern_arm_chair_01](https://polyhaven.com/a/modern_arm_chair_01) | Vibrant Nordic | `6893f36e58dddba95bd0ae1f1ef38537c1852a0b` | 8,916 | 414 KB |
+| `coffee-table.glb` | [modern_coffee_table_01](https://polyhaven.com/a/modern_coffee_table_01) | Amin | `31772c0aab6f930a18de82606146c0a97f08b7d0` | 4,504 | 206 KB |
+| `bookshelf.glb` | [wooden_bookshelf_worn](https://polyhaven.com/a/wooden_bookshelf_worn) | Ulan Cabanilla | `7db4a47cb5d2cf4dccb714c4ada6008321217fcb` | 10,106 | 436 KB |
+| `wall-clock.glb` | [wall_clock](https://polyhaven.com/a/wall_clock) | PierreB3D | `4057cadbc0e1620d16275c230bf031ced39378a1` | 3,658 | 152 KB |
+| `side-table.glb` | [side_table_01](https://polyhaven.com/a/side_table_01) | James Ray Cock | `c48d34c9a62887ad0c1175877ac69ffdd97e52b6` | 2,756 | 223 KB |
 
-Total: about 3.7 MB, each file under 1 MB. A GPU player downloads all eleven
-the first time the depot is built (the dream's stool and the mall's bin come
-with the same files).
+The second group was converted on 2026-10-20. Total: about 8.3 MB, each
+file under 1 MB. A GPU player downloads the depot's models the first time the
+depot is built and each stage's models when that stage is first shown; the
+box, clock and furniture files are shared wherever they stand. Poly Haven's
+potted plants were tried and dropped: each is over 60,000 triangles and more
+than a megabyte. `side-table` is converted and checked but not yet placed.
 
 ## Converting
 
 The converter keeps each model's meshes and only changes formats and sizes:
 
 - textures are resized to the entry's `textureSize` (512 px; 256 px for the
-  wall lamp and the extinguisher) and stored as JPEG; colour, normal,
-  ambient-occlusion/roughness/metalness and emissive maps are kept;
+  wall lamp, the extinguisher, the fence post and the clock) and stored as
+  JPEG; colour, normal, ambient-occlusion/roughness/metalness and emissive
+  maps are kept. A cut-out sheet (the chain-link wire, alpha-masked or
+  alpha-blended at the source) keeps its colour map as PNG, since JPEG has no
+  alpha, and becomes an alpha-tested, double-sided material;
 - positions are stored as 16-bit and normals as 8-bit integers
   (`KHR_mesh_quantization`, read by Three.js without a decoder), about half
   the geometry size;

@@ -3,7 +3,7 @@ import { chromium } from 'playwright';
 import { preview } from 'vite';
 import { MALL_LAYOUT } from '../src/game/slice/MallModel.ts';
 import { DEPOT_3D_LAYOUT as SHIFT_LAYOUT } from '../src/three/layout.ts';
-import { DEPOT_DRESSING } from '../src/three/depotDressing.ts';
+import { DEPOT_CARTON_MODELS, DEPOT_DRESSING } from '../src/three/depotDressing.ts';
 
 // Prop models load only on GPU renderers. The app here (software WebGL on CI)
 // must request none. A GPU-quality depot and mall, built in the same page,
@@ -39,9 +39,9 @@ try {
     console.log('PASS software renderers keep the code-built props and download no models');
   }
 
-  // Wall fixtures follow the current depot's length; the desk, chair and dressing also load.
+  // Wall fixtures follow the current depot's length; the desk, chair, dressing and the depot's cartons also load.
   const expectedLamps = 2 * (Math.floor((SHIFT_LAYOUT.worldBottom - 24 + 200) / 150) + 1);
-  const expected = expectedLamps + 2 + DEPOT_DRESSING.length;
+  const expected = expectedLamps + 2 + DEPOT_DRESSING.length + DEPOT_CARTON_MODELS;
   await page.evaluate(() => {
     const app = window.fixtureApp;
     window.gpuWorld = new app.world.constructor('high');

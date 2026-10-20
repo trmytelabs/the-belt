@@ -131,7 +131,9 @@ export class DevilModel {
  */
 export type PropId =
   | 'wall-lamp' | 'office-desk' | 'school-chair' | 'metal-stool'
-  | 'barrel' | 'wet-floor-sign' | 'fire-extinguisher' | 'hand-truck' | 'tool-chest' | 'storage-cart' | 'trash-can';
+  | 'barrel' | 'wet-floor-sign' | 'fire-extinguisher' | 'hand-truck' | 'tool-chest' | 'storage-cart' | 'trash-can'
+  | 'cardboard-box' | 'metal-rack' | 'chainlink-panel' | 'chainlink-post' | 'street-lamp'
+  | 'sofa' | 'armchair' | 'coffee-table' | 'bookshelf' | 'wall-clock' | 'side-table';
 
 export interface PropModelSource {
   /** The Poly Haven asset id; its 1k glTF is the conversion source. */
@@ -158,6 +160,19 @@ export const PROP_MODELS: Record<PropId, PropModelSource> = {
   'storage-cart': { polyHaven: 'industrial_storage_cart', textureSize: 512 },
   // The asset holds a clean and a rusty bin; the clean one, its handles and lid are kept.
   'trash-can': { polyHaven: 'metal_trash_can', textureSize: 512, nodes: /^metal_trash_can(_handle_left|_handle_right|_lid)?$/ },
+  // A worn shipping carton: the depot's bulk stock, Ralph's load, the receiving cargo and plain parcels.
+  'cardboard-box': { polyHaven: 'cardboard_box_01', textureSize: 512 },
+  'metal-rack': { polyHaven: 'worn_metal_rack', textureSize: 512 },
+  // The fence kit's two-metre panel and its post; the lot's run is assembled from copies.
+  'chainlink-panel': { polyHaven: 'modular_chainlink_fence', textureSize: 512, nodes: /^modular_chainlink_fence_double$/ },
+  'chainlink-post': { polyHaven: 'modular_chainlink_fence', textureSize: 256, nodes: /^modular_chainlink_fence_post$/ },
+  'street-lamp': { polyHaven: 'street_lamp_01', textureSize: 512 },
+  sofa: { polyHaven: 'sofa_02', textureSize: 512 },
+  armchair: { polyHaven: 'modern_arm_chair_01', textureSize: 512 },
+  'coffee-table': { polyHaven: 'modern_coffee_table_01', textureSize: 512 },
+  bookshelf: { polyHaven: 'wooden_bookshelf_worn', textureSize: 512 },
+  'wall-clock': { polyHaven: 'wall_clock', textureSize: 256 },
+  'side-table': { polyHaven: 'side_table_01', textureSize: 512 },
 };
 
 export const PROP_MODEL_URL = (id: PropId): string => `/models/props/${id}.glb`;
