@@ -3,7 +3,7 @@ import { MALL_STORES } from './StoryScript.ts';
 /**
  * Skanky's mall run: three cart trips, two stores per trip, a delivery and a
  * signature at each store. Deterministic rules in model pixels (32 px = 1 m);
- * the 3D and 2D chapters both draw this same layout.
+ * the 3D mall chapter draws this layout.
  */
 type Rect = { x: number; y: number; w: number; h: number };
 type Facing = 'left' | 'right' | 'up' | 'down';

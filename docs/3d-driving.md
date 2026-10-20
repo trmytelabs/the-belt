@@ -5,7 +5,7 @@ loading yard when Termite and Skanky choose to go in; parking there starts the
 original arrival scenes. It also adds two playable drives after the warehouse shift:
 UPS to Southgate Mall before the existing six deliveries, and the city journey
 back to UPS after all six signatures and returning the cart to the truck.
-The legacy 2D depot and classic game retain their original road scenes.
+The classic game retains its original road scenes.
 
 The neighbourhood has 42 connected intersections on a six-by-seven street grid.
 Both the playable bounds and scenery area double the previous city. Its 127

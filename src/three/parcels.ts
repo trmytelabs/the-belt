@@ -266,7 +266,7 @@ export function createParcelView(parcel: Parcel): ParcelView {
   const animated = new Set(Object.values(parts));
   // A model slot and its stand-in stay separate: one appears and the other hides later.
   mergeStatic(group, (object) => animated.has(object) || object.userData.keep === true);
-  // Freight reads at the 2D depot's scale relative to the workers.
+  // Freight reads at the shared model's scale relative to the workers.
   group.scale.setScalar(PARCEL_SCALE);
   // Include visible labels and asymmetric parts in both carry orientations.
   // Hidden damage effects must not enlarge a parcel while it is in the hands.
@@ -280,7 +280,7 @@ export function createParcelView(parcel: Parcel): ParcelView {
   const carryDepth = Math.max(0, -carryBounds.min.z), carrySideDepth = Math.max(0, carryBounds.max.x);
   root.add(group);
   const size = physicalBounds(group).getSize(new THREE.Vector3());
-  // Every named freight shows its full authored name, as in the 2D depot.
+  // Every named freight shows its full authored name.
   const tag = parcelTag(parcel);
   tag.position.y = Math.max(height * PARCEL_SCALE, size.y) + 0.38;
   // Where the tag rests on the freight; the renderer lifts it while the parcel is carried.

@@ -84,7 +84,7 @@ try {
     return { assisted, pending: m.pendingScannerWorker, heldId: carried.id, routeBefore: m.routeSorted.B };
   }, SHIFT_LAYOUT);
   assert.deepEqual(scanner.assisted, { count: 4, dispatched: 4, score: 420, combo: 3 }, 'partner dispatches add no points or combo');
-  // The 3D shift has no scanner faults (the 2D depot keeps them).
+  // The 3D shift has no scanner faults (the shared model keeps them).
   assert.equal(scanner.pending, null, 'no worker asks for a scanner reset in 3D');
   assert.equal(await page.locator('.b3d-scanner').isVisible(), false, 'no scanner prompt is shown');
   // With no fault to wait on, the partner carries on and delivers the freight it holds.

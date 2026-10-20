@@ -2,9 +2,10 @@
 
 ## Active game version
 
-Only update the 3D depot (`?mode=3d`, the default game) going forward. The 2D
-depot and classic game are retained as legacy versions. Do not change their
-gameplay, visuals, controls or tests to implement new 3D requests. Keep new 3D
+Only update the 3D depot (`?mode=3d`, the default game) going forward. The
+classic game (`?mode=classic`, the original full shift) is retained as a legacy
+version; the 2D depot was removed in October 2026. Do not change the classic
+game's gameplay, visuals, controls or tests to implement new 3D requests. Keep new 3D
 rules and layout separate; changes to shared code must preserve legacy behavior.
 Apply this scope to future plans, implementation instructions and pull requests
 unless the owner explicitly requests work on another version.

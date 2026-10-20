@@ -1,8 +1,8 @@
 import { BREAK_PLACES, BREAK_SCENES, OPENERS, type BreakPlace, type Opener, type StoryBeat, type StoryScene } from './StoryScript.ts';
 
 /**
- * The overnight run's chapters, in order. Each renderer (3D and 2D) shows the
- * same chapters and asks this model what happens next; nothing here draws.
+ * The overnight run's chapters, in order. The renderer shows these chapters
+ * and asks this model what happens next; nothing here draws.
  *
  * arrival → scrum → countdown → shift (break, drivers inside it) → clockout →
  * assignment → to-mall → mall → to-ups → return → home → results

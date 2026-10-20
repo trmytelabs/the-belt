@@ -18,8 +18,7 @@ import { RECEIVING_CROSSING_Y, RECEIVING_FEEDERS } from './receivingCollision';
 import { CrewPatrols, type PatrolId } from './crewPatrols';
 
 /**
- * The crew's routines and gags, on the 2D depot's authored schedule
- * (src/game/slice/DepotLife.ts, DepotRoutines.ts, DepotReceiving.ts).
+ * The crew's routines and gags, on the night shift's authored schedule.
  * Times are shift milliseconds unless named otherwise.
  */
 export type Say = (id: string, copy: string, durationMs: number) => void;

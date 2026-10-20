@@ -13,7 +13,7 @@ import { MESA as MESA_3D } from '../src/three/references.ts';
 const sourceCache = new Map();
 function source(path) {
   if (!sourceCache.has(path)) {
-    const filename = new URL(`../src/game/${path}`, import.meta.url);
+    const filename = new URL(path.startsWith('three/') ? `../src/${path}` : `../src/game/${path}`, import.meta.url);
     sourceCache.set(path, ts.createSourceFile(path, readFileSync(filename, 'utf8'),
       ts.ScriptTarget.Latest, true, ts.ScriptKind.TS));
   }
@@ -94,7 +94,7 @@ test('Mesa retains legacy dialogue and the 3D offer describes its points-only ca
 });
 
 test('Ben, the gunman and Paula retain their exact original words and punctuation', () => {
-  const actual = new Set(allStrings(source('slice/DepotLife.ts')).map(normalized));
+  const actual = new Set(allStrings(source('three/setpieces.ts')).map(normalized));
   for (const name of ['BEN_LINE', 'GUNMAN_LINE', 'PAULA_LINE']) {
     const original = literal(variable('entities/BenGunmanEvent.ts', name));
     assert.ok(actual.has(normalized(original)), `${name} must retain original wording and punctuation`);
@@ -135,11 +135,14 @@ test('the playable scene retains all eight original resident identities', () => 
     const name = config.properties.find(property => ts.isPropertyAssignment(property) && property.name.getText() === 'name');
     return literal(name.initializer).toUpperCase();
   });
-  const residents = variable('slice/DepotLife.ts', 'residents');
+  const residents = variable('three/world.ts', 'RESIDENTS');
   assert.ok(ts.isArrayLiteralExpression(residents));
   const actual = residents.elements.map(entry => {
     assert.ok(ts.isArrayLiteralExpression(entry));
-    return literal(entry.elements[1]);
+    const spec = entry.elements[3];
+    assert.ok(ts.isObjectLiteralExpression(spec));
+    const name = spec.properties.find(property => ts.isPropertyAssignment(property) && property.name.getText() === 'name');
+    return literal(name.initializer);
   });
   assert.deepEqual(actual.sort(), names.sort());
 });

@@ -2,8 +2,8 @@
 
 The Belt is a browser game built with Three.js, Phaser, TypeScript and Vite.
 
-Active development targets **the 3D depot only**. The 2D depot and classic game
-are retained as legacy versions; new gameplay requests apply to 3D unless the
+Active development targets **the 3D depot only**. The original full shift is
+retained as a legacy version; new gameplay requests apply to 3D unless the
 owner explicitly requests another version.
 Players switch between workers, pick up packages and sort them to the appropriate
 dock. The game includes keyboard, mouse and touch controls.
@@ -25,7 +25,7 @@ Open the local URL printed by Vite. The default entry is the **3D depot**: the
 night shift in a lit Three.js warehouse, with every original reference event and
 speech bubbles anchored to whoever is speaking. On touch screens it shows a
 movement stick and GRAB / DELIVER, SWITCH, STOP THE BELT, VIEW and PAUSE buttons. It needs
-WebGL; without it the page links to the 2D depot. See
+WebGL; without it the page links to the original full shift. See
 [the 3D depot](docs/3d-preview.md). The crew uses 23 rigged Microsoft Rocketbox
 characters, with procedural figures on software graphics. Their animation,
 props and provenance are covered in [character models](docs/character-models.md).
@@ -56,8 +56,7 @@ posts, the living room has a leather sofa, armchair, coffee table and bookcase,
 and a screen-space ambient-occlusion pass grounds everything; see
 [prop models](docs/prop-models.md).
 
-The legacy **2D Night Shift / Depot 07** is at `?mode=2d`. The current 3D game
-plays a whole snowy Christmas night: it starts at home, where Termite and Skanky decide whether
+The 3D game plays a whole snowy Christmas night: it starts at home, where Termite and Skanky decide whether
 to go in or quit UPS (quitting ends the night on the couch with a Wii; going in
 means driving Skanky's car to work), then one of three random
 arrivals outside the locked gate, Shan's morning scrum, the warehouse shift
@@ -195,13 +194,13 @@ in the original source; it is now implemented. See the source inventory and
 restoration evidence in [reference parity](docs/reference-parity.md).
 
 The **original full shift**, including its NPCs, special freight and timed
-events, is retained. Choose **Play the original full shift** in either depot's
-briefing (keyboard O in the 2D depot), or open the local URL with `?mode=classic`. Its controls
+events, is retained. Choose **PLAY THE ORIGINAL FULL SHIFT** in the 3D briefing
+or results screen, or open the local URL with `?mode=classic`. Its controls
 remain unchanged; it starts with Enter or a title-screen tap.
 
-The 3D and legacy 2D depots preserve the same reference events. New loading,
+The 3D depot preserves every reference event of the original. New loading,
 layout and scoring changes apply to 3D only.
-`?mode=3d` also opens the 3D depot.
+`?mode=3d` also opens the 3D depot; any other `mode` value does too.
 
 Node 24 is recorded in `.node-version` and used by CI. The locked Vite dependency
 requires Node `^20.19.0 || >=22.12.0`; use the documented Node version so local and
@@ -236,11 +235,10 @@ keyboard/touch controls, belt rendering, pause, brake, handoff, recovery,
 results, restart, readable dialogue variants, scripted story stages, Mesa
 choices/dream, crew loading, Ralph's five pickups, and departures. Audio checks
 render every effect and music mode in Chromium, checking headroom, envelopes,
-mute/resume and scheduling after a stall. Receiving checks inspect the actual
-unloading handoff, parcel identity, contact, stops and restart cleanup.
+mute/resume and scheduling after a stall.
 Story checks play all three arrivals, the scrum, all six break exchanges,
 throwing and breakage, the stairs, the full mall run, the key return and a
-clean replay in both depots.
+clean replay.
 Geometry checks cover all seven destinations, truck/deck alignment, stairs,
 mixed recovery freight, full lower-floor stacks, sampled story and camera
 clearances, and GPU-resource cleanup across restarts. See the
@@ -253,14 +251,11 @@ compatible dependencies; major upgrades require a separate planned review.
 
 CI checks the real Canvas fallback on GPU-free Linux and Windows runners. Local
 checks retain the default renderer unless `BELT_BROWSER_RENDERER=canvas` is set.
-Both CI jobs run the same gameplay assertions; they do not change the production
-game configuration or bypass its countdown. The default WebGL renderer still
+The Windows job runs the original game's smoke and audio checks; neither job
+changes the production game configuration or bypasses its countdown. The default WebGL renderer still
 needs a local check on a machine with usable graphics support.
 
-The original scenes reference Google Fonts when a network connection is available;
-the preview uses system fonts and editable engine-native art. See
-[asset provenance](docs/night-shift-assets.md) and
-[the preview's scope and design](docs/night-shift-preview.md).
+The original scenes reference Google Fonts when a network connection is available.
 Physical-device usability and audible sound still need manual checks. Automated
 coverage of timed events uses controlled fixtures, not a claim that every story
 was encountered in one unassisted playthrough.
