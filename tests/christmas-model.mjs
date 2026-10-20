@@ -55,8 +55,17 @@ test('piles and overflow stay in the corners, clear of every route, truck and pr
     assert.ok(Math.abs(box.x) + Math.max(box.w, box.d) / 2 <= 15.2 + margin, 'inside the side walls');
     const model = toModel(box);
     assert.ok(model.y - model.height / 2 >= L.worldTop - 16 && model.y + model.height / 2 <= L.bulkRearWall.y, 'between the receiving and rear walls');
-    // Off the platform, its stairs and the lower floor where the workers walk.
-    assert.ok(model.x + model.width / 2 < L.platform.left || model.x - model.width / 2 > L.platform.right, 'off the platform');
+    // Off the platform, its stairs and the lower floor where the workers walk;
+    // the bulk piles stand on the deck only behind the furthest a worker reaches.
+    if (zone.base) {
+      assert.equal(box.spill, false, `${box.zone} never overflows onto the bulk area`);
+      assert.ok(model.y - model.height / 2 >= L.workerMaxY + L.workerRadius - 4, `${box.zone} carton stays behind every worker (y ${model.y.toFixed(0)})`);
+      assert.ok(model.x - model.width / 2 > L.platform.left && model.x + model.width / 2 < L.platform.right, `${box.zone} carton stands on the deck`);
+      assert.ok(box.y - box.h / 2 >= zone.base - 1e-9, `${box.zone} carton rests on the deck`);
+      for (const area of [L.dropAreas.bulkLeft, L.dropAreas.bulkRight]) assert.ok(!overlapsFootprint(model, 0, { ...area, width: area.width + model.width, height: area.height + model.height }), `${box.zone} clear of the bulk drops`);
+    } else {
+      assert.ok(model.x + model.width / 2 < L.platform.left || model.x - model.width / 2 > L.platform.right, 'off the platform');
+    }
     for (const floor of [L.lowerFloor.left, L.lowerFloor.right]) {
       const inside = model.y + model.height / 2 > L.lowerFloor.top && model.x + model.width / 2 > floor.minX + L.workerRadius && model.x - model.width / 2 < floor.maxX - L.workerRadius;
       assert.ok(!inside, `${box.zone} carton stays off the walkable lower floor`);

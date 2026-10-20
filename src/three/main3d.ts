@@ -254,6 +254,7 @@ export class Belt3d {
       mute: () => { audioSystem.toggleMuted(); },
     });
     this.overlay.onStoryButton((action) => {
+      if (action === 'skip' && this.state === 'interlude') { this.skipInterlude(); return; }
       if (this.state !== 'story' || !this.cutscene) return;
       if (action === 'pause') { if (this.canPause()) this.pause(); return; }
       if (action === 'next') this.cutscene.userNext();
@@ -389,6 +390,7 @@ export class Belt3d {
           else this.restart();
         }
         else if (this.state === 'paused') this.resume();
+        else if (this.state === 'interlude') this.skipInterlude();
       } else if (event.code === 'KeyM') {
         audioSystem.toggleMuted();
       } else if (event.code === 'Escape') {
@@ -457,7 +459,6 @@ export class Belt3d {
       </ol>
       <p><b>Missed one? Recover it at the belt end.</b> The shift ends at ${this.model.capacity} packages in recovery. ${this.touch.enabled ? 'STOP THE BELT' : 'E / STOP THE BELT'} gives you two seconds to catch up: 3 stops per run, with a 15-second cooldown after each use. You get ${this.model.cleanupMs / 1000} seconds to finish after intake closes.</p>
       <p>Your partner sorts their side automatically. ${this.touch.enabled ? 'SWITCH' : 'TAB / right-click'} changes worker; only your controlled worker picks up bulk. Partner deliveries count toward the goal. Wrong drops cost 10 points; throws can break freight.</p>
-      <p>If a scanner stops, switch to the worker named on screen and ${this.touch.enabled ? 'tap RESET SCANNER' : 'press SPACE'}. Freight stays in hand.</p>
       ${this.touch.enabled ? `
       <p>The stick moves. SWITCH changes worker. GRAB / DELIVER picks up and delivers. THROW risks it to save the walk.</p>
       <p>STOP THE BELT gives you a moment to catch up. VIEW shows the whole warehouse. In story scenes, NEXT or SKIP.</p>` : `
@@ -700,6 +701,7 @@ export class Belt3d {
 
   private pause(): void {
     this.overlay.setLunchAlert(false);
+    this.overlay.setInterlude(false);
     this.pausedFrom = this.state as Resumable;
     this.state = 'paused';
     this.model.paused = true;
@@ -716,6 +718,7 @@ export class Belt3d {
   private resume(): void {
     this.state = this.pausedFrom;
     this.overlay.setLunchAlert(this.state === 'break-alert');
+    this.overlay.setInterlude(this.state === 'interlude');
     // The shift stays frozen through a story; only active sorting runs its clock.
     this.model.paused = this.state !== 'playing';
     if (this.mall) this.mall.paused = false;
@@ -736,11 +739,21 @@ export class Belt3d {
     this.benClock = BEN_START;
     this.keys.clear();
     this.overlay.hold = (key) => BEN_CAST.has(key);
-    this.overlay.showToast("BEN'S BIG MOMENT · belt held, your freight is safe", 3000);
+    this.overlay.setInterlude(true);
+    this.overlay.showToast(`BEN'S BIG MOMENT · belt held, your freight is safe · ${this.touch.enabled ? 'SKIP SCENE' : 'ENTER'} skips it`, 3000);
     audioSystem.stopMusic();
   }
 
+  /** ENTER or SKIP SCENE: Ben's scene jumps to its end and the shift carries on. */
+  private skipInterlude(): void {
+    if (this.state !== 'interlude') return;
+    this.setPieces.skipBen(this.time);
+    this.benClock = BEN_END;
+    this.endInterlude();
+  }
+
   private endInterlude(): void {
+    this.overlay.setInterlude(false);
     this.state = 'playing';
     this.model.paused = false;
     this.overlay.dropSpeech((key) => BEN_CAST.has(key));
@@ -780,6 +793,7 @@ export class Belt3d {
     this.benStarted = false;
     this.benClock = BEN_START;
     this.overlay.hold = null;
+    this.overlay.setInterlude(false);
     this.setPieces.reset();
     this.mesa.reset();
     this.dream.stop();
@@ -1456,9 +1470,10 @@ export class Belt3d {
     let look: THREE.Vector3;
     const state = this.state === 'paused' ? this.pausedFrom : this.state;
     if (state === 'interlude') {
-      // Frame the whole outer bay: gunman, Ben, the gate and the demon.
-      look = new THREE.Vector3(toWorldX(210), 1.0, toWorldZ(SHIFT_LAYOUT.eventBays.ben.y));
-      position = look.clone().add(portrait ? new THREE.Vector3(2, 11, 9) : new THREE.Vector3(3.2, 6.6, 7.6));
+      // Frame the open end of Ben's aisle from past the truck noses, so no truck
+      // stands between the camera and the gunman, Ben, the gate and the demon.
+      look = new THREE.Vector3(toWorldX(90), 1.0, toWorldZ(SHIFT_LAYOUT.eventBays.ben.y));
+      position = look.clone().add(portrait ? new THREE.Vector3(1.2, 11, 8) : new THREE.Vector3(1.4, 6.2, 7.2));
     } else if (state === 'story' && this.depotShot) {
       look = this.depotShot.look;
       position = this.depotShot.position.clone();

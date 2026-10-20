@@ -9,6 +9,8 @@ import { SURFACE_MEANS, boxUVs, cardboardMaterial } from './textures.ts';
  * open edge onto the floor in front of it. The piles fill the corners that
  * no worker, crew route, visitor or truck uses (the receiving corners and
  * the lower-floor ends beyond the storage bands), so they never block play.
+ * Behind the bulk area, a narrow strip on the platform against the rear wall
+ * (past the furthest a worker can reach) fills to the top without spilling.
  *
  * Everything here is in world metres. Progress runs from 0 (shift start) to
  * 1 (the end of the three minutes).
@@ -27,6 +29,10 @@ export interface WallPileZone {
   pile: { minX: number; maxX: number; minZ: number; maxZ: number };
   /** Where overflow lands, in front of the pile's open edge. */
   spill: { minX: number; maxX: number; minZ: number; maxZ: number };
+  /** Floor height the pile stands on: the loading platform's deck is 1.1 m up. */
+  base?: number;
+  /** False for a pile with no free floor in front: it is stacked neatly and stops at the top. */
+  overflow?: boolean;
 }
 
 /** The receiving corners (beside the side walls) and the lower-floor ends (against the side and rear walls). */
@@ -48,6 +54,14 @@ export const WALL_PILE_ZONES: readonly WallPileZone[] = [-1, 1].flatMap((side): 
       name: side < 0 ? 'west-lower-floor' : 'east-lower-floor',
       pile: mirror({ minX: -15.1, maxX: -13.1, minZ: 24.5, maxZ: 26.45 }),
       spill: mirror({ minX: -13.1, maxX: -12.45, minZ: 24.6, maxZ: 26.45 }),
+    },
+    {
+      // Either side of the bulk pile, on the platform deck against the rear wall.
+      name: side < 0 ? 'west-bulk' : 'east-bulk',
+      pile: mirror({ minX: -4.65, maxX: -2.1, minZ: 26.14, maxZ: 26.52 }),
+      spill: mirror({ minX: -4.65, maxX: -2.1, minZ: 26.0, maxZ: 26.14 }),
+      base: 1.1,
+      overflow: false,
     },
   ];
 });
@@ -105,20 +119,24 @@ export function buildWallPiles(seed = 25_12): PileBox[] {
       const full = between(Math.max(start + 0.35, 0.55), WALL_PILE_FULL_BY);
       const curve = between(0.75, 1.35);
       const stack: Omit<PileBox, 'at'>[] = [];
+      const base = zone.base ?? 0;
+      const neat = zone.overflow === false;
       let top = 0;
       for (;;) {
         const h = between(0.38, 0.62);
-        if (top + h > WALL_PILE_ROOF) break;
+        if (base + top + h > WALL_PILE_ROOF) break;
         const w = Math.min(cellX * 0.98, between(0.5, 0.82));
         const d = Math.min(cellZ * 0.98, between(0.5, 0.82));
         // Higher up, cartons are thrown on less carefully: turned, tipped and bulging out over the floor.
-        const reckless = top / WALL_PILE_ROOF;
+        // A neat pile has nowhere to bulge: it stays square to its wall.
+        const reckless = neat ? 0 : top / WALL_PILE_ROOF;
         const bulge = reckless * reckless * between(0, 0.22);
+        const jitter = neat ? 0.02 : 0.05;
         stack.push({
           zone: zone.name, column,
-          x: cx + between(-0.05, 0.05) + (spillZ === 0 ? spillX * bulge : 0), y: top + h / 2,
-          z: cz + between(-0.05, 0.05) + spillZ * bulge,
-          w, h, d, turn: between(-1, 1) * (0.1 + 0.3 * reckless), tilt: between(-1, 1) * 0.1 * reckless, spill: false, from: null,
+          x: cx + between(-jitter, jitter) + (spillZ === 0 ? spillX * bulge : 0), y: base + top + h / 2,
+          z: cz + between(-jitter, jitter) + spillZ * bulge,
+          w, h, d, turn: between(-1, 1) * (neat ? 0.05 : 0.1 + 0.3 * reckless), tilt: between(-1, 1) * 0.1 * reckless, spill: false, from: null,
         });
         top += h;
       }
@@ -126,7 +144,7 @@ export function buildWallPiles(seed = 25_12): PileBox[] {
         boxes.push({ ...box, at: start + (full - start) * ((k + 1) / stack.length) ** curve });
       });
       // Once full, each column sheds cartons off its open edge until the end of the shift.
-      const shed = 4 + Math.floor(random() * 5);
+      const shed = neat ? 0 : 4 + Math.floor(random() * 5);
       for (let k = 0; k < shed; k += 1) {
         const at = between(full + 0.01, 1);
         const w = between(0.45, 0.75), h = between(0.35, 0.55), d = between(0.45, 0.75);

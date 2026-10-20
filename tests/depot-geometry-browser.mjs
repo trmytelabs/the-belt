@@ -84,25 +84,16 @@ try {
     return { assisted, pending: m.pendingScannerWorker, heldId: carried.id, routeBefore: m.routeSorted.B };
   }, SHIFT_LAYOUT);
   assert.deepEqual(scanner.assisted, { count: 4, dispatched: 4, score: 420, combo: 3 }, 'partner dispatches add no points or combo');
-  assert.equal(scanner.pending, 'skanky', 'the inactive worker asks for a scanner reset');
-  await page.locator('.b3d-scanner').waitFor({ state: 'visible' });
-  assert.match(await page.locator('.b3d-scanner').textContent(), /SKANKY.*TAB TO SWITCH/);
+  // The 3D shift has no scanner faults (the 2D depot keeps them).
+  assert.equal(scanner.pending, null, 'no worker asks for a scanner reset in 3D');
+  assert.equal(await page.locator('.b3d-scanner').isVisible(), false, 'no scanner prompt is shown');
   await page.keyboard.press('Tab');
   await page.waitForFunction(() => window.fixtureApp.model.activeWorker.id === 'skanky');
-  assert.equal(await page.evaluate(() => window.fixtureApp.model.pendingScannerWorker), 'skanky', 'switching alone does not reset the scanner');
-  await page.waitForFunction(() => document.querySelector('.b3d-scanner')?.textContent.includes('SPACE TO RESET'));
-  assert.match(await page.locator('.b3d-scanner').textContent(), /SPACE TO RESET/);
-  assert.match(await page.locator('[data-touch="grab"]').textContent(), /RESET.*SCANNER/);
-  await page.keyboard.press('Space');
-  await page.waitForFunction(() => window.fixtureApp.model.pendingScannerWorker === null);
-  assert.deepEqual(await page.evaluate(() => ({ held: window.fixtureApp.model.activeWorker.heldId,
-    resets: window.fixtureApp.model.scannerResets, score: window.fixtureApp.model.score, combo: window.fixtureApp.model.combo })),
-  { held: scanner.heldId, resets: 1, score: 420, combo: 3 }, 'resetting preserves held freight, score and combo');
-  await page.locator('.b3d-scanner').waitFor({ state: 'hidden' });
+  assert.equal(await page.evaluate(() => window.fixtureApp.model.activeWorker.heldId), scanner.heldId, 'switching keeps the freight in hand');
   await page.keyboard.press('Space');
   await page.waitForFunction(before => window.fixtureApp.model.routeSorted.B === before + 1, scanner.routeBefore);
-  assert.ok(await page.evaluate(() => window.fixtureApp.model.score > 420), 'the following player delivery earns points');
-  console.log('PASS partner dispatches without score; persistent named scanner prompt; real Tab/Space reset preserves freight and resumes delivery');
+  assert.ok(await page.evaluate(() => window.fixtureApp.model.score > 420), 'the player delivery earns points straight away');
+  console.log('PASS partner dispatches without score; no 3D scanner fault; Tab/Space delivers the carried freight straight away');
 
   // Every destination uses the same rendered surface as the shared rules.
   const destinations = ['A', 'D', 'T', 'B', 'E', 'S', 'C'];

@@ -14,6 +14,19 @@
   that placed the crew in the car changes ("We haven't left the counter."); the
   2D depot keeps the original parking-lot script. The 7-Eleven break gains a
   window onto the snowy street.
+- Fill the strip behind the 3D bulk area, either side of the bulk pile, with
+  cartons up to the top of the rear wall through the shift, out of every
+  worker's reach and without spilling onto the bulk drops.
+- Make Termite and Skanky's house a closed, furnished living room: solid walls
+  with skirting, crown molding, a ceiling, curtained windows onto the snowy
+  street, a framed side door, a bookcase, armchair, dining corner, coats, rug,
+  pictures, a clock, a Christmas tree with presents and string lights. Every
+  indoor shot is taken from inside the room.
+- Stage Ben's 3D robbery in the open end of his aisle, where no truck hides it;
+  the gunman and Paula walk in from the yard. Enter or SKIP SCENE skips it,
+  passing over its lines, shots and sounds.
+- Remove the scanner-reset fault from the 3D shift; the 2D depot keeps it.
+- Fix a black 3D depot when the game loaded in a hidden or zero-size window.
 - Open the 3D night at Termite and Skanky's place. They choose to go in or quit
   UPS. Quitting plays an all-nighter with a Warsteiner keg, Hershey's Eggies,
   Twilight Princess on the Wii and Heavy Metal, Skanky being sick and Shan's

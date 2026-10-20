@@ -106,6 +106,8 @@ const CSS = `
   font: 800 13px 'Segoe UI', Arial, sans-serif; letter-spacing: 1px; padding: 10px 14px; cursor: pointer; min-height: 44px; }
 .b3d-storykeys button small { opacity: .7; font-size: 10px; }
 .b3d-storykeys button.skip { background: #edb765; color: #1a2226; }
+.b3d.interlude .b3d-storykeys { display: flex; }
+.b3d.interlude .b3d-storykeys button:not(.skip) { display: none; }
 .b3d-chapterhud { position: absolute; left: 0; bottom: 0; right: 0; display: none; gap: 18px; align-items: center;
   background: linear-gradient(#0b171c00, #0b171ce8); padding: 12px 22px; pointer-events: none; flex-wrap: wrap; }
 .b3d.chapter .b3d-chapterhud { display: flex; }
@@ -265,6 +267,13 @@ export class Overlay {
     }
   }
 
+  /** Ben's scene plays over the shift HUD with only the SKIP SCENE button. */
+  public setInterlude(on: boolean): void {
+    this.root.classList.toggle('interlude', on);
+    const focused = document.activeElement;
+    if (!on && focused instanceof HTMLElement && this.storykeys.contains(focused)) focused.blur();
+  }
+
   public onStoryButton(handler: (action: 'next' | 'skip' | 'pause') => void): void {
     for (const button of this.storykeys.querySelectorAll<HTMLButtonElement>('button')) {
       const action = button.dataset.story as 'next' | 'skip' | 'pause';
@@ -277,7 +286,7 @@ export class Overlay {
       button.addEventListener('keydown', (event) => {
         if (event.code !== 'Enter' && event.code !== 'NumpadEnter' && event.code !== 'Space') return;
         // Outside a story scene the buttons are hidden: the game's own keys apply.
-        if (!this.root.classList.contains('story')) return;
+        if (!this.root.classList.contains('story') && !this.root.classList.contains('interlude')) return;
         event.preventDefault();
         event.stopPropagation();
         if (event.repeat) return;

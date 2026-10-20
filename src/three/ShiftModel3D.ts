@@ -331,6 +331,9 @@ export class ShiftModel3D extends ShiftModel {
     return this.destinationCenter(parcel.route, worker.side);
   }
 
+  /** The 3D shift has no scanner faults; the 2D depot keeps its two handovers. */
+  protected override updateScannerRequest(): void {}
+
   protected override updateCoworker(deltaMs: number): void {
     const worker = this.workers[1 - this.activeIndex];
     worker.moving = false;

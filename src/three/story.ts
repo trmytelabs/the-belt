@@ -200,6 +200,34 @@ const BOOTH_X = 3.4;
 const BOOTHS = { north: -1.45, south: 0.25, next: 1.15, table: -0.6 } as const;
 const TABLE_TOP = 0.76;
 
+/** The living room's indoor camera angles. */
+const HOUSE_VIEWS = {
+  door: { position: new THREE.Vector3(-4.0, 2.15, 3.3), look: new THREE.Vector3(2.4, 0.95, 0.1) },
+  room: { position: new THREE.Vector3(3.9, 2.2, 3.4), look: new THREE.Vector3(-1.8, 0.95, -0.9) },
+} as const;
+
+/** What the house's windows show: a snowy street at night, flakes in the air. */
+function snowyWindow(): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 128; canvas.height = 64;
+  const ctx = canvas.getContext('2d')!;
+  const sky = ctx.createLinearGradient(0, 0, 0, 44);
+  sky.addColorStop(0, '#0e1a30'); sky.addColorStop(1, '#2a3e5e');
+  ctx.fillStyle = sky; ctx.fillRect(0, 0, 128, 64);
+  // Neighbours' roofs under snow, a lit window, then the snowy yard.
+  ctx.fillStyle = '#1a2436';
+  ctx.fillRect(8, 26, 40, 20); ctx.fillRect(74, 22, 46, 24);
+  ctx.fillStyle = '#e8eef4';
+  ctx.fillRect(6, 23, 44, 4); ctx.fillRect(72, 19, 50, 4);
+  ctx.fillStyle = '#f0c070'; ctx.fillRect(86, 30, 8, 7);
+  ctx.fillStyle = '#e4ebf2'; ctx.fillRect(0, 44, 128, 20);
+  ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  for (let i = 0; i < 70; i += 1) ctx.fillRect((i * 37) % 128, (i * 23) % 44, 1.5, 1.5);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
 export class StoryStage {
   public readonly camera = new THREE.PerspectiveCamera(42, 1, 0.1, 160);
   public active: StageId | null = null;
@@ -878,33 +906,60 @@ export class StoryStage {
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(10, 8), new THREE.MeshStandardMaterial({ map: plankTexture, roughness: 0.7 }));
     floor.rotation.x = -Math.PI / 2; floor.position.y = 0.005; floor.receiveShadow = true;
     scene.add(floor);
-    // Walls: back (with a window), the TV wall and the side wall with the door.
-    // The front wall and roof only show from outside, so indoors reads like a sitcom set.
-    const paint = standard(0x8c8f74, 0.9);
-    const wall = (x: number, y: number, z: number, w: number, h: number, d: number): void => {
-      const panel = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), paint);
+    // A closed room: painted walls inside, siding outside, a ceiling, skirting
+    // and crown molding. The back and front walls have windows, the east wall the door.
+    const paint = standard(0xcdbf9f, 0.9);
+    const siding = standard(0x5d6a72, 0.9);
+    const trim = standard(0xebe5d6, 0.6);
+    const wall = (x: number, y: number, z: number, w: number, h: number, d: number, material: THREE.Material = paint): void => {
+      const panel = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
       panel.position.set(x, y, z);
       scene.add(shadowed(panel));
     };
-    wall(-3.1, 1.4, -4, 3.8, 2.8, 0.16); wall(3.85, 1.4, -4, 2.3, 2.8, 0.16);
+    // Each wall is solid up to its openings: the back window spans x -0.25..2.65,
+    // the side door z 0.8..2.0; the walls meet at the corners (±5.08, ±4.08).
+    wall(-2.665, 1.4, -4, 4.83, 2.8, 0.16); wall(3.865, 1.4, -4, 2.43, 2.8, 0.16);
     wall(1.2, 0.5, -4, 2.9, 1.0, 0.16); wall(1.2, 2.65, -4, 2.9, 0.3, 0.16);
     wall(-5, 1.4, 0, 0.16, 2.8, 8.16);
-    wall(5, 1.4, -1.8, 0.16, 2.8, 4.4); wall(5, 1.4, 3.0, 0.16, 2.8, 2.0); wall(5, 2.45, 1.4, 0.16, 0.7, 1.2);
-    // The ceiling faces down only, so the roof still shows from outside.
-    const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(10.16, 16), standard(0xd9d3c2, 0.9));
-    ceiling.rotation.x = Math.PI / 2;
-    ceiling.position.set(0, 2.8, 3.9);
-    const fixture = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.32, 0.08, 18), new THREE.MeshStandardMaterial({ color: 0xf4ecd8, emissive: 0xffe2b0, emissiveIntensity: 0.5 }));
-    fixture.position.set(0, 2.76, 0);
-    scene.add(ceiling, fixture);
-    const frontWall = new THREE.Mesh(new THREE.BoxGeometry(10.16, 2.8, 0.16), standard(0x5d6a72, 0.9));
+    wall(5, 1.4, -1.64, 0.16, 2.8, 4.88); wall(5, 1.4, 3.04, 0.16, 2.8, 2.08); wall(5, 2.4, 1.4, 0.16, 0.8, 1.2);
+    // The east wall's outside face, seen from the driveway.
+    for (const [y, z, h, d] of [[1.4, -1.64, 2.8, 4.88], [1.4, 3.04, 2.8, 2.08], [2.4, 1.4, 0.8, 1.2]] as const) wall(5.09, y, z, 0.02, h, d, siding);
+    // The front wall: siding and a lit window outside, paint and a curtained window inside.
+    const frontWall = new THREE.Mesh(new THREE.BoxGeometry(10.16, 2.8, 0.16), siding);
     frontWall.position.set(0, 1.4, 4);
     const frontWindow = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 1.1), new THREE.MeshStandardMaterial({ color: 0x40301c, emissive: 0xffc27a, emissiveIntensity: 0.9 }));
     frontWindow.position.set(-1.5, 0.15, 0.09);
     frontWall.add(frontWindow);
-    frontWall.visible = false;
     scene.add(frontWall);
     props.frontWall = frontWall;
+    const inner = new THREE.Mesh(new THREE.PlaneGeometry(10, 2.8), paint);
+    inner.rotation.y = Math.PI;
+    inner.position.set(0, 1.4, 3.915);
+    scene.add(inner);
+    // The ceiling faces down only, so the roof still shows from outside.
+    const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(10.16, 8.16), standard(0xf0ebe0, 0.9));
+    ceiling.rotation.x = Math.PI / 2;
+    ceiling.position.set(0, 2.8, 0);
+    const fixture = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.32, 0.08, 18), new THREE.MeshStandardMaterial({ color: 0xf4ecd8, emissive: 0xffe2b0, emissiveIntensity: 0.5 }));
+    fixture.position.set(0, 2.76, 0);
+    scene.add(ceiling, fixture);
+    // Skirting and crown molding round the room; the skirting breaks for the door.
+    for (const [x, z, w, d] of [[0, -3.9, 9.84, 0.04], [0, 3.9, 9.84, 0.04], [-4.9, 0, 0.04, 7.84], [4.9, -1.56, 0.04, 4.72], [4.9, 2.96, 0.04, 1.92]] as const) {
+      const skirting = new THREE.Mesh(new THREE.BoxGeometry(w, 0.12, d), trim);
+      skirting.position.set(x, 0.06, z);
+      scene.add(skirting);
+    }
+    for (const [x, z, w, d] of [[0, -3.89, 9.84, 0.06], [0, 3.89, 9.84, 0.06], [-4.89, 0, 0.06, 7.84], [4.89, 0, 0.06, 7.84]] as const) {
+      const crown = new THREE.Mesh(new THREE.BoxGeometry(w, 0.1, d), trim);
+      crown.position.set(x, 2.75, z);
+      scene.add(crown);
+    }
+    // Trim round the side door.
+    for (const [y, z, h, d] of [[1.07, 0.78, 2.14, 0.12], [1.07, 2.02, 2.14, 0.12], [2.16, 1.4, 0.08, 1.36]] as const) {
+      const casing = new THREE.Mesh(new THREE.BoxGeometry(0.05, h, d), trim);
+      casing.position.set(4.9, y, z);
+      scene.add(casing);
+    }
     const roof = new THREE.Group();
     for (const side of [-1, 1]) {
       const slope = new THREE.Mesh(new THREE.BoxGeometry(11, 0.18, 5.0), standard(0x3a2c2a, 0.9));
@@ -918,11 +973,36 @@ export class StoryStage {
     roof.visible = false;
     scene.add(roof);
     props.roof = roof;
-    // The back window: night blue, then morning.
-    const backWindow = new THREE.Mesh(new THREE.PlaneGeometry(2.9, 1.2), new THREE.MeshStandardMaterial({ color: 0x0b1626, emissive: 0x1a2c48, emissiveIntensity: 0.6 }));
-    backWindow.position.set(1.2, 1.6, -3.95);
+    // The back window looks out on the snowy yard: night, then morning.
+    const view = snowyWindow();
+    const backWindow = new THREE.Mesh(new THREE.PlaneGeometry(2.9, 1.5), new THREE.MeshStandardMaterial({ color: 0x8090a8, map: view, emissiveMap: view, emissive: 0x8a9ab8, emissiveIntensity: 0.6 }));
+    backWindow.position.set(1.2, 1.75, -3.95);
     scene.add(backWindow);
     props.backWindow = backWindow;
+    const frontView = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 1.1), new THREE.MeshStandardMaterial({ color: 0x8090a8, map: view, emissiveMap: view, emissive: 0x8a9ab8, emissiveIntensity: 0.6 }));
+    frontView.rotation.y = Math.PI;
+    frontView.position.set(-1.5, 1.55, 3.9);
+    scene.add(frontView);
+    // Frames, sills, rods and curtains on both windows.
+    const curtain = standard(0x7a2a2a, 0.95);
+    for (const [cx, cy, w, h, z, facing] of [[1.2, 1.75, 2.9, 1.5, -3.9, 1], [-1.5, 1.55, 2.2, 1.1, 3.86, -1]] as const) {
+      for (const [x, y, fw, fh] of [[cx, cy + h / 2 + 0.03, w + 0.12, 0.06], [cx, cy - h / 2 - 0.03, w + 0.12, 0.06], [cx - w / 2 - 0.03, cy, 0.06, h], [cx + w / 2 + 0.03, cy, 0.06, h], [cx, cy, 0.04, h]] as const) {
+        const frame = new THREE.Mesh(new THREE.BoxGeometry(fw, fh, 0.05), trim);
+        frame.position.set(x, y, z);
+        scene.add(frame);
+      }
+      const sill = new THREE.Mesh(new THREE.BoxGeometry(w + 0.3, 0.04, 0.16), trim);
+      sill.position.set(cx, cy - h / 2 - 0.07, z + facing * 0.06);
+      const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, w + 1.0, 8), standard(0x3a2a20, 0.5, 0.4));
+      rod.rotation.z = Math.PI / 2;
+      rod.position.set(cx, cy + h / 2 + 0.2, z + facing * 0.08);
+      scene.add(sill, rod);
+      for (const side of [-1, 1]) {
+        const drape = rounded(0.42, h + 0.55, 0.08, curtain, 0.03);
+        drape.position.set(cx + side * (w / 2 + 0.18), cy + 0.02, z + facing * 0.1);
+        scene.add(shadowed(drape));
+      }
+    }
     // The side door swings open on the way out.
     const door = new THREE.Group();
     const slab = new THREE.Mesh(new THREE.BoxGeometry(0.06, 2.1, 1.16), standard(0x5a3a24, 0.7));
@@ -951,6 +1031,7 @@ export class StoryStage {
     const porch = new THREE.PointLight(0xffd49a, 14, 9, 1.6);
     porch.position.set(5.6, 2.6, 1.4);
     scene.add(porch);
+    this.furnishHouse(scene);
     // TV stand, TV and the Wii.
     const tvStand = rounded(0.5, 0.5, 1.9, standard(0x2a2522, 0.7), 0.03);
     tvStand.position.set(-4.62, 0.25, 0);
@@ -1117,6 +1198,130 @@ export class StoryStage {
     scene.add(lampShade, lampPole, lamp, tvGlow, sun);
     this.houseLights = { lamp, tvGlow, sun };
     this.cast(stage, ['termite', 'skanky']);
+  }
+
+  /**
+   * The rest of a lived-in living room, kept clear of every path the pair
+   * walk (couch to door, door to couch) and of the keg, the table and the TV:
+   * a rug, a bookcase, an armchair, a dining corner, coats by the door,
+   * pictures and a clock, and for Christmas a tree, presents and string lights.
+   */
+  private furnishHouse(scene: THREE.Scene): void {
+    const wood = standard(0x5a3a24, 0.6);
+    const add = (mesh: THREE.Mesh, x: number, y: number, z: number, turn = 0): THREE.Mesh => {
+      mesh.position.set(x, y, z);
+      mesh.rotation.y = turn;
+      scene.add(shadowed(mesh));
+      return mesh;
+    };
+    // A rug under the coffee table, between the couch and the TV.
+    const rugEdge = new THREE.Mesh(new THREE.PlaneGeometry(2.7, 2.5), standard(0xc8b48a, 0.95));
+    rugEdge.rotation.x = -Math.PI / 2;
+    rugEdge.position.set(-1.75, 0.008, 0);
+    const rug = new THREE.Mesh(new THREE.PlaneGeometry(2.45, 2.25), standard(0x7a3328, 0.95));
+    rug.rotation.x = -Math.PI / 2;
+    rug.position.set(-1.75, 0.01, 0);
+    scene.add(rugEdge, rug);
+    // A bookcase against the back wall.
+    add(new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.9, 0.03), wood), -2.4, 0.95, -3.89);
+    for (const x of [-3.18, -1.62]) add(new THREE.Mesh(new THREE.BoxGeometry(0.04, 1.9, 0.36), wood), x, 0.95, -3.72);
+    const bookColors = [0x8a2a2a, 0x2a4a7a, 0x3a6a3a, 0xc8a040, 0x5a3a6a, 0xd8d0c0, 0x2a2a2a];
+    for (let shelf = 0; shelf < 5; shelf += 1) {
+      add(new THREE.Mesh(new THREE.BoxGeometry(1.56, 0.03, 0.34), wood), -2.4, 0.03 + shelf * 0.46, -3.72);
+      if (shelf === 4) continue;
+      let x = -3.12;
+      for (let i = 0; x < -1.75; i += 1) {
+        const w = 0.05 + ((i * 7 + shelf * 3) % 4) * 0.012;
+        const h = 0.28 + ((i * 5 + shelf) % 3) * 0.04;
+        add(new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.24), standard(bookColors[(i + shelf * 2) % bookColors.length], 0.7)), x + w / 2, 0.045 + shelf * 0.46 + h / 2, -3.74);
+        x += w + 0.008;
+        if (i % 9 === 8) x += 0.18;
+      }
+    }
+    // An armchair in the back corner by the lamp, facing the TV.
+    const fabric = standard(0x6a4a3a, 0.95);
+    add(rounded(0.85, 0.42, 0.85, fabric, 0.08), 3.2, 0.21, -2.2);
+    add(rounded(0.22, 0.62, 0.85, fabric, 0.08), 3.56, 0.72, -2.2);
+    for (const z of [-2.62, -1.78]) add(rounded(0.85, 0.58, 0.18, fabric, 0.07), 3.2, 0.29, z);
+    // A dining corner by the front window door side.
+    add(rounded(1.1, 0.05, 0.75, wood, 0.02), 3.4, 0.74, 3.05);
+    for (const [x, z] of [[2.95, 2.8], [3.85, 2.8], [2.95, 3.3], [3.85, 3.3]] as const) add(new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.72, 0.05), wood), x, 0.36, z);
+    for (const [z, facing] of [[2.42, 1], [3.62, -1]] as const) {
+      add(rounded(0.45, 0.05, 0.42, wood, 0.02), 3.4, 0.46, z);
+      add(rounded(0.45, 0.5, 0.05, wood, 0.02), 3.4, 0.72, z - facing * 0.2);
+      for (const [x, dz] of [[3.21, -0.17], [3.59, -0.17], [3.21, 0.17], [3.59, 0.17]] as const) add(new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.44, 0.04), wood), x, 0.22, z + dz);
+    }
+    // Coats on hooks beside the door, and a mat inside it.
+    add(new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.08, 0.04), wood), 4.35, 1.78, 3.88);
+    for (const [x, color] of [[4.1, 0x2a3a4a], [4.6, 0x6a2a20]] as const) add(rounded(0.4, 0.75, 0.12, standard(color, 0.9), 0.06), x, 1.38, 3.8);
+    const mat = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 1.0), standard(0x4a3a2a, 1));
+    mat.rotation.x = -Math.PI / 2;
+    mat.position.set(4.55, 0.009, 1.4);
+    scene.add(mat);
+    // Pictures, and a clock over the keg.
+    const picture = (x: number, y: number, z: number, turn: number, w: number, h: number, colors: [string, string]): void => {
+      add(new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.04), wood), x, y, z, turn);
+      const canvas = document.createElement('canvas');
+      canvas.width = 64; canvas.height = 48;
+      const ctx = canvas.getContext('2d')!;
+      const sky = ctx.createLinearGradient(0, 0, 0, 48);
+      sky.addColorStop(0, colors[0]); sky.addColorStop(1, colors[1]);
+      ctx.fillStyle = sky; ctx.fillRect(0, 0, 64, 48);
+      ctx.fillStyle = '#2a3a2a'; ctx.beginPath(); ctx.moveTo(0, 40); ctx.lineTo(20, 22); ctx.lineTo(34, 34); ctx.lineTo(48, 18); ctx.lineTo(64, 36); ctx.lineTo(64, 48); ctx.lineTo(0, 48); ctx.fill();
+      const art = new THREE.Mesh(new THREE.PlaneGeometry(w - 0.08, h - 0.08), new THREE.MeshStandardMaterial({ map: new THREE.CanvasTexture(canvas), roughness: 0.6 }));
+      (art.material as THREE.MeshStandardMaterial).map!.colorSpace = THREE.SRGBColorSpace;
+      art.position.set(x + Math.sin(turn) * 0.025, y, z + Math.cos(turn) * 0.025);
+      art.rotation.y = turn;
+      scene.add(art);
+    };
+    picture(-4.9, 1.65, 2.4, Math.PI / 2, 0.9, 0.65, ['#d88a5a', '#f4d8a0']);
+    picture(4.9, 1.65, -2.4, -Math.PI / 2, 0.8, 0.6, ['#5a8ac8', '#d8e8f0']);
+    const clock = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.04, 24), standard(0xf4efe4, 0.5));
+    clock.rotation.x = Math.PI / 2;
+    add(clock, -0.6, 2.2, -3.9);
+    for (const [len, angle] of [[0.11, 0.6], [0.14, 2.4]] as const) {
+      const hand = new THREE.Mesh(new THREE.BoxGeometry(0.012, len, 0.01), standard(0x1a1a1a, 0.5));
+      hand.position.set(-0.6 + Math.sin(angle) * len / 2, 2.2 + Math.cos(angle) * len / 2, -3.87);
+      hand.rotation.z = -angle;
+      scene.add(hand);
+    }
+    // A Christmas tree in the corner by the TV, with presents underneath.
+    const tree = new THREE.Group();
+    const needles = standard(0x1f5a32, 0.8);
+    for (const [r, h, y] of [[0.7, 0.9, 0.55], [0.55, 0.75, 1.05], [0.38, 0.6, 1.47]] as const) {
+      const tier = new THREE.Mesh(new THREE.ConeGeometry(r, h, 12), needles);
+      tier.position.y = y;
+      tree.add(tier);
+    }
+    const star = new THREE.Mesh(new THREE.OctahedronGeometry(0.1), new THREE.MeshStandardMaterial({ color: 0xffe080, emissive: 0xffd040, emissiveIntensity: 1.6 }));
+    star.position.y = 1.86;
+    tree.add(star);
+    const lights = [0xd02a2a, 0xf2c14e, 0x3a7ad0, 0x40c060];
+    for (let i = 0; i < 18; i += 1) {
+      const angle = i * 2.4;
+      const y = 0.4 + (i % 9) * 0.14;
+      const radius = 0.66 - (y - 0.3) * 0.36;
+      const bauble = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 6), new THREE.MeshStandardMaterial({ color: lights[i % 4], emissive: lights[i % 4], emissiveIntensity: 0.8 }));
+      bauble.position.set(Math.cos(angle) * radius, y, Math.sin(angle) * radius);
+      tree.add(bauble);
+    }
+    tree.position.set(-4.2, 0, -3.15);
+    scene.add(tree);
+    for (const [x, z, s, color, ribbon] of [[-3.6, -2.6, 0.32, 0xb02a2a, 0xf2c14e], [-4.1, -2.4, 0.26, 0x2a5a9a, 0xe8e8e8], [-3.55, -3.2, 0.24, 0x2a7a3a, 0xd02a2a]] as const) {
+      add(new THREE.Mesh(new THREE.BoxGeometry(s, s * 0.8, s), standard(color, 0.6)), x, s * 0.4, z, 0.3);
+      add(new THREE.Mesh(new THREE.BoxGeometry(s + 0.01, s * 0.8 + 0.01, 0.05), standard(ribbon, 0.5)), x, s * 0.4, z, 0.3);
+    }
+    // String lights along the top of the back and TV walls.
+    for (let i = 0; i < 46; i += 1) {
+      const t = i / 45;
+      const [x, z] = t < 0.55 ? [-4.85 + (t / 0.55) * 9.6, -3.84] : [-4.84, -3.8 + ((t - 0.55) / 0.45) * 7.5];
+      const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.028, 6, 5), new THREE.MeshStandardMaterial({ color: lights[i % 4], emissive: lights[i % 4], emissiveIntensity: 1.8 }));
+      bulb.position.set(x, 2.6 - Math.abs(Math.sin(i * 1.3)) * 0.06, z);
+      scene.add(bulb);
+    }
+    const glow = new THREE.PointLight(0xffb070, 4, 5, 1.6);
+    glow.position.set(-3.8, 1.4, -2.6);
+    scene.add(glow);
   }
 
   /** The TV picture: the Wii menu, a twilit field with a little hero in green, or the movie. */
@@ -1787,21 +1992,25 @@ export class StoryStage {
     lights.lamp.intensity = 9 * (1 - morning);
     lights.sun.intensity = morning * 2.2;
     const window = props.backWindow as THREE.Mesh<THREE.PlaneGeometry, THREE.MeshStandardMaterial>;
-    window.material.emissive.set(0x1a2c48).lerp(new THREE.Color(0xffe2a8), morning);
+    window.material.emissive.set(0x8a9ab8).lerp(new THREE.Color(0xffe2a8), morning);
     window.material.emissiveIntensity = 0.6 + morning * 1.4;
     const sky = new THREE.Color(0x0a121c).lerp(new THREE.Color(0x9ab8d8), morning);
     (stage.scene.background as THREE.Color).copy(sky);
     (stage.scene.fog as THREE.Fog).color.copy(sky);
-    props.frontWall.visible = props.roof.visible = outside;
+    props.roof.visible = outside;
     for (const flakes of stage.snow) flakes.points.visible = outside;
     const closeUp = !outside && (onPhone || id === 'quit-night' && cutscene.index >= 3 && morning <= 0);
     const snap = cutscene.index === 0 && cutscene.elapsedMs < 50 || outside !== this.houseOutside || closeUp !== this.houseCloseUp;
     this.houseOutside = outside;
     this.houseCloseUp = closeUp;
+    // Every indoor shot is taken from inside the room, under the ceiling.
     if (outside) this.cameraTo(new THREE.Vector3(15.5, 4.2, 10.5), new THREE.Vector3(7.2, 1.0, 0.6), this.frameDt, snap);
     // From the TV side for the long night and the call, so both faces show.
     else if (closeUp) this.cameraTo(new THREE.Vector3(-2.7, 1.9, 2.7), new THREE.Vector3(0.45, 0.9, -0.3), this.frameDt, snap);
-    else this.cameraTo(new THREE.Vector3(0.3, 2.35, 9.5), new THREE.Vector3(-0.6, 0.9, -0.3), this.frameDt, snap);
+    // Leaving: from the TV corner, the couch and the side door both in view.
+    else if (id !== 'quit-night') this.cameraTo(HOUSE_VIEWS.door.position, HOUSE_VIEWS.door.look, this.frameDt, snap);
+    // The long night: from the front corner, the TV, the couch and the tree.
+    else this.cameraTo(HOUSE_VIEWS.room.position, HOUSE_VIEWS.room.look, this.frameDt, snap);
   }
 
   // ------------------------------------------------------------------ mall and lot gameplay

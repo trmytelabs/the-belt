@@ -161,9 +161,10 @@ including Paytman's fish tank and Donna's Warcraft vignette. Brian's much larger
 curling green stink trails make his particular contribution unmistakable. Drivers, keys,
 exhaust, coughs, clock-out lines, departures and original grade quotes return.
 
-Ben's robbery, dodge-training, demon and Paula sequence gets a close-up: the
+Ben's robbery, dodge-training, demon and Paula sequence plays out in the open
+end of his aisle, past the parked trucks, with a clear close-up: the
 belt, freight, workers, shift clock and other crew routines freeze until it
-finishes. Escape or losing focus pauses the story too. The camera then returns
+finishes. Enter or SKIP SCENE skips it. Escape or losing focus pauses the story too. The camera then returns
 smoothly to your worker and sorting resumes from the same positions. Everyday
 banter, the CELL dance, massage and loading routines continue during gameplay;
 Mesa retains its existing paused choice and dream.
