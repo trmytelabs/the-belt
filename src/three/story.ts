@@ -235,6 +235,8 @@ export class StoryStage {
   private readonly quality: 'high' | 'low';
   private readonly reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   private readonly stages: Partial<Record<StageId, Stage>> = {};
+  /** The night outside, as reflections and ambient for every stage scene. */
+  private environment: { texture: THREE.Texture; intensity: number } | null = null;
   private readonly cameraLook = new THREE.Vector3();
   private frameDt = 1 / 60;
   private dawn = 0;
@@ -309,10 +311,24 @@ export class StoryStage {
 
   // ------------------------------------------------------------------ stages
 
+  /** Gives every stage scene, built or still to build, the same environment map. */
+  public setEnvironment(texture: THREE.Texture, intensity: number): void {
+    this.environment = { texture, intensity };
+    for (const stage of Object.values(this.stages)) {
+      if (!stage) continue;
+      stage.scene.environment = texture;
+      stage.scene.environmentIntensity = intensity;
+    }
+  }
+
   private stage(id: StageId): Stage {
     let stage = this.stages[id];
     if (stage) return stage;
     const scene = new THREE.Scene();
+    if (this.environment) {
+      scene.environment = this.environment.texture;
+      scene.environmentIntensity = this.environment.intensity;
+    }
     stage = { scene, actors: new Map(), props: {}, puffs: new PuffField(scene), snow: [] };
     this.stages[id] = stage;
     if (id === 'lot') this.buildLot(stage);
@@ -344,11 +360,15 @@ export class StoryStage {
   private night(scene: THREE.Scene, background: number): void {
     scene.background = new THREE.Color(background);
     scene.fog = new THREE.Fog(background, 30, 90);
-    scene.add(new THREE.HemisphereLight(0xb4c7df, 0x485568, 1.25));
-    const key = new THREE.DirectionalLight(0xc8d6ff, 1.1);
+    // The environment map now carries part of the ambient, so the sky light eases
+    // off and the moon's shadow softens: the lot read as flat and hard-edged.
+    scene.add(new THREE.HemisphereLight(0xb4c7df, 0x485568, 1.05));
+    const key = new THREE.DirectionalLight(0xc8d6ff, 0.9);
     key.position.set(-8, 16, 10);
     key.castShadow = this.quality === 'high';
     key.shadow.mapSize.setScalar(2048);
+    key.shadow.radius = 3;
+    key.shadow.normalBias = 0.03;
     const s = key.shadow.camera;
     s.left = -24; s.right = 24; s.top = 24; s.bottom = -24;
     scene.add(key);

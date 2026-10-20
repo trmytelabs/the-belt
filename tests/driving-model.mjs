@@ -132,8 +132,8 @@ test('the green 3D compass stays aligned with the destination through all headin
   for (const destination of ['mall', 'ups']) for (const x of CITY.streetsX) for (const z of CITY.streetsZ) for (const heading of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
     const m = new DrivingModel(destination); Object.assign(m, { x, z, heading });
     const yaw = heading + 0.32;
-    camera.position.set(x - Math.cos(yaw) * 15, 9.5, z + Math.sin(yaw) * 15);
-    camera.lookAt(x + Math.cos(yaw) * 12, 1.3, z - Math.sin(yaw) * 12);
+    camera.position.set(x - Math.cos(yaw) * 9, 4.5, z + Math.sin(yaw) * 9);
+    camera.lookAt(x + Math.cos(yaw) * 10, 1.2, z - Math.sin(yaw) * 10);
     compass.update(m, camera);
     const tip = new THREE.Vector3(0, 0, -1).applyAxisAngle(new THREE.Vector3(0, 1, 0), compass.pointer.rotation.y);
     const world = { x: -tip.z * Math.cos(yaw) + tip.x * Math.sin(yaw), z: tip.z * Math.sin(yaw) + tip.x * Math.cos(yaw) };
