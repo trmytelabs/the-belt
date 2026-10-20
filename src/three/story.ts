@@ -939,7 +939,8 @@ export class StoryStage {
       bank.rotation.y = turn;
       scene.add(bank);
     }
-    // Snow falls all round the house, never inside it.
+    // Snow falls all round the house. The living room is an open-fronted set
+    // seen from the yard, so directHouse shows it only for outdoor shots.
     const flakes = this.quality === 'high' ? 1 : 0.3;
     for (const [min, max, count] of [
       [[5.3, 0, -14], [26, 9, 18], 1300], [[-26, 0, 4.3], [5.3, 9, 18], 1300],
@@ -1792,6 +1793,7 @@ export class StoryStage {
     (stage.scene.background as THREE.Color).copy(sky);
     (stage.scene.fog as THREE.Fog).color.copy(sky);
     props.frontWall.visible = props.roof.visible = outside;
+    for (const flakes of stage.snow) flakes.points.visible = outside;
     const closeUp = !outside && (onPhone || id === 'quit-night' && cutscene.index >= 3 && morning <= 0);
     const snap = cutscene.index === 0 && cutscene.elapsedMs < 50 || outside !== this.houseOutside || closeUp !== this.houseCloseUp;
     this.houseOutside = outside;

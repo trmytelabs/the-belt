@@ -336,6 +336,9 @@ export class Belt3d {
   private resize(): void {
     const width = this.host.clientWidth || window.innerWidth;
     const height = this.host.clientHeight || window.innerHeight;
+    // A page opened in a hidden or collapsed window has no size yet. A 0/0
+    // aspect would poison every camera; wait for the resize that gives it one.
+    if (!width || !height) return;
     this.renderer.setSize(width, height, false);
     this.composer?.setSize(width, height);
     this.camera.aspect = width / height;
@@ -1474,6 +1477,11 @@ export class Belt3d {
     }
     const rearLimit = toWorldZ(SHIFT_LAYOUT.bulkRearWall.y - SHIFT_LAYOUT.bulkRearWall.height / 2) - this.camera.near - 0.15;
     position.z = Math.min(position.z, rearLimit);
+    // Easing never recovers from an invalid position (NaN stays NaN), which left the depot black.
+    if (!Number.isFinite(this.camera.position.lengthSq()) || !Number.isFinite(this.cameraTarget.lengthSq())) {
+      this.camera.position.copy(position);
+      this.cameraTarget.copy(look);
+    }
     const ease = snap ? 1 : 1 - Math.exp(-dt * 4);
     this.camera.position.lerp(position, ease);
     this.camera.position.z = Math.min(this.camera.position.z, rearLimit);
