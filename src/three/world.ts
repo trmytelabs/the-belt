@@ -1561,12 +1561,14 @@ export function createTruck(name: string, color: number, cabColor: number, side:
     handle.position.set(cabX + facing * 0.15, 1.3, side * (depth / 2 - 0.04));
     const step = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.06, 0.16), dark);
     step.position.set(cabX, 0.5, side * (depth / 2 - 0.02));
-    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.03, 0.34), dark);
-    arm.position.set(-facing * (length / 2 - 0.18), 1.95, side * (depth / 2 + 0.12));
-    const mirror = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.34, 0.16), dark);
-    mirror.position.set(-facing * (length / 2 - 0.18), 1.92, side * (depth / 2 + 0.28));
+    // The mirrors stay within 0.18 m of the body: the gags staged between the
+    // truck rows (the massage table, the Lego, the desk) need their clearance.
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.03, 0.22), dark);
+    arm.position.set(-facing * (length / 2 - 0.18), 1.95, side * (depth / 2 + 0.06));
+    const mirror = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.34, 0.12), dark);
+    mirror.position.set(-facing * (length / 2 - 0.18), 1.92, side * (depth / 2 + 0.12));
     const mirrorGlass = new THREE.Mesh(new THREE.PlaneGeometry(0.12, 0.3), chrome);
-    mirrorGlass.position.set(-facing * (length / 2 - 0.145), 1.92, side * (depth / 2 + 0.28));
+    mirrorGlass.position.set(-facing * (length / 2 - 0.145), 1.92, side * (depth / 2 + 0.12));
     mirrorGlass.rotation.y = -facing * Math.PI / 2;
     truck.add(sideWindow, doorSeam, handle, step, arm, mirror, mirrorGlass);
   }
