@@ -64,6 +64,26 @@ export interface Character {
   walkPhase: number;
   /** A short one-shot motion (a lift, a put-down, a throw) layered over the walk cycle. */
   action?: CharacterAction;
+  /**
+   * What the character is doing this frame, set by `animateCharacter` and the
+   * pose code, so an imported model can play matching animation clips
+   * (characterModels.ts). A figure posed by hand and never animated has none,
+   * and its model follows the figure's joints.
+   */
+  motion?: CharacterMotion;
+}
+
+export interface CharacterMotion {
+  /** The game time of the last `animateCharacter` call; clips advance by its change, so a paused game holds them. */
+  time: number;
+  moving: boolean;
+  carrying: boolean;
+  /** The arms follow the figure (a held cup, a raised hand) whatever the clip does. */
+  holding: boolean;
+  reduced: boolean;
+  /** The named pose from crew.ts, `none` when only walking or standing. */
+  pose: string;
+  seated: boolean;
 }
 
 export type ActionKind = 'lift' | 'drop' | 'throw';
@@ -581,6 +601,15 @@ export function animateCharacter(character: Character, dt: number, state: {
   const { moving, carrying = false, speed = 1 } = state;
   const load = Math.max(0, Math.min(1, state.load ?? 0));
   const walking = moving && !state.reducedMotion;
+  // For an imported model's clips; the pose code sets `pose`, `seated` and `holding` after this.
+  const motion = (character.motion ??= { time: state.time, moving: false, carrying: false, holding: false, reduced: false, pose: 'none', seated: false });
+  motion.time = state.time;
+  motion.moving = moving;
+  motion.carrying = carrying;
+  motion.holding = false;
+  motion.reduced = state.reducedMotion === true;
+  motion.pose = 'none';
+  motion.seated = false;
   if (walking) character.walkPhase += dt * 9 * speed;
   const phase = character.walkPhase;
   const swing = walking ? Math.sin(phase) : 0;

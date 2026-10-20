@@ -39,6 +39,8 @@ export class Actor {
   public pose: Pose = 'none';
   public poseStart = 0;
   public carrying = false;
+  /** The arms keep a hand-set pose (Kylie's raised cup) while an imported model plays its clips. */
+  public holding = false;
   public faceAngle: number | null = null;
   private readonly previous = new THREE.Vector3();
   private moved = false;
@@ -72,6 +74,7 @@ export class Actor {
     delta = Math.atan2(Math.sin(delta), Math.cos(delta));
     c.root.rotation.y += delta * Math.min(1, dt * 10);
     animateCharacter(c, dt, { moving: this.moved, carrying: this.carrying, time, reducedMotion });
+    if (c.motion) { c.motion.pose = this.pose; c.motion.holding = this.holding; }
     // A posed figure owns its torso; a plain walk keeps the walk cycle's lean and sway.
     if (this.pose !== 'none') c.body.rotation.set(0, 0, 0);
     c.head.rotation.set(0, 0, 0);
@@ -517,6 +520,7 @@ export class CrewLife {
       DEPOT.eventBays.brian.y + Math.cos(t / 1300) * 12,
     );
     kylie.character.rightArm.rotation.x = -0.9;
+    kylie.holding = true;
 
     // John patrols both lanes, stops for random squat sets and retains his original warning.
     this.once('john', t, 13000, () => this.john(t));

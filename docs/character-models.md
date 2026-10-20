@@ -32,9 +32,38 @@ changes to the scenes.
 - The loader is a separate chunk of the bundle. Each model downloads the first
   time its character is created.
 
-Animations from the file (for example Mixamo clips) are not used yet; the
-figure's poses drive the model. Natural walk, idle and carry clips would be a
-later step.
+## Motion-captured clips
+
+On GPU renderers the crew move with motion-captured clips from the same MIT
+Rocketbox repository and commit as the avatars. They were captured on the
+very Biped skeleton the crew models carry, so they play without retargeting.
+`src/three/rocketboxClips.ts` lists them: two standing idles, walk, slow
+walk and run, and the cough, cheer, clap, wave, phone call, crouch, dance,
+drink, shrug and announcement gestures, each in a male and a female version
+(the four women use the female ones). `tools/rocketbox` converts them into
+one file, `public/models/animations/crew-clips.glb` (about 4.4 MB), keeping
+every bone's rotation, fingers included, and the root's rise and fall, and
+removing the root's travel across the floor: the game moves the character and
+the clip plays in place, sped up or slowed to match the character's real
+speed so the feet do not slide. Each person starts their clips at a
+different point, so the crew do not idle in step.
+
+What a character is doing comes from the same code as before: the walk cycle
+records whether they move or carry, and the pose code records the named pose
+or a seat. `characterModels.ts` picks the clip and cross-fades to it over a
+quarter of a second. The figure's pose is blended over the clips wherever a
+clip would be wrong:
+
+- carrying (and Kylie's raised cup), where the arms follow the figure while the
+  legs and body walk or idle;
+- a lift, put-down or throw, a seat, lying down, and every pose without a clip
+  (the squat, massage, push, keys and others), where the whole body follows the
+  figure;
+- reduced motion, where the clips stop and the figure takes over.
+
+Termite and Skanky's head turn toward their work is added on top of the
+clip's head. Software renderers (CI) and any model without a clip set follow
+their figures exactly as before.
 
 Walking uses a restrained opposite arm swing with relaxed elbow flexion.
 Carrying keeps upper arms beside the ribs and bends primarily at the elbows.
@@ -118,6 +147,14 @@ can call `window.convertRocketbox(files?)` instead of pressing the button. It:
   Skanky, 512 px for everyone else), the roughness map at half that, and hair
   cut-outs as PNG with alpha, at most 512 px, with no normal or roughness map.
 
+The same page converts the clips: `window.convertRocketboxClips()` loads each
+role's male and female FBX from `Assets/Animations` at the pinned commit (about
+70 MB), drops redundant keys (most of a motion-capture track; under 0.0025 rad
+or 1 mm of error) and writes `public/models/animations/crew-clips.glb`; it
+reports each clip's natural ground speed, which `CLIP_SPEEDS` in
+`rocketboxClips.ts` records for the locomotion clips. `window.inspectClip(path)`
+prints a clip's hierarchy and tracks, for checking a new one.
+
 To recast someone, change their entry in `rocketboxCast.ts`, run the converter
 and check `npm run test:model`, which verifies every listed file.
 
@@ -171,6 +208,16 @@ built-in assets export as CC0; community assets and other sources have their
 own licences, so check each one. Never commit a model whose licence is unknown.
 
 ## Checks
+
+`tests/character-clips-model.mjs` checks the clip library: every role in both
+bodies, rotations and the root's height only (no per-bone position or scale,
+no 3ds Max helpers), every clip bone present on every crew model, each
+avatar's hip height within 5 cm of its body's clips, the root held in place
+(15 cm of sway at most, 20 for gestures and 35 for the dance) and a natural
+speed recorded for each locomotion clip. `tests/character-model-browser.mjs`
+plays the clips on the real cast, a man and a woman, and checks that the torso
+and fingers move under them, that they play in place, and that a pose without
+a clip and reduced motion hand the body back to the figure.
 
 `tests/character-cast.mjs` checks every committed crew model: one file per
 cast entry and no extras, at most 2 MB each, one skinned mesh with the

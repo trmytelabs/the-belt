@@ -29,6 +29,10 @@ WebGL; without it the page links to the original full shift. See
 [the 3D depot](docs/3d-preview.md). The crew uses 23 rigged Microsoft Rocketbox
 characters, with procedural figures on software graphics. Their animation,
 props and provenance are covered in [character models](docs/character-models.md).
+On GPU renderers the crew walk, run, idle, cough, cheer, clap, wave, phone,
+crouch, dance, drink, shrug and announce with motion-captured Rocketbox clips
+(MIT) made for their own skeleton; poses without a clip, carried boxes and
+reduced motion keep the hand-built animation below.
 Arms stay beside the torso with natural elbow bends during walking, carrying
 and gestures. Walking leans the torso in and sways it with each step; a heavy
 box pulls the carrier back onto their heels; grabbing, loading and putting down
