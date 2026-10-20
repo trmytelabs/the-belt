@@ -44,9 +44,10 @@ function steadyDriver(initial, goal, via) {
 }
 
 const readDrive = page => page.evaluate(() => {
-  const m = window.fixtureApp.driving, s = m.nextSignal;
+  const m = window.fixtureApp.driving, s = m.nextSignal, t = window.fixtureApp.touch;
   return { x: m.x, z: m.z, heading: m.heading, speed: m.speed, goal: m.goal, canPark: m.canPark, elapsed: m.elapsed,
-    signal: s ? { color: m.signalColor(s), remaining: m.signalDistance(s) } : null };
+    signal: s ? { color: m.signalColor(s), remaining: m.signalDistance(s) } : null,
+    touch: { x: t.move.x, y: t.move.y, throttle: t.pedals.throttle, brake: t.pedals.brake } };
 });
 
 /** The keyboard driver's thresholds: a key is held for any steer past 0.08, throttle or brake past zero. */
@@ -81,14 +82,17 @@ export async function driveToBay(page, via) {
  * Real simultaneous touch contacts, worked the way the keyboard driver works
  * its keys: GAS is held while the driver wants throttle, BRAKE while it wants
  * brake (alone while backing up, which is how the pedals reverse), and the
- * stick is pushed to its rim on the steering side, as an arrow key gives full
- * lock. The stick ignores deflections under 18 % of its radius, and a
- * proportional push left small corrections in that dead zone and larger ones
- * at a fraction of the keyboard's lock; on a software-rendered runner, where
- * every correction already lands late, that was enough to miss turns. Each
- * touch event also waits on the page's main thread, so a contact only moves
- * when its state changes, as the keyboard driver only presses a key that
- * changes.
+ * stick is held at its rim on the steering side, as an arrow key gives full
+ * lock. The earlier proportional push left small corrections inside the
+ * stick's 18 % dead zone and larger ones short of the keyboard's lock, and
+ * CI's software-rendered runner, where every correction already lands late,
+ * kept missing turns that the keyboard drive in the same job made. Every
+ * contact is now a press and a release, never a drag, and each read checks
+ * what the page registered for the held contacts, pressing again any the
+ * page has lost; a failure reports those re-presses and a trace of the
+ * drive. Each touch event waits on the page's main thread, so a contact only
+ * changes when its state changes, as the keyboard driver only presses a key
+ * that changes.
  */
 export async function touchDriveToBay(page, cdp) {
   const initial = await readDrive(page), driver = steadyDriver(initial, initial.goal);
@@ -100,9 +104,11 @@ export async function touchDriveToBay(page, cdp) {
   const brakePoint = { x: brake.x + brake.width / 2, y: brake.y + brake.height / 2, id: 13 };
   const steerPoint = { x: centreX, y: stick.y + stick.height / 2, id: 12 };
   let gasHeld = false, braking = false, lock = 0;
-  const active = () => [...(gasHeld ? [gasPoint] : []), steerPoint, ...(braking ? [brakePoint] : [])];
+  const active = () => [...(gasHeld ? [gasPoint] : []), ...(lock ? [steerPoint] : []), ...(braking ? [brakePoint] : [])];
   const touch = (type, touchPoints) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints });
-  await touch('touchStart', [steerPoint]);
+  // What the page registered for each contact, so a contact the page has lost is pressed again,
+  // and a trace of the drive for the failure message.
+  const lost = { gas: 0, brake: 0, steer: 0 }, repressed = { gas: 0, brake: 0, steer: 0 }, trace = [];
   const deadline = Date.now() + WALL_CAP_MS;
   try {
     for (let d = initial; withinBudget(initial, d, deadline);) {
@@ -111,6 +117,13 @@ export async function touchDriveToBay(page, cdp) {
       const input = driver(d);
       const wantGas = input.throttle > 0 && !input.reverse, wantBrake = input.brake > 0;
       const wantLock = Math.abs(input.steer) > STEER_THRESHOLD ? Math.sign(input.steer) : 0;
+      // A held contact the page no longer reports two reads running is pressed again.
+      lost.gas = gasHeld && d.touch.throttle !== 1 ? lost.gas + 1 : 0;
+      lost.brake = braking && d.touch.brake !== 1 ? lost.brake + 1 : 0;
+      lost.steer = lock && Math.sign(d.touch.x) !== lock ? lost.steer + 1 : 0;
+      if (lost.gas > 1) { gasHeld = false; repressed.gas++; await touch('touchEnd', [gasPoint]); }
+      if (lost.brake > 1) { braking = false; repressed.brake++; await touch('touchEnd', [brakePoint]); }
+      if (lost.steer > 1) { lock = 0; repressed.steer++; await touch('touchEnd', [steerPoint]); }
       if (wantGas !== gasHeld) {
         gasHeld = wantGas;
         await touch(wantGas ? 'touchStart' : 'touchEnd', wantGas ? active() : [gasPoint]);
@@ -120,14 +133,22 @@ export async function touchDriveToBay(page, cdp) {
         await touch(wantBrake ? 'touchStart' : 'touchEnd', wantBrake ? active() : [brakePoint]);
       }
       if (wantLock !== lock) {
-        lock = wantLock;
-        // Just inside the rim: a push to the edge of the stick reads as full lock.
-        steerPoint.x = centreX + lock * radius * 0.97;
-        await touch('touchMove', active());
+        // A held contact lifts before one lands on the other side, so the stick is never dragged.
+        if (lock) { lock = 0; await touch('touchEnd', [steerPoint]); }
+        if (wantLock) {
+          lock = wantLock;
+          // Just inside the rim: a press at the edge of the stick reads as full lock.
+          steerPoint.x = centreX + lock * radius * 0.97;
+          await touch('touchStart', active());
+        }
+      }
+      if (!trace.length || d.elapsed - trace[trace.length - 1].t >= 2) {
+        trace.push({ t: +d.elapsed.toFixed(1), x: +d.x.toFixed(1), z: +d.z.toFixed(1), h: +d.heading.toFixed(2), v: +d.speed.toFixed(1),
+          steer: +input.steer.toFixed(2), gas: wantGas ? 1 : 0, brake: wantBrake ? 1 : 0, page: { x: +d.touch.x.toFixed(2), gas: d.touch.throttle, brake: d.touch.brake } });
       }
       await page.waitForTimeout(55);
     }
-    throw new Error(`The touch driver did not reach the bay: ${JSON.stringify(await readDrive(page))}`);
+    throw new Error(`The touch driver did not reach the bay: ${JSON.stringify(await readDrive(page))}\nre-pressed ${JSON.stringify(repressed)}\ntrace ${JSON.stringify(trace.slice(-80))}`);
   } finally { await touch('touchEnd', []); }
 }
 
