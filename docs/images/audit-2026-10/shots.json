@@ -1,0 +1,1472 @@
+{
+  "capturedAt": "2026-10-20T18:27:41.597Z",
+  "viewport": {
+    "width": 1280,
+    "height": 800
+  },
+  "renderer": {
+    "renderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 4090 (0x00002684) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+    "quality": "high",
+    "pixelRatio": 1
+  },
+  "shots": [
+    {
+      "name": "lot-game-camera",
+      "state": "story",
+      "scene": "opener-1",
+      "gameTime": 0.268,
+      "camera": {
+        "position": {
+          "x": 13,
+          "y": 8.5,
+          "z": 21
+        },
+        "look": null,
+        "direction": {
+          "x": -0.499,
+          "y": -0.326,
+          "z": -0.803
+        },
+        "fov": 42,
+        "aspect": 1.6
+      },
+      "subject": "opener-1 beat 0 from the scene's own camera"
+    },
+    {
+      "name": "sedan-exterior-front-left",
+      "state": "story",
+      "scene": "opener-1",
+      "gameTime": 0.268,
+      "camera": {
+        "position": {
+          "x": -4.6,
+          "y": 1.3,
+          "z": 2.6
+        },
+        "look": {
+          "x": 0,
+          "y": 0.75,
+          "z": 5.2
+        },
+        "direction": {
+          "x": 0.866,
+          "y": -0.104,
+          "z": 0.489
+        },
+        "fov": 42,
+        "aspect": 1.6
+      },
+      "subject": "car-skanky, front three-quarter from its left",
+      "car": {
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 5.2
+        },
+        "yaw": 1.571,
+        "importedModel": true
+      },
+      "passengers": {
+        "skanky": {
+          "position": {
+            "x": 0.36,
+            "y": 0.06,
+            "z": 5.5
+          },
+          "facing": 0.96,
+          "walkPhase": 2.23,
+          "action": null,
+          "body": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "leftArm": {
+            "x": -0.5,
+            "y": 0,
+            "z": 0.1
+          },
+          "leftForearm": {
+            "x": -0.9,
+            "y": 0,
+            "z": 0
+          },
+          "leftLeg": {
+            "x": -1.5,
+            "y": 0,
+            "z": 0
+          },
+          "leftShin": {
+            "x": 1.5,
+            "y": 0,
+            "z": 0
+          },
+          "head": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "importedModel": true
+        },
+        "termite": {
+          "position": {
+            "x": -0.36,
+            "y": 0.06,
+            "z": 5.5
+          },
+          "facing": 0.96,
+          "walkPhase": 5.539,
+          "action": null,
+          "body": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "leftArm": {
+            "x": -0.5,
+            "y": 0,
+            "z": 0.1
+          },
+          "leftForearm": {
+            "x": -0.9,
+            "y": 0,
+            "z": 0
+          },
+          "leftLeg": {
+            "x": -1.5,
+            "y": 0,
+            "z": 0
+          },
+          "leftShin": {
+            "x": 1.5,
+            "y": 0,
+            "z": 0
+          },
+          "head": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "importedModel": true
+        }
+      }
+    },
+    {
+      "name": "sedan-exterior-front-right",
+      "state": "story",
+      "scene": "opener-1",
+      "gameTime": 0.268,
+      "camera": {
+        "position": {
+          "x": 4.6,
+          "y": 1.3,
+          "z": 2.6
+        },
+        "look": {
+          "x": 0,
+          "y": 0.75,
+          "z": 5.2
+        },
+        "direction": {
+          "x": -0.866,
+          "y": -0.104,
+          "z": 0.489
+        },
+        "fov": 42,
+        "aspect": 1.6
+      },
+      "subject": "car-skanky, front three-quarter from its right",
+      "car": {
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 5.2
+        },
+        "yaw": 1.571,
+        "importedModel": true
+      },
+      "passengers": {
+        "skanky": {
+          "position": {
+            "x": 0.36,
+            "y": 0.06,
+            "z": 5.5
+          },
+          "facing": 1.324,
+          "walkPhase": 2.23,
+          "action": null,
+          "body": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "leftArm": {
+            "x": -0.5,
+            "y": 0,
+            "z": 0.1
+          },
+          "leftForearm": {
+            "x": -0.9,
+            "y": 0,
+            "z": 0
+          },
+          "leftLeg": {
+            "x": -1.5,
+            "y": 0,
+            "z": 0
+          },
+          "leftShin": {
+            "x": 1.5,
+            "y": 0,
+            "z": 0
+          },
+          "head": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "importedModel": true
+        },
+        "termite": {
+          "position": {
+            "x": -0.36,
+            "y": 0.06,
+            "z": 5.5
+          },
+          "facing": 1.324,
+          "walkPhase": 5.539,
+          "action": null,
+          "body": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "leftArm": {
+            "x": -0.5,
+            "y": 0,
+            "z": 0.1
+          },
+          "leftForearm": {
+            "x": -0.9,
+            "y": 0,
+            "z": 0
+          },
+          "leftLeg": {
+            "x": -1.5,
+            "y": 0,
+            "z": 0
+          },
+          "leftShin": {
+            "x": 1.5,
+            "y": 0,
+            "z": 0
+          },
+          "head": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "importedModel": true
+        }
+      }
+    },
+    {
+      "name": "sedan-exterior-rear",
+      "state": "story",
+      "scene": "opener-1",
+      "gameTime": 0.268,
+      "camera": {
+        "position": {
+          "x": -4,
+          "y": 1.6,
+          "z": 10.7
+        },
+        "look": {
+          "x": 0,
+          "y": 0.75,
+          "z": 5.2
+        },
+        "direction": {
+          "x": 0.584,
+          "y": -0.124,
+          "z": -0.802
+        },
+        "fov": 42,
+        "aspect": 1.6
+      },
+      "subject": "car-skanky, rear three-quarter",
+      "car": {
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 5.2
+        },
+        "yaw": 1.571,
+        "importedModel": true
+      },
+      "passengers": {
+        "skanky": {
+          "position": {
+            "x": 0.36,
+            "y": 0.06,
+            "z": 5.5
+          },
+          "facing": 1.627,
+          "walkPhase": 2.23,
+          "action": null,
+          "body": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "leftArm": {
+            "x": -0.5,
+            "y": 0,
+            "z": 0.1
+          },
+          "leftForearm": {
+            "x": -0.9,
+            "y": 0,
+            "z": 0
+          },
+          "leftLeg": {
+            "x": -1.5,
+            "y": 0,
+            "z": 0
+          },
+          "leftShin": {
+            "x": 1.5,
+            "y": 0,
+            "z": 0
+          },
+          "head": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "importedModel": true
+        },
+        "termite": {
+          "position": {
+            "x": -0.36,
+            "y": 0.06,
+            "z": 5.5
+          },
+          "facing": 1.627,
+          "walkPhase": 5.539,
+          "action": null,
+          "body": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "leftArm": {
+            "x": -0.5,
+            "y": 0,
+            "z": 0.1
+          },
+          "leftForearm": {
+            "x": -0.9,
+            "y": 0,
+            "z": 0
+          },
+          "leftLeg": {
+            "x": -1.5,
+            "y": 0,
+            "z": 0
+          },
+          "leftShin": {
+            "x": 1.5,
+            "y": 0,
+            "z": 0
+          },
+          "head": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "importedModel": true
+        }
+      }
+    },
+    {
+      "name": "sedan-window-passengers",
+      "state": "story",
+      "scene": "opener-1",
+      "gameTime": 0.268,
+      "camera": {
+        "position": {
+          "x": 2.8,
+          "y": 1.25,
+          "z": 5.5
+        },
+        "look": {
+          "x": 0,
+          "y": 1,
+          "z": 5.5
+        },
+        "direction": {
+          "x": -0.996,
+          "y": -0.089,
+          "z": 0
+        },
+        "fov": 42,
+        "aspect": 1.6
+      },
+      "subject": "car-skanky through the right-side windows: Skanky driving, Termite beside",
+      "car": {
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 5.2
+        },
+        "yaw": 1.571,
+        "importedModel": true
+      },
+      "passengers": {
+        "skanky": {
+          "position": {
+            "x": 0.36,
+            "y": 0.06,
+            "z": 5.5
+          },
+          "facing": 1.879,
+          "walkPhase": 2.23,
+          "action": null,
+          "body": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "leftArm": {
+            "x": -0.5,
+            "y": 0,
+            "z": 0.1
+          },
+          "leftForearm": {
+            "x": -0.9,
+            "y": 0,
+            "z": 0
+          },
+          "leftLeg": {
+            "x": -1.5,
+            "y": 0,
+            "z": 0
+          },
+          "leftShin": {
+            "x": 1.5,
+            "y": 0,
+            "z": 0
+          },
+          "head": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "importedModel": true
+        },
+        "termite": {
+          "position": {
+            "x": -0.36,
+            "y": 0.06,
+            "z": 5.5
+          },
+          "facing": 1.879,
+          "walkPhase": 5.539,
+          "action": null,
+          "body": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "leftArm": {
+            "x": -0.5,
+            "y": 0,
+            "z": 0.1
+          },
+          "leftForearm": {
+            "x": -0.9,
+            "y": 0,
+            "z": 0
+          },
+          "leftLeg": {
+            "x": -1.5,
+            "y": 0,
+            "z": 0
+          },
+          "leftShin": {
+            "x": 1.5,
+            "y": 0,
+            "z": 0
+          },
+          "head": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "importedModel": true
+        }
+      }
+    },
+    {
+      "name": "sedan-interior-over-shoulder",
+      "state": "story",
+      "scene": "opener-1",
+      "gameTime": 0.268,
+      "camera": {
+        "position": {
+          "x": 0.45,
+          "y": 1.3,
+          "z": 6.8
+        },
+        "look": {
+          "x": 0,
+          "y": 0.8,
+          "z": 2.7
+        },
+        "direction": {
+          "x": -0.108,
+          "y": -0.12,
+          "z": -0.987
+        },
+        "fov": 42,
+        "aspect": 1.6
+      },
+      "subject": "inside car-skanky, from behind the seats through the windscreen",
+      "car": {
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 5.2
+        },
+        "yaw": 1.571,
+        "importedModel": true
+      },
+      "passengers": {
+        "skanky": {
+          "position": {
+            "x": 0.36,
+            "y": 0.06,
+            "z": 5.5
+          },
+          "facing": 2.089,
+          "walkPhase": 2.23,
+          "action": null,
+          "body": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "leftArm": {
+            "x": -0.5,
+            "y": 0,
+            "z": 0.1
+          },
+          "leftForearm": {
+            "x": -0.9,
+            "y": 0,
+            "z": 0
+          },
+          "leftLeg": {
+            "x": -1.5,
+            "y": 0,
+            "z": 0
+          },
+          "leftShin": {
+            "x": 1.5,
+            "y": 0,
+            "z": 0
+          },
+          "head": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "importedModel": true
+        },
+        "termite": {
+          "position": {
+            "x": -0.36,
+            "y": 0.06,
+            "z": 5.5
+          },
+          "facing": 2.089,
+          "walkPhase": 5.539,
+          "action": null,
+          "body": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "leftArm": {
+            "x": -0.5,
+            "y": 0,
+            "z": 0.1
+          },
+          "leftForearm": {
+            "x": -0.9,
+            "y": 0,
+            "z": 0
+          },
+          "leftLeg": {
+            "x": -1.5,
+            "y": 0,
+            "z": 0
+          },
+          "leftShin": {
+            "x": 1.5,
+            "y": 0,
+            "z": 0
+          },
+          "head": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "importedModel": true
+        }
+      }
+    },
+    {
+      "name": "house-game-camera",
+      "state": "story",
+      "scene": "home-decision",
+      "gameTime": 0.268,
+      "camera": {
+        "position": {
+          "x": -4,
+          "y": 2.15,
+          "z": 3.3
+        },
+        "look": null,
+        "direction": {
+          "x": 0.882,
+          "y": -0.165,
+          "z": -0.441
+        },
+        "fov": 42,
+        "aspect": 1.6
+      },
+      "subject": "home-decision beat 0 from the scene's own camera",
+      "poses": {
+        "termite": {
+          "position": {
+            "x": 2.6,
+            "y": 0,
+            "z": 1.4
+          },
+          "facing": -0.262,
+          "walkPhase": 2.068,
+          "action": null,
+          "body": {
+            "x": 0.013,
+            "y": 0,
+            "z": 0.005
+          },
+          "leftArm": {
+            "x": -0.049,
+            "y": 0,
+            "z": -0.023
+          },
+          "leftForearm": {
+            "x": -0.163,
+            "y": 0,
+            "z": 0
+          },
+          "leftLeg": {
+            "x": 0.103,
+            "y": 0,
+            "z": 0
+          },
+          "leftShin": {
+            "x": 0.113,
+            "y": 0,
+            "z": 0
+          },
+          "head": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "importedModel": true
+        },
+        "skanky": {
+          "position": {
+            "x": 0.45,
+            "y": 0,
+            "z": -0.55
+          },
+          "facing": -0.262,
+          "walkPhase": 5.509,
+          "action": null,
+          "body": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "leftArm": {
+            "x": -0.5,
+            "y": 0,
+            "z": 0.1
+          },
+          "leftForearm": {
+            "x": -0.9,
+            "y": 0,
+            "z": 0
+          },
+          "leftLeg": {
+            "x": -1.5,
+            "y": 0,
+            "z": 0
+          },
+          "leftShin": {
+            "x": 1.5,
+            "y": 0,
+            "z": 0
+          },
+          "head": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "importedModel": true
+        }
+      }
+    },
+    {
+      "name": "crew-seated-couch",
+      "state": "story",
+      "scene": "home-decision",
+      "gameTime": 0.268,
+      "camera": {
+        "position": {
+          "x": 0.325,
+          "y": 1.55,
+          "z": 3.425
+        },
+        "look": {
+          "x": 1.525,
+          "y": 0.85,
+          "z": 0.425
+        },
+        "direction": {
+          "x": 0.363,
+          "y": -0.212,
+          "z": -0.907
+        },
+        "fov": 42,
+        "aspect": 1.6
+      },
+      "subject": "Skanky and Termite on the couch",
+      "poses": {
+        "termite": {
+          "position": {
+            "x": 2.6,
+            "y": 0,
+            "z": 1.4
+          },
+          "facing": -0.48,
+          "walkPhase": 2.068,
+          "action": null,
+          "body": {
+            "x": 0.01,
+            "y": 0,
+            "z": 0.003
+          },
+          "leftArm": {
+            "x": -0.038,
+            "y": 0,
+            "z": -0.041
+          },
+          "leftForearm": {
+            "x": -0.153,
+            "y": 0,
+            "z": 0
+          },
+          "leftLeg": {
+            "x": 0.079,
+            "y": 0,
+            "z": 0
+          },
+          "leftShin": {
+            "x": 0.094,
+            "y": 0,
+            "z": 0
+          },
+          "head": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "importedModel": true
+        },
+        "skanky": {
+          "position": {
+            "x": 0.45,
+            "y": 0,
+            "z": -0.55
+          },
+          "facing": -0.48,
+          "walkPhase": 5.509,
+          "action": null,
+          "body": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "leftArm": {
+            "x": -0.5,
+            "y": 0,
+            "z": 0.1
+          },
+          "leftForearm": {
+            "x": -0.9,
+            "y": 0,
+            "z": 0
+          },
+          "leftLeg": {
+            "x": -1.5,
+            "y": 0,
+            "z": 0
+          },
+          "leftShin": {
+            "x": 1.5,
+            "y": 0,
+            "z": 0
+          },
+          "head": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "importedModel": true
+        }
+      }
+    },
+    {
+      "name": "crew-walking",
+      "state": "playing",
+      "scene": null,
+      "gameTime": 10.603,
+      "camera": {
+        "position": {
+          "x": -5.662,
+          "y": 2.7,
+          "z": -4.611
+        },
+        "look": {
+          "x": -3.063,
+          "y": 2.1,
+          "z": -1.211
+        },
+        "direction": {
+          "x": 0.602,
+          "y": -0.139,
+          "z": 0.787
+        },
+        "fov": 38,
+        "aspect": 1.6
+      },
+      "subject": "termite",
+      "framesWalked": 45,
+      "elapsedMs": 6966.666666666604,
+      "pose": {
+        "position": {
+          "x": -3.063,
+          "y": 1.1,
+          "z": -1.211
+        },
+        "facing": 3.142,
+        "walkPhase": 39.073,
+        "action": null,
+        "body": {
+          "x": 0.055,
+          "y": 0,
+          "z": 0.015
+        },
+        "leftArm": {
+          "x": -0.168,
+          "y": 0,
+          "z": -0.1
+        },
+        "leftForearm": {
+          "x": -0.288,
+          "y": 0,
+          "z": 0
+        },
+        "leftLeg": {
+          "x": 0.35,
+          "y": 0,
+          "z": 0
+        },
+        "leftShin": {
+          "x": 0.082,
+          "y": 0,
+          "z": 0
+        },
+        "head": {
+          "x": 0,
+          "y": -0.003,
+          "z": 0
+        },
+        "importedModel": false
+      }
+    },
+    {
+      "name": "crew-close-face",
+      "state": "playing",
+      "scene": null,
+      "gameTime": 11.353,
+      "camera": {
+        "position": {
+          "x": -3.962,
+          "y": 2.75,
+          "z": -2.611
+        },
+        "look": {
+          "x": -3.063,
+          "y": 2.65,
+          "z": -1.211
+        },
+        "direction": {
+          "x": 0.54,
+          "y": -0.06,
+          "z": 0.84
+        },
+        "fov": 38,
+        "aspect": 1.6
+      },
+      "subject": "termite",
+      "pose": {
+        "position": {
+          "x": -3.063,
+          "y": 1.1,
+          "z": -1.211
+        },
+        "facing": 3.142,
+        "walkPhase": 39.073,
+        "action": null,
+        "body": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "leftArm": {
+          "x": 0,
+          "y": 0,
+          "z": -0.1
+        },
+        "leftForearm": {
+          "x": -0.12,
+          "y": 0,
+          "z": 0
+        },
+        "leftLeg": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "leftShin": {
+          "x": 0.03,
+          "y": 0,
+          "z": 0
+        },
+        "head": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "importedModel": true
+      }
+    },
+    {
+      "name": "crew-grabbing",
+      "state": "playing",
+      "scene": null,
+      "gameTime": 12.837,
+      "camera": {
+        "position": {
+          "x": 0.84,
+          "y": 2.4,
+          "z": 9.384
+        },
+        "look": {
+          "x": -1.56,
+          "y": 2,
+          "z": 6.384
+        },
+        "direction": {
+          "x": -0.621,
+          "y": -0.104,
+          "z": -0.777
+        },
+        "fov": 38,
+        "aspect": 1.6
+      },
+      "subject": "termite",
+      "grabbed": {
+        "frame": 57,
+        "elapsedMs": 9016.66666666653,
+        "heldId": 1
+      },
+      "framesAfterGrab": 12,
+      "pose": {
+        "position": {
+          "x": -1.56,
+          "y": 1.1,
+          "z": 6.384
+        },
+        "facing": 0,
+        "walkPhase": 50.773,
+        "action": "lift",
+        "body": {
+          "x": 0.047,
+          "y": 0,
+          "z": 0
+        },
+        "leftArm": {
+          "x": -0.4,
+          "y": 0,
+          "z": -0.119
+        },
+        "leftForearm": {
+          "x": -1.111,
+          "y": 0,
+          "z": 0
+        },
+        "leftLeg": {
+          "x": -0.348,
+          "y": 0,
+          "z": 0
+        },
+        "leftShin": {
+          "x": 0.615,
+          "y": 0,
+          "z": 0
+        },
+        "head": {
+          "x": 0.072,
+          "y": -0.449,
+          "z": 0
+        },
+        "importedModel": true
+      }
+    },
+    {
+      "name": "crew-carrying",
+      "state": "playing",
+      "scene": null,
+      "gameTime": 14.303,
+      "camera": {
+        "position": {
+          "x": -4.159,
+          "y": 2.7,
+          "z": -2.449
+        },
+        "look": {
+          "x": -1.56,
+          "y": 2.1,
+          "z": 0.951
+        },
+        "direction": {
+          "x": 0.602,
+          "y": -0.139,
+          "z": 0.787
+        },
+        "fov": 38,
+        "aspect": 1.6
+      },
+      "subject": "termite",
+      "framesWalked": 48,
+      "heldId": 1,
+      "pose": {
+        "position": {
+          "x": -1.56,
+          "y": 1.1,
+          "z": 0.951
+        },
+        "facing": 3.142,
+        "walkPhase": 57.973,
+        "action": null,
+        "body": {
+          "x": 0.02,
+          "y": 0,
+          "z": 0.016
+        },
+        "leftArm": {
+          "x": -0.24,
+          "y": 0,
+          "z": -0.12
+        },
+        "leftForearm": {
+          "x": -1.15,
+          "y": 0,
+          "z": 0
+        },
+        "leftLeg": {
+          "x": 0.362,
+          "y": 0,
+          "z": 0
+        },
+        "leftShin": {
+          "x": 0.082,
+          "y": 0,
+          "z": 0
+        },
+        "head": {
+          "x": 0.08,
+          "y": 0.995,
+          "z": 0
+        },
+        "importedModel": true
+      }
+    },
+    {
+      "name": "depot-follow",
+      "state": "playing",
+      "scene": null,
+      "gameTime": 14.803,
+      "camera": {
+        "position": {
+          "x": -1.092,
+          "y": 12,
+          "z": 9.351
+        },
+        "look": null,
+        "direction": {
+          "x": 0.022,
+          "y": -0.745,
+          "z": -0.667
+        },
+        "fov": 38,
+        "aspect": 1.6
+      },
+      "subject": "the game's follow camera on the active worker",
+      "worker": {
+        "position": {
+          "x": -1.56,
+          "y": 1.1,
+          "z": 0.951
+        },
+        "facing": 3.142,
+        "walkPhase": 57.973,
+        "action": null,
+        "body": {
+          "x": -0.035,
+          "y": 0,
+          "z": 0
+        },
+        "leftArm": {
+          "x": -0.24,
+          "y": 0,
+          "z": -0.12
+        },
+        "leftForearm": {
+          "x": -1.15,
+          "y": 0,
+          "z": 0
+        },
+        "leftLeg": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "leftShin": {
+          "x": 0.03,
+          "y": 0,
+          "z": 0
+        },
+        "head": {
+          "x": 0.08,
+          "y": 1,
+          "z": 0
+        },
+        "importedModel": true
+      }
+    },
+    {
+      "name": "depot-overview",
+      "state": "playing",
+      "scene": null,
+      "gameTime": 14.803,
+      "camera": {
+        "position": {
+          "x": 0,
+          "y": 80,
+          "z": 26.438
+        },
+        "look": null,
+        "direction": {
+          "x": 0,
+          "y": -0.964,
+          "z": -0.266
+        },
+        "fov": 38,
+        "aspect": 1.6
+      },
+      "subject": "the game's overview (V) camera"
+    },
+    {
+      "name": "crew-pose-squat",
+      "state": "playing",
+      "scene": null,
+      "gameTime": 24.42,
+      "camera": {
+        "position": {
+          "x": -5.39,
+          "y": 2.3,
+          "z": -8.904
+        },
+        "look": {
+          "x": -2.896,
+          "y": 1.8,
+          "z": -5.425
+        },
+        "direction": {
+          "x": 0.579,
+          "y": -0.116,
+          "z": 0.807
+        },
+        "fov": 38,
+        "aspect": 1.6
+      },
+      "subject": "john, his scripted squat 0.6 s in",
+      "elapsedMs": 20783.333333333758,
+      "pose": {
+        "position": {
+          "x": -2.896,
+          "y": 1.1,
+          "z": -5.425
+        },
+        "facing": 3.111,
+        "walkPhase": 151.827,
+        "action": null,
+        "body": {
+          "x": 0.2,
+          "y": 0,
+          "z": 0
+        },
+        "leftArm": {
+          "x": -0.95,
+          "y": 0,
+          "z": -0.12
+        },
+        "leftForearm": {
+          "x": -0.9,
+          "y": 0,
+          "z": 0
+        },
+        "leftLeg": {
+          "x": -1.25,
+          "y": 0,
+          "z": 0
+        },
+        "leftShin": {
+          "x": 2,
+          "y": 0,
+          "z": 0
+        },
+        "head": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "importedModel": true
+      }
+    },
+    {
+      "name": "truck-drive-chase",
+      "state": "driving",
+      "scene": null,
+      "gameTime": 3.234,
+      "camera": {
+        "position": {
+          "x": -60,
+          "y": 9.5,
+          "z": 70.3
+        },
+        "look": null,
+        "direction": {
+          "x": 0,
+          "y": -0.291,
+          "z": -0.957
+        },
+        "fov": 54,
+        "aspect": 1.6
+      },
+      "subject": "the game's chase camera after 3 s of throttle",
+      "truck": {
+        "x": -60,
+        "z": 51.85,
+        "heading": 1.571,
+        "speed": 18,
+        "modelReady": true,
+        "children": [
+          "cargo-floor",
+          "truck-headlight",
+          "truck-headlight",
+          "stack-top",
+          "driving-model-truck"
+        ]
+      }
+    },
+    {
+      "name": "truck-drive-front",
+      "state": "driving",
+      "scene": null,
+      "gameTime": 3.234,
+      "camera": {
+        "position": {
+          "x": -60,
+          "y": 2.2,
+          "z": 44.85
+        },
+        "look": {
+          "x": -60,
+          "y": 1.4,
+          "z": 51.85
+        },
+        "direction": {
+          "x": 0,
+          "y": -0.114,
+          "z": 0.994
+        },
+        "fov": 54,
+        "aspect": 1.6
+      },
+      "subject": "the five-ton head on, same moment",
+      "truck": {
+        "x": -60,
+        "z": 51.85,
+        "heading": 1.571,
+        "speed": 18,
+        "modelReady": true,
+        "children": [
+          "cargo-floor",
+          "truck-headlight",
+          "truck-headlight",
+          "stack-top",
+          "driving-model-truck"
+        ]
+      }
+    },
+    {
+      "name": "truck-drive-side",
+      "state": "driving",
+      "scene": null,
+      "gameTime": 3.234,
+      "camera": {
+        "position": {
+          "x": -53,
+          "y": 2.2,
+          "z": 50.35
+        },
+        "look": {
+          "x": -60,
+          "y": 1.4,
+          "z": 51.85
+        },
+        "direction": {
+          "x": -0.972,
+          "y": -0.111,
+          "z": 0.208
+        },
+        "fov": 54,
+        "aspect": 1.6
+      },
+      "subject": "the five-ton from its right side, same moment",
+      "truck": {
+        "x": -60,
+        "z": 51.85,
+        "heading": 1.571,
+        "speed": 18,
+        "modelReady": true,
+        "children": [
+          "cargo-floor",
+          "truck-headlight",
+          "truck-headlight",
+          "stack-top",
+          "driving-model-truck"
+        ]
+      }
+    },
+    {
+      "name": "city-game-camera",
+      "state": "driving",
+      "scene": null,
+      "gameTime": 6.234,
+      "camera": {
+        "position": {
+          "x": -60,
+          "y": 9.5,
+          "z": 16.302
+        },
+        "look": null,
+        "direction": {
+          "x": 0,
+          "y": -0.291,
+          "z": -0.957
+        },
+        "fov": 54,
+        "aspect": 1.6
+      },
+      "subject": "the game's chase camera after 6 s of throttle",
+      "truck": {
+        "x": -60,
+        "z": -2.15,
+        "heading": 1.571,
+        "speed": 18,
+        "modelReady": true,
+        "children": [
+          "cargo-floor",
+          "truck-headlight",
+          "truck-headlight",
+          "stack-top",
+          "driving-model-truck"
+        ]
+      }
+    },
+    {
+      "name": "city-street",
+      "state": "driving",
+      "scene": null,
+      "gameTime": 6.234,
+      "camera": {
+        "position": {
+          "x": -60,
+          "y": 4.5,
+          "z": 11.85
+        },
+        "look": {
+          "x": -60,
+          "y": 2,
+          "z": -32.15
+        },
+        "direction": {
+          "x": 0,
+          "y": -0.057,
+          "z": -0.998
+        },
+        "fov": 54,
+        "aspect": 1.6
+      },
+      "subject": "the street ahead of the five-ton, same moment",
+      "truck": {
+        "x": -60,
+        "z": -2.15,
+        "heading": 1.571,
+        "speed": 18,
+        "modelReady": true,
+        "children": [
+          "cargo-floor",
+          "truck-headlight",
+          "truck-headlight",
+          "stack-top",
+          "driving-model-truck"
+        ]
+      }
+    }
+  ],
+  "skipped": [],
+  "pageErrors": []
+}
