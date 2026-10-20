@@ -90,7 +90,7 @@ required, credit given here anyway). The conversion source is each asset's
 | `wall-clock.glb` | [wall_clock](https://polyhaven.com/a/wall_clock) | PierreB3D | `4057cadbc0e1620d16275c230bf031ced39378a1` | 3,658 | 152 KB |
 | `side-table.glb` | [side_table_01](https://polyhaven.com/a/side_table_01) | James Ray Cock | `c48d34c9a62887ad0c1175877ac69ffdd97e52b6` | 2,756 | 223 KB |
 
-The second group was converted on 2026-10-20. Total: about 8.3 MB, each
+The second group was converted on 2026-10-20. Total for all 22 files: about 7.7 MB, each
 file under 1 MB. A GPU player downloads the depot's models the first time the
 depot is built and each stage's models when that stage is first shown; the
 box, clock and furniture files are shared wherever they stand. Poly Haven's
