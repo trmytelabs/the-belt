@@ -87,13 +87,11 @@ try {
   // The 3D shift has no scanner faults (the 2D depot keeps them).
   assert.equal(scanner.pending, null, 'no worker asks for a scanner reset in 3D');
   assert.equal(await page.locator('.b3d-scanner').isVisible(), false, 'no scanner prompt is shown');
-  await page.keyboard.press('Tab');
-  await page.waitForFunction(() => window.fixtureApp.model.activeWorker.id === 'skanky');
-  assert.equal(await page.evaluate(() => window.fixtureApp.model.activeWorker.heldId), scanner.heldId, 'switching keeps the freight in hand');
-  await page.keyboard.press('Space');
-  await page.waitForFunction(before => window.fixtureApp.model.routeSorted.B === before + 1, scanner.routeBefore);
-  assert.ok(await page.evaluate(() => window.fixtureApp.model.score > 420), 'the player delivery earns points straight away');
-  console.log('PASS partner dispatches without score; no 3D scanner fault; Tab/Space delivers the carried freight straight away');
+  // With no fault to wait on, the partner carries on and delivers the freight it holds.
+  await page.waitForFunction(id => window.fixtureApp.model.packages.find(p => p.id === id)?.state === 'delivered', scanner.heldId);
+  assert.equal(await page.evaluate(() => window.fixtureApp.model.workers[1].heldId), null, 'the partner has delivered its carried freight');
+  assert.equal(await page.evaluate(() => window.fixtureApp.model.score), 420, 'the partner delivery adds no points');
+  console.log('PASS partner dispatches without score; no 3D scanner fault, so the partner delivers its carried freight without a prompt');
 
   // Every destination uses the same rendered surface as the shared rules.
   const destinations = ['A', 'D', 'T', 'B', 'E', 'S', 'C'];
