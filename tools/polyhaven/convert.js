@@ -37,8 +37,11 @@ async function loadAsset(asset) {
   return { scene: loaded.scene, info };
 }
 
-/** A JPEG-bound canvas copy of a texture at most `size` pixels on its longest edge, one per image. */
-function resized(texture, size, cache) {
+/**
+ * A canvas copy of a texture at most `size` pixels on its longest edge, one
+ * per image, stored as JPEG; a cut-out's colour map keeps its alpha as PNG.
+ */
+function resized(texture, size, cache, mimeType = 'image/jpeg') {
   if (!texture?.image) return null;
   let copy = cache.get(texture.source);
   if (copy) return copy;
@@ -55,19 +58,26 @@ function resized(texture, size, cache) {
   copy.colorSpace = texture.colorSpace;
   copy.wrapS = texture.wrapS;
   copy.wrapT = texture.wrapT;
-  copy.userData.mimeType = 'image/jpeg';
+  copy.userData.mimeType = mimeType;
   cache.set(texture.source, copy);
   return copy;
 }
 
-/** Plain glTF PBR materials at the target texture size; glass loses its (costly) transmission. */
+/**
+ * Plain glTF PBR materials at the target texture size; glass loses its
+ * (costly) transmission. A cut-out (chain-link, leaves: glTF alpha mode MASK)
+ * keeps its alpha test and a PNG colour map, since JPEG has no alpha.
+ */
 function convertMaterial(material, source, cache) {
   const size = source.textureSize;
   const glass = material.transmission > 0 || /glass/i.test(material.name);
+  // Alpha-masked and alpha-blended sheets (chain-link wire) both become alpha-tested cut-outs.
+  const cutout = material.alphaTest > 0 || (material.transparent && material.map !== null && !glass);
   const converted = new THREE.MeshStandardMaterial({
     name: material.name,
     color: material.color,
-    map: resized(material.map, size, cache),
+    map: resized(material.map, size, cache, cutout ? 'image/png' : 'image/jpeg'),
+    alphaTest: cutout ? material.alphaTest || 0.5 : 0,
     roughness: material.roughness,
     metalness: material.metalness,
     roughnessMap: resized(material.roughnessMap, size, cache),
@@ -80,7 +90,7 @@ function convertMaterial(material, source, cache) {
     transparent: glass,
     opacity: glass ? 0.35 : 1,
     depthWrite: !glass,
-    side: material.side,
+    side: cutout ? THREE.DoubleSide : material.side,
   });
   if (converted.normalMap) converted.normalScale.copy(material.normalScale);
   return converted;

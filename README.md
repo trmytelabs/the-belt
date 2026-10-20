@@ -46,7 +46,15 @@ recordings, with subtle variation and controlled volume. M mutes both music and
 effects. Source details are in [music sources](public/audio/MUSIC-SOURCES.md)
 and [foley sources](public/audio/FOLEY-SOURCES.md).
 The floor, belt, rails, trucks and parcels use small CC0 photo textures; see
-[depot surface textures](docs/textures.md).
+[depot surface textures](docs/textures.md). The twelve depot trucks are
+cab-over box trucks with riveted aluminium boxes, each crew member's colour on
+the cab and livery band, fleet-brown cabs on the player's four, mirrors, roof
+markers, dual rear wheels, fuel tanks and mud flaps. On GPU renderers the
+plain parcels, the bulk stock, Ralph's load and the receiving cargo are a
+photographed cardboard box, the UPS lot has a real chain-link fence and lamp
+posts, the living room has a leather sofa, armchair, coffee table and bookcase,
+and a screen-space ambient-occlusion pass grounds everything; see
+[prop models](docs/prop-models.md).
 
 The legacy **2D Night Shift / Depot 07** is at `?mode=2d`. The current 3D game
 plays a whole snowy Christmas night: it starts at home, where Termite and Skanky decide whether

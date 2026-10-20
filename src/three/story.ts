@@ -7,7 +7,7 @@ import type { Cutscene } from '../game/slice/StoryModel';
 import type { StoryScene } from '../game/slice/StoryScript';
 import { animateCharacter, createCharacter, mergeCharacter, type Character, type CharacterSpec } from './characters';
 import { applyPose, type CrewLife, type Pose } from './crew';
-import { upgradeCar } from './propModels';
+import { placeProp, upgradeCar } from './propModels';
 import { PuffField } from './fx';
 import { buildSouthgateMall, mallX, mallZ, type SouthgateMall } from './mall';
 import { mergeStatic } from './merge';
@@ -424,20 +424,48 @@ export class StoryStage {
     linkTexture.repeat.set(10, 1);
     const link = new THREE.MeshStandardMaterial({ map: linkTexture, transparent: true, alphaTest: 0.2, side: THREE.DoubleSide, roughness: 0.6, metalness: 0.4 });
     const post = standard(0x8a949a, 0.4, 0.6);
+    const models = this.quality === 'high';
     for (const [from, to] of [[-26, -3.2], [3.2, 26]] as const) {
       const panel = new THREE.Mesh(new THREE.PlaneGeometry(to - from, 2.2), link);
       panel.position.set((from + to) / 2, 1.1, 0);
       scene.add(panel);
       props[from < 0 ? 'fence-west' : 'fence-east'] = panel;
-      for (let x = from; x <= to; x += 2.6) {
-        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.4, 8), post);
-        pole.position.set(x, 1.2, 0);
-        scene.add(pole);
+      if (models) {
+        // Twelve photographed chain-link panels and their posts stand in for the drawn run.
+        const bays = 12;
+        const bay = (to - from) / bays;
+        for (let i = 0; i < bays; i += 1) {
+          const slot = new THREE.Group();
+          slot.position.set(from + bay * (i + 0.5), 0, 0);
+          void placeProp(slot, 'chainlink-panel', { fallback: i === 0 ? panel : undefined, size: { x: bay - 0.04, y: 2.2 } });
+          scene.add(slot);
+        }
+        for (let i = 0; i <= bays; i += 1) {
+          const slot = new THREE.Group();
+          slot.position.set(from + bay * i, 0, 0);
+          void placeProp(slot, 'chainlink-post', { size: { y: 2.4 } });
+          scene.add(slot);
+        }
+      } else {
+        for (let x = from; x <= to; x += 2.6) {
+          const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.4, 8), post);
+          pole.position.set(x, 1.2, 0);
+          scene.add(pole);
+        }
       }
     }
     const gate = new THREE.Group();
     const gatePanel = new THREE.Mesh(new THREE.PlaneGeometry(6.4, 2.2), link);
     gatePanel.position.y = 1.1;
+    if (models) {
+      // The sliding gate carries three of the same panels inside its frame.
+      for (const x of [-2.13, 0, 2.13]) {
+        const slot = new THREE.Group();
+        slot.position.set(x, 0, 0);
+        void placeProp(slot, 'chainlink-panel', { fallback: x === 0 ? gatePanel : undefined, size: { x: 2.1, y: 2.1 } });
+        gate.add(slot);
+      }
+    }
     const frame = new THREE.MeshStandardMaterial({ color: 0xb7c0c4, roughness: 0.4, metalness: 0.6 });
     for (const [x, y, w, h] of [[0, 2.2, 6.4, 0.08], [0, 0.1, 6.4, 0.08], [-3.2, 1.1, 0.08, 2.2], [3.2, 1.1, 0.08, 2.2]] as const) {
       const bar = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.08), frame);
@@ -455,13 +483,23 @@ export class StoryStage {
     const gateSign = textPlane(['NO ENTRY · STAFF ONLY'], 3.2, 0.35, { width: 300, height: 34, background: '#c23a2e', color: '#fff6e8' });
     gateSign.position.set(-6, 2.0, 0.06);
     scene.add(gateSign);
-    // Streetlights.
+    // Streetlights: a photographed lamp post on GPU renderers, over the drawn pole and head.
     for (const x of [-14, 0, 14]) {
+      const fixture = new THREE.Group();
       const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 6, 8), post);
-      pole.position.set(x, 3, 11.5);
+      pole.position.set(0, 3, 0);
       const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.18, 0.4), new THREE.MeshStandardMaterial({ color: 0x333333, emissive: 0xffc070, emissiveIntensity: 3 }));
-      lamp.position.set(x, 6, 11);
-      scene.add(pole, lamp);
+      lamp.position.set(0, 6, -0.5);
+      fixture.add(pole, lamp);
+      fixture.position.set(x, 0, 11.5);
+      scene.add(fixture);
+      if (models) {
+        const slot = new THREE.Group();
+        slot.position.set(x, 0, 11.5);
+        slot.rotation.y = Math.PI;
+        void placeProp(slot, 'street-lamp', { fallback: fixture, size: { y: 6.6 } });
+        scene.add(slot);
+      }
       if (this.quality === 'high' || x === 0) {
         const light = new THREE.PointLight(0xffb060, 30, 20, 1.6);
         light.position.set(x, 5.6, 10.5);
@@ -761,6 +799,13 @@ export class StoryStage {
     }
     tree.position.set(6.9, 0, -5.7);
     scene.add(tree);
+    if (this.quality === 'high') {
+      // A wall clock over the counter, between the menu boards and the window wall.
+      const slot = new THREE.Group();
+      slot.position.set(3.2, 2.42, -6.84);
+      void placeProp(slot, 'wall-clock', { size: { y: 0.4 } });
+      scene.add(slot);
+    }
     const ceiling = new THREE.PointLight(0xfff0d8, 16, 16, 1.4);
     ceiling.position.set(-1.5, 3.6, -2.5);
     const boothLight = new THREE.PointLight(0xffd8a0, 9, 8, 1.5);
@@ -1054,26 +1099,45 @@ export class StoryStage {
     const sensor = rounded(0.04, 0.03, 0.24, standard(0x15171a, 0.4), 0.01);
     sensor.position.set(-4.68, 1.62, 0);
     scene.add(wii, slot, sensor);
-    // The couch faces the TV.
+    // The couch faces the TV: a photographed sofa on GPU renderers, over the drawn one.
+    const models = this.quality === 'high';
     const fabric = standard(0x46566a, 0.95);
+    const couch = new THREE.Group();
     const seat = rounded(0.9, 0.42, 2.3, fabric, 0.08);
     seat.position.set(0.6, 0.21, 0);
     const back = rounded(0.26, 0.6, 2.3, fabric, 0.08);
     back.position.set(1.0, 0.7, 0);
-    scene.add(shadowed(seat), shadowed(back));
+    couch.add(shadowed(seat), shadowed(back));
     for (const z of [-1.24, 1.24]) {
       const arm = rounded(0.9, 0.62, 0.22, fabric, 0.08);
       arm.position.set(0.6, 0.31, z);
-      scene.add(shadowed(arm));
+      couch.add(shadowed(arm));
     }
+    scene.add(couch);
     props.couch = seat;
+    if (models) {
+      const slot = new THREE.Group();
+      slot.position.set(0.7, 0, 0);
+      slot.rotation.y = -Math.PI / 2;
+      void placeProp(slot, 'sofa', { fallback: couch, size: { x: 2.3, y: 0.76 } });
+      scene.add(slot);
+    }
+    const coffeeTable = new THREE.Group();
     const table = rounded(0.62, 0.06, 1.2, standard(0x6b4a30, 0.6), 0.02);
     table.position.set(-1.55, 0.4, 0);
-    scene.add(table);
+    coffeeTable.add(table);
     for (const [x, z] of [[-1.8, -0.52], [-1.3, -0.52], [-1.8, 0.52], [-1.3, 0.52]] as const) {
       const leg = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.38, 0.05), standard(0x4a3220, 0.6));
       leg.position.set(x, 0.19, z);
-      scene.add(leg);
+      coffeeTable.add(leg);
+    }
+    scene.add(coffeeTable);
+    if (models) {
+      const slot = new THREE.Group();
+      slot.position.set(-1.55, 0, 0);
+      slot.rotation.y = Math.PI / 2;
+      void placeProp(slot, 'coffee-table', { fallback: coffeeTable, size: { x: 1.2, y: 0.42 } });
+      scene.add(slot);
     }
     // Skanky's Warsteiner keg behind the couch, with its tap.
     const keg = new THREE.Group();
@@ -1215,6 +1279,18 @@ export class StoryStage {
       scene.add(shadowed(mesh));
       return mesh;
     };
+    // On GPU renderers a photographed model stands over a drawn piece, which it hides once loaded.
+    const model = (parts: THREE.Object3D[], id: Parameters<typeof placeProp>[1], x: number, z: number, turn: number, size: { x?: number; y?: number }): void => {
+      const fallback = new THREE.Group();
+      for (const part of parts) fallback.attach(part);
+      scene.add(fallback);
+      if (this.quality !== 'high') return;
+      const slot = new THREE.Group();
+      slot.position.set(x, 0, z);
+      slot.rotation.y = turn;
+      void placeProp(slot, id, { fallback, size });
+      scene.add(slot);
+    };
     // A rug under the coffee table, between the couch and the TV.
     const rugEdge = new THREE.Mesh(new THREE.PlaneGeometry(2.7, 2.5), standard(0xc8b48a, 0.95));
     rugEdge.rotation.x = -Math.PI / 2;
@@ -1224,26 +1300,30 @@ export class StoryStage {
     rug.position.set(-1.75, 0.01, 0);
     scene.add(rugEdge, rug);
     // A bookcase against the back wall.
-    add(new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.9, 0.03), wood), -2.4, 0.95, -3.89);
-    for (const x of [-3.18, -1.62]) add(new THREE.Mesh(new THREE.BoxGeometry(0.04, 1.9, 0.36), wood), x, 0.95, -3.72);
+    const bookcase: THREE.Object3D[] = [];
+    bookcase.push(add(new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.9, 0.03), wood), -2.4, 0.95, -3.89));
+    for (const x of [-3.18, -1.62]) bookcase.push(add(new THREE.Mesh(new THREE.BoxGeometry(0.04, 1.9, 0.36), wood), x, 0.95, -3.72));
     const bookColors = [0x8a2a2a, 0x2a4a7a, 0x3a6a3a, 0xc8a040, 0x5a3a6a, 0xd8d0c0, 0x2a2a2a];
     for (let shelf = 0; shelf < 5; shelf += 1) {
-      add(new THREE.Mesh(new THREE.BoxGeometry(1.56, 0.03, 0.34), wood), -2.4, 0.03 + shelf * 0.46, -3.72);
+      bookcase.push(add(new THREE.Mesh(new THREE.BoxGeometry(1.56, 0.03, 0.34), wood), -2.4, 0.03 + shelf * 0.46, -3.72));
       if (shelf === 4) continue;
       let x = -3.12;
       for (let i = 0; x < -1.75; i += 1) {
         const w = 0.05 + ((i * 7 + shelf * 3) % 4) * 0.012;
         const h = 0.28 + ((i * 5 + shelf) % 3) * 0.04;
-        add(new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.24), standard(bookColors[(i + shelf * 2) % bookColors.length], 0.7)), x + w / 2, 0.045 + shelf * 0.46 + h / 2, -3.74);
+        bookcase.push(add(new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.24), standard(bookColors[(i + shelf * 2) % bookColors.length], 0.7)), x + w / 2, 0.045 + shelf * 0.46 + h / 2, -3.74));
         x += w + 0.008;
         if (i % 9 === 8) x += 0.18;
       }
     }
+    model(bookcase, 'bookshelf', -2.4, -3.62, 0, { x: 1.6, y: 2.0 });
     // An armchair in the back corner by the lamp, facing the TV.
     const fabric = standard(0x6a4a3a, 0.95);
-    add(rounded(0.85, 0.42, 0.85, fabric, 0.08), 3.2, 0.21, -2.2);
-    add(rounded(0.22, 0.62, 0.85, fabric, 0.08), 3.56, 0.72, -2.2);
-    for (const z of [-2.62, -1.78]) add(rounded(0.85, 0.58, 0.18, fabric, 0.07), 3.2, 0.29, z);
+    const armchair: THREE.Object3D[] = [];
+    armchair.push(add(rounded(0.85, 0.42, 0.85, fabric, 0.08), 3.2, 0.21, -2.2));
+    armchair.push(add(rounded(0.22, 0.62, 0.85, fabric, 0.08), 3.56, 0.72, -2.2));
+    for (const z of [-2.62, -1.78]) armchair.push(add(rounded(0.85, 0.58, 0.18, fabric, 0.07), 3.2, 0.29, z));
+    model(armchair, 'armchair', 3.2, -2.2, -Math.PI / 2, { x: 0.9, y: 1.0 });
     // A dining corner by the front window door side.
     add(rounded(1.1, 0.05, 0.75, wood, 0.02), 3.4, 0.74, 3.05);
     for (const [x, z] of [[2.95, 2.8], [3.85, 2.8], [2.95, 3.3], [3.85, 3.3]] as const) add(new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.72, 0.05), wood), x, 0.36, z);
@@ -1279,12 +1359,23 @@ export class StoryStage {
     picture(4.9, 1.65, -2.4, -Math.PI / 2, 0.8, 0.6, ['#5a8ac8', '#d8e8f0']);
     const clock = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.04, 24), standard(0xf4efe4, 0.5));
     clock.rotation.x = Math.PI / 2;
-    add(clock, -0.6, 2.2, -3.9);
+    const clockParts: THREE.Object3D[] = [add(clock, -0.6, 2.2, -3.9)];
     for (const [len, angle] of [[0.11, 0.6], [0.14, 2.4]] as const) {
       const hand = new THREE.Mesh(new THREE.BoxGeometry(0.012, len, 0.01), standard(0x1a1a1a, 0.5));
       hand.position.set(-0.6 + Math.sin(angle) * len / 2, 2.2 + Math.cos(angle) * len / 2, -3.87);
       hand.rotation.z = -angle;
       scene.add(hand);
+      clockParts.push(hand);
+    }
+    if (this.quality === 'high') {
+      // The clock model hangs from its centre; the slot sits at the drawn clock's centre.
+      const fallback = new THREE.Group();
+      for (const part of clockParts) fallback.attach(part);
+      scene.add(fallback);
+      const slot = new THREE.Group();
+      slot.position.set(-0.6, 2.2 - 0.18, -3.9);
+      void placeProp(slot, 'wall-clock', { fallback, size: { y: 0.36 } });
+      scene.add(slot);
     }
     // A Christmas tree in the corner by the TV, with presents underneath.
     const tree = new THREE.Group();

@@ -11,6 +11,7 @@ import { alignParcelToSurface, createParcelView, type ParcelView } from './parce
 import { CrewFreightTrip } from './crewFreight';
 import { BELT_HEIGHT, actorSurfaceAt, setFromModel, standard, textSprite, toWorld } from './space';
 import { SKIN, VISITORS, type DepotWorld } from './world';
+import { placeProp } from './propModels';
 import { DEPOT_3D_LAYOUT as DEPOT } from './layout';
 import { platformWalkPath, walkPath, type WalkPoint } from './walking';
 import { RECEIVING_CROSSING_Y, RECEIVING_FEEDERS } from './receivingCollision';
@@ -245,7 +246,7 @@ export class CrewLife {
   private readonly patrols = new CrewPatrols();
   private readonly drivers: Actor[] = [];
   private readonly unloaders: Actor[] = [];
-  private readonly unloaderCrates: THREE.Mesh[] = [];
+  private readonly unloaderCrates: THREE.Group[] = [];
   private readonly dockhand: Actor;
   private readonly flies: THREE.Mesh[] = [];
   private readonly towel: THREE.Mesh;
@@ -323,8 +324,13 @@ export class CrewLife {
       worker.nameTag.visible = false;
       world.scene.add(worker.root);
       this.unloaders.push(new Actor(worker));
-      const crate = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.48, 0.5), standard(0xc39f6b, 0.9));
-      crate.castShadow = true;
+      // The carried carton: the photographed box over a code-built stand-in on GPU renderers.
+      const crate = new THREE.Group();
+      const box = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.48, 0.5), standard(0xc39f6b, 0.9));
+      box.castShadow = true;
+      box.position.y = 0.24;
+      crate.add(box);
+      if (world.models) void placeProp(crate, 'cardboard-box', { fallback: box, size: { x: 0.62, y: 0.48, z: 0.5 } });
       world.scene.add(crate);
       this.unloaderCrates.push(crate);
     });
@@ -584,7 +590,7 @@ export class CrewLife {
       const crate = this.unloaderCrates[index];
       if (carrying) {
         const forward = new THREE.Vector3(Math.sin(worker.root.rotation.y), 0, Math.cos(worker.root.rotation.y));
-        crate.position.copy(worker.root.position).addScaledVector(forward, 0.42).setY(worker.root.position.y + 0.98);
+        crate.position.copy(worker.root.position).addScaledVector(forward, 0.42).setY(worker.root.position.y + 0.74);
         crate.rotation.y = worker.root.rotation.y;
       } else {
         // The released crate rolls down the feeder toward the dockhand.
@@ -592,7 +598,7 @@ export class CrewLife {
         const feeder = RECEIVING_FEEDERS[index];
         const start = { x: mix(feeder.from.x, feeder.to.x, 0.12), y: mix(feeder.from.y, feeder.to.y, 0.12) };
         const end = { x: mix(feeder.from.x, feeder.to.x, 0.86), y: mix(feeder.from.y, feeder.to.y, 0.86) };
-        crate.position.copy(toWorld({ x: mix(start.x, end.x, transfer), y: mix(start.y, end.y, transfer) }, BELT_HEIGHT + 0.3));
+        crate.position.copy(toWorld({ x: mix(start.x, end.x, transfer), y: mix(start.y, end.y, transfer) }, BELT_HEIGHT + 0.06));
       }
       crate.visible = cycle < 0.85;
       const coughClock = model.elapsedMs - ENGINES_3D.firstAt - 9000 - index * 6500;

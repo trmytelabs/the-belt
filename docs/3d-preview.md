@@ -91,9 +91,12 @@ near plane never meets a visible wall; the overview, high above the wall,
 keeps it solid. `tests/depot-geometry-browser.mjs` checks both.
 
 Rendering uses ACES tone mapping, soft shadows, a room environment for
-reflections and a bloom pass that only catches real light sources. A soft
-vignette over the picture and a hazard-striped band at the top of each stair
-flight round out the look. On a
+reflections, a screen-space ambient-occlusion pass (`ambientOcclusion.ts`:
+Three's GTAO at half resolution, reading the depth the main render already
+wrote and reconstructing normals from it, so it draws the scene no second
+time; tags, rings and snow write no depth, so they cast no false shadows) and
+a bloom pass that only catches real light sources. A soft vignette over the picture and a
+hazard-striped band at the top of each stair flight round out the look. On a
 software WebGL renderer (SwiftShader/llvmpipe), the preview switches to low
 quality: procedural figures without model downloads, no shadow maps or bloom,
 fewer lights and a reduced render resolution.
