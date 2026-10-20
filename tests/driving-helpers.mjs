@@ -2,11 +2,13 @@ import assert from 'node:assert/strict';
 import { makeDriver } from './driving-input.mjs';
 
 /**
- * Drives get 150 seconds of simulated driving, not of wall-clock time: a slow
- * software-rendered runner advances the simulation more slowly, and a correct
- * route must not fail for that. The wall-clock cap still stops a stuck page.
+ * Drives are budgeted in simulated driving time, not wall-clock time: a slow
+ * software-rendered runner advances the simulation more slowly and applies
+ * each steering correction later, so a correct route takes longer there (a
+ * CI touch drive needed ~160 s). 300 s still stops a driver going in circles;
+ * the wall-clock cap stops a stuck page. Journeys assert their own times.
  */
-const SIMULATED_BUDGET_S = 150;
+const SIMULATED_BUDGET_S = 300;
 const WALL_CAP_MS = 360_000;
 const withinBudget = (start, d, wallDeadline) => d.elapsed - start.elapsed < SIMULATED_BUDGET_S && Date.now() < wallDeadline;
 
