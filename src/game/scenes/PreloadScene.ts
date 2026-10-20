@@ -22,7 +22,8 @@ export class PreloadScene extends Phaser.Scene {
       .setOrigin(0.5);
 
     this.time.delayedCall(500, () => {
-      this.scene.start(new URLSearchParams(window.location.search).get('mode') === 'classic' ? 'TitleScene' : 'DepotScene');
+      // Phaser only runs the original full shift now; the 3D depot has its own entry.
+      this.scene.start('TitleScene');
     });
   }
 }

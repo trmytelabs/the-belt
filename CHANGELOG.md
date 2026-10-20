@@ -2,6 +2,13 @@
 
 ## 0.1.0 — development snapshot
 
+- Remove the 2D depot. The 3D depot is the only night shift; its briefing,
+  results screen and WebGL fallback offer the original full shift
+  (`?mode=classic`) instead of `?mode=2d`, which now opens the 3D depot like
+  any other address. The 2D scene, its art, browser suites, touch styles and
+  docs are gone; the shared shift, story and mall models stay, and the source
+  parity checks read the 3D set pieces and cast instead. The classic game is
+  unchanged. The Windows CI job runs `test:browser:classic`.
 - Make the 3D night's models more realistic. The twelve depot trucks are
   rebuilt as cab-over box trucks: riveted aluminium-white boxes with rub and
   cap rails, livery bands and cabs in each crew member's colour (Paula Abdul's

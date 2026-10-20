@@ -126,8 +126,8 @@ the gap before the belt head. Residents spend most of each ordinary work cycle
 collecting visible parcels on the platform and taking them to their rear doors;
 their named gags remain short interruptions. Shan stays on the platform between reactions.
 
-Future gameplay and visual changes target 3D only. The 2D and classic versions
-are legacy modes; new 3D layout and scoring are isolated from their rules.
+Future gameplay and visual changes target 3D only. The classic version is a
+legacy mode; new 3D layout and scoring are isolated from its rules.
 
 Regression coverage includes the range boundaries, varied freight and contact
 spacing, coworker stair navigation and switching, all 3D parcel forms in four

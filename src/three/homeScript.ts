@@ -4,7 +4,7 @@ import type { StoryBeat, StoryScene } from '../game/slice/StoryScript';
  * The 3D night's prologue at Termite and Skanky's place, before the arrival
  * scenes. Termite and Skanky decide whether to go in: going in leads to the
  * drive to UPS and the existing openers; quitting ends the night at home.
- * The legacy 2D depot and classic game never play these scenes.
+ * The classic game never plays these scenes.
  *
  * The owner set the story; the dialogue wording is PROVISIONAL.
  */

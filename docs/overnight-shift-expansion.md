@@ -3,8 +3,8 @@
 This expansion turns one warehouse shift into a whole night: arrival outside UPS,
 the morning scrum, the sort (with a mid-shift break and the drivers firing up
 their trucks), Skanky's mall run in the five-ton, returning the truck, and home.
-It extends the existing 3D and 2D depots. The original full shift
-(`?mode=classic`) is unchanged.
+It extends the 3D depot. The original full shift (`?mode=classic`) is
+unchanged.
 
 Everything already in the depots is kept: the crew and their props, every
 original line and reference, the A/B trucks, the shared **C · BULK** pile and
@@ -45,8 +45,7 @@ Bulk backs against the final warehouse wall; all stairs and floor drops remain
 in front of it, with nothing behind that wall.
 Workers cannot step off the platform anywhere else: from the lower floor the
 only way up is the stairs. Walking speed is unchanged everywhere; the stairs
-only make the route longer. In 2D the platform is lighter with a lit edge and
-a cast shadow, the stairs are banded treads, and the lower floor is darker.
+only make the route longer.
 
 Each worker now has two trucks and a lower-floor drop:
 
@@ -82,8 +81,8 @@ Layout changes made to fit this:
 ## Throwing and breakage
 
 Holding a parcel, press **F** (or THROW on touch) to throw it straight to its
-own destination instead of walking it there. The arc and landing ring (3D) or
-the dotted arc and risk label (2D) show where it will land and the break risk.
+own destination instead of walking it there. The arc and landing ring show where it
+will land and the break risk.
 Carrying is unchanged and never breaks anything.
 
 - Heavy freight (bulk crates, the Mesa amp, the ATV, big and long boxes,
@@ -259,7 +258,7 @@ following were written for review and are easy to change in `StoryScript.ts`:
   choices and once-only break, verbatim approved lines, cutscene skip/next, a
   full mall run with three reloads, mall anti-exploit cases, mall collision,
   and the key return.
-- `tests/story-browser.mjs` (3D) and `tests/story-2d-browser.mjs` (2D) play the
+- `tests/story-browser.mjs` plays the
   story through the real app with real keys: all three openers reach the scrum
   (stepped, skipped and unattended), the scrum lines in order, the countdown
   into play, all six break exchanges once each with freight preserved, F

@@ -12,10 +12,9 @@ import { RALPH_BAY, type DepotWorld } from './world';
 import { DevilModel } from './propModels';
 
 /**
- * The 2D depot's big set pieces, on its authored clocks
- * (src/game/slice/DepotLife.ts, DepotRoutines.ts). Staging positions are
- * adapted so nobody walks through a parked truck; words, order and timing
- * are unchanged.
+ * The night shift's big set pieces, on the authored clocks of the original
+ * events. Staging positions are adapted so nobody walks through a parked
+ * truck; words, order and timing are unchanged.
  */
 export const BEN_START = 68_000;
 export const BEN_END = 92_500;
