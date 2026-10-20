@@ -7,6 +7,7 @@ import { standard, textPlane } from './space';
 import { mergeStatic } from './merge';
 import { disposeObject3D } from './resources';
 import { followWheels, type WheelRig } from './vehicleRig';
+import { PAVING_TILE, scaleUVs, surfaceMaterial } from './textures';
 import { DrivingModels } from './drivingModels';
 import { DrivingNavigation } from './drivingNavigation';
 import { snowMaterial, Snowfall } from './snow';
@@ -69,7 +70,10 @@ export class DrivingView {
     // A snowy Christmas night: lawns and lots under snow, packed snow on the sidewalks, plowed roads.
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(CITY.groundWidth, CITY.groundDepth), snowMaterial(CITY.groundWidth, CITY.groundDepth, 8));
     ground.rotation.x = -Math.PI / 2; ground.position.set(30, -0.04, -100); ground.receiveShadow = true; scene.add(ground);
-    const asphalt = standard(0x343e47, 0.8), sidewalk = standard(0xc6ced6, 0.95), stripe = standard(0xe9e5ce, 0.9), yellow = standard(0xe9bd64, 0.9);
+    // Photo asphalt and packed snow (CC0), tinted to the street's old flat colours; markings stay flat paint.
+    const asphalt = surfaceMaterial('asphalt', { color: 0x343e47, roughness: 0.8 });
+    const sidewalk = surfaceMaterial('snowpack', { color: 0xc6ced6, roughness: 0.95 });
+    const stripe = standard(0xe9e5ce, 0.9), yellow = standard(0xe9bd64, 0.9);
     for (const x of CITY.streetsX) {
       const extent = streetExtent(x), centre = (extent.minZ + extent.maxZ) / 2, length = extent.maxZ - extent.minZ;
       this.pavement(x, centre, 18, length, sidewalk, -0.01);
@@ -198,12 +202,18 @@ export class DrivingView {
   }
 
   private pavement(x: number, z: number, width: number, depth: number, material: THREE.Material, height: number): void {
-    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(width, depth), material);
+    const geometry = new THREE.PlaneGeometry(width, depth);
+    // Photo-textured paving tiles at its real size; flat paint keeps its single-colour UVs.
+    if ((material as THREE.MeshStandardMaterial).map) scaleUVs(geometry, width / PAVING_TILE, depth / PAVING_TILE);
+    const mesh = new THREE.Mesh(geometry, material);
     mesh.rotation.x = -Math.PI / 2; mesh.position.set(x, height, z); mesh.receiveShadow = true; this.scene.add(mesh);
   }
 
   private terminal(p: CityPoint, name: string, subtitle: string, color: number, end: 1 | -1): void {
-    const apron = new THREE.Mesh(new THREE.PlaneGeometry(42, 26), standard(0x454d50, 0.95));
+    const apronGeometry = new THREE.PlaneGeometry(42, 26);
+    const apronMaterial = surfaceMaterial('asphalt', { color: 0x454d50, roughness: 0.95 });
+    if (apronMaterial.map) scaleUVs(apronGeometry, 42 / PAVING_TILE, 26 / PAVING_TILE);
+    const apron = new THREE.Mesh(apronGeometry, apronMaterial);
     apron.rotation.x = -Math.PI / 2; apron.position.set(p.x, -0.02, p.z + end * 12); apron.receiveShadow = true;
     this.scene.add(apron);
     const paint = standard(0xe5c88a, 0.9);
