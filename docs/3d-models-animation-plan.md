@@ -12,7 +12,7 @@ software-renderer fallback preserved, every change as a checked pull request.
 | Interiors | Glass-only: seats, dashboard, wheel and a seated driver that hold up through the windows. No first-person camera. |
 | Art direction | Grounded realism: keep the Rocketbox crew and PBR depot; raise vehicles and city to meet them. |
 | Budgets | Desktop first: about 60 MB of models in total, 4 MB per vehicle, 60 fps at 1080p on a mid-range laptop GPU. Phones keep the procedural fallback. |
-| Licences | CC0 and MIT only. No CC-BY, no paid assets. The game stays private. |
+| Licences | CC0 and MIT only, and nothing paid at any tier. No CC-BY. The game stays private. |
 | Horizon | Short: the owner wants this in weeks, not a quarter. The roadmap below is about five weeks of phased PRs. |
 | Models | Use existing models. Where no suitable existing model exists, accept the limitation rather than commission or hand-build one. |
 
@@ -41,11 +41,13 @@ The README does not state a separate licence for the clips; they sit in the
 MIT repository (inference, to be confirmed by reading `LICENSE.md`).
 
 That removes retargeting from the critical path for the crew. Missing from
-the set: carry walk, lift, put down, throw and steering. Those come from the
-free CC0 tier of Quaternius's second library (`WALK_CARRY`, `IDLE_CARRY`,
-`OVERHAND_THROW`, `COUGHING`, `WAVE` are among its 42 free clips, read from
-the page's image text so treat the names as approximate) retargeted once,
-or stay procedural.
+the set: carry walk, lift, put down, throw and steering. Lift and put down
+map onto Rocketbox's own `crouch_in` and `crouch_out` with the carry arms
+overlaid; carry walk, carry idle and throw come from the free CC0 tier of
+Quaternius's second library (`WALK_CARRY`, `IDLE_CARRY`, `OVERHAND_THROW`,
+`COUGHING`, `WAVE` are among its 42 free clips, read from the page's image
+text so treat the names as approximate) retargeted once; steering stays a
+seated idle with the hands placed by IK. Nothing is bought.
 
 ### The vehicle finding
 
@@ -91,8 +93,8 @@ Scores 1 (poor) to 5 (good). Effort and cost are inverted so higher is better.
 | Asset | Source and licence | Format | Polygons | Rig / notes |
 | --- | --- | --- | --- | --- |
 | Rocketbox animations, 417 clips | [GitHub, MIT repo](https://github.com/microsoft/Microsoft-Rocketbox) | `.max.fbx`, 0.7–13.7 MB each | n/a | Same Biped skeleton as the crew; no retargeting. Convert with the existing `tools/rocketbox` page (FBXLoader → GLTFExporter). |
-| Universal Animation Library 1 | [Quaternius, itch.io, CC0](https://quaternius.itch.io/universal-animation-library) | FBX and GLB | n/a | 45 free of 120+; "universal humanoid rig", Mixamo-compatible claim; 30 fps; root-motion and in-place exports; bone names not stated (unverified). Full set is $9.99: paid, excluded unless approved. |
-| Universal Animation Library 2 | [Quaternius, itch.io, CC0](https://quaternius.itch.io/universal-animation-library-2) | GLB (FBX unverified) | n/a | 42 free of 130+, including carry walk, carry idle, throw, cough, wave. Full set $14.99: excluded unless approved. |
+| Universal Animation Library 1 | [Quaternius, itch.io, CC0](https://quaternius.itch.io/universal-animation-library) | FBX and GLB | n/a | 45 free of 120+; "universal humanoid rig", Mixamo-compatible claim; 30 fps; root-motion and in-place exports; bone names not stated (unverified). Only the free tier is used; the paid tiers are out. |
+| Universal Animation Library 2 | [Quaternius, itch.io, CC0](https://quaternius.itch.io/universal-animation-library-2) | GLB (FBX unverified) | n/a | 42 free of 130+, including carry walk, carry idle, throw, cough, wave. Only the free tier is used; the paid tiers are out. |
 | KayKit Character Animations | [itch.io, CC0](https://kaylousberg.itch.io/kaykit-character-animations) | glTF and FBX | n/a | KayKit rigs only; stylised; backup only. |
 | Quaternius sedans (in use) | [itch.io, CC0](https://quaternius.itch.io/lowpoly-cars) via Poly Pizza | GLB in `public/models/vehicles` | 2,954 / 3,124 | Body plus three wheel meshes; flat materials. Kept. |
 | Free Low Poly Vehicles Pack | [RgsDev, itch.io, CC0](https://rgsdev.itch.io/free-low-poly-vehicles-pack) | Not stated (unverified) | "low poly" | Sedan, van, truck, truck with trailer; separated wheels; per-material colours; no interior stated. Optional swap if its sedan reads better than Quaternius's. |
@@ -248,7 +250,7 @@ the game stays playable at every merge.
 | **1 Clip pipeline** (1a converter, 1b runtime) | Rocketbox clips on the crew | `tools/rocketbox/`, `characterModels.ts`, `characterAnimation.ts`, `crew.ts`, `main3d.ts`, `story.ts` | Convert about 30 clips to `clips.glb`; mixer per character; state machine; cross-fades; walk speed warp; turn clips; head look and procedural carry arms kept as overlays | Phase 0c | 9 days | Rest-pose mismatch between the converted avatars and the clips; mixer and `driveModel` fighting over bones; CI without models | `arm-motion-model.mjs` and `character-animation-model.mjs` keep the fallback; new `tests/character-clips-model.mjs` (inventory, names, durations, bone coverage) and a browser check that bones move from clips; `character-model-browser.mjs` pose sampling by state name; `three-browser.mjs` Shan press sampled from the bone | Walk, idle, sit, turn, cheer, cough, wave from clips on GPU; CI green |
 | **2 Vehicle contract and seating** (2a loader, 2b seats and IK) | Occupants that hold up through the glass | `vehicleRig.ts`, `vehicleInterior.ts`, `propModels.ts`, `story.ts`, `driving.ts` | Contract loader with synthesis; seats, steering wheel, hand and foot IK; suspension; driver and passengers on clips | Phase 1 | 5 days | IK hand twist; seat heights on two sedan shapes | `story-clearance-browser.mjs` roof bound becomes an inside-the-shell test; `prop-model-browser.mjs` checks contract nodes; `driving-assets.mjs` unchanged | Vertical slice criteria met |
 | **3 City and traffic** (3a BatchedMesh LOD, 3b facades and road) | Road at the quality target at 60 fps | `driving.ts`, `drivingModels.ts`, `drivingCity.ts` | Two-level LOD for 28 cars; retextured Kenney facades with emissive windows; wet asphalt; shadow directional | Phase 0a | 5 days | BatchedMesh with multi-material parts; texture memory | `driving-browser.mjs` `modelReady` kept; new batched-instance count test; `three-resources.mjs` counts updated | City shots retaken; fps criterion met |
-| **4 Carry, lift, throw** (4a retargeted clips, 4b feet on stairs) | Last procedural locomotion gone | `tools/rocketbox/`, `characterAnimation.ts`, `characterModels.ts` | Retarget the free Quaternius clips once; carry overlay from clips; CCD feet on stairs | Phases 1–2 | 4 days | `retargetClip` quality; the free tier may lack lift and put-down (stay procedural) | `gameplay-adjustments-browser.mjs` torso clearance resampled; `crew-work-browser.mjs` pixel readback re-baselined once | Grab, carry and throw shots retaken |
+| **4 Carry, lift, throw** (4a retargeted clips, 4b feet on stairs) | Last procedural locomotion gone | `tools/rocketbox/`, `characterAnimation.ts`, `characterModels.ts` | Retarget the free Quaternius clips once; lift and put down from Rocketbox crouch clips; carry overlay from clips; CCD feet on stairs | Phases 1–2 | 4 days | `retargetClip` quality; if a free clip reads badly that motion stays procedural | `gameplay-adjustments-browser.mjs` torso clearance resampled; `crew-work-browser.mjs` pixel readback re-baselined once | Grab, carry and throw shots retaken |
 
 Quick wins: phase 0 and PR 2a. Architectural: phases 1, 2b, 3 and 4. Total
 about 29 developer days, roughly five to six calendar weeks including
@@ -258,7 +260,7 @@ review and re-baselining, with phase 4 droppable if time runs short.
 
 | Can be implemented without the owner | Needs the owner to provide | Needs the owner's approval |
 | --- | --- | --- |
-| Everything in code: lighting and environment, camera, wheels and suspension, the generated interior, the clip converter and runtime, the state machine, the contract loader, IK, BatchedMesh LOD, tests, capture-tool extensions | The CC0/MIT downloads placed where the converters expect them (Rocketbox clips, Quaternius free tier, Poly Haven HDRIs and textures), since this plan downloads nothing | Raising the crew file cap to 2.5 MB; the chase-camera reframe; any paid tier if the free clips prove insufficient; re-baselining the tests named above; each PR merge |
+| Everything in code: lighting and environment, camera, wheels and suspension, the generated interior, the clip converter and runtime, the state machine, the contract loader, IK, BatchedMesh LOD, tests, capture-tool extensions | The CC0/MIT downloads placed where the converters expect them (Rocketbox clips, Quaternius free tier, Poly Haven HDRIs and textures), since this plan downloads nothing | Raising the crew file cap to 2.5 MB; the chase-camera reframe; re-baselining the tests named above; each PR merge. Nothing in this plan costs money. |
 
 ## Recommended strategy, first milestone, open decisions
 
@@ -282,7 +284,5 @@ Phase 1a (the clip converter and `clips.glb`) opened for review.
 1. Approval for the crew file cap (1.5 → 2.5 MB) and the chase-camera reframe.
 2. Which night HDRI sets the lot's look (Cobblestone Street Night versus a
    pure sky with the lot's own lamps), from a side-by-side in PR 0a.
-3. Whether to buy the Quaternius Pro tier ($9.99) if the free clips lack a
-   usable lift or put-down, or keep those two motions procedural.
-4. Whether to swap the Quaternius sedans for the RgsDev CC0 sedan if it
+3. Whether to swap the Quaternius sedans for the RgsDev CC0 sedan if it
    reads better once both are under the new materials.
