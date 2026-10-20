@@ -25,7 +25,7 @@ import {
   type StoryActor, type StoryBeat, type StoryScene,
 } from '../game/slice/StoryScript';
 import { audioSystem, type SoundEffect } from './audio';
-import { syncCharacterModels, useCharacterModels, type CharacterModelEntry } from './characterModels';
+import { syncCharacterModels, useCharacterClips, useCharacterModels, type CharacterModelEntry } from './characterModels';
 import { animateCharacter, createCharacter, lookToward, mergeCharacter, triggerAction, type Character } from './characters';
 import { CrewLife } from './crew';
 import { MesaDream } from './dream';
@@ -197,6 +197,8 @@ export class Belt3d {
     this.renderer.setPixelRatio(this.quality === 'high' ? Math.min(window.devicePixelRatio, 2) : 0.6);
     // Software renderers keep the lighter procedural people and cartons and download no models.
     if (this.quality === 'low') void useCharacterModels([]);
+    // Motion-captured clips move the crew models on GPU renderers; software renderers keep the figures' poses.
+    else void useCharacterClips(true);
     setParcelModels(this.quality === 'high');
     this.renderer.shadowMap.enabled = this.quality === 'high';
     this.renderer.shadowMap.type = this.quality === 'high' ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
@@ -358,6 +360,11 @@ export class Belt3d {
   /** Swaps the imported character model list. For checks and rehearsal. */
   public useCharacterModels(list: CharacterModelEntry[]): Promise<void> {
     return useCharacterModels(list);
+  }
+
+  /** Turns the crew's animation clips on or off. For checks and rehearsal. */
+  public useCharacterClips(enabled: boolean): Promise<void> {
+    return useCharacterClips(enabled);
   }
 
   /** Fixes the next run's random choices (opener, break place, variant, time). For checks and rehearsal. */
@@ -1271,7 +1278,8 @@ export class Belt3d {
         lookToward(character, { x: toFocus.x * Math.cos(facing) - toFocus.z * Math.sin(facing), z: toFocus.x * Math.sin(facing) + toFocus.z * Math.cos(facing) }, dt, this.reducedMotion);
       } else lookToward(character, null, dt, this.reducedMotion);
       if (this.state === 'celebrating' && !this.reducedMotion) {
-        // Termite and Skanky celebrate with the crew.
+        // Termite and Skanky celebrate with the crew (an imported model plays its cheer).
+        if (character.motion) character.motion.pose = 'cheer';
         const beat = this.time * 9 + (worker.id === 'skanky' ? 1.3 : 0);
         character.body.position.y = Math.abs(Math.sin(beat)) * 0.12;
         character.leftArm.rotation.set(-2.8 + Math.sin(beat) * 0.35, 0, 0.25);

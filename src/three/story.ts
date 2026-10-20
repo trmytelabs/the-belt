@@ -82,6 +82,7 @@ export class StageActor {
     delta = Math.atan2(Math.sin(delta), Math.cos(delta));
     c.root.rotation.y += delta * Math.min(1, dt * 10);
     animateCharacter(c, dt, { moving: this.moved, carrying: this.carrying, time, reducedMotion });
+    if (c.motion) { c.motion.pose = this.pose; c.motion.seated = this.seatedIn !== null; }
     // A posed or seated figure owns its torso; a plain walk keeps the walk cycle's lean and sway.
     if (this.pose !== 'none' || this.seatedIn) c.body.rotation.set(0, 0, 0);
     c.head.rotation.set(0, 0, 0);
@@ -2337,6 +2338,7 @@ export function directDepot(cast: DepotCast, cutscene: Cutscene, dt: number, tim
     setFromModel(character.root.position, { x, y }, actorSurfaceAt(x, y));
     character.root.rotation.y = angle;
     animateCharacter(character, dt, { moving, time, reducedMotion });
+    if (character.motion) character.motion.pose = pose;
     character.body.rotation.set(0, 0, 0);
     character.head.rotation.set(0, 0, 0);
     applyPose(character, pose, time, reducedMotion);

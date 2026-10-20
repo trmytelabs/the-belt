@@ -199,6 +199,71 @@ try {
     }
   }
   console.log('PASS all 23 real character rigs keep angry fists apart, flex the elbows and avoid crossing the chest');
+
+  // Motion-captured Rocketbox clips on the real cast (on by default on GPU renderers, forced here for software ones).
+  // Under clips the spine and fingers move, which the figure's poses never do; the clip plays in place; and a
+  // pose without a clip, or reduced motion, hands the whole body back to the figure.
+  const withClips = cast.map((entry, index) => ({ ...entry, clips: /Female/.test(ROCKETBOX_CAST[index].source) ? 'female' : 'male' }));
+  await page.evaluate(async entries => {
+    const app = window.fixtureApp;
+    await app.useCharacterModels(entries.map(entry => ({ ...entry, skinMaterial: /head/i })));
+    await app.useCharacterClips(true);
+    const names = new Set(entries.flatMap(entry => entry.names));
+    app.world.scene.traverse(object => { if (names.has(object.name)) object.visible = false; });
+    for (const id of ['hussan', 'doris']) app.crew.actor(id).root.visible = true;
+  }, withClips);
+  const clipRun = await page.evaluate(() => {
+    const app = window.fixtureApp;
+    const bones = id => {
+      const model = app.crew.actor(id).root.getObjectByName('character-model');
+      const get = name => model.getObjectByName(name);
+      return { spine: get('Bip01_Spine1').quaternion.clone(), finger: get('Bip01_R_Finger1').quaternion.clone(), root: get('Bip01').position.clone(),
+        torso: ['Bip01_Pelvis', 'Bip01_Spine1', 'Bip01_Neck', 'Bip01_Head', 'Bip01_L_Clavicle'].map(name => get(name).quaternion.clone()) };
+    };
+    let time = 100;
+    const run = (seconds, setup) => {
+      for (let i = 0; i < seconds * 30; i++) {
+        time += 1 / 30;
+        for (const id of ['hussan', 'doris']) { const actor = app.crew.actor(id); setup(actor); actor.animate(1 / 30, time, setup.reduced === true); }
+        app.lastRender = -Infinity; app.draw();
+      }
+    };
+    const idle = actor => { actor.pose = 'none'; actor.carrying = false; };
+    // The figure's own (unposed) look first: clips off.
+    app.useCharacterClips(false); run(0.5, idle);
+    const figure = { hussan: bones('hussan'), doris: bones('doris') };
+    app.useCharacterClips(true); run(2, idle);
+    const a = { hussan: bones('hussan'), doris: bones('doris') };
+    run(1, idle);
+    const b = { hussan: bones('hussan'), doris: bones('doris') };
+    const out = {};
+    for (const id of ['hussan', 'doris']) {
+      out[id] = {
+        spineFromFigure: a[id].spine.angleTo(figure[id].spine),
+        // The torso the figure never moves: pelvis, spine, neck, head and clavicle, the most-moved of them.
+        torsoMoves: Math.max(...a[id].torso.map((q, index) => q.angleTo(b[id].torso[index]))),
+        fingerMoves: a[id].finger.angleTo(b[id].finger) + a[id].finger.angleTo(figure[id].finger),
+        drift: Math.hypot(b[id].root.x - figure[id].root.x, b[id].root.z - figure[id].root.z),
+      };
+    }
+    const squat = actor => { actor.pose = 'squat'; actor.poseStart = time; };
+    run(1, squat);
+    out.squatSpine = bones('hussan').spine.angleTo(figure.hussan.spine);
+    const reduced = Object.assign(idle, { reduced: true });
+    run(1, reduced);
+    out.reducedSpine = bones('hussan').spine.angleTo(figure.hussan.spine);
+    return out;
+  });
+  for (const id of ['hussan', 'doris']) {
+    const sample = clipRun[id];
+    assert.ok(sample.spineFromFigure > 0.01 && sample.torsoMoves > 0.005, `${id}'s torso follows the clip: ${JSON.stringify(sample)}`);
+    assert.ok(sample.fingerMoves > 0.01, `${id}'s fingers relax out of the rest pose: ${JSON.stringify(sample)}`);
+    assert.ok(sample.drift < 15, `${id}'s clip plays in place (${sample.drift.toFixed(1)} cm)`);
+  }
+  assert.ok(clipRun.squatSpine < 0.02, `a pose without a clip hands the spine back to the figure (${clipRun.squatSpine})`);
+  assert.ok(clipRun.reducedSpine < 0.02, `reduced motion hands the spine back to the figure (${clipRun.reducedSpine})`);
+  await page.evaluate(() => window.fixtureApp.useCharacterClips(false));
+  console.log('PASS motion-captured clips move the real crew\'s spine and fingers in place, for both bodies, and hand back to the figure for unclipped poses and reduced motion');
   assert.deepEqual(errors, [], 'no page errors');
   console.log('PASS no page errors with imported character models');
 } finally {
