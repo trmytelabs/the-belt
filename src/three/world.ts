@@ -17,6 +17,8 @@ import { TruckCutaway } from './truckCutaway';
 import { DEPOT_DRESSING } from './depotDressing';
 import { DevilModel, placeProp } from './propModels';
 import { SURFACE_MEANS, boxUVs, cardboardMaterial, getSurface, scaleUVs, surfaceMaterial, surfacesLoaded } from './textures';
+import { snowBank, snowField, snowfall, type Snowfall } from './snow';
+import { WallPiles } from './wallPiles';
 
 const rounded = (w: number, h: number, d: number, material: THREE.Material, r = 0.05): THREE.Mesh =>
   new THREE.Mesh(new RoundedBoxGeometry(w, h, d, 2, Math.min(r, w / 2, h / 2, d / 2)), material);
@@ -80,7 +82,7 @@ export const VISITORS: Record<string, CharacterSpec & { x: number; y: number }> 
   kylie: { name: 'KYLIE', x: 850, y: 400, skin: SKIN.light, shirt: 0x8e3232, pants: 0x2b2f3a, hair: 0x171310, hairStyle: 'short', scale: 0.86 },
   john: { name: 'JOHN RUSHTON', x: 77, y: 397, skin: 0xbf9672, shirt: 0x2f4f64, pants: 0x2b3038, hair: 0x3a2a19, hairStyle: 'short', scale: 0.92 },
   vic: { name: 'VIC', x: 132, y: 286, skin: 0xc29c7a, shirt: 0x727f83, pants: 0x34383d, hair: 0xb4b4a1, hairStyle: 'short', moustache: true },
-  shan: { name: SHAN_NAME, dynamicSkin: true, x: 610, y: SHIFT_LAYOUT.eventBays.brian.y, skin: SKIN.light, shirt: 0xe9e4d6, pants: 0x30343c, hair: 0x8b8b88, hairStyle: 'bald', tie: 0x8a2630 },
+  shan: { name: SHAN_NAME, dynamicSkin: true, x: 610, y: SHIFT_LAYOUT.eventBays.brian.y, skin: SKIN.light, shirt: 0xe9e4d6, pants: 0x30343c, hair: 0x8b8b88, hairStyle: 'bald', tie: 0x8a2630, headwear: 'santaHat' },
 };
 
 export const TERMITE_SPEC: CharacterSpec = { name: 'TERMITE', skin: 0xe2b088, shirt: 0x2f5f8f, pants: 0x2a3f5c, overalls: 0x2a3f5c, hair: 0x5a3a20, hairStyle: 'short', headwear: 'termiteHat', beard: true };
@@ -138,6 +140,10 @@ export class DepotWorld {
   public readonly stairTreads: { side: 'left' | 'right'; index: number; mesh: THREE.Mesh }[] = [];
   public readonly stairRails: THREE.Mesh[] = [];
   public groundSurface!: THREE.Mesh;
+  /** Christmas peak: cartons piling against the walls through the shift. */
+  public readonly wallPiles: WallPiles;
+  /** Snow falling in the yards outside the bays and beyond the receiving wall. */
+  public readonly snow: Snowfall[] = [];
 
   public physicalBounds(object: THREE.Object3D): THREE.Box3 { return physicalBounds(object); }
 
@@ -181,6 +187,9 @@ export class DepotWorld {
     this.addBulkCrates();
     this.addRalphTruck();
     if (this.models) this.addDressing();
+    this.wallPiles = new WallPiles(undefined, quality === 'high');
+    scene.add(this.wallPiles.mesh);
+    this.addSnow(quality);
     this.mergeStaticGeometry();
     this.truckCutaway = new TruckCutaway(this.trucks);
   }
@@ -356,8 +365,8 @@ export class DepotWorld {
     const bayTop = toWorldZ(100);
     const bayBottom = toWorldZ(SHIFT_LAYOUT.ralphBay.y + 56);
     const pillar = standard(0x2c3c43, 0.6, 0.3);
-    const outside = new THREE.Mesh(new THREE.PlaneGeometry(30, groundEnd - groundTop), standard(0x101619, 0.95));
-    outside.rotation.x = -Math.PI / 2;
+    // It is Christmas: the yards outside the open bays are under fresh snow.
+    const outside = snowField(30, groundEnd - groundTop);
     for (const side of [-1, 1]) {
       const segments: [number, number][] = [[-22, bayTop], [bayBottom, southZ]];
       for (const [from, to] of segments) {
@@ -395,10 +404,38 @@ export class DepotWorld {
       const yard = outside.clone();
       yard.position.set(side * 30.6, -0.01, (groundTop + groundEnd) / 2);
       scene.add(yard);
+      // Plowed banks along the yard's far side, clear of the bays the fleet drives out of.
+      for (const z of [-14, -2, 10, 22]) {
+        const bank = snowBank(9, 2.2, 0.9);
+        bank.position.set(side * 42, 0, z);
+        bank.rotation.y = Math.PI / 2;
+        scene.add(bank);
+      }
       const yardLight = new THREE.PointLight(0xffa64d, 22, 18, 1.6);
       yardLight.position.set(side * 21, 5, 3);
       scene.add(yardLight);
     }
+  }
+
+  /**
+   * Snow falls outside: in both yards beyond the open bays, and behind the
+   * receiving wall, where it shows above the wall from the follow camera.
+   */
+  private addSnow(quality: 'high' | 'low'): void {
+    const scale = quality === 'high' ? 1 : 0.3;
+    const groundEnd = toWorldZ(SHIFT_LAYOUT.bulkRearWall.y + SHIFT_LAYOUT.bulkRearWall.height / 2);
+    const backZ = toWorldZ(SHIFT_LAYOUT.worldTop) - 0.6;
+    for (const side of [-1, 1]) {
+      this.snow.push(snowfall([side < 0 ? -46 : 15.7, 0, -24], [side < 0 ? -15.7 : 46, 14, groundEnd], { count: Math.round(1600 * scale), size: 0.11 }));
+    }
+    this.snow.push(snowfall([-46, 0, -48], [46, 18, backZ], { count: Math.round(2600 * scale), size: 0.13 }));
+    for (const flakes of this.snow) this.scene.add(flakes.points);
+  }
+
+  /** The Christmas layer: snow falls whenever the depot is shown; the wall piles follow the shift clock. */
+  public updateChristmas(dt: number, shiftElapsedMs: number, shiftDurationMs: number, reducedMotion: boolean): void {
+    for (const flakes of this.snow) flakes.update(dt, reducedMotion);
+    this.wallPiles.update(Math.min(1, shiftElapsedMs / shiftDurationMs), shiftDurationMs, reducedMotion);
   }
 
   /** The raised loading platform: belt, both lanes, every truck's rear door and the bulk pile. */

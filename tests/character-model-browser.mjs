@@ -147,6 +147,15 @@ try {
     assert.equal(result.shownFigure, 0, `${result.name} hides only its procedural figure`);
   }
   console.log(`PASS all ${ROCKETBOX_CAST.length} shipped character models decode and attach across depot, story, mall and dream scenes`);
+  // Christmas: Shan's Santa hat is a head accessory, so it stays on over his imported model.
+  const shanHat = await page.evaluate(() => {
+    const shan = window.fixtureApp.crew.actor('shan');
+    let accessories = 0;
+    shan.character.head.traverse(child => { if (child.isMesh && child.visible && !child.userData.figure) accessories += 1; });
+    return { model: Boolean(shan.root.getObjectByName('character-model')), accessories };
+  });
+  assert.ok(shanHat.model && shanHat.accessories > 0, `Shan's Santa hat shows over his model: ${JSON.stringify(shanHat)}`);
+  console.log('PASS Shan wears his Christmas hat over the imported model');
   // Check the actual rig proportions too: the previous inward shoulder roll
   // put angry fists together across the chest on the imported crew.
   const armSamples = [];

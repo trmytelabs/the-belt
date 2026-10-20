@@ -2,6 +2,18 @@
 
 ## 0.1.0 — development snapshot
 
+- Set the 3D night at Christmas. Snow covers the yards outside the depot's
+  bays, the UPS lot, the road, home, the city drive and the view from the break
+  stops, and keeps falling (the flakes hold still with reduced motion). Shan wears a Santa hat,
+  which stays on over his imported model. Through the three-minute shift,
+  cartons pile up at random against the depot's corner walls until the columns
+  reach the top and start tumbling off the edges onto the floor; the piles stay
+  in corners no worker, coworker or truck uses and reset each night.
+- Stage the 3D Tim Hortons break inside the restaurant, at a booth and the
+  pickup counter, beside a Christmas tree and a snowy window. Only the wording
+  that placed the crew in the car changes ("We haven't left the counter."); the
+  2D depot keeps the original parking-lot script. The 7-Eleven break gains a
+  window onto the snowy street.
 - Open the 3D night at Termite and Skanky's place. They choose to go in or quit
   UPS. Quitting plays an all-nighter with a Warsteiner keg, Hershey's Eggies,
   Twilight Princess on the Wii and Heavy Metal, Skanky being sick and Shan's

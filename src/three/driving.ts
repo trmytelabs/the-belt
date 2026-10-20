@@ -8,6 +8,7 @@ import { mergeStatic } from './merge';
 import { disposeObject3D } from './resources';
 import { DrivingModels } from './drivingModels';
 import { DrivingNavigation } from './drivingNavigation';
+import { snowMaterial, Snowfall } from './snow';
 
 /** A reusable city with real connected intersections and free player movement. */
 export class DrivingView {
@@ -30,6 +31,9 @@ export class DrivingView {
   private readonly pool: THREE.PointLight;
   private snapped = false;
   private disposed = false;
+  /** Christmas snow falling round the vehicle wherever it drives. */
+  private readonly snow: Snowfall;
+  private readonly reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   constructor(quality: 'high' | 'low') {
     const scene = this.scene;
@@ -43,9 +47,10 @@ export class DrivingView {
     const moon = new THREE.DirectionalLight(0xc7d9ff, 1.6);
     moon.position.set(-30, 50, -20);
     scene.add(moon);
-    const ground = new THREE.Mesh(new THREE.PlaneGeometry(CITY.groundWidth, CITY.groundDepth), standard(0x24352f, 1));
+    // A snowy Christmas night: lawns and lots under snow, packed snow on the sidewalks, plowed roads.
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(CITY.groundWidth, CITY.groundDepth), snowMaterial(CITY.groundWidth, CITY.groundDepth, 8));
     ground.rotation.x = -Math.PI / 2; ground.position.set(30, -0.04, -100); scene.add(ground);
-    const asphalt = standard(0x343e47, 0.95), sidewalk = standard(0x737974, 1), stripe = standard(0xe9e5ce, 0.9), yellow = standard(0xe9bd64, 0.9);
+    const asphalt = standard(0x343e47, 0.8), sidewalk = standard(0xc6ced6, 0.95), stripe = standard(0xe9e5ce, 0.9), yellow = standard(0xe9bd64, 0.9);
     for (const x of CITY.streetsX) {
       const extent = streetExtent(x), centre = (extent.minZ + extent.maxZ) / 2, length = extent.maxZ - extent.minZ;
       this.pavement(x, centre, 18, length, sidewalk, -0.01);
@@ -162,7 +167,9 @@ export class DrivingView {
     this.truck.add(this.headlight, this.headlight.target);
     this.pool = new THREE.PointLight(0xffc58b, 35, 24, 1.4);
     scene.add(this.pool);
-    const objects = new Set<THREE.Object3D>([this.truck, this.car, this.pool]);
+    this.snow = new Snowfall(new THREE.Box3(new THREE.Vector3(-35, 0, -35), new THREE.Vector3(35, 16, 35)), { count: quality === 'high' ? 5000 : 1400, size: 0.14, fall: 1.1 });
+    scene.add(this.snow.points);
+    const objects = new Set<THREE.Object3D>([this.truck, this.car, this.pool, this.snow.points]);
     mergeStatic(scene, object => objects.has(object) || object.userData.keep === true || (object as THREE.Light).isLight === true);
     this.ready = Promise.all(loads).then(() => {
       if (this.disposed) return;
@@ -268,6 +275,8 @@ export class DrivingView {
     const follow = !this.snapped ? 1 : 1 - Math.exp(-dt * 5);
     this.camera.position.lerp(chase, follow); this.look.lerp(target, follow);
     this.camera.lookAt(this.look); this.snapped = true;
+    this.snow.follow(this.vehicle.position);
+    this.snow.update(model.paused ? 0 : dt, this.reducedMotion);
     this.navigation.update(model, this.camera);
   }
 

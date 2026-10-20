@@ -6,7 +6,7 @@ import { mergeStatic } from './merge';
 import { shadowed, standard, textSprite } from './space';
 
 export type HairStyle = 'short' | 'long' | 'curly' | 'bun' | 'bald' | 'mullet' | 'slick';
-export type Headwear = 'none' | 'termiteHat' | 'beanie';
+export type Headwear = 'none' | 'termiteHat' | 'beanie' | 'santaHat';
 
 export interface CharacterSpec {
   name: string;
@@ -353,6 +353,31 @@ function buildHeadwear(head: THREE.Group, spec: CharacterSpec): void {
     const badge = textSprite(['T'], 0.06, { width: 32, height: 32, color: '#5b4316' });
     badge.position.set(0, 0.275, 0.12);
     head.add(crown, brim, band, badge);
+  } else if (spec.headwear === 'santaHat') {
+    // A Christmas hat: red felt flopping to one side, a white fur cuff and pompom.
+    const felt = matte(0xc4202a);
+    const fur = matte(0xf4f1ea);
+    const hat = new THREE.Group();
+    hat.position.set(0, 0.17, -0.01);
+    hat.rotation.x = -0.18;
+    const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.128, 0.16, 18), felt);
+    crown.position.y = 0.08;
+    const tip = new THREE.Group();
+    tip.position.y = 0.155;
+    tip.rotation.set(-0.5, 0, 0.95);
+    const point = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.2, 14), felt);
+    point.position.y = 0.09;
+    const pompom = ball(0.038, fur, 10, 8);
+    pompom.position.y = 0.2;
+    tip.add(point, pompom);
+    const cuff = new THREE.Mesh(new THREE.TorusGeometry(0.124, 0.03, 8, 22), fur);
+    cuff.rotation.x = Math.PI / 2;
+    cuff.scale.set(1, 1.06, 1);
+    cuff.position.y = 0.012;
+    hat.add(crown, tip, cuff);
+    // An accessory, like glasses: it stays on when an imported model replaces the figure.
+    hat.traverse(child => { child.userData.headAccessory = true; });
+    head.add(hat);
   } else if (spec.headwear === 'beanie') {
     const wool = matte(0x3b5874);
     const beanie = new THREE.Mesh(new THREE.SphereGeometry(0.113, 14, 9, 0, Math.PI * 2, 0, Math.PI / 2), wool);

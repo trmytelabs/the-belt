@@ -30,6 +30,7 @@ import { MesaDream } from './dream';
 import { MesaEncounter } from './mesa';
 import { BEN_CAST, BEN_END, BEN_START, SetPieces } from './setpieces';
 import { StoryStage, directDepot } from './story';
+import { breakScene3d } from './breakScenes3d';
 import { DrivingModel, type DriveDestination, type DriveOrigin } from './DrivingModel';
 import { DECISION, HOME_DECISION, LEAVE_HOUSE, QUIT_ENDING, QUIT_NIGHT, type HomeBeat } from './homeScript';
 import { DrivingView } from './driving';
@@ -491,6 +492,7 @@ export class Belt3d {
     // The 3D road now has a playable journey after the departure and original quip.
     // Keep shared cutscenes intact for both legacy versions.
     if (scene.id === 'drive-to-mall' || scene.id === 'drive-to-ups') scene = { ...scene, beats: scene.beats.slice(0, 2) };
+    scene = breakScene3d(scene);
     this.overlay.setLunchAlert(false);
     this.state = 'story';
     this.cutscene = new Cutscene(scene);
@@ -944,6 +946,7 @@ export class Belt3d {
     audioSystem.setDriving(this.state === 'driving' && this.driving ? this.driving.speed : null);
     if (this.state === 'playing') this.crew.updateReceiving(m, dt, this.time);
     this.world.update(running ? dt : 0, this.time, m.beltTravel, this.reducedMotion);
+    this.world.updateChristmas(this.state === 'paused' ? 0 : dt, m.elapsedMs, m.durationMs, this.reducedMotion);
     const depotStory = this.state === 'story' && this.cutscene?.scene.location === 'depot';
     if (!depotStory) this.syncWorkers(running || this.state === 'countdown' ? dt : 0);
     if (this.state === 'playing' || this.state === 'countdown' || this.state === 'briefing') this.clearCrewFootprints();
