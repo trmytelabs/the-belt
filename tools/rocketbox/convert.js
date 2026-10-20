@@ -5,6 +5,7 @@ import { TGALoader } from 'three/examples/jsm/loaders/TGALoader.js';
 import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 import { ROCKETBOX_CAST, ROCKETBOX_COMMIT } from '../../src/three/rocketboxCast.ts';
+import { ROCKETBOX_CLIPS, clipName } from '../../src/three/rocketboxClips.ts';
 
 const REPOSITORY = `https://raw.githubusercontent.com/microsoft/Microsoft-Rocketbox/${ROCKETBOX_COMMIT}/Assets/Avatars/`;
 
@@ -246,4 +247,142 @@ async function convertAll(files) {
 }
 
 window.convertRocketbox = convertAll;
+
+const ANIMATIONS = `https://raw.githubusercontent.com/microsoft/Microsoft-Rocketbox/${ROCKETBOX_COMMIT}/Assets/Animations/`;
+
+/** Loads one Rocketbox animation FBX, e.g. `xy/m_walk_neutral`. */
+async function loadClip(path) {
+  const [folder, file] = path.split('/');
+  return new FBXLoader().loadAsync(`${ANIMATIONS}all_animations_max_motextr_${folder}/${file}.max.fbx`);
+}
+
+/** A report of a clip's hierarchy and tracks, for checking new clips against the crew rigs. */
+window.inspectClip = async (path) => {
+  const group = await loadClip(path);
+  const nodes = [];
+  group.traverse((object) => {
+    if (nodes.length > 12) return;
+    const depth = (() => { let d = 0; for (let o = object; o.parent; o = o.parent) d += 1; return d; })();
+    nodes.push({ name: object.name, type: object.type, depth, position: object.position.toArray().map((v) => +v.toFixed(3)), quaternion: object.quaternion.toArray().map((v) => +v.toFixed(3)), scale: object.scale.toArray().map((v) => +v.toFixed(3)) });
+  });
+  const clip = group.animations[0];
+  const kinds = {};
+  for (const track of clip.tracks) { const kind = track.name.split('.').pop(); kinds[kind] = (kinds[kind] ?? 0) + 1; }
+  const positions = clip.tracks.filter((track) => track.name.endsWith('.position')).slice(0, 6).map((track) => {
+    const v = track.values; const n = v.length / 3;
+    return { name: track.name, keys: n, first: [v[0], v[1], v[2]].map((x) => +x.toFixed(2)), last: [v[n * 3 - 3], v[n * 3 - 2], v[n * 3 - 1]].map((x) => +x.toFixed(2)) };
+  });
+  const times = clip.tracks[0].times;
+  return { animations: group.animations.length, duration: clip.duration, tracks: clip.tracks.length, kinds, fps: times.length > 1 ? Math.round(1 / (times[1] - times[0])) : null, keys: times.length, nodes, positions, sampleTracks: clip.tracks.slice(0, 5).map((track) => track.name), meshes: (() => { let m = 0; group.traverse((o) => { if (o.isMesh) m += 1; }); return m; })() };
+};
+
+const ROOT = 'Bip01';
+
+/**
+ * Drops keys that interpolation between their kept neighbours reproduces
+ * within `tolerance` (radians for rotations, clip units, centimetres, for
+ * positions). Mocap keys every frame; most bones barely move between them.
+ */
+function thinKeys(times, values, size, tolerance, quaternion) {
+  const count = times.length;
+  if (count <= 2) return { times, values };
+  const at = (i) => values.subarray(i * size, i * size + size);
+  const error = (a, b, c, t) => {
+    if (quaternion) {
+      const qa = new THREE.Quaternion().fromArray(a), qb = new THREE.Quaternion().fromArray(b), qc = new THREE.Quaternion().fromArray(c);
+      return qa.slerp(qb, t).angleTo(qc);
+    }
+    let sum = 0;
+    for (let k = 0; k < size; k += 1) { const d = a[k] + (b[k] - a[k]) * t - c[k]; sum += d * d; }
+    return Math.sqrt(sum);
+  };
+  const kept = [0];
+  let start = 0;
+  for (let end = 2; end < count; end += 1) {
+    let fits = true;
+    for (let i = start + 1; i < end && fits; i += 1) {
+      const t = (times[i] - times[start]) / (times[end] - times[start]);
+      fits = error(at(start), at(end), at(i), t) <= tolerance;
+    }
+    if (!fits) { kept.push(end - 1); start = end - 1; }
+  }
+  kept.push(count - 1);
+  const outTimes = new Float32Array(kept.length);
+  const outValues = new Float32Array(kept.length * size);
+  kept.forEach((index, j) => { outTimes[j] = times[index]; outValues.set(at(index), j * size); });
+  return { times: outTimes, values: outValues };
+}
+
+/**
+ * A clip ready for the crew: every bone's rotation, and the root's position
+ * with its travel across the floor removed (the game moves the character; the
+ * clip keeps its sway and its rise and fall). Per-bone positions and scales
+ * are dropped so each avatar keeps its own proportions. Returns the clip and
+ * the root's natural ground speed in clip units (centimetres) per second.
+ */
+function prepareClip(source, name, loop) {
+  const tracks = [];
+  let speed = 0;
+  for (const track of source.tracks) {
+    const [node, property] = [track.name.slice(0, track.name.lastIndexOf('.')), track.name.slice(track.name.lastIndexOf('.') + 1)];
+    // Biped's footstep track and 3ds Max's motion-extraction helper are not bones of any avatar.
+    if (/Footsteps|MotionExtractionHelper/.test(node)) continue;
+    if (property === 'quaternion') {
+      const { times, values } = thinKeys(track.times, track.values, 4, 0.0025, true);
+      tracks.push(new THREE.QuaternionKeyframeTrack(track.name, times, values));
+    } else if (property === 'position' && node === ROOT) {
+      const values = Float32Array.from(track.values);
+      const n = track.times.length;
+      const duration = track.times[n - 1] - track.times[0] || 1;
+      // The straight-line travel over the clip, removed so it plays in place.
+      const vx = (values[n * 3 - 3] - values[0]) / duration;
+      const vz = (values[n * 3 - 1] - values[2]) / duration;
+      speed = Math.hypot(vx, vz);
+      for (let i = 0; i < n; i += 1) {
+        const t = track.times[i] - track.times[0];
+        values[i * 3] -= vx * t;
+        values[i * 3 + 2] -= vz * t;
+      }
+      const thinned = thinKeys(track.times, values, 3, 0.1, false);
+      tracks.push(new THREE.VectorKeyframeTrack(track.name, thinned.times, thinned.values));
+    }
+  }
+  const clip = new THREE.AnimationClip(name, source.duration, tracks);
+  clip.userData = { loop };
+  return { clip, speed };
+}
+
+/**
+ * Converts every role in rocketboxClips.ts, male and female, into one GLB of
+ * animations on the Biped skeleton (no mesh), saved as
+ * public/models/animations/crew-clips.glb. Exposed for scripted runs.
+ */
+async function convertClips() {
+  let skeleton = null;
+  const clips = [];
+  const results = [];
+  for (const source of ROCKETBOX_CLIPS) {
+    for (const female of [false, true]) {
+      const path = female ? source.female : source.male;
+      const group = await loadClip(path);
+      skeleton ??= group;
+      const raw = group.animations[0];
+      const { clip, speed } = prepareClip(raw, clipName(source.role, female), source.loop);
+      const keysBefore = raw.tracks.reduce((sum, track) => sum + track.times.length, 0);
+      const keysAfter = clip.tracks.reduce((sum, track) => sum + track.times.length, 0);
+      clips.push(clip);
+      results.push({ name: clip.name, path, duration: +clip.duration.toFixed(3), tracks: clip.tracks.length, keysBefore, keysAfter, speed: +speed.toFixed(1) });
+    }
+  }
+  // The tracks need their bones in the exported scene; the first clip's skeleton carries every name.
+  const helpers = [];
+  skeleton.traverse((object) => { if (/Footsteps|MotionExtractionHelper/.test(object.name)) helpers.push(object); });
+  for (const object of helpers) object.removeFromParent();
+  const glb = await new GLTFExporter().parseAsync(skeleton, { binary: true, animations: clips });
+  const response = await fetch('/__save-clips?file=crew-clips', { method: 'POST', body: glb });
+  if (!response.ok) throw new Error(await response.text());
+  return { bytes: glb.byteLength, clips: results };
+}
+
+window.convertRocketboxClips = convertClips;
 button.addEventListener('click', () => { void convertAll(); });
