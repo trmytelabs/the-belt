@@ -353,8 +353,17 @@ try {
     const app = window.fixtureApp; app.restart();
     const failures = [];
     let samples = 0;
+    let behindWall = 0;
     const check = label => {
       const camera = app.camera; camera.updateMatrixWorld();
+      // The follow camera may stand behind the terminal wall at the back of the
+      // depot; the wall must then be gone, and solid whenever the camera is well inside.
+      const wall = app.world.bulkRearWall;
+      const wallFront = wall.position.z - layout.bulkRearWall.height / 32 / 2;
+      if (camera.position.z >= wallFront) {
+        behindWall++;
+        if (wall.visible) failures.push(`${label}: terminal wall drawn with the camera behind it`);
+      } else if (camera.position.z < wallFront - 3 && (!wall.visible || wall.material.opacity < 1)) failures.push(`${label}: terminal wall faded with the camera inside`);
       const visible = (point, item) => {
         const fog = app.world.scene.fog;
         if (app.state === 'playing' && app.overview && point.distanceTo(camera.position) > fog.near + (fog.far - fog.near) * 0.35) failures.push(`${label}: ${item} lost in overview fog`);
@@ -407,9 +416,10 @@ try {
         check(`scrum beat ${beat}, aspect ${aspect}`);
       }
     }
-    return { failures, samples };
+    return { failures, samples, behindWall };
   }, { layout: SHIFT_LAYOUT, scrum: SCRUM });
   assert.ok(depotCameras.samples > 1_000, 'warehouse checks cover actual geometry, both workers, all drop heights, both views and two aspect ratios');
+  assert.ok(depotCameras.behindWall >= 8, `the follow camera stands behind the faded terminal wall at the back of the depot (${depotCameras.behindWall} samples)`);
   assert.deepEqual(depotCameras.failures, []);
 
   const clockout = await page.evaluate(({ scene, layout }) => {

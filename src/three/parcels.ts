@@ -265,6 +265,8 @@ export function createParcelView(parcel: Parcel): ParcelView {
   // Every named freight shows its full authored name, as in the 2D depot.
   const tag = parcelTag(parcel);
   tag.position.y = Math.max(height * PARCEL_SCALE, size.y) + 0.38;
+  // Where the tag rests on the freight; the renderer lifts it while the parcel is carried.
+  tag.userData.baseY = tag.position.y;
   tag.center.set(0.5, 0);
   root.add(tag);
   const highlight = new THREE.Mesh(new THREE.RingGeometry(0.53, 0.64, 36), new THREE.MeshBasicMaterial({

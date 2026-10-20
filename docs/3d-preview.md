@@ -51,6 +51,14 @@ rear platform, outward side stairs, truck interiors and lower-floor drops.
   `rocketboxCast.ts`, then drives their bones from those pivots. The existing
   walk, carrying, gestures, attached props and story poses continue to work.
   See [character models](character-models.md) for the cast and MIT provenance.
+  The walk cycle leans the torso in and sways it with each step, a heavy load
+  (`load`, from the freight's carry multiplier) leans the carrier back and
+  lowers the arms, and `triggerAction` layers a one-shot lift, put-down or
+  throw over whatever the figure is doing. `lookToward` turns a head toward a
+  point within the neck's range; Termite and Skanky look at the parcel they
+  can grab or the drop they are carrying to. All of these fold into the
+  existing easing targets, so nothing accumulates, and reduced motion keeps
+  every figure still. `tests/character-animation-model.mjs` covers them.
 - `setpieces.ts` stages Vic and Shan's belt buttons, Ralph's five-ton and
   Ben's robbery. `mesa.ts` runs the Mesa choice, and `dream.ts` is Skanky's
   bedroom.
@@ -72,8 +80,20 @@ rear platform, outward side stairs, truck interiors and lower-floor drops.
   off-screen, the bubble moves to the nearest edge with an arrow pointing
   toward them.
 
+The follow camera leads a walking worker slightly in their direction of
+travel and rattles briefly when freight breaks (never with reduced motion).
+At the back of the depot it keeps its oblique angle over the stairs, the floor
+drops and bulk instead of being stopped against the terminal wall: the wall
+fades out as the camera approaches its inner face and is hidden once the
+camera is behind it (`DepotWorld.fadeRearWall`), showing the snowy lot behind
+the depot instead. The fade is a function of the camera's position, so the
+near plane never meets a visible wall; the overview, high above the wall,
+keeps it solid. `tests/depot-geometry-browser.mjs` checks both.
+
 Rendering uses ACES tone mapping, soft shadows, a room environment for
-reflections and a bloom pass that only catches real light sources. On a
+reflections and a bloom pass that only catches real light sources. A soft
+vignette over the picture and a hazard-striped band at the top of each stair
+flight round out the look. On a
 software WebGL renderer (SwiftShader/llvmpipe), the preview switches to low
 quality: procedural figures without model downloads, no shadow maps or bloom,
 fewer lights and a reduced render resolution.

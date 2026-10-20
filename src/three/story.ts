@@ -80,7 +80,8 @@ export class StageActor {
     delta = Math.atan2(Math.sin(delta), Math.cos(delta));
     c.root.rotation.y += delta * Math.min(1, dt * 10);
     animateCharacter(c, dt, { moving: this.moved, carrying: this.carrying, time, reducedMotion });
-    c.body.rotation.set(0, 0, 0);
+    // A posed or seated figure owns its torso; a plain walk keeps the walk cycle's lean and sway.
+    if (this.pose !== 'none' || this.seatedIn) c.body.rotation.set(0, 0, 0);
     c.head.rotation.set(0, 0, 0);
     // Smoking/phone gestures are upper-body actions. Preserve the seat's hip
     // height and folded legs so they cannot stand a passenger through the roof.

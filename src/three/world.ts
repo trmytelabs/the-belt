@@ -17,11 +17,32 @@ import { TruckCutaway } from './truckCutaway';
 import { DEPOT_DRESSING } from './depotDressing';
 import { DevilModel, placeProp } from './propModels';
 import { SURFACE_MEANS, boxUVs, cardboardMaterial, getSurface, scaleUVs, surfaceMaterial, surfacesLoaded } from './textures';
-import { snowBank, snowField, snowfall, type Snowfall } from './snow';
+import { snowBank, snowField, snowMaterial, snowfall, type Snowfall } from './snow';
 import { WallPiles } from './wallPiles';
 
 const rounded = (w: number, h: number, d: number, material: THREE.Material, r = 0.05): THREE.Mesh =>
   new THREE.Mesh(new RoundedBoxGeometry(w, h, d, 2, Math.min(r, w / 2, h / 2, d / 2)), material);
+
+/** Yellow and black chevrons, one period per 128 px; set the repeat for the surface. */
+function hazardStripes(): THREE.CanvasTexture {
+  const stripes = document.createElement('canvas');
+  stripes.width = 128; stripes.height = 16;
+  const ctx = stripes.getContext('2d')!;
+  ctx.fillStyle = '#e8c04a'; ctx.fillRect(0, 0, 128, 16);
+  ctx.fillStyle = '#1c1c1c';
+  for (let i = -16; i < 128; i += 16) { ctx.beginPath(); ctx.moveTo(i, 16); ctx.lineTo(i + 8, 0); ctx.lineTo(i + 16, 0); ctx.lineTo(i + 8, 16); ctx.fill(); }
+  const texture = new THREE.CanvasTexture(stripes);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  return texture;
+}
+
+/** Painted hazard stripes along a strip `repeats` periods long. */
+function hazardMaterial(repeats: number): THREE.MeshStandardMaterial {
+  const map = hazardStripes();
+  map.repeat.set(Math.max(1, Math.round(repeats)), 1);
+  return new THREE.MeshStandardMaterial({ map, roughness: 0.75 });
+}
 
 /** Real-world size, in metres, of one tile of each photo surface (docs/textures.md). */
 const CONCRETE_TILE = 3;
@@ -339,16 +360,34 @@ export class DepotWorld {
       }
     }
     // One solid terminal wall closes the depot behind bulk and both side drops.
-    // The follow camera stays on its interior side; there is no rear landing.
+    // There is no rear landing. The follow camera may pass behind this wall at
+    // the back of the depot; it fades out ahead of the camera (fadeRearWall)
+    // and the snowy lot behind it shows instead.
     const rear = SHIFT_LAYOUT.bulkRearWall;
     const southZ = toWorldZ(rear.y + rear.height / 2);
-    const south = new THREE.Mesh(new THREE.BoxGeometry(rear.width * WORLD_SCALE, 7.4, rear.height * WORLD_SCALE), wall);
+    const south = new THREE.Mesh(new THREE.BoxGeometry(rear.width * WORLD_SCALE, 7.4, rear.height * WORLD_SCALE), wall.clone());
     south.position.copy(toWorld(rear, 3.7));
     south.receiveShadow = true;
     south.userData.keep = true;
     south.name = 'final-depot-wall';
     this.bulkRearWall = south;
     scene.add(south);
+    // The lot behind the terminal wall, under snow, seen only when the wall has
+    // faded. No depot light reaches it: it is night snow, blue-grey, not white.
+    const nightSnow = snowMaterial(92, 20).clone();
+    nightSnow.color.setHex(0x5f6c7c);
+    const behind = snowField(92, 20, 0, southZ + 10, -0.01);
+    behind.material = nightSnow;
+    behind.userData.solid = false;
+    scene.add(behind);
+    const bankSnow = snowMaterial(12, 2.4, 3).clone();
+    bankSnow.color.setHex(0x74818f);
+    for (const x of [-30, -8, 14, 36]) {
+      const bank = snowBank(12, 2.4, 0.9);
+      bank.material = bankSnow;
+      bank.position.set(x, 0, southZ + 17);
+      scene.add(bank);
+    }
     // Close the 20cm seams to the shell's inner side faces at ±15.2m.
     for (const side of [-1, 1]) {
       const cap = new THREE.Mesh(new THREE.BoxGeometry(0.2, 7.4, rear.height * WORLD_SCALE), wall);
@@ -429,6 +468,8 @@ export class DepotWorld {
       this.snow.push(snowfall([side < 0 ? -46 : 15.7, 0, -24], [side < 0 ? -15.7 : 46, 14, groundEnd], { count: Math.round(1600 * scale), size: 0.11 }));
     }
     this.snow.push(snowfall([-46, 0, -48], [46, 18, backZ], { count: Math.round(2600 * scale), size: 0.13 }));
+    // Behind the terminal wall, for the follow camera at the back of the depot.
+    this.snow.push(snowfall([-46, 0, groundEnd + 0.4], [46, 16, groundEnd + 20], { count: Math.round(1800 * scale), size: 0.13 }));
     for (const flakes of this.snow) this.scene.add(flakes.points);
   }
 
@@ -436,6 +477,28 @@ export class DepotWorld {
   public updateChristmas(dt: number, shiftElapsedMs: number, shiftDurationMs: number, reducedMotion: boolean): void {
     for (const flakes of this.snow) flakes.update(dt, reducedMotion);
     this.wallPiles.update(Math.min(1, shiftElapsedMs / shiftDurationMs), shiftDurationMs, reducedMotion);
+  }
+
+  /**
+   * Fades the terminal wall out as the camera approaches its inner face from
+   * the depot side, and hides it once the camera is behind it, so the follow
+   * camera keeps its oblique view at the back of the depot instead of being
+   * stopped against the wall. The overview, far above the wall, keeps it.
+   * The fade is a function of where the camera is, not of time, so the near
+   * plane never meets a visible wall. Returns the wall's opacity.
+   */
+  public fadeRearWall(camera: THREE.Vector3): number {
+    const wall = this.bulkRearWall;
+    const front = wall.position.z - SHIFT_LAYOUT.bulkRearWall.height * WORLD_SCALE / 2;
+    const above = camera.y > 7.4 + 16;
+    const opacity = above ? 1 : THREE.MathUtils.clamp((front - 1.0 - camera.z) / 1.8, 0, 1);
+    const material = wall.material as THREE.MeshStandardMaterial;
+    if (material.opacity !== opacity) {
+      material.opacity = opacity;
+      material.transparent = opacity < 1;
+    }
+    wall.visible = opacity > 0.01;
+    return opacity;
   }
 
   /** The raised loading platform: belt, both lanes, every truck's rear door and the bulk pile. */
@@ -546,6 +609,13 @@ export class DepotWorld {
       numbers.position.set(startX - direction * 0.9, PLATFORM_HEIGHT + 0.012, toWorldZ(stairs.centerY - 60));
       numbers.name = 'floor-street-range'; numbers.userData.keep = true;
       scene.add(numbers);
+      // A hazard-striped band painted along the top of each flight, where the deck ends.
+      const warning = new THREE.Mesh(new THREE.PlaneGeometry(flightDepth, 0.34), hazardMaterial(flightDepth / 0.34));
+      warning.rotation.x = -Math.PI / 2;
+      warning.rotation.z = Math.PI / 2;
+      warning.position.set(startX - direction * 0.23, PLATFORM_HEIGHT + 0.011, centerZ);
+      warning.userData.solid = false;
+      scene.add(warning);
     }
 
     // Short crew steps in the aisles between parked trucks: the outer-bay crew
@@ -941,15 +1011,7 @@ export class DepotWorld {
 
     // Recovery tray for missed freight, hazard-striped.
     const tray = toWorld(SHIFT_LAYOUT.recoveryPile);
-    const stripes = document.createElement('canvas');
-    stripes.width = 128; stripes.height = 16;
-    const sctx = stripes.getContext('2d')!;
-    sctx.fillStyle = '#e8c04a'; sctx.fillRect(0, 0, 128, 16);
-    sctx.fillStyle = '#1c1c1c';
-    for (let i = -16; i < 128; i += 16) { sctx.beginPath(); sctx.moveTo(i, 16); sctx.lineTo(i + 8, 0); sctx.lineTo(i + 16, 0); sctx.lineTo(i + 8, 16); sctx.fill(); }
-    const stripeTex = new THREE.CanvasTexture(stripes);
-    stripeTex.colorSpace = THREE.SRGBColorSpace;
-    stripeTex.wrapS = THREE.RepeatWrapping;
+    const stripeTex = hazardStripes();
     stripeTex.repeat.set(3, 1);
     const trayBase = rounded(3.4, 0.12, 1.6, standard(0x2c3a40, 0.8), 0.03);
     trayBase.position.set(tray.x, deck + 0.06, tray.z);

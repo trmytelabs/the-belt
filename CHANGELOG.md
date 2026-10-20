@@ -2,6 +2,19 @@
 
 ## 0.1.0 — development snapshot
 
+- Polish the 3D depot's motion, camera and feedback. Walking leans and sways
+  the torso; a heavy box leans the carrier back and lowers the arms; grabbing,
+  loading and putting down dip the knees and a throw swings the arms; Termite
+  and Skanky's heads turn to the parcel they can grab or the drop they are
+  heading for; a carried box bobs with the step. The follow camera leads a
+  walking worker, rattles on a breakage and keeps its oblique angle at the
+  back of the depot: the terminal wall fades out ahead of the camera, showing
+  the snowy lot behind, instead of forcing a top-down view over the stairs,
+  floor drops and bulk. A carried parcel's tag rides higher, clear of the
+  face. Clean dispatches throw gold sparks and pop points that grow
+  with the streak, the chase camera jolts on a road bump, a soft vignette
+  frames the picture and hazard stripes mark the top of each stair flight.
+  Reduced motion disables every new movement.
 - Set the 3D night at Christmas. Snow covers the yards outside the depot's
   bays, the UPS lot, the road, home, the city drive and the view from the break
   stops, and keeps falling (the flakes hold still with reduced motion). Shan wears a Santa hat,
