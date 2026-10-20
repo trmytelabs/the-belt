@@ -6,6 +6,7 @@ import { createCar } from './story';
 import { standard, textPlane } from './space';
 import { mergeStatic } from './merge';
 import { disposeObject3D } from './resources';
+import { followWheels, type WheelRig } from './vehicleRig';
 import { DrivingModels } from './drivingModels';
 import { DrivingNavigation } from './drivingNavigation';
 import { snowMaterial, Snowfall } from './snow';
@@ -287,7 +288,9 @@ export class DrivingView {
       const object = this.traffic.get(obstacle.id) ?? this.cones.get(obstacle.id)!;
       object.visible = true; object.position.set(obstacle.x, obstacle.kind === 'cone' && obstacle.hit ? 0.15 : 0, obstacle.z);
       object.rotation.set(0, obstacle.heading, obstacle.kind === 'cone' && obstacle.hit ? Math.PI / 2 : 0);
+      if (object.userData.wheels) followWheels(object.userData.wheels as WheelRig, object, dt);
     }
+    if (this.vehicle.userData.wheels) followWheels(this.vehicle.userData.wheels as WheelRig, this.vehicle, dt);
     // The moon's shadow camera follows the vehicle on a 2 m grid, so the shadows do not swim.
     const anchorX = Math.round(p.x / 2) * 2, anchorZ = Math.round(p.z / 2) * 2;
     this.moon.position.set(anchorX - 30, 50, anchorZ - 20);
