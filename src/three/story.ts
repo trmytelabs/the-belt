@@ -8,6 +8,7 @@ import type { StoryScene } from '../game/slice/StoryScript';
 import { animateCharacter, createCharacter, mergeCharacter, type Character, type CharacterSpec } from './characters';
 import { applyPose, type CrewLife, type Pose } from './crew';
 import { placeProp, upgradeCar } from './propModels';
+import { followWheels, type WheelRig } from './vehicleRig';
 import { PuffField } from './fx';
 import { buildSouthgateMall, mallX, mallZ, type SouthgateMall } from './mall';
 import { mergeStatic } from './merge';
@@ -1656,6 +1657,8 @@ export class StoryStage {
     else if (id === 'home-decision' || id === 'leave-house' || id === 'quit-night') this.directHouse(stage, cutscene, time);
     else if (id === 'mall-intro') this.directMallIntro(stage, cutscene);
     for (const actor of stage.actors.values()) if (actor.root.visible) actor.animate(dt, time, this.reducedMotion);
+    // Cars that moved this beat roll and steer their wheels to match.
+    for (const prop of Object.values(stage.props)) if (prop.visible && prop.userData.wheels) followWheels(prop.userData.wheels as WheelRig, prop, dt);
     stage.puffs.update(dt);
     for (const flakes of stage.snow) flakes.update(dt, this.reducedMotion, this.active === 'road' ? this.roadWind : 0);
   }

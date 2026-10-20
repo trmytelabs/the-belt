@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { mergeStatic } from './merge.ts';
+import { createSedanInterior } from './vehicleInterior.ts';
+import { rigWheels } from './vehicleRig.ts';
 
 const loads = new Map<string, Promise<GLTF>>();
 function load(url: string): Promise<GLTF> {
@@ -36,18 +38,42 @@ export async function upgradeCar(car: THREE.Group, color: number): Promise<boole
         if (/headlights/i.test(sourceMaterial.name) && headMaterial) {
           mesh.name = 'model-headlight'; return headMaterial;
         }
-        const material = sourceMaterial.clone() as THREE.MeshStandardMaterial;
-        if (material.isMeshStandardMaterial) {
-          material.roughness = 0.65; material.metalness = 0.12;
-          if (/blue|red|paint/i.test(material.name)) material.color.setHex(color);
-          if (/windows/i.test(material.name)) { material.transparent = true; material.opacity = 0.3; material.depthWrite = false; }
-          if (/taillights/i.test(material.name)) { material.emissive.setHex(0xa81712); material.emissiveIntensity = 0.8; }
+        const source = sourceMaterial as THREE.MeshStandardMaterial;
+        if (!source.isMeshStandardMaterial) return sourceMaterial.clone();
+        if (/blue|red|paint/i.test(source.name)) {
+          // Car paint: a clear coat over the colour, which the scene's environment map now reflects.
+          const paint = new THREE.MeshPhysicalMaterial({ color, roughness: 0.42, metalness: 0.1, clearcoat: 1, clearcoatRoughness: 0.08 });
+          paint.name = source.name;
+          return paint;
         }
+        if (/windows/i.test(source.name)) {
+          // Glass: a dark tint with a sharp reflection, double-sided so the interior shows through both panes.
+          const glass = new THREE.MeshPhysicalMaterial({ color: 0x55636f, roughness: 0.05, metalness: 0, transparent: true, opacity: 0.28,
+            envMapIntensity: 1.2, side: THREE.DoubleSide, depthWrite: false });
+          glass.name = source.name;
+          return glass;
+        }
+        const material = source.clone();
+        material.roughness = 0.65; material.metalness = 0.12;
+        if (/grey/i.test(material.name)) { material.roughness = 0.38; material.metalness = 0.55; }
+        if (/taillights/i.test(material.name)) { material.emissive.setHex(0xa81712); material.emissiveIntensity = 0.8; }
         return material;
       };
       mesh.material = Array.isArray(mesh.material) ? mesh.material.map(prepare) : prepare(mesh.material);
     });
-    mergeStatic(model, object => object.name === 'model-headlight');
+    // The wheels are their own nodes: give them pivots at their centres so they roll and steer.
+    const wheelNodes = model.children.filter(child => /wheel/i.test(child.name)).map(node => ({ node, steered: /front/i.test(node.name) }));
+    const wheels = rigWheels(wheelNodes, { forward: 1, wheelbase: 2.7 });
+    if (wheels) car.userData.wheels = wheels;
+    mergeStatic(model, object => object.name === 'model-headlight' || object.userData.wheel === true);
+    // The generated interior sits inside the model, in the car's own frame: undo the fit scale and turn.
+    const unscale = new THREE.Group();
+    unscale.scale.set(1 / model.scale.x, 1 / model.scale.y, 1 / model.scale.z);
+    const holder = new THREE.Group();
+    holder.rotation.y = -model.rotation.y;
+    holder.position.y = -model.position.y;
+    const interior = createSedanInterior();
+    holder.add(interior); unscale.add(holder); model.add(unscale);
     // Retain hidden light controls: Brian's authored blink drives the imported lights too.
     for (const child of car.children) child.visible = false;
     car.add(model);

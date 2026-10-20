@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { disposeObject3D } from './resources';
 import { mergeStatic } from './merge';
+import { rigWheels } from './vehicleRig';
 
 export const DRIVING_ASSETS = {
   shop: 'city/building-a', apartments: 'city/building-d', offices: 'city/building-g',
@@ -58,7 +59,12 @@ export class DrivingModels {
       };
       mesh.material = Array.isArray(mesh.material) ? mesh.material.map(prepare) : prepare(mesh.material);
     });
-    mergeStatic(oriented);
+    // A vehicle's wheel nodes get pivots so they roll and steer; everything else merges.
+    const wheelNodes: { node: THREE.Object3D; steered: boolean }[] = [];
+    asset.traverse(object => { if (/wheel/i.test(object.name) && object !== asset) wheelNodes.push({ node: object, steered: /front/i.test(object.name) }); });
+    const wheels = wheelNodes.length ? rigWheels(wheelNodes, { forward: 1, wheelbase: 3.4 }) : null;
+    if (wheels) slot.userData.wheels = wheels;
+    mergeStatic(oriented, object => object.userData.wheel === true);
     for (const object of fallback) object.visible = false;
     slot.add(oriented); slot.userData.modelReady = true;
     return true;
