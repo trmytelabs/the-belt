@@ -14,7 +14,7 @@ import { clearDepotFootprint, DEPOT_BODY_RADIUS, DEPOT_CARRY_RADIUS, depotSolidF
 import { KeyReturnModel, MALL_RULES, type MallEvent } from '../game/slice/MallModel';
 import { MallModel3D as MallModel } from './MallModel3D';
 import {
-  THROWING, type Parcel, type Route, type ShiftEvent, type WorkerId,
+  CARRY_MULTIPLIER, THROWING, type Parcel, type Route, type ShiftEvent, type WorkerId,
 } from '../game/slice/ShiftModel';
 import { ROUTE_INFO, parcelAddress } from './addresses';
 import { Cutscene, StoryRun, type StoryChoices } from '../game/slice/StoryModel';
@@ -24,7 +24,7 @@ import {
 } from '../game/slice/StoryScript';
 import { audioSystem, type SoundEffect } from './audio';
 import { syncCharacterModels, useCharacterModels, type CharacterModelEntry } from './characterModels';
-import { animateCharacter, createCharacter, mergeCharacter, type Character } from './characters';
+import { animateCharacter, createCharacter, lookToward, mergeCharacter, triggerAction, type Character } from './characters';
 import { CrewLife } from './crew';
 import { MesaDream } from './dream';
 import { MesaEncounter } from './mesa';
@@ -157,6 +157,13 @@ export class Belt3d {
   private fumeTimer = 0;
   private mallBonus = 0;
   private breakAlertMs = 0;
+  /** Each worker's smoothed velocity in world metres per second, for the camera's look-ahead. */
+  private readonly motion: Record<WorkerId, { previous: THREE.Vector3 | null; velocity: THREE.Vector3 }> = {
+    termite: { previous: null, velocity: new THREE.Vector3() }, skanky: { previous: null, velocity: new THREE.Vector3() },
+  };
+  private readonly lookAhead = new THREE.Vector3();
+  /** A decaying camera shake, in metres, for breakages. */
+  private shake = 0;
   /** The current story scene's heading, so a beat can move its clock. */
   private storyHeading = { title: '', kicker: '' };
   /**
@@ -811,6 +818,10 @@ export class Belt3d {
     this.stage.reset();
     this.stage.resetMall();
     this.depotShot = null;
+    for (const motion of Object.values(this.motion)) { motion.previous = null; motion.velocity.set(0, 0, 0); }
+    this.lookAhead.set(0, 0, 0);
+    this.shake = 0;
+    for (const worker of Object.values(this.workers)) worker.action = undefined;
     this.banter.clear();
     this.crew.reset();
     this.workerWalks.clear();
@@ -927,6 +938,7 @@ export class Belt3d {
         if (event.type === 'collision') {
           this.drivingPenalty += event.points; this.drivingCollisions++;
           audioSystem.drivingCue('collision');
+          this.drivingView?.jolt(event.kind === 'cone' ? 0.18 : 0.4);
           this.overlay.showToast(`EASY DOES IT · −${event.points} points${drive.origin === 'home' ? '' : ' · cargo safe'}`, 1600);
         } else if (event.type === 'red-light') {
           this.drivingPenalty += event.points; this.drivingRedLights++;
@@ -1105,8 +1117,24 @@ export class Belt3d {
   private handleEvent(event: ShiftEvent): void {
     const sound = event.assisted || event.type === 'wrong' && !event.message.startsWith('WRONG DROP') ? undefined : EVENT_SOUNDS[event.type];
     if (sound) audioSystem.play(sound);
+    // The worker whose hands did it: the event names a worker, or stands nearest the spot.
+    const actor = event.workerId ? this.workers[event.workerId]
+      : this.workers[[...this.model.workers].sort((a, b) => Math.hypot(a.x - event.x, a.y - event.y) - Math.hypot(b.x - event.x, b.y - event.y))[0].id];
+    if (event.type === 'grab' || event.type === 'recover') triggerAction(actor, 'lift', this.time);
+    else if (event.type === 'drop' || event.type === 'sort' || (event.type === 'wrong' && event.message.startsWith('WRONG DROP'))) triggerAction(actor, 'drop', this.time);
+    else if (event.type === 'throw') triggerAction(actor, 'throw', this.time);
     if (event.type === 'sort' && event.score) {
-      this.overlay.pop(`+${event.score}`, ROUTE_COLORS[event.route ?? 'A'], toWorld(event, surfaceAt(event.x, event.y) + 1.8));
+      // A clean dispatch pops its points, growing with the streak, and throws a little gold up from the drop.
+      const combo = this.model.combo;
+      const streak = combo >= 3 ? ` · ${combo} IN A ROW` : '';
+      this.overlay.pop(`+${event.score}${streak}`, ROUTE_COLORS[event.route ?? 'A'], toWorld(event, surfaceAt(event.x, event.y) + 1.8), 1 + Math.min(combo, 10) * 0.06);
+      if (!this.reducedMotion) {
+        const at = toWorld(event, surfaceAt(event.x, event.y) + 0.5);
+        for (let i = 0; i < 9; i += 1) {
+          this.world.puffs.emit(at, { color: 0xffd98a, size: 0.11, life: 0.55 + Math.random() * 0.25, opacity: 0.9, grow: 0.35, spread: 0.5,
+            velocity: new THREE.Vector3((Math.random() - 0.5) * 1.6, 1.4 + Math.random() * 0.8, (Math.random() - 0.5) * 1.6) });
+        }
+      }
     }
     if (event.type === 'throw' && event.packageId !== undefined && event.workerId) {
       this.throwers.set(event.packageId, event.workerId);
@@ -1120,6 +1148,7 @@ export class Belt3d {
       this.overlay.showToast(`${parcel?.label ?? 'PARCEL'} BROKE · no credit · −${lost} points`, 2800);
       const thrower = this.model.workers.find((worker) => worker.id === (event.packageId !== undefined ? this.throwers.get(event.packageId) : undefined)) ?? this.model.activeWorker;
       this.crew.shanBreakage(thrower, this.model.elapsedMs);
+      this.shake = Math.max(this.shake, 0.22);
       const at = toWorld(event, surfaceAt(event.x, event.y) + 0.3);
       for (let i = 0; i < 10; i += 1) {
         this.world.puffs.emit(at, { color: parcel?.kind === 'makeup' ? 0xda8db6 : 0xb8875a, size: 0.12, life: 0.9, velocity: new THREE.Vector3((Math.random() - 0.5) * 2, 1.2, (Math.random() - 0.5) * 2), opacity: 0.8, grow: 1.4, spread: 0.3 });
@@ -1193,7 +1222,25 @@ export class Belt3d {
       let delta = targetAngle - character.root.rotation.y;
       delta = Math.atan2(Math.sin(delta), Math.cos(delta));
       character.root.rotation.y += delta * Math.min(1, dt * 12);
-      animateCharacter(character, dt, { moving: walk ? !walk.done : worker.moving, carrying: worker.heldId !== null, time: this.time, reducedMotion: this.reducedMotion });
+      // Smoothed velocity, so the camera can lead a walking worker.
+      const motion = this.motion[worker.id];
+      if (motion.previous && dt > 0) {
+        const velocity = character.root.position.clone().sub(motion.previous).divideScalar(dt);
+        motion.velocity.lerp(velocity, Math.min(1, dt * 6));
+      } else if (dt > 0) motion.velocity.set(0, 0, 0);
+      motion.previous = (motion.previous ?? new THREE.Vector3()).copy(character.root.position);
+      // A heavy box pulls the carrier back onto their heels; an envelope weighs nothing.
+      const held = worker.heldId === null ? null : m.packages.find((item) => item.id === worker.heldId) ?? null;
+      const load = held ? THREE.MathUtils.clamp((1 - CARRY_MULTIPLIER[held.kind]) / 0.6, 0, 1) : 0;
+      animateCharacter(character, dt, { moving: walk ? !walk.done : worker.moving, carrying: held !== null, time: this.time, reducedMotion: this.reducedMotion, load });
+      // Eyes on the work: the parcel about to be grabbed, or the drop the held one is bound for.
+      const focus = this.state === 'playing' ? held ? m.deliveryPoint(held, worker) : m.nearestPackage(worker) : null;
+      if (focus) {
+        const toFocus = toWorld(focus, character.root.position.y).sub(character.root.position);
+        const facing = character.root.rotation.y;
+        // Into the figure's own frame, which faces +Z.
+        lookToward(character, { x: toFocus.x * Math.cos(facing) - toFocus.z * Math.sin(facing), z: toFocus.x * Math.sin(facing) + toFocus.z * Math.cos(facing) }, dt, this.reducedMotion);
+      } else lookToward(character, null, dt, this.reducedMotion);
       if (this.state === 'celebrating' && !this.reducedMotion) {
         // Termite and Skanky celebrate with the crew.
         const beat = this.time * 9 + (worker.id === 'skanky' ? 1.3 : 0);
@@ -1265,8 +1312,9 @@ export class Belt3d {
     if (parcel.state === 'held' && parcel.workerId) {
       const character = this.workers[parcel.workerId];
       const forward = new THREE.Vector3(Math.sin(character.root.rotation.y), 0, Math.cos(character.root.rotation.y));
+      // The box rides the torso: it bobs with each step and dips with a lift or a put-down.
       return target.copy(character.root.position).addScaledVector(forward, carryOffset)
-        .setY(character.root.position.y + 1.05 - view.height * 0.35);
+        .setY(character.root.position.y + 1.05 + character.body.position.y - view.height * 0.35);
     }
     if (parcel.state === 'missed') {
       const missed = this.model.packages.filter((item) => item.state === 'missed');
@@ -1398,6 +1446,9 @@ export class Belt3d {
         }
       }
       this.parcelPosition(parcel, view, target);
+      // In the hands, the shipping tag rides higher, clear of the carrier's face,
+      // at its full size so the street number stays readable while carrying.
+      view.tag.position.y = view.tag.userData.baseY + (parcel.state === 'held' ? 0.5 : 0);
       const assigned = parcel.route === 'C' || ROUTE_INFO[parcel.route].side === m.activeWorker.side;
       view.highlight.visible = this.state === 'playing' && assigned && ['belt', 'floor', 'missed'].includes(parcel.state)
         && (parcel.state !== 'floor' || (m.activeWorker.side === 'left' ? parcel.x < 440 : parcel.x > 520));
@@ -1468,6 +1519,7 @@ export class Belt3d {
     const portrait = this.camera.aspect < 1;
     let position: THREE.Vector3;
     let look: THREE.Vector3;
+    let follow = false;
     const state = this.state === 'paused' ? this.pausedFrom : this.state;
     if (state === 'interlude') {
       // Frame the open end of Ben's aisle from past the truck noses, so no truck
@@ -1482,16 +1534,29 @@ export class Belt3d {
       look = new THREE.Vector3(0, 0, toWorldZ((SHIFT_LAYOUT.worldTop + SHIFT_LAYOUT.worldBottom) / 2));
       position = look.clone().add(new THREE.Vector3(0, Math.max(portrait ? 104 : 80, 58 / this.camera.aspect), portrait ? 39 : 27));
     } else {
-      const worker = this.workers[this.model.activeWorker.id].root.position;
-      const insideTruck = truckInteriorAt(this.model.activeWorker);
+      const active = this.model.activeWorker;
+      const worker = this.workers[active.id].root.position;
+      const insideTruck = truckInteriorAt(active);
       // Follow the worker inside so the transparent roof reveals the shelves.
       const terminal = THREE.MathUtils.smoothstep(worker.z, toWorldZ(SHIFT_LAYOUT.stairs.minY - 80), toWorldZ(SHIFT_LAYOUT.stairs.minY + 10));
       look = new THREE.Vector3(worker.x * (insideTruck ? 1 : 0.5 + 0.5 * terminal), worker.y + 0.4, worker.z - (1 - terminal));
+      // Lead a walking worker a little, so there is more belt or floor in view ahead of them.
+      const velocity = this.motion[active.id].velocity;
+      const lead = snap || this.reducedMotion ? new THREE.Vector3() : velocity.clone().setY(0).multiplyScalar(0.28);
+      if (lead.length() > 0.9) lead.setLength(0.9);
+      this.lookAhead.lerp(lead, snap ? 1 : 1 - Math.exp(-dt * 3));
+      look.add(this.lookAhead);
       position = look.clone().add(portrait ? new THREE.Vector3(0, 15, 9) : new THREE.Vector3(worker.x * 0.2 * (1 - terminal), 10.5, 9.4));
       if (insideTruck && !portrait) position = look.clone().add(new THREE.Vector3(0, 9, 5.5));
+      follow = true;
     }
+    // The overview and story shots stay inside the terminal wall. The follow
+    // camera may pass behind it at the back of the depot: the wall fades out
+    // ahead of the camera (see DepotWorld.fadeRearWall), keeping the same
+    // oblique view over the stairs, the floor drops and bulk instead of a
+    // top-down one jammed against the wall.
     const rearLimit = toWorldZ(SHIFT_LAYOUT.bulkRearWall.y - SHIFT_LAYOUT.bulkRearWall.height / 2) - this.camera.near - 0.15;
-    position.z = Math.min(position.z, rearLimit);
+    if (!follow) position.z = Math.min(position.z, rearLimit);
     // Easing never recovers from an invalid position (NaN stays NaN), which left the depot black.
     if (!Number.isFinite(this.camera.position.lengthSq()) || !Number.isFinite(this.cameraTarget.lengthSq())) {
       this.camera.position.copy(position);
@@ -1499,9 +1564,16 @@ export class Belt3d {
     }
     const ease = snap ? 1 : 1 - Math.exp(-dt * 4);
     this.camera.position.lerp(position, ease);
-    this.camera.position.z = Math.min(this.camera.position.z, rearLimit);
+    if (!follow) this.camera.position.z = Math.min(this.camera.position.z, rearLimit);
     this.cameraTarget.lerp(look, ease);
+    this.world.fadeRearWall(this.camera.position);
     this.camera.lookAt(this.cameraTarget);
+    // A breakage rattles the camera briefly; the lookAt above keeps the framing.
+    this.shake = snap ? 0 : this.shake * Math.exp(-dt * 7);
+    if (this.shake > 0.004 && !this.reducedMotion) {
+      this.camera.position.x += (Math.random() - 0.5) * this.shake;
+      this.camera.position.y += (Math.random() - 0.5) * this.shake;
+    } else this.shake = 0;
     const fog = this.world.scene.fog;
     if (fog instanceof THREE.Fog) {
       const altitude = Math.max(0, this.camera.position.y - 20);

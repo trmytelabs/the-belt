@@ -4,6 +4,8 @@ const CSS = `
 .b3d { position: fixed; inset: 0; overflow: hidden; background: #0a1317; font-family: "Segoe UI", system-ui, Arial, sans-serif; color: #edf0de; }
 .b3d canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; outline: none; }
 .b3d-hud { position: absolute; inset: 0; pointer-events: none; }
+.b3d-vignette { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse 72% 68% at 50% 48%, transparent 58%, #040a0d66 100%); }
+.b3d.dreaming .b3d-vignette { display: none; }
 .b3d-lunch-alert { position: absolute; left: 50%; top: 36%; transform: translate(-50%, -50%); width: min(640px, 85%); box-sizing: border-box; padding: 28px 24px; border: 2px solid #e8b765; border-radius: 14px; background: #14262df2; color: #f3e6c6; text-align: center; font: 900 clamp(24px, 4vw, 40px)/1.15 "Segoe UI", sans-serif; box-shadow: 0 12px 50px #0006; pointer-events: none; }
 .b3d-top { position: absolute; top: 0; left: 0; right: 0; display: flex; align-items: center; gap: 28px; padding: 12px 22px;
   background: linear-gradient(#0b171ce8, #0b171c00); }
@@ -190,6 +192,8 @@ export class Overlay {
     this.root = document.createElement('div');
     this.root.className = 'b3d';
     host.append(this.root);
+    // A soft vignette over the picture, under every control and label.
+    this.div('b3d-vignette', this.root);
     this.hud = this.div('b3d-hud', this.root);
     this.hud.innerHTML = `
       <div class="b3d-top">
@@ -425,10 +429,12 @@ export class Overlay {
     this.toastMs = ms;
   }
 
-  public pop(text: string, color: string, world: THREE.Vector3): void {
+  /** A short floating score note; `scale` enlarges it for a long streak. */
+  public pop(text: string, color: string, world: THREE.Vector3, scale = 1): void {
     const element = this.div('b3d-pop', this.pops);
     element.textContent = text;
     element.style.color = color;
+    if (scale !== 1) element.style.fontSize = `${Math.round(18 * scale)}px`;
     this.popups.push({ element, world: world.clone(), age: 0 });
   }
 

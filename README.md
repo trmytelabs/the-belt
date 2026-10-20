@@ -30,7 +30,11 @@ WebGL; without it the page links to the 2D depot. See
 characters, with procedural figures on software graphics. Their animation,
 props and provenance are covered in [character models](docs/character-models.md).
 Arms stay beside the torso with natural elbow bends during walking, carrying
-and gestures. Cars use two detailed sedan models, and the devil uses an animated
+and gestures. Walking leans the torso in and sways it with each step; a heavy
+box pulls the carrier back onto their heels; grabbing, loading and putting down
+dip the knees, and a throw swings the arms. Termite and Skanky's heads turn
+toward the parcel they are about to grab or the drop they are carrying to.
+Cars use two detailed sedan models, and the devil uses an animated
 horned, winged model. These compact CC0 models retain the existing story paths
 and have procedural fallbacks; see [prop sources](public/models/PROP-SOURCES.md).
 Kylie is a short Asian man; AJ is a clothed bald man with fitted glasses.
@@ -101,8 +105,11 @@ SORT!** countdown starts the shift.
   with a 15-second cooldown starting on each use. The controls show stops left
   and cooldown time; starting another night restores all three.
 - Escape pauses; M toggles sound. Losing focus pauses the preview automatically.
-- The closer camera follows your worker up and down the belt and reframes when
-  you switch workers. V, or the Overview button, shows the whole warehouse.
+- The closer camera follows your worker up and down the belt, leads them a
+  little as they walk, and reframes when you switch workers. At the back of
+  the depot the terminal wall fades out so the view stays oblique over the
+  stairs, floor drops and bulk. V, or the Overview button, shows the whole
+  warehouse.
 - Walk up past the first truck row to see the receiving dock: two incoming
   semis, unloaders and a smelly dockhand feeding the next real parcel onto the belt.
 - Original named crew bays are preserved above the two player truck rows.

@@ -72,7 +72,8 @@ export class Actor {
     delta = Math.atan2(Math.sin(delta), Math.cos(delta));
     c.root.rotation.y += delta * Math.min(1, dt * 10);
     animateCharacter(c, dt, { moving: this.moved, carrying: this.carrying, time, reducedMotion });
-    c.body.rotation.set(0, 0, 0);
+    // A posed figure owns its torso; a plain walk keeps the walk cycle's lean and sway.
+    if (this.pose !== 'none') c.body.rotation.set(0, 0, 0);
     c.head.rotation.set(0, 0, 0);
     applyPose(c, this.pose, time - this.poseStart, reducedMotion);
     this.moved = false;

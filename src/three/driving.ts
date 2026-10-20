@@ -34,6 +34,13 @@ export class DrivingView {
   /** Christmas snow falling round the vehicle wherever it drives. */
   private readonly snow: Snowfall;
   private readonly reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  /** A decaying knock to the chase camera after a bump, in metres. */
+  private jolting = 0;
+
+  /** Rattles the chase camera: a cone is a tap, a car or a building a thump. */
+  public jolt(amount: number): void {
+    this.jolting = Math.max(this.jolting, amount);
+  }
 
   constructor(quality: 'high' | 'low') {
     const scene = this.scene;
@@ -275,6 +282,11 @@ export class DrivingView {
     const follow = !this.snapped ? 1 : 1 - Math.exp(-dt * 5);
     this.camera.position.lerp(chase, follow); this.look.lerp(target, follow);
     this.camera.lookAt(this.look); this.snapped = true;
+    this.jolting = model.paused ? this.jolting : this.jolting * Math.exp(-dt * 6);
+    if (this.jolting > 0.005 && !this.reducedMotion && !model.paused) {
+      this.camera.position.x += (Math.random() - 0.5) * this.jolting;
+      this.camera.position.y += (Math.random() - 0.5) * this.jolting * 0.6;
+    } else if (this.jolting <= 0.005) this.jolting = 0;
     this.snow.follow(this.vehicle.position);
     this.snow.update(model.paused ? 0 : dt, this.reducedMotion);
     this.navigation.update(model, this.camera);
