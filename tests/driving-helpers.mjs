@@ -49,6 +49,9 @@ const readDrive = page => page.evaluate(() => {
     signal: s ? { color: m.signalColor(s), remaining: m.signalDistance(s) } : null };
 });
 
+/** The keyboard driver's thresholds: a key is held for any steer past 0.08, throttle or brake past zero. */
+const STEER_THRESHOLD = 0.08;
+
 /** Read connected streets, use held keys and stop at red lights. Never moves game state. */
 export async function driveToBay(page, via) {
   const keys = new Set(), used = new Set(), initial = await readDrive(page);
@@ -64,8 +67,8 @@ export async function driveToBay(page, via) {
       d = await readDrive(page);
       if (d.canPark) return used;
       const input = driver(d);
-      await set('ArrowLeft', input.steer < -0.08);
-      await set('ArrowRight', input.steer > 0.08);
+      await set('ArrowLeft', input.steer < -STEER_THRESHOLD);
+      await set('ArrowRight', input.steer > STEER_THRESHOLD);
       await set('ArrowUp', input.throttle > 0);
       await set('ArrowDown', input.brake > 0);
       await page.waitForTimeout(55);
@@ -74,41 +77,58 @@ export async function driveToBay(page, via) {
   } finally { for (const key of keys) await page.keyboard.up(key); }
 }
 
-/** Real simultaneous touch contacts: keep GAS held, steer, and add/remove BRAKE. */
+/**
+ * Real simultaneous touch contacts, worked the way the keyboard driver works
+ * its keys: GAS is held while the driver wants throttle, BRAKE while it wants
+ * brake (alone while backing up, which is how the pedals reverse), and the
+ * stick is pushed to its rim on the steering side, as an arrow key gives full
+ * lock. The stick ignores deflections under 18 % of its radius, and a
+ * proportional push left small corrections in that dead zone and larger ones
+ * at a fraction of the keyboard's lock; on a software-rendered runner, where
+ * every correction already lands late, that was enough to miss turns. Each
+ * touch event also waits on the page's main thread, so a contact only moves
+ * when its state changes, as the keyboard driver only presses a key that
+ * changes.
+ */
 export async function touchDriveToBay(page, cdp) {
   const initial = await readDrive(page), driver = steadyDriver(initial, initial.goal);
   const gas = await page.getByRole('button', { name: 'Accelerate truck', exact: true }).boundingBox();
   const brake = await page.getByRole('button', { name: 'Brake truck', exact: true }).boundingBox();
   const stick = await page.getByLabel('Steer truck', { exact: true }).boundingBox();
+  const radius = stick.width / 2, centreX = stick.x + radius;
   const gasPoint = { x: gas.x + gas.width / 2, y: gas.y + gas.height / 2, id: 11 };
   const brakePoint = { x: brake.x + brake.width / 2, y: brake.y + brake.height / 2, id: 13 };
-  const steerPoint = { x: stick.x + stick.width / 2, y: stick.y + stick.height / 2, id: 12 };
-  let braking = false, gasHeld = true;
-  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [gasPoint, steerPoint] });
+  const steerPoint = { x: centreX, y: stick.y + stick.height / 2, id: 12 };
+  let gasHeld = false, braking = false, lock = 0;
+  const active = () => [...(gasHeld ? [gasPoint] : []), steerPoint, ...(braking ? [brakePoint] : [])];
+  const touch = (type, touchPoints) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints });
+  await touch('touchStart', [steerPoint]);
   const deadline = Date.now() + WALL_CAP_MS;
   try {
     for (let d = initial; withinBudget(initial, d, deadline);) {
       d = await readDrive(page);
       if (d.canPark) return;
-      // With both pedals held, net deceleration is gentler than BRAKE alone.
-      if (d.signal) d.signal.remaining -= Math.max(0, d.speed * d.speed * (1 / 22 - 1 / 32)) + 0.8;
-      const input = driver(d), stop = input.throttle === 0, gas = !input.reverse;
-      steerPoint.x = stick.x + stick.width / 2 + input.steer * (stick.width / 2 - 16);
-      // Reversing needs BRAKE alone, so the gas contact lifts while backing up.
-      const active = () => [...(gasHeld ? [gasPoint] : []), steerPoint, ...(braking ? [brakePoint] : [])];
-      if (stop !== braking) {
-        braking = stop;
-        await cdp.send('Input.dispatchTouchEvent', stop ? { type: 'touchStart', touchPoints: active() } : { type: 'touchEnd', touchPoints: [brakePoint] });
+      const input = driver(d);
+      const wantGas = input.throttle > 0 && !input.reverse, wantBrake = input.brake > 0;
+      const wantLock = Math.abs(input.steer) > STEER_THRESHOLD ? Math.sign(input.steer) : 0;
+      if (wantGas !== gasHeld) {
+        gasHeld = wantGas;
+        await touch(wantGas ? 'touchStart' : 'touchEnd', wantGas ? active() : [gasPoint]);
       }
-      if (gas !== gasHeld) {
-        gasHeld = gas;
-        await cdp.send('Input.dispatchTouchEvent', gas ? { type: 'touchStart', touchPoints: active() } : { type: 'touchEnd', touchPoints: [gasPoint] });
+      if (wantBrake !== braking) {
+        braking = wantBrake;
+        await touch(wantBrake ? 'touchStart' : 'touchEnd', wantBrake ? active() : [brakePoint]);
       }
-      await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: active() });
+      if (wantLock !== lock) {
+        lock = wantLock;
+        // Just inside the rim: a push to the edge of the stick reads as full lock.
+        steerPoint.x = centreX + lock * radius * 0.97;
+        await touch('touchMove', active());
+      }
       await page.waitForTimeout(55);
     }
     throw new Error(`The touch driver did not reach the bay: ${JSON.stringify(await readDrive(page))}`);
-  } finally { await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); }
+  } finally { await touch('touchEnd', []); }
 }
 
 /** Drive a direct street route with actual keys, then explicitly park. */
