@@ -19,8 +19,12 @@ required, but it is recorded here so every file can be traced back to its source
 | Belt side rails, skirts, legs and rollers; stair treads; truck chassis and rolled doors | `steel_color.webp`, `steel_normal.webp`, `steel_arm.webp` | ambientCG, [Metal038](https://ambientcg.com/view?id=Metal038), 1K-JPG: Color, NormalGL, Roughness, Metalness | [CC0](https://docs.ambientcg.com/license/) |
 | Yellow guard and stair rails; relief and wear on truck bodies, cabs and Ralph's five-ton | `paint_color.webp`, `paint_normal.webp`, `paint_arm.webp` | ambientCG, [PaintedMetal001](https://ambientcg.com/view?id=PaintedMetal001), 1K-JPG: Color, NormalGL, Roughness, Metalness | [CC0](https://docs.ambientcg.com/license/) |
 | Cardboard parcels, truck cargo and bulk crates | `cardboard_color.webp`, `cardboard_normal.webp`, `cardboard_arm.webp` | ambientCG, [Cardboard004](https://ambientcg.com/view?id=Cardboard004), 1K-JPG: Color, NormalGL, Roughness | [CC0](https://docs.ambientcg.com/license/) |
+| Arrival lot paving, city roads and dock aprons | `asphalt_color.webp`, `asphalt_normal.webp`, `asphalt_arm.webp` | Poly Haven, [Asphalt Snow](https://polyhaven.com/a/asphalt_snow) (`asphalt_snow`, by eye-candy.xyz, files hash `bb9360a6`), 1k JPG: diff, nor_gl, arm | [CC0](https://polyhaven.com/license) |
+| City sidewalks (packed snow) | `snowpack_color.webp`, `snowpack_normal.webp`, `snowpack_arm.webp` | Poly Haven, [Snow Floor](https://polyhaven.com/a/snow_floor) (`snow_floor`, by eye-candy.xyz, files hash `8cd3f01d`), 1k JPG: diff, nor_gl, arm | [CC0](https://polyhaven.com/license) |
 
-Downloaded 2026-10-18. SHA-256 of the original downloads:
+The depot sets were downloaded 2026-10-18 and the outdoor sets 2026-10-20,
+each Poly Haven file matching the MD5 its API publishes. SHA-256 of the
+original downloads:
 
 | Download | SHA-256 |
 |---|---|
@@ -31,11 +35,17 @@ Downloaded 2026-10-18. SHA-256 of the original downloads:
 | `Metal038_1K-JPG.zip` | `804a0e45cc923c71277f89b7e1a7b95bd8786899254e43692eb781b8c3981aae` |
 | `PaintedMetal001_1K-JPG.zip` | `3e766388832357cdb472102368ef4a237c7ce38a540eec7eb415869c7825d0db` |
 | `Cardboard004_1K-JPG.zip` | `f427eb664e0cbc97fc1e7066a800f3ad656ad4eeaa0d0314182ea8b7f03e4a64` |
+| `asphalt_snow_diff_1k.jpg` | `07ca86302150f68f3cf72735fb3d0eb5657d180cc53cfaf48aae9c36305def84` |
+| `asphalt_snow_nor_gl_1k.jpg` | `0ad8a2f05611f68e78e9a3bc5f117b6998ee796867fef1b077f23bfb2069ebfa` |
+| `asphalt_snow_arm_1k.jpg` | `22b3cf34d5205aa9727132fe2473b41358d7ef998f07fa4cde5a9f0ac1385969` |
+| `snow_floor_diff_1k.jpg` | `8d016825951e84d03417e8e8cf563144539ecc4588a30a0c35b0134d508b58b8` |
+| `snow_floor_nor_gl_1k.jpg` | `356b7194e9a20975a8ca3398daa5f2ba53aebb02644314c7a0a9c0cc22b5fb58` |
+| `snow_floor_arm_1k.jpg` | `09a92eff6a150723981d80a36a653f11f28e0e79ef64ef34d246824abf496cd5` |
 
 ## How the files were prepared
 
-Each surface has three files, so all fifteen total about 850 KB to download
-and about 40 MB of GPU memory with mipmaps:
+Each surface has three files, so all twenty-one total about 1.25 MB to
+download and about 45 MB of GPU memory with mipmaps:
 
 - `*_color.webp`: the colour (albedo) map, WebP quality 82, sRGB.
 - `*_normal.webp`: the OpenGL-convention normal map, WebP quality 88, linear.
@@ -43,7 +53,13 @@ and about 40 MB of GPU memory with mipmaps:
   1024 × 1024. Steel and cardboard maps and the fine-grained rubber normal map
   are 512 × 512: thin rails and small cartons never fill enough of a
   phone screen to use more. The rubber colour map is only drawn into the
-  belt's 512 × 256 canvas and is never uploaded to the GPU itself.
+  belt's 512 × 256 canvas and is never uploaded to the GPU itself. The
+  outdoor asphalt and packed-snow maps are also 512 × 512: each photo covers
+  2 m (`PAVING_TILE`), so that is 4 mm a texel at the drive's chase-camera
+  distance, and the 1024 versions would have broken the 2 MB budget.
+- The outdoor sets tint to the flat colours they replace like the depot's:
+  dark wet asphalt in the lot (`story.ts`), the city's grey asphalt and dock
+  aprons and its pale sidewalks (`driving.ts`). Road markings stay flat paint.
 - `*_arm.webp`: ambient occlusion, roughness and metalness packed into the
   red, green and blue channels, 512 × 512, WebP quality 85, linear. Poly Haven
   supplies this packed map. For ambientCG sets it was packed from the separate

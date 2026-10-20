@@ -9,6 +9,7 @@ import { animateCharacter, createCharacter, mergeCharacter, type Character, type
 import { applyPose, type CrewLife, type Pose } from './crew';
 import { placeProp, upgradeCar } from './propModels';
 import { followWheels, type WheelRig } from './vehicleRig';
+import { PAVING_TILE, scaleUVs, surfaceMaterial, surfacesLoaded } from './textures';
 import { PuffField } from './fx';
 import { buildSouthgateMall, mallX, mallZ, type SouthgateMall } from './mall';
 import { mergeStatic } from './merge';
@@ -380,9 +381,13 @@ export class StoryStage {
     this.night(scene, 0x0b1520);
     // A snowy Christmas night: the street, the gate apron and the lot are plowed; the rest is under snow.
     scene.add(snowField(90, 70, 0, 0, -0.01));
-    const wet = standard(0x262c30, 0.7);
+    // Plowed asphalt with snow worked into the grain: a CC0 photo set, tinted to the old wet colour.
+    const paved = surfacesLoaded();
+    const wet = surfaceMaterial('asphalt', { color: 0x262c30, roughness: 0.7 });
     for (const [x0, x1, z0, z1] of [[-45, 45, 2.2, 13.5], [-3.6, 3.6, -0.3, 2.2], [-24, 24, -13.9, -0.3]] as const) {
-      const asphalt = new THREE.Mesh(new THREE.PlaneGeometry(x1 - x0, z1 - z0), wet);
+      const geometry = new THREE.PlaneGeometry(x1 - x0, z1 - z0);
+      if (paved) scaleUVs(geometry, (x1 - x0) / PAVING_TILE, (z1 - z0) / PAVING_TILE);
+      const asphalt = new THREE.Mesh(geometry, wet);
       asphalt.rotation.x = -Math.PI / 2;
       asphalt.position.set((x0 + x1) / 2, 0, (z0 + z1) / 2);
       asphalt.receiveShadow = true;

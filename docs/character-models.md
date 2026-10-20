@@ -98,18 +98,25 @@ npm run models:rocketbox
 ```
 
 Open the printed address (http://127.0.0.1:5180) in a browser and press
-**CONVERT**. The page loads each avatar's FBX and colour textures from the
-pinned commit on GitHub (about 800 MB for the whole crew, held in memory),
-converts it and writes `public/models/characters/<file>.glb` through the dev
-server. It:
+**CONVERT**. The page loads each avatar's FBX with its colour, normal and
+specular textures from the pinned commit on GitHub (about 800 MB for the
+whole crew, held in memory), converts it and writes
+`public/models/characters/<file>.glb` through the dev server. A scripted run
+can call `window.convertRocketbox(files?)` instead of pressing the button. It:
 
 - keeps the highest level of detail (about 7–9k triangles per person) and
   merges shared vertices;
-- replaces the 3ds Max materials with glTF materials and drops normal and
-  specular maps, which add size but no visible detail at the game's camera
-  distance;
-- stores opaque textures as JPEG (1024 px for Termite and Skanky, 512 px for
-  everyone else) and hair cut-outs as PNG with alpha, at most 512 px.
+- replaces the 3ds Max materials with glTF materials;
+- keeps each normal map, in glTF's convention: the converter tests which way
+  each map's green channel points (a normal map's slopes have no curl when
+  read the right way round) and inverts the 3ds Max (DirectX) ones. In the
+  2026-10-20 conversion 47 of 49 maps were inverted; one each on Skanky and
+  the dockhand already pointed the glTF way;
+- turns each specular map into a glTF roughness map: 0.94 on the dullest
+  texels to 0.52 on the shiniest, against the map's own 95th percentile;
+- stores opaque colour and normal maps as JPEG (1024 px for Termite and
+  Skanky, 512 px for everyone else), the roughness map at half that, and hair
+  cut-outs as PNG with alpha, at most 512 px, with no normal or roughness map.
 
 To recast someone, change their entry in `rocketboxCast.ts`, run the converter
 and check `npm run test:model`, which verifies every listed file.
@@ -166,7 +173,7 @@ own licences, so check each one. Never commit a model whose licence is unknown.
 ## Checks
 
 `tests/character-cast.mjs` checks every committed crew model: one file per
-cast entry and no extras, at most 1.5 MB each, one skinned mesh with the
+cast entry and no extras, at most 2 MB each, one skinned mesh with the
 expected bones, a head material, JPEG textures and real character names.
 `tests/character-models.mjs` and `tests/character-model-browser.mjs` first use a
 synthetic humanoid built in code (`tests/fixtures/humanoid.mjs`). They check loading, side matching, the rest pose, posed

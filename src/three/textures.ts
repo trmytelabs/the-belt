@@ -8,7 +8,7 @@ import * as THREE from 'three';
  * draw-call merging working (merge.ts keys on map identity), so meshes scale
  * their own UVs to world size instead of setting a per-texture repeat.
  */
-export type SurfaceName = 'concrete' | 'rubber' | 'steel' | 'paint' | 'cardboard';
+export type SurfaceName = 'concrete' | 'rubber' | 'steel' | 'paint' | 'cardboard' | 'asphalt' | 'snowpack';
 
 export interface Surface {
   map: THREE.Texture;
@@ -16,7 +16,8 @@ export interface Surface {
   armMap: THREE.Texture;
 }
 
-const NAMES: SurfaceName[] = ['concrete', 'rubber', 'steel', 'paint', 'cardboard'];
+// Asphalt (plowed, with snow in the grain) and packed snow pave the arrival lot and the city.
+const NAMES: SurfaceName[] = ['concrete', 'rubber', 'steel', 'paint', 'cardboard', 'asphalt', 'snowpack'];
 const surfaces = new Map<SurfaceName, Surface>();
 let loading: Promise<void> | null = null;
 
@@ -73,7 +74,12 @@ export const SURFACE_MEANS: Record<SurfaceName, { color: number; roughness: numb
   steel: { color: 0x5f6161, roughness: 0.36, metalness: 1 },
   paint: { color: 0xefb33d, roughness: 0.22, metalness: 0.08 },
   cardboard: { color: 0xb98f4d, roughness: 0.64, metalness: 0 },
+  asphalt: { color: 0x7c787b, roughness: 0.87, metalness: 0 },
+  snowpack: { color: 0x6a6a66, roughness: 0.82, metalness: 0 },
 };
+
+/** Real-world size of one tile of the outdoor sets: both photos cover 2 m. */
+export const PAVING_TILE = 2;
 
 const cache = new Map<string, THREE.MeshStandardMaterial>();
 

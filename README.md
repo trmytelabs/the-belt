@@ -45,7 +45,7 @@ Package rustles, impacts, mechanical latches and tablet clicks use small local
 recordings, with subtle variation and controlled volume. M mutes both music and
 effects. Source details are in [music sources](public/audio/MUSIC-SOURCES.md)
 and [foley sources](public/audio/FOLEY-SOURCES.md).
-The floor, belt, rails, trucks and parcels use small CC0 photo textures; see
+The floor, belt, rails, trucks, parcels, arrival lot and city streets use small CC0 photo textures; see
 [depot surface textures](docs/textures.md). The twelve depot trucks are
 cab-over box trucks with riveted aluminium boxes, each crew member's colour on
 the cab and livery band, fleet-brown cabs on the player's four, mirrors, roof
