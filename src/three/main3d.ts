@@ -8,6 +8,7 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { createNightEnvironment, disposeNightEnvironment } from './nightEnvironment';
 
 import { DepotAmbientOcclusion } from './ambientOcclusion';
 import { MESA } from './references';
@@ -177,6 +178,8 @@ export class Belt3d {
   private readonly host: HTMLElement;
   private readonly inputAbort = new AbortController();
   private readonly environment: THREE.WebGLRenderTarget;
+  /** The snowy night outside: reflections and ambient for every scene but the depot. */
+  private readonly nightEnvironment: THREE.WebGLRenderTarget;
   private tickTimer: number | undefined;
   private disposed = false;
   private readonly depotSolids = [...depotSolidFootprints(SHIFT_LAYOUT, SHIFT_LAYOUT.crewTruckRows, SHIFT_LAYOUT.playerTruckDepth).map(rect =>
@@ -209,9 +212,16 @@ export class Belt3d {
     this.environment = pmrem.fromScene(room, 0.04);
     this.world.scene.environment = this.environment.texture;
     room.dispose();
-    pmrem.dispose();
     this.world.scene.environmentIntensity = 0.18;
+    // Outside the depot nothing reflected anything: car paint and glass read as
+    // flat film. A procedural night sky, moon and sodium lamps give the lot,
+    // road, house, dream and drive their reflections and a little ambient.
+    const night = createNightEnvironment();
+    this.nightEnvironment = pmrem.fromScene(night, 0.04);
+    disposeNightEnvironment(night);
+    pmrem.dispose();
     this.stage = new StoryStage(this.quality);
+    this.stage.setEnvironment(this.nightEnvironment.texture, 0.32);
 
     if (this.quality === 'high') {
       // The scene's depth is kept for the ambient-occlusion pass, which reads it instead of drawing the scene again.
@@ -260,6 +270,8 @@ export class Belt3d {
       this.stolen.add(parcel.id);
     };
     this.dream = new MesaDream(this.overlay.root, this.quality);
+    this.dream.scene.environment = this.nightEnvironment.texture;
+    this.dream.scene.environmentIntensity = 0.22;
     this.touch = new TouchControls(this.overlay.root, {
       action: () => this.act(),
       switchWorker: () => { if (this.state === 'playing') this.model.switchWorker(); },
@@ -335,6 +347,7 @@ export class Belt3d {
     disposeObject3D(this.dream.scene);
     disposeObject3D(this.world.scene);
     this.environment.dispose();
+    this.nightEnvironment.dispose();
     for (const pass of this.composer?.passes ?? []) pass.dispose();
     this.composer?.dispose();
     this.renderer.dispose();
@@ -665,7 +678,11 @@ export class Belt3d {
 
   private beginDriving(destination: DriveDestination, origin: DriveOrigin = 'depot'): void {
     this.driving = new DrivingModel(destination, origin);
-    this.drivingView ??= new DrivingView(this.quality);
+    if (!this.drivingView) {
+      this.drivingView = new DrivingView(this.quality);
+      this.drivingView.scene.environment = this.nightEnvironment.texture;
+      this.drivingView.scene.environmentIntensity = 0.35;
+    }
     this.drivingView.resize(this.camera.aspect);
     this.drivingView.begin(this.driving, origin === 'home' ? 'car' : 'truck');
     this.stage.end();

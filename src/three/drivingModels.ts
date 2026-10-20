@@ -50,6 +50,7 @@ export class DrivingModels {
     oriented.traverse(object => {
       const mesh = object as THREE.Mesh;
       if (!mesh.isMesh) return;
+      mesh.castShadow = true; mesh.receiveShadow = true;
       const prepare = (source: THREE.Material): THREE.Material => {
         const material = source.clone() as THREE.MeshStandardMaterial;
         material.roughness = 0.8; material.metalness = 0.08;
