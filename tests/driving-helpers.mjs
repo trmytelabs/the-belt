@@ -1,9 +1,18 @@
 import assert from 'node:assert/strict';
 import { makeDriver } from './driving-input.mjs';
 
+/**
+ * Drives get 150 seconds of simulated driving, not of wall-clock time: a slow
+ * software-rendered runner advances the simulation more slowly, and a correct
+ * route must not fail for that. The wall-clock cap still stops a stuck page.
+ */
+const SIMULATED_BUDGET_S = 150;
+const WALL_CAP_MS = 360_000;
+const withinBudget = (start, d, wallDeadline) => d.elapsed - start.elapsed < SIMULATED_BUDGET_S && Date.now() < wallDeadline;
+
 const readDrive = page => page.evaluate(() => {
   const m = window.fixtureApp.driving, s = m.nextSignal;
-  return { x: m.x, z: m.z, heading: m.heading, speed: m.speed, goal: m.goal, canPark: m.canPark,
+  return { x: m.x, z: m.z, heading: m.heading, speed: m.speed, goal: m.goal, canPark: m.canPark, elapsed: m.elapsed,
     signal: s ? { color: m.signalColor(s), remaining: m.signalDistance(s) } : null };
 });
 
@@ -16,10 +25,10 @@ export async function driveToBay(page, via) {
     if (held) { await page.keyboard.down(key); keys.add(key); used.add(key); }
     else { await page.keyboard.up(key); keys.delete(key); }
   };
-  const deadline = Date.now() + 150_000;
+  const deadline = Date.now() + WALL_CAP_MS;
   try {
-    while (Date.now() < deadline) {
-      const d = await readDrive(page);
+    for (let d = initial; withinBudget(initial, d, deadline);) {
+      d = await readDrive(page);
       if (d.canPark) return used;
       const input = driver(d);
       await set('ArrowLeft', input.steer < -0.08);
@@ -43,10 +52,10 @@ export async function touchDriveToBay(page, cdp) {
   const steerPoint = { x: stick.x + stick.width / 2, y: stick.y + stick.height / 2, id: 12 };
   let braking = false;
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [gasPoint, steerPoint] });
-  const deadline = Date.now() + 150_000;
+  const deadline = Date.now() + WALL_CAP_MS;
   try {
-    while (Date.now() < deadline) {
-      const d = await readDrive(page);
+    for (let d = initial; withinBudget(initial, d, deadline);) {
+      d = await readDrive(page);
       if (d.canPark) return;
       // With both pedals held, net deceleration is gentler than BRAKE alone.
       if (d.signal) d.signal.remaining -= Math.max(0, d.speed * d.speed * (1 / 22 - 1 / 32)) + 0.8;
