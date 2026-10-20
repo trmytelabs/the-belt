@@ -500,7 +500,7 @@ export class StoryStage {
       scene.add(panel);
     }
     // The east wall has a window onto the snowy street.
-    for (const [y, z, h, d] of [[0.5, 0, 1, 14], [3.3, 0, 1.4, 14], [1.8, -6.25, 1.6, 1.5], [1.8, 3.25, 1.6, 7.5]] as const) {
+    for (const [y, z, h, d] of [[0.5, 0, 1, 14], [3.3, 0, 1.4, 14], [1.8, -6.25, 1.6, 1.5], [1.8, 3.75, 1.6, 6.5]] as const) {
       const panel = new THREE.Mesh(new THREE.BoxGeometry(0.2, h, d), wall);
       panel.position.set(8, y, z);
       scene.add(panel);

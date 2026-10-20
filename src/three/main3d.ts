@@ -946,7 +946,9 @@ export class Belt3d {
     audioSystem.setDriving(this.state === 'driving' && this.driving ? this.driving.speed : null);
     if (this.state === 'playing') this.crew.updateReceiving(m, dt, this.time);
     this.world.update(running ? dt : 0, this.time, m.beltTravel, this.reducedMotion);
-    this.world.updateChristmas(this.state === 'paused' ? 0 : dt, m.elapsedMs, m.durationMs, this.reducedMotion);
+    // Depot snow only falls while the depot is on screen; the wall piles always follow the shift clock.
+    const depotShown = this.state !== 'paused' && this.state !== 'dream' && !this.usesDriving() && !this.usesStage();
+    this.world.updateChristmas(depotShown ? dt : 0, m.elapsedMs, m.durationMs, this.reducedMotion);
     const depotStory = this.state === 'story' && this.cutscene?.scene.location === 'depot';
     if (!depotStory) this.syncWorkers(running || this.state === 'countdown' ? dt : 0);
     if (this.state === 'playing' || this.state === 'countdown' || this.state === 'briefing') this.clearCrewFootprints();

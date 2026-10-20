@@ -10,6 +10,8 @@ export const SNOW_COLOR = 0xe9eff5;
 
 let flakeTexture: THREE.CanvasTexture | null = null;
 let groundTexture: THREE.CanvasTexture | null = null;
+/** One material per tiling, so same-sized banks and caps share a texture upload and merge into one draw. */
+const materials = new Map<string, THREE.MeshStandardMaterial>();
 
 /** A soft round flake. */
 function flake(): THREE.CanvasTexture {
@@ -56,10 +58,19 @@ function snowTexture(): THREE.CanvasTexture {
 
 /** Snow ground cover; `tile` is the metres one drift texture spans. */
 export function snowMaterial(width: number, depth: number, tile = 6): THREE.MeshStandardMaterial {
-  const map = snowTexture().clone();
-  map.repeat.set(width / tile, depth / tile);
-  map.needsUpdate = true;
-  return new THREE.MeshStandardMaterial({ color: 0xffffff, map, roughness: 0.92 });
+  const repeatX = Math.max(1, Math.round(width / tile)), repeatY = Math.max(1, Math.round(depth / tile));
+  const key = `${repeatX}x${repeatY}`;
+  let material = materials.get(key);
+  if (!material) {
+    const map = snowTexture().clone();
+    map.repeat.set(repeatX, repeatY);
+    map.needsUpdate = true;
+    // Shared by every stage that shows snow; disposing one stage leaves it loaded (see resources.ts).
+    map.userData.shared = true;
+    material = new THREE.MeshStandardMaterial({ color: 0xffffff, map, roughness: 0.92 });
+    materials.set(key, material);
+  }
+  return material;
 }
 
 /** A flat snow field lying on the ground at `y`. */
