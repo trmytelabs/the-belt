@@ -2,6 +2,8 @@
 
 ## 0.1.0 — development snapshot
 
+- Pause the 3D game when the controller in use drops out mid-play (a flat
+  battery or a pulled cable), as a console does; A resumes once it is back.
 - Make an ON FIRE streak count in play: from 10 clean loads in a row the 3D
   worker you control walks 8% faster until the streak ends (your partner keeps
   their pace). A toast says so once per streak, the ring under your worker

@@ -172,7 +172,7 @@ SORT!** countdown starts the shift.
   briefing Y starts a peak night, X the endless shift, and LB / RB step through
   the perks. On the briefing, pause and results screens the d-pad or stick
   highlights a button or setting, A presses it, left and right move a slider,
-  and B goes back.
+  and B goes back. A controller that drops out mid-play pauses the game.
 - Escape pauses; M toggles sound. SETTINGS on the pause screen sets the music
   and effects levels and the resolution (down to half, for a smoother game on a
   slow or very sharp screen) and turns the breakage camera shake on or off; they are

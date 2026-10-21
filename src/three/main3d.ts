@@ -1095,6 +1095,8 @@ export class Belt3d {
       this.overlay.showToast('CONTROLLER READY · A grab / deliver · B throw · X stop the belt · Y switch · START pause', 4200);
     }
     if (frame.connected !== this.pad.connected) this.showPadHints(frame.connected);
+    // A controller that drops out mid-play (a flat battery, a pulled cable) pauses the game, as a console does.
+    if (!frame.connected && this.pad.connected && this.canPause()) this.pause();
     this.pad = frame;
     for (const button of frame.pressed) {
       if (this.padMenu(button)) continue;
