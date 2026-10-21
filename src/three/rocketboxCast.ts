@@ -13,6 +13,8 @@ export interface RocketboxCasting {
   names: string[];
   /** Largest texture edge in pixels; the closer-framed workers get more detail. */
   textureSize: 512 | 1024;
+  /** A walk other than the crew's ordinary one: `formal`, the manager's upright stride (a Quaternius clip). */
+  walk?: 'formal';
 }
 
 /** The Rocketbox commit the models were converted from. */
@@ -21,7 +23,7 @@ export const ROCKETBOX_COMMIT = '0943055db6ec570bcef9f2c8b41c9e5467c808f9';
 export const ROCKETBOX_CAST: RocketboxCasting[] = [
   { file: 'termite', source: 'Professions/Delivery_Male_01', names: ['TERMITE', 'TRMYTE'], textureSize: 1024 },
   { file: 'skanky', source: 'Adults/Male_Adult_06', names: ['SKANKY'], textureSize: 1024 },
-  { file: 'shan', source: 'Professions/Business_Male_07', names: ["SHAN O'MAC"], textureSize: 512 },
+  { file: 'shan', source: 'Professions/Business_Male_07', names: ["SHAN O'MAC"], textureSize: 512, walk: 'formal' },
   { file: 'kylie', source: 'Adults/Male_Adult_10', names: ['KYLIE'], textureSize: 512 },
   { file: 'vic', source: 'Adults/Male_Adult_05', names: ['VIC'], textureSize: 512 },
   { file: 'john-rushton', source: 'Adults/Male_Adult_08', names: ['JOHN RUSHTON'], textureSize: 512 },

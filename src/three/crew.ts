@@ -49,6 +49,8 @@ export class Actor {
   public faceAngle: number | null = null;
   /** What has this person's attention (a speaker, a passing worker), in world coordinates; the head turns to it while unposed. */
   public look: Gaze | null = null;
+  /** Saying a line right now (a model standing still talks with its hands). */
+  public speaking = false;
   private readonly previous = new THREE.Vector3();
   private moved = false;
   private heading = 0;
@@ -79,7 +81,7 @@ export class Actor {
     animateCharacter(c, dt, { moving: this.moved, carrying: this.carrying, time, reducedMotion });
     // A big change of facing while standing is a turn on the spot; a small one a quick twist.
     faceToward(c, this.faceAngle ?? this.heading, dt, this.moved, time);
-    if (c.motion) { c.motion.pose = this.pose; c.motion.holding = this.holding; }
+    if (c.motion) { c.motion.pose = this.pose; c.motion.holding = this.holding; c.motion.speaking = this.speaking; }
     // A posed figure owns its torso; a plain walk keeps the walk cycle's lean and sway.
     if (this.pose !== 'none') c.body.rotation.set(0, 0, 0);
     // Unposed, the head turns to whatever has this person's attention and eases back when nothing does; a gag owns the head.
@@ -524,6 +526,11 @@ export class CrewLife {
 
   /** Runs only while the shift clock runs. */
   /** Notes that `id` speaks for `durationMs` from now, so the crew in earshot look over (the workers' lines come through here too). */
+  /** Whether `id` is saying a line right now. */
+  public isSpeaking(id: string): boolean {
+    return (this.spoke.get(id) ?? -Infinity) > this.wallTime;
+  }
+
   public noteSpeech(id: string, durationMs: number): void {
     this.spoke.set(id, this.wallTime + durationMs / 1000);
   }
@@ -545,6 +552,7 @@ export class CrewLife {
     for (const [id, actor] of this.actors) {
       if (!actor.root.visible || this.staged.has(id)) continue;
       actor.look = lookTargetFor({ id, x: actor.root.position.x, z: actor.root.position.z, facing: actor.root.rotation.y }, wallTime, speakers, workers);
+      actor.speaking = this.isSpeaking(id);
     }
   }
 

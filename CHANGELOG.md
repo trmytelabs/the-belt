@@ -2,6 +2,15 @@
 
 ## 0.1.0 — development snapshot
 
+- Give the 3D crew five more motions from Quaternius's Universal Animation
+  Library (CC0, the free Standard pack), retargeted onto their Rocketbox
+  skeleton by a new step in the converter (`tools/rocketbox/ual.js`) and kept
+  in their own 1 MB library, `crew-clips-ual.glb`, beside the Rocketbox one. A
+  lift off the waist-high belt now bends at the hips to it instead of
+  squatting to the floor (a lift off the floor still crouches); a button press
+  reaches for it; someone standing while saying a line talks with their hands;
+  the dockhand's push pushes; and Shan walks a manager's upright stride. The
+  free pack has no carry or throw clips, so those stay the figure's.
 - Add priority freight to the 3D shift. Through the flow and the rush, every
   third parcel the player could take (their own side, not bulk, heavy freight
   or the Mesa) is marked urgent, one at a time, with a toast and an alert. A
