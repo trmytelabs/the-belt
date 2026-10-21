@@ -2,6 +2,10 @@
 
 ## 0.1.0 — development snapshot
 
+- Run CI on the owner's own Windows PC, a self-hosted GitHub Actions runner
+  labelled `belt-pc`, after the account's hosted minutes ran out. Both required
+  checks keep their names and suites; the browser suites use Edge with software
+  WebGL, as on the hosted runners, instead of Playwright's Chromium.
 - Give the 3D conveyor its sound. While sorting goes on, a low motor hum whose
   pitch follows the belt's speed and a band of roller rattle that clacks at
   the rollers' rate and grows with the freight riding it play under the
