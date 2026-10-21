@@ -75,7 +75,7 @@ export interface IntakePreview extends ParcelIdentity {
 }
 
 export interface ShiftEvent {
-  type: 'grab' | 'drop' | 'sort' | 'wrong' | 'miss' | 'recover' | 'brake' | 'switch' | 'phase' | 'brian' | 'spill' | 'end' | 'throw' | 'damage' | 'scanner' | 'priority';
+  type: 'grab' | 'drop' | 'sort' | 'wrong' | 'miss' | 'recover' | 'brake' | 'switch' | 'phase' | 'brian' | 'spill' | 'end' | 'throw' | 'damage' | 'scanner' | 'priority' | 'inspection';
   message: string;
   x: number;
   y: number;

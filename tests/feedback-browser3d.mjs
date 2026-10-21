@@ -231,6 +231,34 @@ try {
   assert.ok(goalResults.text.includes('NIGHT GOALS · 3 OF 3') && goalResults.text.includes('+450'), goalResults.text);
   console.log('PASS the briefing names the three goals for the night; live goals are announced once as they are reached; the results tick all three and pay +450');
 
+  // Inspections: Vic watches Termite's side with a WATCHING tag and a HUD countdown, and a real Space load pays +50.
+  await read(() => {
+    const app = window.fixtureApp; app.restart(); app.forceStory({ breakAtMs: 1e12 }); app.benStarted = true;
+    app.model.autonomousCoworker = false; app.model.eventStopped = true; app.overlay.clearCenter(); app.state = 'playing';
+    app.model.elapsedMs = 57_900;
+    window.inspectionPops = [];
+    const pop = app.overlay.pop.bind(app.overlay);
+    app.overlay.pop = (text, ...rest) => { window.inspectionPops.push(text); return pop(text, ...rest); };
+  });
+  await wait(() => window.fixtureApp.model.inspection !== null && window.fixtureApp.crew.watcher === 'vic');
+  await wait(() => window.fixtureApp.crew.actor('vic').root.getObjectByName('watching-tag')?.visible === true);
+  await wait(() => document.querySelector('[data-f="phase"]').textContent.includes('VIC WATCHING'));
+  const watchedBefore = await read(() => {
+    const m = window.fixtureApp.model, p = m.packages.find((item) => item.state !== 'delivered');
+    Object.assign(p, { route: 'A', kind: 'smallbox', size: 'normal', state: 'held', workerId: m.activeWorker.id, flight: null });
+    Object.assign(m.activeWorker, { x: m.layout.dropAreas.A.x, y: m.layout.dropAreas.A.y, heldId: p.id });
+    return m.score;
+  });
+  await page.keyboard.press('Space');
+  await wait(() => window.fixtureApp.model.inspectionLoads === 1);
+  const watched = await read(() => ({ score: window.fixtureApp.model.score, pops: window.inspectionPops, bonus: window.fixtureApp.model.inspectionBonus }));
+  assert.equal(watched.bonus, 50);
+  assert.ok(watched.score - watchedBefore >= 150 && watched.pops.includes('WATCHED +50'), `a watched load pays its points and +50: ${JSON.stringify({ watchedBefore, watched })}`);
+  await read(() => { window.fixtureApp.model.elapsedMs += 20_100; });
+  await wait(() => window.fixtureApp.model.inspection === null && window.fixtureApp.crew.watcher === null);
+  await wait(() => window.fixtureApp.crew.actor('vic').root.getObjectByName('watching-tag')?.visible !== true);
+  console.log('PASS an inspection puts a WATCHING tag on Vic over the left side with a HUD countdown; a real Space load pays +50, and it all clears when time is up');
+
   await read(() => { const app = window.fixtureApp; app.restart(); app.overlay.clearCenter(); app.beginMall(); });
   await page.keyboard.press('Space'); await wait(() => window.fixtureApp.mall.cart.pushed);
   await page.keyboard.press('Space'); await wait(() => !window.fixtureApp.mall.cart.pushed);

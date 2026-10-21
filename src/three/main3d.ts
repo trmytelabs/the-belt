@@ -1,5 +1,5 @@
 import { DEPOT_3D_LAYOUT as SHIFT_LAYOUT, floorPileSlot, truckInteriorAt } from './layout';
-import { ARRIVALS_3D, PEAK_NIGHT, PRIORITY_3D, ShiftModel3D } from './ShiftModel3D';
+import { ARRIVALS_3D, INSPECTION_3D, PEAK_NIGHT, PRIORITY_3D, ShiftModel3D } from './ShiftModel3D';
 import { createPriorityMarker, updatePriorityMarker, type PriorityMarker } from './priorityMarker';
 import { GOAL_BONUS, judgeGoals, nightGoals, type NightGoal } from './nightGoals';
 import { MEDALS, awardMedals, type NightFacts } from './medals';
@@ -537,7 +537,7 @@ export class Belt3d {
         <li><b>Walk through the truck’s open rear door.</b> ${this.touch.enabled ? 'Tap GRAB / DELIVER' : 'Press SPACE'} inside to load. OVERSIZE goes to BULK at the back; floor freight goes down the side stairs.</li>
       </ol>
       <p><b>Missed one? Recover it at the belt end.</b> The shift ends at ${this.model.capacity} packages in recovery. ${this.touch.enabled ? 'STOP THE BELT' : 'E / STOP THE BELT'} gives you two seconds to catch up: 3 stops per run, with a 15-second cooldown after each use. You get ${this.model.cleanupMs / 1000} seconds to finish after intake closes.</p>
-      <p>Your partner sorts their side automatically. ${this.touch.enabled ? 'SWITCH' : 'TAB / right-click'} changes worker; only your controlled worker picks up bulk. Partner deliveries count toward the goal. Wrong drops cost 10 points; throws can break freight. A gold PRIORITY ring marks urgent freight: load it before the ring runs out for +${PRIORITY_3D.bonus}.</p>
+      <p>Your partner sorts their side automatically. ${this.touch.enabled ? 'SWITCH' : 'TAB / right-click'} changes worker; only your controlled worker picks up bulk. Partner deliveries count toward the goal. Wrong drops cost 10 points; throws can break freight. A gold PRIORITY ring marks urgent freight: load it before the ring runs out for +${PRIORITY_3D.bonus}. Twice a night a supervisor watches for ${INSPECTION_3D.durationMs / 1000} seconds: clean loads +${INSPECTION_3D.bonus}, wrong drops cost more.</p>
       ${this.touch.enabled ? `
       <p>The stick moves. SWITCH changes worker. GRAB / DELIVER picks up and delivers. THROW risks it to save the walk.</p>
       <p>STOP THE BELT gives you a moment to catch up. VIEW shows the whole warehouse. In story scenes, NEXT or SKIP.</p>` : `
@@ -994,6 +994,7 @@ export class Belt3d {
       m.laneObstacles = this.crew.patrolObstacles;
       m.update(dt * 1000, this.movement());
       for (const event of m.drainEvents()) this.handleEvent(event);
+      this.crew.watcher = m.inspection ? this.watcherName === 'VIC' ? 'vic' : 'shan' : null;
       this.announceGoals();
       this.updateBanter();
       this.crew.update(dispersed ? 0 : dt, m, this.time);
@@ -1110,7 +1111,8 @@ export class Belt3d {
     const loadingHint = truck ? overflow ? `SHELVES FULL · ${overflow} in rear overflow` : 'Face a shelf · SPACE loads near where you stand' : '';
     this.overlay.updateHud({
       sorted: m.sorted, goal: m.goal, score: m.score, timeLeftMs: m.timeLeftMs, backlog: m.pileup, capacity: m.capacity,
-      phase: this.state === 'interlude' ? 'BEN  /  DODGE TRAINING' : PHASE_LABELS[m.phase] ?? '', combo: m.combo, worker: m.activeWorker.id,
+      phase: this.state === 'interlude' ? 'BEN  /  DODGE TRAINING'
+        : `${PHASE_LABELS[m.phase] ?? ''}${m.inspection ? `  /  ${this.watcherName} WATCHING ${Math.ceil(m.inspectionRemainingMs / 1000)}s` : ''}`, combo: m.combo, worker: m.activeWorker.id,
       hint: this.state === 'interlude' ? 'Belt held · your freight is safe' : this.state === 'mesa' ? 'Y steals the Mesa · N leaves it'
         : scannerSelected ? `${this.touch.enabled ? 'RESET SCANNER' : 'SPACE resets scanner'} · carried freight stays in hand`
         : held ? `${parcelAddress(held)} · ${held.label}${throwHint}${loadingHint ? ` · ${loadingHint}` : ''}` : loadingHint || this.hint,
@@ -1217,6 +1219,7 @@ export class Belt3d {
 
   private handleEvent(event: ShiftEvent): void {
     if (event.type === 'priority') { this.handlePriority(event); return; }
+    if (event.type === 'inspection') { this.handleInspection(event); return; }
     const sound = event.assisted || event.type === 'wrong' && !event.message.startsWith('WRONG DROP') ? undefined : EVENT_SOUNDS[event.type];
     if (sound) audioSystem.play(sound);
     // The worker whose hands did it: the event names a worker, or stands nearest the spot.
@@ -1281,6 +1284,26 @@ export class Belt3d {
       audioSystem.play('register');
       this.overlay.pop(`PRIORITY +${event.score}`, '#ffc23a', toWorld(event, surfaceAt(event.x, event.y) + 2.6), 1.2);
     } else this.overlay.showToast(event.message, 2400);
+  }
+
+  /** The supervisor on the player's side: Vic on Termite's, Shan on Skanky's. */
+  private get watcherName(): 'VIC' | 'SHAN' { return this.model.activeWorker.side === 'left' ? 'VIC' : 'SHAN'; }
+
+  /** An inspection starts (no parcel, no score), pays or costs for a load (a parcel), or ends (no parcel, its total). */
+  private handleInspection(event: ShiftEvent): void {
+    if (event.packageId === undefined) {
+      if (event.score === undefined) {
+        audioSystem.play('event-alert');
+        this.overlay.showToast(`${this.watcherName} IS WATCHING · ${event.message.replace('INSPECTION · ', '')}`, 3600);
+      } else {
+        if (event.score > 0) audioSystem.play('register');
+        this.overlay.showToast(event.message, 3000);
+      }
+    } else if ((event.score ?? 0) > 0) {
+      this.overlay.pop(`WATCHED +${event.score}`, '#9fe3a5', toWorld(event, surfaceAt(event.x, event.y) + 3.2), 1.05);
+    } else {
+      this.overlay.pop(`SEEN −${Math.abs(event.score ?? 0)}`, '#f3987c', toWorld(event, surfaceAt(event.x, event.y) + 2.6));
+    }
   }
 
   /** A live priority parcel wears its countdown; anything else loses it. */
@@ -1819,6 +1842,7 @@ export class Belt3d {
       <p>${escapeHtml(routes)}</p>
       ${m.priorityCount ? `<p>${m.priorityOnTime} of ${m.priorityCount} priority parcels on time · +${m.priorityOnTime * PRIORITY_3D.bonus}</p>` : ''}
       <p class="b3d-goals">NIGHT GOALS · ${judged.met.length} OF ${this.goals.length} · ${goals} · +${judged.bonus}</p>
+      ${m.inspectionsHeld ? `<p>INSPECTIONS · ${m.inspectionLoads} clean ${m.inspectionLoads === 1 ? 'load' : 'loads'} watched · +${m.inspectionBonus}</p>` : ''}
       <p>${m.thrownDeliveries} thrown in clean · ${m.damaged} broken (−${m.breakagePenalty} points${m.damaged > THROWING.gradeForgivenBreaks ? `, ${m.gradedBreaks} counted against the grade` : ''})</p>
       ${mall ? `<p>MALL RUN · ${mall.delivered}/6 delivered · ${mall.signatures}/6 signed · five-ton ${home ? 'returned' : 'not returned'} · +${this.mallBonus}</p>
       <p>DRIVING · ${this.drivingCollisions} bumps${this.drivingRedLights ? ` · ${this.drivingRedLights} red lights` : ''} · −${this.drivingPenalty} points · cargo safe${this.driveTimes.length ? ` · ${this.driveTimes.map(driveClock).join(' and ')}${this.driveBonus ? ` · against par +${this.driveBonus}` : ''}` : ''}</p>

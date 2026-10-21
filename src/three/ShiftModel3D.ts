@@ -26,6 +26,13 @@ export interface Shift3DOptions extends ShiftOptions { peak?: boolean }
  * window it earns a bonus on top of its points. Late, it is only an ordinary parcel.
  */
 export const PRIORITY_3D = { every: 3, windowMs: 15_000, bonus: 100 } as const;
+/**
+ * Inspections: twice a night, once in the flow and once in the rush, the
+ * supervisor on the player's side watches for twenty seconds. Each load the
+ * player makes meanwhile earns a bonus; a wrong drop costs extra on top of its
+ * usual ten points.
+ */
+export const INSPECTION_3D = { at: [58_000, 148_000], durationMs: 20_000, bonus: 50, penalty: 30 } as const;
 export interface TruckLoad { route: TruckRoute; x: number; y: number; height: number; layer: number; column: number; row: number; cells: number; parcelHeight: number; overflow: boolean }
 // Conservative dimensions in model pixels for the actual parcel forms at their
 // normal render scale. Long boxes lie along the cargo bay, occupying two slots.
@@ -49,6 +56,11 @@ export class ShiftModel3D extends ShiftModel {
   private readonly priorityDue = new Map<number, number>();
   private priorityEligible = 0;
   private priorityScanned = 0;
+  /** The inspection under way, if any; how many have started; and what they paid in all. */
+  public inspection: { untilMs: number; loads: number; slips: number } | null = null;
+  public inspectionsHeld = 0;
+  public inspectionLoads = 0;
+  public inspectionBonus = 0;
   constructor(options: Shift3DOptions = {}) {
     super(options);
     this.peak = options.peak === true;
@@ -129,7 +141,26 @@ export class ShiftModel3D extends ShiftModel {
 
   public override update(deltaMs: number, move: { x: number; y: number } = { x: 0, y: 0 }): void {
     super.update(deltaMs, move);
-    if (!this.paused && !this.ended) this.updatePriority();
+    if (!this.paused && !this.ended) { this.updatePriority(); this.updateInspection(); }
+  }
+
+  /** Time left on the inspection under way, or 0. */
+  public get inspectionRemainingMs(): number { return this.inspection ? Math.max(0, this.inspection.untilMs - this.elapsedMs) : 0; }
+
+  private updateInspection(): void {
+    const inspection = this.inspection;
+    if (inspection && this.elapsedMs >= inspection.untilMs) {
+      this.inspection = null;
+      const paid = inspection.loads * INSPECTION_3D.bonus;
+      this.emit('inspection', `INSPECTION OVER · ${inspection.loads} clean ${inspection.loads === 1 ? 'load' : 'loads'}${inspection.slips ? ` · ${inspection.slips} wrong` : ''} · +${paid}`, this.activeWorker, undefined, paid);
+      return;
+    }
+    const next = INSPECTION_3D.at[this.inspectionsHeld];
+    if (inspection || next === undefined || this.elapsedMs < next) return;
+    this.inspectionsHeld += 1;
+    if (this.phase !== 'flow' && this.phase !== 'rush') return;
+    this.inspection = { untilMs: this.elapsedMs + INSPECTION_3D.durationMs, loads: 0, slips: 0 };
+    this.emit('inspection', `INSPECTION · ${INSPECTION_3D.durationMs / 1000} SECONDS · clean loads +${INSPECTION_3D.bonus}, wrong drops −${WRONG_DROP_PENALTY + INSPECTION_3D.penalty}`, this.activeWorker);
   }
 
   /** Time left on a live priority parcel, or null when the parcel is not one (or no longer). */
@@ -236,6 +267,13 @@ export class ShiftModel3D extends ShiftModel {
     this.combo = 0;
     this.wrongSortErrors += 1;
     this.emit('wrong', `WRONG DROP · −${penalty} · take it to ${ROUTE_INFO[parcel.route].name}`, at, parcel, -penalty);
+    if (this.inspection) {
+      // Seen by the supervisor: it costs extra.
+      const extra = Math.min(this.score, INSPECTION_3D.penalty);
+      this.score -= extra;
+      this.inspection.slips += 1;
+      this.emit('inspection', `SEEN · −${extra}`, at, parcel, -extra);
+    }
   }
 
   public override throwTarget(worker: Worker = this.activeWorker): ThrowTarget | null {
@@ -454,6 +492,14 @@ export class ShiftModel3D extends ShiftModel {
     const due = this.priorityDue.get(parcel.id);
     this.priorityDue.delete(parcel.id);
     super.deliver(parcel, assisted);
+    // Watched, a player's load earns the inspection bonus.
+    if (this.inspection && !assisted) {
+      this.inspection.loads += 1;
+      this.inspectionLoads += 1;
+      this.inspectionBonus += INSPECTION_3D.bonus;
+      this.score += INSPECTION_3D.bonus;
+      this.emit('inspection', `WATCHED · +${INSPECTION_3D.bonus}`, parcel, parcel, INSPECTION_3D.bonus);
+    }
     // The partner's deliveries never score, so a priority parcel only pays in the player's hands.
     if (due !== undefined && !assisted && this.elapsedMs <= due) {
       this.score += PRIORITY_3D.bonus;

@@ -140,6 +140,9 @@ SORT!** countdown starts the shift.
   device (for example an S, a peak night, all three goals in one night, 20 in
   a row, or bringing the five-ton home with no bumps or red lights). The
   results name new ones and the briefing counts them.
+- Inspections: twice a night the supervisor on your side (Vic or Shan) watches
+  you for 20 seconds. Each load meanwhile earns 50 points; a wrong drop costs
+  30 more.
 - Night goals: each night sets three optional goals, named in the briefing
   (for example, load 8 in a row, finish with nothing broken, make 3 priority
   parcels on time). They rotate with the nights recorded on this device, and the HUD tracks each one. A goal

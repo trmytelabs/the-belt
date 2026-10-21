@@ -388,7 +388,32 @@ export class CrewLife {
     return [...this.actors, ...this.unloaders.map((actor, index): [string, Actor] => [`unloader-${index}`, actor]), ['dockhand', this.dockhand]];
   }
 
+  /** The supervisor watching the player during an inspection (`ShiftModel3D.inspection`), or null. */
+  public watcher: 'vic' | 'shan' | null = null;
+  private watchTag: THREE.Sprite | null = null;
+
+  /** The watcher looks at the player's worker and wears a WATCHING tag while they can be seen. */
+  private updateWatcher(model: ShiftModel): void {
+    const id = this.watcher;
+    const actor = id ? this.actor(id) : null;
+    const watching = !!actor && actor.root.visible && !this.staged.has(id!);
+    if (!this.watchTag && watching) {
+      this.watchTag = textSprite(['WATCHING'], 0.24, { width: 120, height: 30, background: '#2f6b46', color: '#e6ffef', radius: 6 });
+      this.watchTag.name = 'watching-tag';
+      this.watchTag.center.set(0.5, 0);
+    }
+    if (!this.watchTag) return;
+    this.watchTag.visible = watching;
+    if (!watching) return;
+    if (this.watchTag.parent !== actor!.root) actor!.root.add(this.watchTag);
+    this.watchTag.position.set(0, actor!.character.headHeight + 0.45, 0);
+    const worker = model.activeWorker, at = toWorld(worker, actorSurfaceAt(worker.x, worker.y));
+    actor!.look = { x: at.x, z: at.z, y: at.y + 1.6 };
+  }
+
   public reset(): void {
+    this.watcher = null;
+    if (this.watchTag) this.watchTag.visible = false;
     this.cues = new Set();
     this.johnUntil = -1;
     this.johnSpoken = true;
@@ -554,6 +579,7 @@ export class CrewLife {
       actor.look = lookTargetFor({ id, x: actor.root.position.x, z: actor.root.position.z, facing: actor.root.rotation.y }, wallTime, speakers, workers);
       actor.speaking = this.isSpeaking(id);
     }
+    this.updateWatcher(model);
   }
 
   public update(dt: number, model: ShiftModel, wallTime: number): void {

@@ -2,6 +2,13 @@
 
 ## 0.1.0 — development snapshot
 
+- Add inspections to the 3D shift. Twice a night, at 0:58 in the flow and at
+  2:28 in the rush, the supervisor on the player's side (Vic on Termite's,
+  Shan on Skanky's) watches for 20 seconds, looking at the player's worker
+  with a WATCHING tag overhead while the HUD counts down. Each load the player
+  makes meanwhile earns 50 points; a wrong drop costs 30 more than its usual
+  ten. A toast opens and closes each inspection with what it paid, and the
+  results total the watched loads.
 - Time the 3D delivery drives against par. Parking at Southgate Mall, and back
   at UPS, within a minute pays 200 points and within 1:20 pays 100; the drive in
   from home and the practice drives are untimed for points, and there is still

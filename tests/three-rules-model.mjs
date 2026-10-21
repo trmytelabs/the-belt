@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { ShiftModel, SHIFT_LAYOUT } from '../src/game/slice/ShiftModel.ts';
-import { PEAK_NIGHT, PRIORITY_3D, ShiftModel3D, WRONG_DROP_PENALTY, WORKER_SPEED_3D } from '../src/three/ShiftModel3D.ts';
+import { INSPECTION_3D, PEAK_NIGHT, PRIORITY_3D, ShiftModel3D, WRONG_DROP_PENALTY, WORKER_SPEED_3D } from '../src/three/ShiftModel3D.ts';
 import { ROUTE_INFO } from '../src/three/addresses.ts';
 import { DEPOT_3D_LAYOUT as L, platformLevelAt, onLowerFloor, truckInteriorAt } from '../src/three/layout.ts';
 import { platformWalkPath, pathLength, walkPath } from '../src/three/walking.ts';
@@ -618,4 +618,49 @@ test('a priority parcel the player delivers in time earns its bonus; late or by 
   assert.equal(partner.drainEvents().filter(event => event.type === 'priority').length, 0, 'the partner earns no bonus');
   assert.equal(partner.score, partnerScore);
   assert.equal(partner.priorityOnTime, 0);
+});
+
+test('two inspections a night watch for twenty seconds, one in the flow and one in the rush, and an idle night earns nothing from them', () => {
+  const m = new ShiftModel3D({ freightRandom: seededFreight(21) }); m.capacity = 999;
+  const starts = [], ends = [];
+  for (let t = 0; t < 230_000 && !m.ended; t += 10) {
+    m.update(10);
+    for (const event of m.drainEvents().filter(item => item.type === 'inspection')) (event.score === undefined ? starts : ends).push({ at: m.elapsedMs, event, phase: m.phase });
+  }
+  assert.deepEqual(starts.map(({ at }) => at - at % 1000), [...INSPECTION_3D.at], 'they start on schedule');
+  assert.deepEqual(starts.map(({ phase }) => phase), ['flow', 'rush']);
+  assert.deepEqual(ends.map(({ at }, index) => at - starts[index].at), [INSPECTION_3D.durationMs, INSPECTION_3D.durationMs].map(ms => ms), 'each lasts twenty seconds');
+  assert.deepEqual(ends.map(({ event }) => event.score), [0, 0]);
+  assert.match(ends[0].event.message, /^INSPECTION OVER · 0 clean loads · [+]0$/);
+  assert.equal(m.inspectionsHeld, 2);
+  assert.equal(m.inspection, null);
+});
+
+test('a watched load pays the inspection bonus and a watched wrong drop costs extra, capped at the score; the partner earns nothing', () => {
+  const m = new ShiftModel3D({ freightRandom: seededFreight(22) }); m.capacity = 999;
+  advance(m, INSPECTION_3D.at[0] + 20); m.drainEvents();
+  assert.ok(m.inspection && m.inspectionRemainingMs > 19_000, 'an inspection is under way');
+  const parcel = m.packages.find(item => ['A', 'D'].includes(item.route) && item.state !== 'delivered');
+  assert.ok(parcel, 'a parcel for the player side');
+  const before = m.score;
+  carryToDrop(m, parcel);
+  const events = m.drainEvents(), sort = events.find(event => event.type === 'sort'), watched = events.find(event => event.type === 'inspection');
+  assert.equal(watched?.score, INSPECTION_3D.bonus);
+  assert.equal(m.score - before - sort.score - (events.find(event => event.type === 'priority')?.score ?? 0), INSPECTION_3D.bonus);
+  assert.deepEqual([m.inspectionLoads, m.inspectionBonus, m.inspection.loads], [1, INSPECTION_3D.bonus, 1]);
+  const other = m.packages.find(item => ['B', 'E'].includes(item.route) && item.state !== 'delivered');
+  const partnerScore = m.score;
+  m.deliver(other, true);
+  assert.equal(m.drainEvents().filter(event => event.type === 'inspection').length, 0, 'the partner is not watched');
+  assert.equal(m.score, partnerScore);
+  m.score = 100;
+  hold(m, 'D', L.dockA); m.action();
+  const slip = m.drainEvents().filter(event => event.type === 'wrong' || event.type === 'inspection');
+  assert.deepEqual(slip.map(event => event.score), [-WRONG_DROP_PENALTY, -INSPECTION_3D.penalty]);
+  assert.equal(m.score, 100 - WRONG_DROP_PENALTY - INSPECTION_3D.penalty);
+  m.score = 15; hold(m, 'D', L.dockA); m.action();
+  assert.equal(m.score, 0, 'never below zero');
+  advance(m, INSPECTION_3D.durationMs);
+  const end = m.drainEvents().find(event => event.type === 'inspection' && event.packageId === undefined);
+  assert.match(end.message, /^INSPECTION OVER · 1 clean load · 2 wrong · [+]50$/);
 });
