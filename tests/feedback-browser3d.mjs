@@ -18,6 +18,9 @@ try {
   await page.goto(process.env.BELT_TEST_BASE_URL ?? server.resolvedUrls.local[0]);
   const read=(fn,arg)=>page.evaluate(fn,arg), wait=(fn,arg)=>page.waitForFunction(fn,arg,{polling:10,timeout:90_000});
   await wait(()=>window.fixtureApp?.state==='briefing');
+  // However long the briefing, START THE NIGHT stays in view.
+  const startButton = await page.getByRole('button', { name: /START THE NIGHT/ }).boundingBox();
+  assert.ok(startButton && startButton.y >= 0 && startButton.y + startButton.height <= 800, `START THE NIGHT is on screen: ${JSON.stringify(startButton)}`);
   await read(()=>{const app=window.fixtureApp;app.forceStory({breakAtMs:1e12});app.benStarted=true;app.model.autonomousCoworker=false;app.overlay.clearCenter();app.state='playing';app.model.eventStopped=true;});
 
   for(const side of [0,1]) {
