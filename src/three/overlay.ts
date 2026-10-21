@@ -291,7 +291,7 @@ export class Overlay {
         <div class="b3d-hint" data-f="hint"></div>
         <div class="b3d-brake" data-f="brake"></div>
         <div class="b3d-routes" data-f="routes"></div>
-        <div class="b3d-keys">WASD MOVE · TAB SWITCH · SPACE GRAB/DELIVER · F THROW · E STOP THE BELT · V <span data-f="view"></span> · ESC PAUSE · M SOUND</div>
+        <div class="b3d-keys"><span data-f="keyhints">WASD MOVE · TAB SWITCH · SPACE GRAB/DELIVER · F THROW · E STOP THE BELT · V <span data-f="view"></span> · ESC PAUSE · M SOUND</span><span data-f="padhints" hidden>STICK MOVE · Y SWITCH · A GRAB/DELIVER · B THROW · X STOP THE BELT · BACK <span data-f="padview"></span> · START PAUSE</span></div>
       </div>`;
     this.hud.querySelectorAll<HTMLElement>('[data-f]').forEach((element) => { this.fields[element.dataset.f!] = element; });
     this.bubbles = this.div('b3d-bubbles', this.root);
@@ -482,7 +482,7 @@ export class Overlay {
     f.worker.className = `b3d-worker ${state.worker}`;
     f.hint.textContent = state.hint;
     f.brake.textContent = state.brake;
-    f.view.textContent = state.overview ? 'CLOSE VIEW' : 'OVERVIEW';
+    f.view.textContent = f.padview.textContent = state.overview ? 'CLOSE VIEW' : 'OVERVIEW';
     const scanner = state.scanner ?? '';
     if (f.scanner.textContent !== scanner) f.scanner.textContent = scanner;
     f.scanner.hidden = !scanner;
@@ -507,6 +507,12 @@ export class Overlay {
     void element.offsetWidth;
     element.classList.add(flash);
     this.scoreFlashMs = 400;
+  }
+
+  /** Shows the controller's buttons in the HUD's key line instead of the keyboard's. */
+  public setPadHints(pad: boolean): void {
+    this.fields.keyhints.hidden = pad;
+    this.fields.padhints.hidden = !pad;
   }
 
   public sortingGuide(guide: { title: string; detail: string } | null): void {
