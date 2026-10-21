@@ -20,7 +20,8 @@
   night record on this device, each earned once (finish a shift, an S, a peak
   night, all three night goals, every priority parcel on time, 20 in a row, a
   clean sheet, a safe drive home, all three openers, ten nights). The results
-  name any medal the night earned; the briefing's record counts them.
+  name any medal the night earned; the briefing's record counts them, and its
+  MEDALS button lists all ten, earned or still to earn.
 - Add night goals to the 3D game (`nightGoals.ts`). Each night sets three of
   nine optional goals, chosen by the nights on record so nine nights see nine
   different sets, mixing goals reached mid-shift (load 8 or 15 in a row, make 3

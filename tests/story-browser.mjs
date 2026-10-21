@@ -503,6 +503,13 @@ try {
   // Two nights on record: the third night's goals are the rotation's third set.
   assert.match(await page.locator('.b3d-panel').innerText(), /TONIGHT’S GOALS · [+]150 EACH: Finish with 2 or fewer missed · Load 8 in a row · Finish with no wrong drops/);
   assert.match(await page.locator('.b3d-panel').innerText(), /YOUR RECORD · 2 OF 2 NIGHTS FINISHED · BEST NIGHT \d{5} · GRADE [SABCDF] · 1 OF 3 OPENERS SEEN · \d+ OF 10 MEDALS/);
+  // The briefing's MEDALS button lists all ten, the first finished shift's ticked, and BACK returns to the briefing.
+  await page.getByRole('button', { name: /^MEDALS/ }).click();
+  const medalList = await read(() => [...document.querySelectorAll('.b3d-medal-list li')].map((item) => ({ title: item.querySelector('b').textContent, earned: item.classList.contains('earned') })));
+  assert.equal(medalList.length, 10);
+  assert.ok(medalList.find((medal) => medal.title === 'FIRST SHIFT')?.earned, JSON.stringify(medalList));
+  await page.getByRole('button', { name: /BACK/ }).click();
+  await page.getByRole('button', { name: /START THE NIGHT/ }).waitFor();
   // A finished night unlocks the peak night beside the ordinary one; Enter still starts the ordinary night.
   assert.match(await page.locator('.b3d-panel').innerText(), /PEAK NIGHT UNLOCKED/);
   assert.ok(await page.locator('button[data-action="peak"]').isVisible(), 'the PEAK NIGHT button shows');

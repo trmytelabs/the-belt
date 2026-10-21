@@ -139,7 +139,7 @@ SORT!** countdown starts the shift.
 - Medals: ten achievements, each earned once and kept with the record on this
   device (for example an S, a peak night, all three goals in one night, 20 in
   a row, or bringing the five-ton home with no bumps or red lights). The
-  results name new ones and the briefing counts them.
+  results name new ones; the briefing counts them and MEDALS lists them all.
 - Inspections: twice a night the supervisor on your side (Vic or Shan) watches
   you for 20 seconds. Each load meanwhile earns 50 points; a wrong drop costs
   30 more.

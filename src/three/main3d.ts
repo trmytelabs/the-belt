@@ -550,8 +550,9 @@ export class Belt3d {
       ${this.record.completed > 0 ? `<p class="b3d-record">PEAK NIGHT UNLOCKED · in the flow and the rush freight comes a fifth sooner, the belt runs faster and recovery holds ${PEAK_NIGHT.capacity}. ${this.touch.enabled ? 'Tap PEAK NIGHT.' : 'Press P or click PEAK NIGHT.'}</p>` : ''}
       <button type="button" data-action="night">START THE NIGHT  ↵</button>
       ${this.record.completed > 0 ? '<button type="button" data-action="peak">PEAK NIGHT  P</button>' : ''}
+      ${this.record.played > 0 ? `<button type="button" class="b3d-medals-link" data-action="medals">MEDALS · ${this.record.medals.length} OF ${MEDALS.length}</button>` : ''}
       <a href="${window.location.pathname}?mode=3d&amp;drive=mall">TRY JUST THE DRIVE · EXPLORE THE CITY</a>
-      <a href="${window.location.pathname}?mode=classic">PLAY THE ORIGINAL FULL SHIFT</a>`, { night: () => this.startNight(), peak: () => this.startNight(true) });
+      <a href="${window.location.pathname}?mode=classic">PLAY THE ORIGINAL FULL SHIFT</a>`, { night: () => this.startNight(), peak: () => this.startNight(true), medals: () => this.showMedals() });
   }
 
   // ---------------------------------------------------------------- story flow
@@ -1771,6 +1772,15 @@ export class Belt3d {
     }
   }
 
+  /** Every medal, earned or still to earn, from the briefing; BACK returns to it. */
+  private showMedals(): void {
+    const held = new Set(this.record.medals);
+    const rows = MEDALS.map((medal) => `<li class="${held.has(medal.id) ? 'earned' : 'locked'}"><b>${medal.title}</b><span>${escapeHtml(medal.detail)}</span></li>`).join('');
+    this.overlay.showPanel(`<div class="kicker">YOUR RECORD · MEDALS</div><h1>${held.size} OF ${MEDALS.length} EARNED</h1>
+      <ul class="b3d-medal-list">${rows}</ul><p>Kept on this device with your record.</p>
+      <button type="button" data-action="back">BACK</button>`, { back: () => this.showBriefing() });
+  }
+
   /** The briefing's line naming tonight's goals. */
   private goalsLine(): string {
     return `<p class="b3d-goals"><b>TONIGHT’S GOALS · +${GOAL_BONUS} EACH:</b> ${this.goals.map((goal) => escapeHtml(goal.label)).join(' · ')}</p>`;
@@ -1807,7 +1817,6 @@ export class Belt3d {
     const best = this.record.best;
     return `<p class="b3d-best">${best ? `BEST NIGHT ${formatTotal(best.total)} · GRADE ${escapeHtml(best.grade)}` : 'NO SHIFT FINISHED YET'} · ${nightLabel} · ${this.record.completed} finished</p>${medals}`;
   }
-
 
   private showResults(): void {
     if (this.state === 'ended') return;
