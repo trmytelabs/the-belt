@@ -7,9 +7,9 @@ import { createServer } from 'vite';
 // put-down and throw, the heavy-load stance and the head turning to the work.
 // Loaded through Vite so the actual pose code runs without canvas-backed art.
 const server = await createServer({ cacheDir: 'node_modules/.vite-character-animation', server: { middlewareMode: true } });
-let animateCharacter, lookToward, triggerAction, ACTION_SECONDS, BODY;
+let animateCharacter, lookToward, triggerAction, ACTION_SECONDS, BODY, snapshotPose, blendPose, SEAT_BLEND_SECONDS, GAIT_START_SECONDS, GAIT_STOP_SECONDS;
 try {
-  ({ animateCharacter, lookToward, triggerAction, ACTION_SECONDS, BODY } = await server.ssrLoadModule('/src/three/characters.ts'));
+  ({ animateCharacter, lookToward, triggerAction, ACTION_SECONDS, BODY, snapshotPose, blendPose, SEAT_BLEND_SECONDS, GAIT_START_SECONDS, GAIT_STOP_SECONDS } = await server.ssrLoadModule('/src/three/characters.ts'));
 } finally { await server.close(); }
 
 function figure() {
@@ -122,4 +122,60 @@ test('the head turns toward a point within the neck\'s range, looks down at clos
   assert.ok(Math.abs(c.head.rotation.y) < 0.01 && Math.abs(c.head.rotation.x) < 0.01, 'with nothing to look at the head returns to centre');
   for (let frame = 0; frame < 30; frame++) lookToward(c, { x: 1, z: 0 }, FRAME, true);
   assert.ok(Math.abs(c.head.rotation.y) < 1e-3, 'reduced motion keeps the head still');
+});
+
+test('a walk builds over its first steps and winds down over its last instead of starting and stopping in a frame', () => {
+  const c = figure();
+  const stride = (samples) => Math.max(...samples.map((x) => Math.abs(x)));
+  const first = run(c, 0.1, { moving: true, time: 0 }, (f) => f.leftLeg.rotation.x);
+  assert.ok(stride(first) < 0.2, `the first tenth of a second is barely a step: ${stride(first).toFixed(3)}`);
+  const full = run(c, 1, { moving: true, time: 0.1 }, (f) => f.leftLeg.rotation.x).slice(-40);
+  assert.ok(stride(full) > 0.4, `after a second the stride is full: ${stride(full).toFixed(3)}`);
+  assert.ok(GAIT_START_SECONDS >= 0.2 && GAIT_START_SECONDS <= 0.5 && GAIT_STOP_SECONDS >= 0.2 && GAIT_STOP_SECONDS <= 0.5);
+  const stopping = run(c, 0.12, { moving: false, time: 1.1 }, (f) => f.leftLeg.rotation.x);
+  assert.ok(c.gait > 0.4, `a tenth of a second after stopping the stride is still winding down: gait ${c.gait.toFixed(2)}`);
+  run(c, 0.6, { moving: false, time: 1.22 });
+  assert.equal(c.gait, 0, 'and soon the figure stands');
+  assert.ok(Math.abs(c.leftLeg.rotation.x) < 0.02 && Math.abs(c.rightLeg.rotation.x) < 0.02, 'with the legs together');
+  void stopping;
+  const still = figure();
+  run(still, 0.5, { moving: true, time: 0, reducedMotion: true });
+  assert.equal(still.gait, 0, 'reduced motion never strides');
+});
+
+test('sitting down eases the legs over the seat blend; in a car the hips drop at once, off a bench they ease too', () => {
+  const sitFrom = (body) => {
+    const c = figure();
+    run(c, 0.3, { moving: false, time: 0 });
+    snapshotPose(c, 1, { seconds: SEAT_BLEND_SECONDS, body });
+    // The seated pose the stage applies after the walk cycle: hips down, thighs forward, knees folded.
+    const seat = (time) => {
+      animateCharacter(c, FRAME, { moving: false, time });
+      c.body.position.y = -0.41; c.leftLeg.rotation.x = c.rightLeg.rotation.x = -1.45; c.leftShin.rotation.x = c.rightShin.rotation.x = 1.45;
+      blendPose(c, time);
+    };
+    seat(1 + FRAME);
+    const early = { hips: c.body.position.y, thigh: c.leftLeg.rotation.x };
+    seat(1 + SEAT_BLEND_SECONDS * 0.5);
+    const half = { hips: c.body.position.y, thigh: c.leftLeg.rotation.x };
+    seat(1 + SEAT_BLEND_SECONDS + FRAME);
+    return { early, half, done: { hips: c.body.position.y, thigh: c.leftLeg.rotation.x } };
+  };
+  const car = sitFrom(false), bench = sitFrom(true);
+  assert.ok(car.early.thigh > -0.2 && car.half.thigh < -0.4 && car.half.thigh > -1.2 && Math.abs(car.done.thigh + 1.45) < 1e-6, `the thighs come forward over the blend: ${JSON.stringify(car)}`);
+  assert.equal(car.early.hips, -0.41, 'in a car the hips are in the seat from the first frame');
+  assert.ok(bench.early.hips > -0.1 && bench.half.hips < -0.1 && bench.half.hips > -0.35 && bench.done.hips === -0.41, `off a bench the hips lower over the blend: ${JSON.stringify(bench)}`);
+  assert.ok(SEAT_BLEND_SECONDS > 0.3 && SEAT_BLEND_SECONDS < 0.8);
+});
+
+test('a hand-built pose blends part way, not held then snapped', () => {
+  const c = figure();
+  run(c, 0.2, { moving: false, time: 0 });
+  snapshotPose(c, 1);
+  // The new pose, applied each frame after the walk cycle: the right arm raised.
+  const pose = (time) => { animateCharacter(c, FRAME, { moving: false, time }); c.rightArm.rotation.x = -2.4; blendPose(c, time); return c.rightArm.rotation.x; };
+  const early = pose(1 + 0.05), middle = pose(1 + 0.11), late = pose(1 + 0.3);
+  assert.ok(early < -0.05 && early > -1.2, `a twentieth of a second in, the arm is on its way: ${early.toFixed(3)}`);
+  assert.ok(middle < early && middle > -2.3, `half way, further: ${middle.toFixed(3)}`);
+  assert.ok(Math.abs(late + 2.4) < 1e-6, `after the blend, there: ${late.toFixed(3)}`);
 });

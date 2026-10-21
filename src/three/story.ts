@@ -5,9 +5,10 @@ import { LOT_LAYOUT, MALL_LAYOUT, type KeyReturnModel, type MallEvent } from '..
 import type { MallModel3D as MallModel } from './MallModel3D';
 import type { Cutscene } from '../game/slice/StoryModel';
 import type { StoryScene } from '../game/slice/StoryScript';
-import { animateCharacter, blendPose, createCharacter, faceToward, lookToward, mergeCharacter, snapshotPose, type Character, type CharacterSpec } from './characters';
+import { animateCharacter, blendPose, createCharacter, faceToward, lookToward, mergeCharacter, SEAT_BLEND_SECONDS, snapshotPose, type Character, type CharacterSpec } from './characters';
 import { eyeHeight, gazeInFigureFrame, lookTargetFor, type Gaze } from './attention';
 import { windAt, type Wind } from './wind';
+import { DrivingModels } from './drivingModels';
 import { applyPose, type CrewLife, type Pose } from './crew';
 import { placeProp, upgradeCar } from './propModels';
 import { poseSeated, seatRootPosition, type SeatTargetPoints } from './seating';
@@ -61,6 +62,8 @@ export class StageActor {
   private readonly previous = new THREE.Vector3();
   private moved = false;
   private heading = 0;
+  /** Whether the figure sat last frame, so sitting down and standing up ease instead of snapping; null before the first frame. */
+  private wasSeated: boolean | null = null;
 
   constructor(character: Character) {
     this.character = character;
@@ -85,6 +88,13 @@ export class StageActor {
 
   public animate(dt: number, time: number, reducedMotion: boolean): void {
     const c = this.character;
+    // Sitting down or standing up: the joints ease from where they were. In a car the hips drop straight
+    // into the seat (rising hips would put the head through the roof); off a bench or a couch they ease too.
+    const seated = this.seatedIn !== null;
+    if (this.wasSeated !== null && seated !== this.wasSeated && !reducedMotion) {
+      snapshotPose(c, time, { seconds: SEAT_BLEND_SECONDS, body: !seated || this.seat === null });
+    }
+    this.wasSeated = seated;
     animateCharacter(c, dt, { moving: this.moved, carrying: this.carrying, time, reducedMotion });
     // A seated figure turns with its car; a standing one turns on the spot for a big change of facing.
     if (this.seatedIn) { if (c.motion) c.motion.turn = null; c.root.rotation.y = this.faceAngle ?? c.root.rotation.y; }
@@ -154,6 +164,18 @@ function alongPath(points: [number, number][], t: number): { x: number; z: numbe
 }
 
 /** A small car whose nose points along local +X. With `detailed` off it stays procedural: the road's traffic draws its sedans in batches instead. */
+/**
+ * The same downloaded five-ton the drive shows, over a procedural truck, fitted
+ * to that truck's own length so the lot's stall and the road's layout keep
+ * their clearances; the procedural body stays as the fallback until it lands.
+ */
+export function dressFiveTon(truck: THREE.Group, models: DrivingModels): void {
+  truck.updateWorldMatrix(true, true);
+  const bounds = new THREE.Box3().setFromObject(truck);
+  const length = Math.max(bounds.max.x - bounds.min.x, bounds.max.z - bounds.min.z);
+  void models.place(truck, 'truck', { x: length }, [...truck.children], Math.PI / 2);
+}
+
 export function createCar(color: number, detailed = true): THREE.Group {
   const car = new THREE.Group();
   const paint = standard(color, 0.45, 0.35);
@@ -580,6 +602,7 @@ export class StoryStage {
     fiveTon.visible = false;
     scene.add(fiveTon);
     props.fiveTon = fiveTon;
+    dressFiveTon(fiveTon, new DrivingModels(scene));
     const phone = new THREE.PointLight(0x7fb0ff, 0, 3, 1.5);
     props.phoneGlow = phone;
     scene.add(phone);
@@ -975,6 +998,7 @@ export class StoryStage {
     const truck = createTruck('5 TON', 0x5a4632, 0x4a3a2a, 'right');
     scene.add(truck);
     props.truck = truck;
+    dressFiveTon(truck, new DrivingModels(scene));
   }
 
   /** Termite and Skanky's living room, with the driveway and Skanky's car outside the side door. */
@@ -2490,9 +2514,11 @@ export function directDepot(cast: DepotCast, cutscene: Cutscene, dt: number, tim
   placeWorker('skanky', 560, endY, face([560, endY], [500, endY - 10]), 'none');
   const exit = alongPath([[400, endY], [365, DEPOT.stairs.centerY], [200, DEPOT.stairs.centerY]], leaves);
   placeWorker('termite', exit.x, exit.z, leaves > 0 ? exit.h : face([400, endY], [500, endY - 10]), 'none', leaves > 0 && leaves < 1);
-  // Down the east side of the bulk pallet, never through it.
-  shan.place(mix(532, 526, catches), mix(endY - 90, endY + 2, catches));
-  shan.faceAngle = Math.PI / 2;
+  // Down the east side of the bulk pallet, never through it. He first turns to face his route (the first part of the
+  // cue), walks facing the way he goes, and turns to Skanky once he is there: never a sideways slide.
+  const walk = Math.max(0, (catches - 0.15) / 0.85);
+  shan.place(mix(532, 526, walk), mix(endY - 90, endY + 2, walk));
+  shan.faceAngle = walk >= 1 ? Math.PI / 2 : walk <= 0 ? face([532, endY - 90], [526, endY + 2]) : null;
   shan.setPoseAt(cutscene.beat.speaker === 'shan' ? 'announce' : 'none', time);
   crew.animateActors(dt, time, new Set(['shan']));
   return { position: toWorld({ x: 600, y: DEPOT.stairs.centerY - 10 }, 6.0), look: toWorld({ x: 490, y: endY }, 1.6) };

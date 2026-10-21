@@ -7,6 +7,7 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { guardBloom } from './bloomGuard';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { createNightEnvironment, disposeNightEnvironment } from './nightEnvironment';
 
@@ -240,7 +241,10 @@ export class Belt3d {
       const sceneDepth = this.composer.readBuffer.depthTexture ?? depthTexture;
       this.gtao = new DepotAmbientOcclusion(this.world.scene, this.camera, sceneDepth);
       this.composer.addPass(this.gtao);
-      this.composer.addPass(new UnrealBloomPass(new THREE.Vector2(1, 1), 0.55, 0.5, 0.96));
+      const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.55, 0.5, 0.96);
+      // One invalid pixel from the multisampled scene must not spread through the bloom and black out the frame.
+      guardBloom(bloom);
+      this.composer.addPass(bloom);
       this.composer.addPass(new OutputPass());
     } else {
       this.composer = null;
