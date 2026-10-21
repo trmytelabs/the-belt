@@ -23,6 +23,11 @@ const CSS = `
 .b3d-pips i.on { background: #ef7d68; box-shadow: 0 0 8px #ef7d68; }
 .b3d-phase { margin-left: auto; text-align: right; font-size: 12px; letter-spacing: 1.5px; color: #76cbd1; }
 .b3d-phase em { display: block; font-style: normal; color: #edb765; margin-top: 4px; }
+.b3d-goal-chips { display: flex; gap: 5px; justify-content: flex-end; margin-top: 6px; }
+.b3d-goal-chips span { font-size: 10px; letter-spacing: 1px; padding: 2px 6px; border-radius: 4px; border: 1px solid #76cbd155; color: #a9c7ca; background: #0b171c99; white-space: nowrap; }
+.b3d-goal-chips span.met { background: #2f6b46; border-color: #63c58a; color: #e6ffef; }
+.b3d-goal-chips span.met::before { content: '✓ '; }
+.b3d-goal-chips span.lost { opacity: .45; text-decoration: line-through; }
 .b3d-bottom { position: absolute; left: 0; right: 0; bottom: 0; display: flex; align-items: center; gap: 24px; padding: 12px 22px;
   background: linear-gradient(#0b171c00, #0b171ce8); font-size: 13px; }
 .b3d-worker { font-weight: 800; letter-spacing: 1px; min-width: 120px; }
@@ -81,6 +86,24 @@ const CSS = `
 .b3d-panel .grade { font: 900 64px/1 "Segoe UI", Arial, sans-serif; color: #edb765; float: right; margin-left: 16px; }
 .b3d-panel button { display: block; width: 100%; margin-top: 18px; padding: 14px; border: 0; border-radius: 6px; background: #edb765;
   color: #1a2226; font: 800 16px "Segoe UI", Arial, sans-serif; letter-spacing: 1px; cursor: pointer; }
+.b3d-panel button.b3d-medals-link { margin-top: 10px; padding: 10px; background: transparent; border: 1px solid #edb76588; color: #edb765; font-size: 13px; }
+.b3d-perks { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 6px 0 4px; }
+.b3d-panel button.b3d-perk { margin: 0; padding: 8px 10px; text-align: left; background: #0b171c; border: 1px solid #3b5a62; color: #c9dcdc; font-size: 12px; letter-spacing: 0; display: flex; flex-direction: column; gap: 4px; }
+.b3d-panel button.b3d-perk b { font-size: 12px; letter-spacing: 1px; color: #edb765; }
+.b3d-panel button.b3d-perk span { font-weight: 500; font-size: 11px; color: #9fb4b4; }
+.b3d-panel button.b3d-perk.picked { border-color: #edb765; background: #edb76526; }
+.b3d-panel button.b3d-perk.picked b::before { content: '✓ '; }
+@media (max-width: 560px) { .b3d-perks { grid-template-columns: 1fr; } }
+.b3d-medal-list { list-style: none; margin: 8px 0 4px; padding: 0; display: grid; gap: 6px; }
+.b3d-medal-list li { display: flex; flex-direction: column; padding: 6px 10px; border-radius: 6px; border: 1px solid #3b5a62; }
+.b3d-medal-list li b { font-size: 13px; letter-spacing: 1px; }
+.b3d-medal-list li span { font-size: 12px; color: #9fb4b4; }
+.b3d-medal-list li.earned { border-color: #edb765; background: #edb7651a; }
+.b3d-medal-list li.earned b { color: #edb765; }
+.b3d-medal-list li.earned b::before { content: '✓ '; }
+.b3d-medal-list li.locked { opacity: .55; }
+.b3d-panel p.b3d-medal { color: #f3e6c6; border-left: 3px solid #edb765; padding-left: 10px; }
+.b3d-panel p.b3d-medal b { color: #edb765; letter-spacing: 1px; }
 .b3d-panel a { display: block; margin-top: 12px; text-align: center; color: #9fb4b4; font-size: 12px; letter-spacing: 1.5px; }
 .b3d-count { font: 900 120px "Segoe UI", Arial, sans-serif; color: #f0dfb3; text-shadow: 0 8px 30px #000; }
 .b3d-toast { position: absolute; top: 92px; left: 50%; transform: translateX(-50%); background: #10232ae6; border: 1px solid #3b5a62;
@@ -157,6 +180,10 @@ const CSS = `
 export interface HudState {
   sorted: number; goal: number; score: number; timeLeftMs: number; backlog: number; capacity: number;
   phase: string; combo: number; worker: 'termite' | 'skanky'; hint: string; brake: string; overview: boolean; routes?: string; scanner?: string;
+  /** The clock's label when it shows something other than the time left (the endless shift's time survived). */
+  clockLabel?: string;
+  /** Tonight's goals as HUD chips. */
+  goals?: { text: string; state: 'met' | 'open' | 'lost' }[];
 }
 
 interface Bubble {
@@ -200,9 +227,9 @@ export class Overlay {
         <div class="b3d-brand"><b>THE BELT</b><small>NIGHT SORT SIMULATOR</small></div>
         <div class="b3d-stat"><small>DISPATCHED</small><b data-f="sorted">00</b><div class="b3d-progress"><i data-f="bar"></i></div></div>
         <div class="b3d-stat"><small>YOUR SCORE</small><b data-f="score">00000</b></div>
-        <div class="b3d-stat time"><small>TIME LEFT</small><b data-f="time">03:00</b></div>
+        <div class="b3d-stat time"><small data-f="timelabel">TIME LEFT</small><b data-f="time">03:00</b></div>
         <div class="b3d-stat"><small>RECOVERY</small><div class="b3d-pips" data-f="pips"></div><span class="b3d-backlog" data-f="backlog"></span></div>
-        <div class="b3d-phase"><span data-f="phase"></span><em data-f="combo"></em></div>
+        <div class="b3d-phase"><span data-f="phase"></span><em data-f="combo"></em><div class="b3d-goal-chips" data-f="goals" aria-label="Tonight's goals"></div></div>
       </div>
       <div class="b3d-scanner" data-f="scanner" role="status" aria-live="polite" hidden></div>
       <div class="b3d-guide" data-f="guide" hidden><b data-f="guide-title"></b><span data-f="guide-detail"></span></div>
@@ -372,9 +399,12 @@ export class Overlay {
 
   public updateHud(state: HudState): void {
     const f = this.fields;
-    f.sorted.textContent = `${String(state.sorted).padStart(2, '0')} / ${state.goal}`;
-    f.bar.style.width = `${Math.min(100, state.sorted / state.goal * 100)}%`;
+    // A goal of 0 is the endless shift's: no target, so no fraction and no progress bar.
+    f.sorted.textContent = state.goal > 0 ? `${String(state.sorted).padStart(2, '0')} / ${state.goal}` : String(state.sorted).padStart(2, '0');
+    f.bar.style.width = state.goal > 0 ? `${Math.min(100, state.sorted / state.goal * 100)}%` : '0%';
     f.score.textContent = String(state.score).padStart(5, '0');
+    const label = state.clockLabel ?? 'TIME LEFT';
+    if (f.timelabel.textContent !== label) f.timelabel.textContent = label;
     const seconds = Math.ceil(state.timeLeftMs / 1000);
     f.time.textContent = `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
     if (f.pips.childElementCount !== state.capacity) f.pips.innerHTML = '<i></i>'.repeat(state.capacity);
@@ -384,7 +414,7 @@ export class Overlay {
     f.backlog.title = `${state.capacity} packages in recovery ends the shift`;
     f.backlog.classList.toggle('urgent', state.backlog >= state.capacity - 2);
     f.phase.textContent = state.phase;
-    f.combo.textContent = state.combo > 1 ? `${state.combo} IN A ROW  /  +${Math.min(state.combo, 10) * 15} NEXT` : `TARGET  /  ${state.goal} CLEAN DISPATCHES`;
+    f.combo.textContent = state.combo > 1 ? `${state.combo} IN A ROW  /  +${Math.min(state.combo, 10) * 15} NEXT` : state.goal > 0 ? `TARGET  /  ${state.goal} CLEAN DISPATCHES` : 'NO TARGET  /  LAST AS LONG AS YOU CAN';
     f.worker.textContent = `● ${state.worker.toUpperCase()}`;
     f.worker.className = `b3d-worker ${state.worker}`;
     f.hint.textContent = state.hint;
@@ -395,6 +425,8 @@ export class Overlay {
     f.scanner.hidden = !scanner;
     this.root.classList.toggle('scanner-pending', !!scanner);
     if (state.routes !== undefined && f.routes.innerHTML !== state.routes) f.routes.innerHTML = state.routes;
+    const goals = (state.goals ?? []).map((goal) => `<span class="${goal.state}">${goal.text}</span>`).join('');
+    if (f.goals.innerHTML !== goals) f.goals.innerHTML = goals;
   }
 
   public sortingGuide(guide: { title: string; detail: string } | null): void {

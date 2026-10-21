@@ -1,6 +1,9 @@
 import { DEPOT_3D_LAYOUT as SHIFT_LAYOUT, floorPileSlot, truckInteriorAt } from './layout';
-import { ARRIVALS_3D, PEAK_NIGHT, PRIORITY_3D, ShiftModel3D } from './ShiftModel3D';
+import { ARRIVALS_3D, INSPECTION_3D, PEAK_NIGHT, PRIORITY_3D, ShiftModel3D } from './ShiftModel3D';
 import { createPriorityMarker, updatePriorityMarker, type PriorityMarker } from './priorityMarker';
+import { GOAL_BONUS, judgeGoals, nightGoals, type NightGoal } from './nightGoals';
+import { MEDALS, awardMedals, type NightFacts } from './medals';
+import { perkById, perkOffer, type Perk } from './perks';
 import { sortingGuide } from './sortingGuide';
 import { pathLength, platformWalkPath, walkPath, type WalkPoint } from './walking';
 import * as THREE from 'three';
@@ -37,13 +40,13 @@ import { MesaEncounter } from './mesa';
 import { BEN_CAST, BEN_END, BEN_START, SetPieces } from './setpieces';
 import { StoryStage, directDepot } from './story';
 import { breakScene3d } from './breakScenes3d';
-import { DrivingModel, type DriveDestination, type DriveOrigin } from './DrivingModel';
+import { DRIVE_PAR, DrivingModel, driveClock, parBonus, type DriveDestination, type DriveOrigin } from './DrivingModel';
 import { DECISION, HOME_DECISION, LEAVE_HOUSE, QUIT_ENDING, QUIT_NIGHT, type HomeBeat } from './homeScript';
 import { DrivingView } from './driving';
 import { BELT_SOLID_WIDTH, HEAD_DRIVE, clearReceiving } from './receivingCollision';
 import { TouchControls } from './touch';
 import { Overlay } from './overlay';
-import { OPENER_COUNT, browserStorage, formatTotal, loadRecord, recordNight, saveRecord, type NightRecord } from './nightRecord';
+import { OPENER_COUNT, browserStorage, formatTotal, loadRecord, recordEndless, recordNight, saveRecord, type NightRecord } from './nightRecord';
 import { alignParcelToSurface, createParcelView, setParcelCarried, setParcelModels, type ParcelView } from './parcels';
 import { disposeObject3D } from './resources';
 import { loadSurfaces } from './textures';
@@ -134,6 +137,16 @@ export class Belt3d {
   private forcedStory: Partial<StoryChoices> = {};
   /** The player's record between nights, kept in this browser's local storage (nightRecord.ts). */
   public record: NightRecord = loadRecord(browserStorage());
+  /** Tonight's three goals, chosen by the nights on record, and the live ones already announced. */
+  public goals: NightGoal[] = nightGoals(this.record.played);
+  private readonly goalsAnnounced = new Set<string>();
+  /** What the goals paid at the last results. */
+  public goalBonus = 0;
+  /** The medals the last results awarded for the first time. */
+  public medalsEarned: string[] = [];
+  /** The perk picked on the briefing for tonight, and the one tonight's shift runs with. */
+  public perk: string | null = null;
+  public perkInPlay: Perk | null = null;
   private depotShot: { position: THREE.Vector3; look: THREE.Vector3 } | null = null;
   private readonly stolen = new Set<number>();
   private readonly parcels = new Map<number, ParcelView>();
@@ -168,6 +181,9 @@ export class Belt3d {
   private readonly pileVisible: Record<'T' | 'S', number> = { T: 0, S: 0 };
   private fumeTimer = 0;
   private mallBonus = 0;
+  /** What tonight's delivery drives earned against par, and their times in seconds. */
+  public driveBonus = 0;
+  public driveTimes: number[] = [];
   private breakAlertMs = 0;
   /** Each worker's smoothed velocity in world metres per second, for the camera's look-ahead. */
   private readonly motion: Record<WorkerId, { previous: THREE.Vector3 | null; velocity: THREE.Vector3 }> = {
@@ -472,6 +488,10 @@ export class Belt3d {
         if (event.code === 'Space') this.lot?.action();
       } else if (this.state === 'briefing' && event.code === 'KeyP') {
         if (this.record.completed > 0) this.startNight(true);
+      } else if (this.state === 'briefing' && event.code === 'KeyN') {
+        this.startEndless();
+      } else if (this.state === 'briefing' && /^Digit[123]$/.test(event.code)) {
+        this.pickPerk(Number(event.code.slice(5)) - 1);
       } else if (event.code === 'KeyV') {
         this.overview = !this.overview;
       } else if (this.state === 'playing') {
@@ -525,7 +545,7 @@ export class Belt3d {
         <li><b>Walk through the truck’s open rear door.</b> ${this.touch.enabled ? 'Tap GRAB / DELIVER' : 'Press SPACE'} inside to load. OVERSIZE goes to BULK at the back; floor freight goes down the side stairs.</li>
       </ol>
       <p><b>Missed one? Recover it at the belt end.</b> The shift ends at ${this.model.capacity} packages in recovery. ${this.touch.enabled ? 'STOP THE BELT' : 'E / STOP THE BELT'} gives you two seconds to catch up: 3 stops per run, with a 15-second cooldown after each use. You get ${this.model.cleanupMs / 1000} seconds to finish after intake closes.</p>
-      <p>Your partner sorts their side automatically. ${this.touch.enabled ? 'SWITCH' : 'TAB / right-click'} changes worker; only your controlled worker picks up bulk. Partner deliveries count toward the goal. Wrong drops cost 10 points; throws can break freight. A gold PRIORITY ring marks urgent freight: load it before the ring runs out for +${PRIORITY_3D.bonus}.</p>
+      <p>Your partner sorts their side automatically. ${this.touch.enabled ? 'SWITCH' : 'TAB / right-click'} changes worker; only your controlled worker picks up bulk. Partner deliveries count toward the goal. Wrong drops cost 10 points; throws can break freight. A gold PRIORITY ring marks urgent freight: load it before the ring runs out for +${PRIORITY_3D.bonus}. Twice a night a supervisor watches for ${INSPECTION_3D.durationMs / 1000} seconds: clean loads +${INSPECTION_3D.bonus}, wrong drops cost more.</p>
       ${this.touch.enabled ? `
       <p>The stick moves. SWITCH changes worker. GRAB / DELIVER picks up and delivers. THROW risks it to save the walk.</p>
       <p>STOP THE BELT gives you a moment to catch up. VIEW shows the whole warehouse. In story scenes, NEXT or SKIP.</p>` : `
@@ -534,11 +554,15 @@ export class Belt3d {
       <p>Story scenes: SPACE next line, ENTER skips the scene, ESC pauses.</p>`}
       <p>The night starts at home: go in to work, or quit UPS. After the shift, drive the five-ton to Southgate Mall and finish the deliveries. Driving controls appear when you get there.</p>
       ${this.recordLine()}
-      ${this.record.completed > 0 ? `<p class="b3d-record">PEAK NIGHT UNLOCKED · in the flow and the rush freight comes a fifth sooner, the belt runs faster and recovery holds ${PEAK_NIGHT.capacity}. ${this.touch.enabled ? 'Tap PEAK NIGHT.' : 'Press P or click PEAK NIGHT.'}</p>` : ''}
+      ${this.goalsLine()}
+      ${this.perkLine()}
+      ${this.record.completed > 0 ? `<p class="b3d-record">PEAK NIGHT UNLOCKED · in the flow and the rush freight comes a fifth sooner, the belt runs faster and recovery holds ${PEAK_NIGHT.capacity}. ${this.touch.enabled ? 'Tap PEAK NIGHT.' : 'Press P or click PEAK NIGHT.'} ENDLESS SHIFT${this.touch.enabled ? '' : ' (N)'} has no clock: the belt speeds up every minute until recovery overflows.</p>` : ''}
       <button type="button" data-action="night">START THE NIGHT  ↵</button>
-      ${this.record.completed > 0 ? '<button type="button" data-action="peak">PEAK NIGHT  P</button>' : ''}
+      ${this.record.completed > 0 ? '<button type="button" data-action="peak">PEAK NIGHT  P</button><button type="button" data-action="endless">ENDLESS SHIFT  N</button>' : ''}
+      ${this.record.played > 0 ? `<button type="button" class="b3d-medals-link" data-action="medals">MEDALS · ${this.record.medals.length} OF ${MEDALS.length}</button>` : ''}
       <a href="${window.location.pathname}?mode=3d&amp;drive=mall">TRY JUST THE DRIVE · EXPLORE THE CITY</a>
-      <a href="${window.location.pathname}?mode=classic">PLAY THE ORIGINAL FULL SHIFT</a>`, { night: () => this.startNight(), peak: () => this.startNight(true) });
+      <a href="${window.location.pathname}?mode=classic">PLAY THE ORIGINAL FULL SHIFT</a>`, { night: () => this.startNight(), peak: () => this.startNight(true), medals: () => this.showMedals(), endless: () => this.startEndless(),
+        'perk-0': () => this.pickPerk(0), 'perk-1': () => this.pickPerk(1), 'perk-2': () => this.pickPerk(2) });
   }
 
   // ---------------------------------------------------------------- story flow
@@ -547,6 +571,9 @@ export class Belt3d {
     if (this.state !== 'briefing') return;
     // A peak night, once a night has been finished: a fresh shift with the peak rules (nothing has read the briefing's yet).
     if (peak && this.record.completed > 0 && !this.practiceDestination) this.model = new ShiftModel3D({ peak: true });
+    // Tonight's perk changes the shift's rules before it starts.
+    this.perkInPlay = this.record.completed > 0 && !this.practiceDestination ? perkById(this.perk) : null;
+    this.perkInPlay?.apply(this.model);
     this.renderer.domElement.focus({ preventScroll: true });
     void audioSystem.unlock();
     audioSystem.play('ui-start');
@@ -560,6 +587,23 @@ export class Belt3d {
     }
     this.story.go('arrival');
     this.playScene(this.story.opener);
+  }
+
+  /**
+   * The endless shift, once a night is finished: straight from the briefing to the
+   * countdown, with no story around it and no lunch break; it ends when recovery overflows.
+   */
+  private startEndless(): void {
+    if (this.state !== 'briefing' || this.record.completed === 0 || this.practiceDestination) return;
+    this.model = new ShiftModel3D({ endless: true });
+    this.story = new StoryRun(Math.random, { ...this.forcedStory, breakAtMs: Infinity });
+    this.renderer.domElement.focus({ preventScroll: true });
+    void audioSystem.unlock();
+    audioSystem.play('ui-start');
+    audioSystem.startMusic('game');
+    this.overlay.clearCenter();
+    this.story.go('countdown');
+    this.startCountdown();
   }
 
   private playScene(scene: StoryScene): void {
@@ -752,6 +796,14 @@ export class Belt3d {
         <a href="${window.location.pathname}?mode=3d">PLAY THE FULL NIGHT</a>`, () => this.beginDriving(this.practiceDestination!));
       return;
     }
+    if (this.driving && this.driving.origin !== 'home') {
+      // A delivery drive between the yards pays for beating par.
+      const seconds = this.driving.elapsed, bonus = parBonus(seconds);
+      this.driveBonus += bonus;
+      this.driveTimes.push(seconds);
+      this.overlay.showToast(bonus ? `PARKED IN ${driveClock(seconds)} · UNDER ${seconds <= DRIVE_PAR.fast ? 'PAR' : 'TIME'} · +${bonus}` : `PARKED IN ${driveClock(seconds)} · over par`, 2600);
+      if (bonus) audioSystem.play('register');
+    }
     if (this.driving?.origin === 'home') {
       // Parked at work: the night continues with the original arrival scenes.
       this.story.go('arrival');
@@ -875,12 +927,18 @@ export class Belt3d {
     this.dream.stop();
     this.overlay.root.classList.remove('dreaming');
     this.model = new ShiftModel3D();
+    this.goals = nightGoals(this.record.played);
+    this.goalsAnnounced.clear();
+    this.goalBonus = 0;
+    this.perk = null;
+    this.perkInPlay = null;
     this.story = new StoryRun(Math.random, this.forcedStory);
     this.cutscene = null;
     this.mall = null;
     this.lot = null;
     this.driving = null;
     this.drivingPenalty = this.drivingCollisions = this.drivingRedLights = 0;
+    this.driveBonus = 0; this.driveTimes = [];
     this.mallBonus = 0;
     this.breakAlertMs = 0;
     this.overlay.setLunchAlert(false);
@@ -969,6 +1027,8 @@ export class Belt3d {
       m.laneObstacles = this.crew.patrolObstacles;
       m.update(dt * 1000, this.movement());
       for (const event of m.drainEvents()) this.handleEvent(event);
+      this.crew.watcher = m.inspection ? this.watcherName === 'VIC' ? 'vic' : 'shan' : null;
+      this.announceGoals();
       this.updateBanter();
       this.crew.update(dispersed ? 0 : dt, m, this.time);
       this.setPieces.update(dt, m, this.time);
@@ -1040,7 +1100,7 @@ export class Belt3d {
     this.mesa.update(dt * 1000, this.time);
 
     const running = this.state === 'playing' || this.state === 'celebrating' || this.state === 'ended';
-    audioSystem.setTruckIdle((this.state === 'playing' && m.elapsedMs >= 120_000) || this.state === 'celebrating');
+    audioSystem.setTruckIdle((this.state === 'playing' && !m.endless && m.elapsedMs >= 120_000) || this.state === 'celebrating');
     // The conveyor runs while sorting goes on, and falls quiet when it stops (a brake, a story stop, a pause, the end).
     const beltRunning = this.state === 'playing' && !m.paused && !m.ended && !m.eventStopped && m.brakeRemainingMs <= 0;
     audioSystem.setBelt(beltRunning ? m.beltSpeed : null, beltRunning ? m.packages.filter((parcel) => parcel.state === 'belt').length : 0);
@@ -1083,12 +1143,15 @@ export class Belt3d {
     const overflow = truck ? [...m.truckLoads.values()].filter(load => load.route === truck && load.overflow).length : 0;
     const loadingHint = truck ? overflow ? `SHELVES FULL · ${overflow} in rear overflow` : 'Face a shelf · SPACE loads near where you stand' : '';
     this.overlay.updateHud({
-      sorted: m.sorted, goal: m.goal, score: m.score, timeLeftMs: m.timeLeftMs, backlog: m.pileup, capacity: m.capacity,
-      phase: this.state === 'interlude' ? 'BEN  /  DODGE TRAINING' : PHASE_LABELS[m.phase] ?? '', combo: m.combo, worker: m.activeWorker.id,
+      sorted: m.sorted, goal: m.endless ? 0 : m.goal, score: m.score, timeLeftMs: m.endless ? m.elapsedMs : m.timeLeftMs, backlog: m.pileup, capacity: m.capacity,
+      clockLabel: m.endless ? 'SURVIVED' : undefined,
+      phase: this.state === 'interlude' ? 'BEN  /  DODGE TRAINING'
+        : m.endless ? `ENDLESS  /  LEVEL ${m.endlessLevel}${m.inspection ? `  /  ${this.watcherName} WATCHING ${Math.ceil(m.inspectionRemainingMs / 1000)}s` : ''}`
+        : `${PHASE_LABELS[m.phase] ?? ''}${m.inspection ? `  /  ${this.watcherName} WATCHING ${Math.ceil(m.inspectionRemainingMs / 1000)}s` : ''}`, combo: m.combo, worker: m.activeWorker.id,
       hint: this.state === 'interlude' ? 'Belt held · your freight is safe' : this.state === 'mesa' ? 'Y steals the Mesa · N leaves it'
         : scannerSelected ? `${this.touch.enabled ? 'RESET SCANNER' : 'SPACE resets scanner'} · carried freight stays in hand`
         : held ? `${parcelAddress(held)} · ${held.label}${throwHint}${loadingHint ? ` · ${loadingHint}` : ''}` : loadingHint || this.hint,
-      overview: this.overview, routes: this.routeLegend(), scanner,
+      overview: this.overview, routes: this.routeLegend(), scanner, goals: m.endless ? [] : this.goals.map((goal) => goal.chip(m)),
       brake: m.brakeRemainingMs > 0 || m.eventStopped ? `■ BELT STOPPED · ${m.beltStopsRemaining} LEFT`
         : `[E] STOP THE BELT · ${m.beltStopsRemaining} LEFT${m.beltStopsRemaining > 0 && m.brakeCooldownMs > 0 ? ` · ${Math.ceil(m.brakeCooldownMs / 1000)}s` : ''}`,
     });
@@ -1103,7 +1166,8 @@ export class Belt3d {
         .replace('SPACE to park', 'Tap PARK').replace('S / ↓ brake', 'BRAKE').replace('A / D to steer', 'Steer with the stick') : objective;
       this.overlay.chapterHud([
         ['SPEED', `${Math.round(Math.abs(drive.speed) * 3.6)} km/h`], ['TO BAY', `${Math.ceil(drive.remaining)} m`],
-        [this.practiceDestination ? 'PENALTY' : 'NIGHT SCORE', this.practiceDestination ? `−${drive.penalty} PTS` : String(Math.max(0, m.score + this.mallBonus - this.drivingPenalty))],
+        [this.practiceDestination ? 'PENALTY' : 'NIGHT SCORE', this.practiceDestination ? `−${drive.penalty} PTS` : String(Math.max(0, m.score + this.mallBonus - this.drivingPenalty + this.driveBonus))],
+        ...(drive.origin === 'home' ? [] : [['TIME', `${driveClock(drive.elapsed)} · PAR ${driveClock(DRIVE_PAR.fast)}`] as [string, string]]),
         drive.origin === 'home' ? ['IN THE CAR', 'TERMITE + SKANKY']
           : ['CARGO', this.practiceDestination ? 'PRACTICE · SAFE' : drive.destination === 'mall' ? '6 BUNDLES · SAFE' : '6 / 6 SIGNED'],
       ], hint,
@@ -1190,6 +1254,7 @@ export class Belt3d {
 
   private handleEvent(event: ShiftEvent): void {
     if (event.type === 'priority') { this.handlePriority(event); return; }
+    if (event.type === 'inspection') { this.handleInspection(event); return; }
     const sound = event.assisted || event.type === 'wrong' && !event.message.startsWith('WRONG DROP') ? undefined : EVENT_SOUNDS[event.type];
     if (sound) audioSystem.play(sound);
     // The worker whose hands did it: the event names a worker, or stands nearest the spot.
@@ -1236,7 +1301,11 @@ export class Belt3d {
     } else if ((event.type === 'sort' && !event.assisted) || event.type === 'damage') {
       this.hint = 'Approach the belt · read the street address';
     }
-    if (event.type === 'phase') {
+    if (event.type === 'phase' && this.model.endless) {
+      // The endless shift names each new level; the ordinary rush caption would promise a last push.
+      if (event.message.startsWith('LEVEL')) this.overlay.showToast(`ENDLESS · ${event.message}`, 3200);
+      else if (this.model.phase === 'flow') this.overlay.showToast('STEADY FLOW · read the street ranges · coworker loading');
+    } else if (event.type === 'phase') {
       const caption = this.model.phase === 'flow' ? 'STEADY FLOW · read the street ranges · coworker loading'
         : this.model.phase === 'rush' ? `LAST PUSH · freight every ${ARRIVALS_3D.rushMs / 1000} seconds` : event.message;
       this.overlay.showToast(caption);
@@ -1254,6 +1323,26 @@ export class Belt3d {
       audioSystem.play('register');
       this.overlay.pop(`PRIORITY +${event.score}`, '#ffc23a', toWorld(event, surfaceAt(event.x, event.y) + 2.6), 1.2);
     } else this.overlay.showToast(event.message, 2400);
+  }
+
+  /** The supervisor on the player's side: Vic on Termite's, Shan on Skanky's. */
+  private get watcherName(): 'VIC' | 'SHAN' { return this.model.activeWorker.side === 'left' ? 'VIC' : 'SHAN'; }
+
+  /** An inspection starts (no parcel, no score), pays or costs for a load (a parcel), or ends (no parcel, its total). */
+  private handleInspection(event: ShiftEvent): void {
+    if (event.packageId === undefined) {
+      if (event.score === undefined) {
+        audioSystem.play('event-alert');
+        this.overlay.showToast(`${this.watcherName} IS WATCHING · ${event.message.replace('INSPECTION · ', '')}`, 3600);
+      } else {
+        if (event.score > 0) audioSystem.play('register');
+        this.overlay.showToast(event.message, 3000);
+      }
+    } else if ((event.score ?? 0) > 0) {
+      this.overlay.pop(`WATCHED +${event.score}`, '#9fe3a5', toWorld(event, surfaceAt(event.x, event.y) + 3.2), 1.05);
+    } else {
+      this.overlay.pop(`SEEN −${Math.abs(event.score ?? 0)}`, '#f3987c', toWorld(event, surfaceAt(event.x, event.y) + 2.6));
+    }
   }
 
   /** A live priority parcel wears its countdown; anything else loses it. */
@@ -1721,27 +1810,104 @@ export class Belt3d {
     }
   }
 
+  /** Every medal, earned or still to earn, from the briefing; BACK returns to it. */
+  private showMedals(): void {
+    const held = new Set(this.record.medals);
+    const rows = MEDALS.map((medal) => `<li class="${held.has(medal.id) ? 'earned' : 'locked'}"><b>${medal.title}</b><span>${escapeHtml(medal.detail)}</span></li>`).join('');
+    this.overlay.showPanel(`<div class="kicker">YOUR RECORD · MEDALS</div><h1>${held.size} OF ${MEDALS.length} EARNED</h1>
+      <ul class="b3d-medal-list">${rows}</ul><p>Kept on this device with your record.</p>
+      <button type="button" data-action="back">BACK</button>`, { back: () => this.showBriefing() });
+  }
+
+  /** Once a night is finished, the briefing offers three perks for tonight; 1, 2 or 3 (or a click) picks one. */
+  private perkLine(): string {
+    if (this.record.completed === 0 || this.practiceDestination) return '';
+    const offer = perkOffer(this.record.played);
+    const buttons = offer.map((perk, index) => `<button type="button" class="b3d-perk${this.perk === perk.id ? ' picked' : ''}" data-action="perk-${index}" aria-pressed="${this.perk === perk.id}"><b>${index + 1} · ${escapeHtml(perk.title)}</b><span>${escapeHtml(perk.detail)}</span></button>`).join('');
+    return `<p class="b3d-record"><b>TONIGHT’S PERK · PICK ONE${this.touch.enabled ? '' : ' (1, 2 OR 3)'}:</b></p><div class="b3d-perks">${buttons}</div>`;
+  }
+
+  /** Picks the offer's `index`th perk for tonight (again to drop it), marked in place so a scrolled briefing stays put. */
+  private pickPerk(index: number): void {
+    if (this.state !== 'briefing' || this.record.completed === 0) return;
+    const offer = perkOffer(this.record.played), perk = offer[index];
+    if (!perk) return;
+    this.perk = this.perk === perk.id ? null : perk.id;
+    document.querySelectorAll<HTMLButtonElement>('.b3d-perk').forEach((button, i) => {
+      const picked = offer[i]?.id === this.perk;
+      button.classList.toggle('picked', picked);
+      button.setAttribute('aria-pressed', String(picked));
+    });
+  }
+
+  /** The briefing's line naming tonight's goals. */
+  private goalsLine(): string {
+    return `<p class="b3d-goals"><b>TONIGHT’S GOALS · +${GOAL_BONUS} EACH:</b> ${this.goals.map((goal) => escapeHtml(goal.label)).join(' · ')}</p>`;
+  }
+
+  /** A goal reached mid-shift is announced once, the moment it happens; it pays at the results. */
+  private announceGoals(): void {
+    if (this.model.endless) return;
+    for (const goal of this.goals) {
+      if (!goal.live || this.goalsAnnounced.has(goal.id) || !goal.met(this.model)) continue;
+      this.goalsAnnounced.add(goal.id);
+      audioSystem.play('countdown-go');
+      this.overlay.showToast(`NIGHT GOAL MET · ${goal.label.toUpperCase()} · +${GOAL_BONUS} AT THE RESULTS`, 3000);
+    }
+  }
+
   /** The briefing's line about the player's record, once there is one. */
   private recordLine(): string {
     const { played, completed, best, openers } = this.record;
     if (played === 0) return '';
     const bestText = best ? `BEST NIGHT ${formatTotal(best.total)} · GRADE ${escapeHtml(best.grade)}` : 'NO SHIFT FINISHED YET';
-    return `<p class="b3d-record"><b>YOUR RECORD · ${completed} OF ${played} ${played === 1 ? 'NIGHT' : 'NIGHTS'} FINISHED · ${bestText} · ${openers.length} OF ${OPENER_COUNT} OPENERS SEEN</b></p>`;
+    return `<p class="b3d-record"><b>YOUR RECORD · ${completed} OF ${played} ${played === 1 ? 'NIGHT' : 'NIGHTS'} FINISHED · ${bestText} · ${openers.length} OF ${OPENER_COUNT} OPENERS SEEN · ${this.record.medals.length} OF ${MEDALS.length} MEDALS</b></p>`;
   }
 
   /** Adds this night to the record and says how it compares with the best. */
-  private recordResults(won: boolean, total: number, grade: string): string {
+  private recordResults(won: boolean, total: number, grade: string, night: Omit<NightFacts, 'openersSeen' | 'nightsPlayed'>): string {
     const result = recordNight(this.record, { won, total, grade, sorted: this.model.sorted, opener: this.story.opener.id, date: new Date().toISOString().slice(0, 10) });
+    const awarded = awardMedals(result.record.medals, { ...night, openersSeen: result.record.openers.length, nightsPlayed: result.record.played });
+    this.record = { ...result.record, medals: awarded.medals };
+    this.medalsEarned = awarded.fresh.map((medal) => medal.id);
+    saveRecord(browserStorage(), this.record);
+    const nightLabel = `NIGHT ${this.record.played}`;
+    const medals = awarded.fresh.map((medal) => `<p class="b3d-medal"><b>MEDAL · ${medal.title}</b> · ${escapeHtml(medal.detail)}</p>`).join('');
+    if (result.newBest) return `<p class="b3d-best"><b>NEW PERSONAL BEST · ${nightLabel}</b>${result.previous ? ` · beat ${formatTotal(result.previous.total)}` : ''}</p>${medals}`;
+    const best = this.record.best;
+    return `<p class="b3d-best">${best ? `BEST NIGHT ${formatTotal(best.total)} · GRADE ${escapeHtml(best.grade)}` : 'NO SHIFT FINISHED YET'} · ${nightLabel} · ${this.record.completed} finished</p>${medals}`;
+  }
+
+  /** The endless shift's results: how long and how much, against the best endless run on this device. */
+  private showEndlessResults(): void {
+    const m = this.model;
+    const seconds = Math.floor(m.elapsedMs / 1000), clock = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+    const result = recordEndless(this.record, { sorted: m.sorted, seconds, score: m.score, date: new Date().toISOString().slice(0, 10) });
     this.record = result.record;
     saveRecord(browserStorage(), this.record);
-    const night = `NIGHT ${this.record.played}`;
-    if (result.newBest) return `<p class="b3d-best"><b>NEW PERSONAL BEST · ${night}</b>${result.previous ? ` · beat ${formatTotal(result.previous.total)}` : ''}</p>`;
-    const best = this.record.best;
-    return `<p class="b3d-best">${best ? `BEST NIGHT ${formatTotal(best.total)} · GRADE ${escapeHtml(best.grade)}` : 'NO SHIFT FINISHED YET'} · ${night} · ${this.record.completed} finished</p>`;
+    const best = this.record.endless!;
+    const bestClock = `${Math.floor(best.seconds / 60)}:${String(best.seconds % 60).padStart(2, '0')}`;
+    this.overlay.showPanel(`
+      <div class="grade">∞</div>
+      <div class="kicker">ENDLESS SHIFT / LEVEL ${m.endlessLevel}</div>
+      <h1>THE BELT WINS</h1>
+      <p class="b3d-best">${result.newBest ? `<b>NEW ENDLESS BEST</b>${result.previous ? ` · beat ${result.previous.sorted} dispatched` : ''}` : `BEST ENDLESS · ${best.sorted} dispatched · ${bestClock}`}</p>
+      <p><b>${m.sorted} DISPATCHED · ${String(m.score).padStart(5, '0')} POINTS · SURVIVED ${clock}</b></p>
+      <p>${m.bestCombo} best streak · ${m.priorityOnTime} of ${m.priorityCount} priority on time · ${m.wrongDrops} wrong drops · ${m.damaged} broken</p>
+      <p>Recovery overflowed at level ${m.endlessLevel}. Endless shifts keep their own best and leave your nights' record alone.</p>
+      <button type="button">ANOTHER NIGHT  ↵</button>`, () => this.restart());
   }
 
   private showResults(): void {
     if (this.state === 'ended') return;
+    if (this.model.endless) {
+      this.state = 'ended';
+      this.stage.end();
+      this.overlay.setMode('shift');
+      audioSystem.startMusic('results');
+      this.showEndlessResults();
+      return;
+    }
     this.state = 'ended';
     this.stage.end();
     this.overlay.setMode('shift');
@@ -1753,8 +1919,15 @@ export class Belt3d {
     const home = this.lot?.done === true;
     const mall = this.mall;
     const routes = (['A', 'D', 'T', 'B', 'E', 'S', 'C'] as const).map((route) => `${ROUTE_INFO[route].name} ${m.routeSorted[route]}`).join(' · ');
-    const total = Math.max(0, m.score + this.mallBonus - this.drivingPenalty);
-    const record = this.recordResults(m.won, total, m.won ? m.grade : 'F');
+    const judged = judgeGoals(this.goals, m);
+    this.goalBonus = judged.bonus;
+    const total = Math.max(0, m.score + this.mallBonus - this.drivingPenalty + this.driveBonus + judged.bonus);
+    const goals = this.goals.map((goal) => `${judged.met.includes(goal) ? '✓' : '✗'} ${escapeHtml(goal.label)}`).join(' · ');
+    const record = this.recordResults(m.won, total, m.won ? m.grade : 'F', {
+      won: m.won, grade: m.won ? m.grade : 'F', peak: m.peak, goalsMet: judged.met.length, goalsTotal: this.goals.length,
+      priorityCount: m.priorityCount, priorityOnTime: m.priorityOnTime, bestCombo: m.bestCombo, wrongDrops: m.wrongDrops,
+      damaged: m.damaged, missed: m.missed, safeDrive: home && this.drivingCollisions === 0 && this.drivingRedLights === 0,
+    });
     this.overlay.showPanel(`
       <div class="grade">${m.won ? m.grade : 'F'}</div>
       <div class="kicker">${m.won ? `SHIFT COMPLETE / GRADE ${m.grade}` : 'SHIFT TERMINATED / YOU FAILED THE SORT'}${m.peak ? ' · PEAK NIGHT' : ''}</div>
@@ -1765,9 +1938,12 @@ export class Belt3d {
       <p>${m.unshipped} left behind · ${m.wrongDrops} wrong drops · GRADE ${m.accuracy.toFixed(1)}% (S: 95%+)</p>
       <p>${escapeHtml(routes)}</p>
       ${m.priorityCount ? `<p>${m.priorityOnTime} of ${m.priorityCount} priority parcels on time · +${m.priorityOnTime * PRIORITY_3D.bonus}</p>` : ''}
+      ${this.perkInPlay ? `<p class="b3d-goals">PERK · ${escapeHtml(this.perkInPlay.title)} · ${escapeHtml(this.perkInPlay.detail)}</p>` : ''}
+      <p class="b3d-goals">NIGHT GOALS · ${judged.met.length} OF ${this.goals.length} · ${goals} · +${judged.bonus}</p>
+      ${m.inspectionsHeld ? `<p>INSPECTIONS · ${m.inspectionLoads} clean ${m.inspectionLoads === 1 ? 'load' : 'loads'} watched · +${m.inspectionBonus}</p>` : ''}
       <p>${m.thrownDeliveries} thrown in clean · ${m.damaged} broken (−${m.breakagePenalty} points${m.damaged > THROWING.gradeForgivenBreaks ? `, ${m.gradedBreaks} counted against the grade` : ''})</p>
       ${mall ? `<p>MALL RUN · ${mall.delivered}/6 delivered · ${mall.signatures}/6 signed · five-ton ${home ? 'returned' : 'not returned'} · +${this.mallBonus}</p>
-      <p>DRIVING · ${this.drivingCollisions} bumps${this.drivingRedLights ? ` · ${this.drivingRedLights} red lights` : ''} · −${this.drivingPenalty} points · cargo safe</p>
+      <p>DRIVING · ${this.drivingCollisions} bumps${this.drivingRedLights ? ` · ${this.drivingRedLights} red lights` : ''} · −${this.drivingPenalty} points · cargo safe${this.driveTimes.length ? ` · ${this.driveTimes.map(driveClock).join(' and ')}${this.driveBonus ? ` · against par +${this.driveBonus}` : ''}` : ''}</p>
       <p><b>NIGHT TOTAL ${String(total).padStart(5, '0')}</b> · ${m.gradeQuote}</p>` : ''}
       <button type="button">ANOTHER NIGHT  ↵</button>
       <a href="${window.location.pathname}?mode=classic">PLAY THE ORIGINAL FULL SHIFT</a>`, () => this.restart());

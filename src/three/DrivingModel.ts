@@ -14,6 +14,24 @@ export const DRIVING = {
   parkingApproach: 24, parkingDistance: 6, parkingSpeed: 1.8, turnRate: 1.65,
 } as const;
 
+/**
+ * Par for a delivery drive between the yards (to the mall and back to UPS):
+ * parked within `fast` seconds pays `fastBonus`, within `fair` seconds
+ * `fairBonus`. The drive in from home has no par, and there is never a limit.
+ */
+export const DRIVE_PAR = { fast: 60, fair: 80, fastBonus: 200, fairBonus: 100 } as const;
+
+/** What a delivery drive of `seconds` earns against par. */
+export function parBonus(seconds: number): number {
+  return !Number.isFinite(seconds) || seconds < 0 ? 0 : seconds <= DRIVE_PAR.fast ? DRIVE_PAR.fastBonus : seconds <= DRIVE_PAR.fair ? DRIVE_PAR.fairBonus : 0;
+}
+
+/** Seconds as m:ss for the drive clock. */
+export function driveClock(seconds: number): string {
+  const whole = Math.max(0, Math.floor(seconds));
+  return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`;
+}
+
 interface Box extends CityPoint { heading: number; length: number; width: number }
 /** SAT on actual oriented bodies avoids invisible rectangular corner blockers. */
 function penetration(a: Box, b: Box): CityPoint | null {

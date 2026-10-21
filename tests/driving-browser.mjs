@@ -206,6 +206,7 @@ try {
   const bumped = await page.evaluate(() => { const app = window.fixtureApp; return { collisions: app.driving.collisions, bumps: app.drivingCollisions, redLights: app.drivingRedLights, penalty: app.drivingPenalty }; });
   assert.ok(bumped.collisions >= 1 && bumped.bumps === bumped.collisions && bumped.penalty === (bumped.bumps + bumped.redLights) * 100, `every bump and red light costs 100 points: ${JSON.stringify(bumped)}`);
   assert.match(await page.locator('.b3d-chapterhud').innerText(), /900|SAFE/);
+  assert.match(await page.locator('.b3d-chapterhud').innerText(), /TIME[^]*PAR 1:00/, 'a delivery drive shows its clock against par');
   const beforePause = await page.evaluate(() => ({ elapsed: window.fixtureApp.driving.elapsed, distance: window.fixtureApp.driving.distance }));
   await page.keyboard.press('Escape');
   await page.waitForFunction(() => window.fixtureApp.state === 'paused', null, { polling: 10 });
@@ -240,7 +241,11 @@ try {
   const results = await page.locator('.b3d-panel').innerText();
   assert.ok(results.includes(`DRIVING · ${deductions.bumps} bumps`));
   assert.ok(results.includes(`−${deductions.penalty} points · cargo safe`));
-  assert.ok(results.includes(`NIGHT TOTAL ${String(Math.max(0, 1000 - deductions.penalty)).padStart(5, '0')}`));
+  // Whatever tonight's goals paid is part of the night total too.
+  // Whatever the drives earned against par is part of the night total too, and the results give their times.
+  const { goalBonus, driveBonus, driveTimes } = await page.evaluate(() => ({ goalBonus: window.fixtureApp.goalBonus, driveBonus: window.fixtureApp.driveBonus, driveTimes: window.fixtureApp.driveTimes }));
+  assert.ok(driveTimes.length >= 1 && [0, 100, 200, 300, 400].includes(driveBonus), `the delivery drives are timed against par: ${JSON.stringify({ driveTimes, driveBonus })}`);
+  assert.ok(results.includes(`NIGHT TOTAL ${String(Math.max(0, 1000 - deductions.penalty + goalBonus + driveBonus)).padStart(5, '0')}`), results);
   assert.equal(await page.evaluate(() => window.fixtureApp.model.score), 1000, 'driving leaves warehouse scoring and grade inputs intact');
   await page.evaluate(() => window.fixtureApp.restart());
   assert.deepEqual(await page.evaluate(() => ({ state: window.fixtureApp.state, drive: window.fixtureApp.driving, penalty: window.fixtureApp.drivingPenalty, bumps: window.fixtureApp.drivingCollisions, gas: window.fixtureApp.touch.pedals.throttle })),

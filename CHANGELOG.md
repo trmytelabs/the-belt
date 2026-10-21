@@ -2,6 +2,51 @@
 
 ## 0.1.0 — development snapshot
 
+- Add night perks to the 3D game (`perks.ts`). Once a night is finished, the
+  briefing offers three of six perks (1, 2 or 3, or a click, picks one; again
+  drops it), rotating with the nights on record: one more belt stop, 20
+  seconds on priority freight, one more parcel in recovery, both workers 6%
+  faster, a rush that sends freight a tenth less often, or watched loads
+  paying 75. The pick changes that night's rules only and the results name it;
+  the peak night takes one too, the endless shift does not. The no-stop goal
+  counts a fourth stop as a stop.
+- Add an endless shift to the 3D game, unlocked beside the peak night once a
+  night is finished (N, or ENDLESS SHIFT on the briefing). It starts straight
+  into the countdown with no story around it and no lunch break, and has no
+  clock: from the rush on each minute is a level, with freight 8% sooner (to
+  half the rush's gap) and the belt 5% faster (to half as fast again), until
+  recovery overflows. The HUD counts the time survived and the level; the
+  trucks never start their engines. Its results keep their own best (most
+  dispatched, then longest) in the record without counting as a night.
+- Add inspections to the 3D shift. Twice a night, at 0:58 in the flow and at
+  2:28 in the rush, the supervisor on the player's side (Vic on Termite's,
+  Shan on Skanky's) watches for 20 seconds, looking at the player's worker
+  with a WATCHING tag overhead while the HUD counts down. Each load the player
+  makes meanwhile earns 50 points; a wrong drop costs 30 more than its usual
+  ten. A toast opens and closes each inspection with what it paid, and the
+  results total the watched loads.
+- Time the 3D delivery drives against par. Parking at Southgate Mall, and back
+  at UPS, within a minute pays 200 points and within 1:20 pays 100; the drive in
+  from home and the practice drives are untimed for points, and there is still
+  no time limit. The drive HUD shows the clock against par, a toast gives the
+  time on parking, and the results list both drive times and what they earned,
+  inside the night total. Bumps and red lights still cost 100 each, so speed
+  is a trade.
+- Add medals to the 3D game (`medals.ts`): ten achievements kept with the
+  night record on this device, each earned once (finish a shift, an S, a peak
+  night, all three night goals, every priority parcel on time, 20 in a row, a
+  clean sheet, a safe drive home, all three openers, ten nights). The results
+  name any medal the night earned; the briefing's record counts them, and its
+  MEDALS button lists all ten, earned or still to earn.
+- Add night goals to the 3D game (`nightGoals.ts`). Each night sets three of
+  nine optional goals, chosen by the nights on record so nine nights see nine
+  different sets, mixing goals reached mid-shift (load 8 or 15 in a row, make 3
+  priority parcels on time, throw 3 in clean, send 8 to bulk) with goals judged
+  on a finished shift (no wrong drops, the belt never stopped, nothing broken, 2
+  or fewer missed). The briefing names them; the HUD shows a chip for each,
+  counting towards it or struck out once it is out of reach; a live goal is
+  announced with a toast the moment it is reached; the results tick or cross each one and add
+  150 points per goal met to the night total.
 - Sharpen the 3D main cast. Shan, Vic, Kylie, John, Hussan, Doris, Brian and
   Fruit Loop are reconverted from their Rocketbox sources with 1024-pixel
   textures, as Termite and Skanky already were; the other crew keep 512. The
