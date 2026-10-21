@@ -153,6 +153,51 @@ try {
   assert.equal(await read(() => window.interactionSounds.some(sound => sound.kind === 'oscillator')), false, 'wrong drops use the recorded cue');
   console.log('PASS the pickable package has a halo and Space prompt; empty grabs stay quiet, while the wrong truck deducts ten points and plays the short recorded error cue');
 
+  // Priority freight: a gold ring and countdown label ride the parcel, run down to red, hide while carried,
+  // and a real Space load inside the window pays the bonus with its own pop and a results line.
+  await read(() => {
+    const app = window.fixtureApp; app.restart(); app.forceStory({ breakAtMs: 1e12 }); app.benStarted = true;
+    app.model.autonomousCoworker = false; app.model.eventStopped = true;
+    app.overlay.clearCenter(); app.state = 'playing';
+    const m = app.model, p = m.packages[0];
+    Object.assign(p, { y: 400, beltOffset: 400, route: 'A', kind: 'smallbox', size: 'normal', state: 'belt' });
+    Object.assign(m.activeWorker, { x: 300, y: 600 });
+    m.priorityDue.set(p.id, m.elapsedMs + 15_000); m.priorityCount = 1;
+  });
+  const priorityMarker = () => read(() => {
+    const app = window.fixtureApp, id = app.model.packages[0].id, marker = app.priorityMarkers.get(id);
+    return marker ? { attached: marker.root.parent === app.parcels.get(id)?.root, draw: marker.ring.geometry.drawRange.count,
+      color: marker.ring.material.color.getHexString(), seconds: marker.seconds, ring: marker.ring.visible, label: !!marker.label.material.map } : null;
+  });
+  await wait(() => { const app = window.fixtureApp; return app.priorityMarkers.get(app.model.packages[0].id)?.seconds >= 14; });
+  const fresh = await priorityMarker();
+  assert.ok(fresh.attached && fresh.draw >= 46 * 6 && fresh.color === 'ffc23a' && fresh.seconds >= 14 && fresh.ring && fresh.label, `a nearly full gold ring and a label on a fresh priority parcel: ${JSON.stringify(fresh)}`);
+  await read(() => { window.fixtureApp.model.elapsedMs += 11_000; });
+  await wait(() => { const app = window.fixtureApp; const seconds = app.priorityMarkers.get(app.model.packages[0].id)?.seconds; return seconds > 0 && seconds <= 4; });
+  const urgent = await priorityMarker();
+  assert.ok(urgent.draw > 0 && urgent.draw < fresh.draw * 0.35 && urgent.color === 'ff5a36', `the ring runs down to red: ${JSON.stringify(urgent)}`);
+  const scoreBefore = await read(() => {
+    const app = window.fixtureApp, m = app.model, p = m.packages[0];
+    // Load with time to spare however slowly the renderer runs: the window is reset to ten seconds.
+    m.priorityDue.set(p.id, m.elapsedMs + 10_000);
+    Object.assign(p, { state: 'held', workerId: m.activeWorker.id });
+    Object.assign(m.activeWorker, { x: m.layout.dropAreas.A.x, y: m.layout.dropAreas.A.y, heldId: p.id });
+    window.priorityPops = [];
+    const pop = app.overlay.pop.bind(app.overlay);
+    app.overlay.pop = (text, ...rest) => { window.priorityPops.push(text); return pop(text, ...rest); };
+    return m.score;
+  });
+  await wait(() => { const app = window.fixtureApp; return app.priorityMarkers.get(app.model.packages[0].id)?.ring.visible === false; });
+  await page.keyboard.press('Space');
+  await wait(() => window.fixtureApp.model.priorityOnTime === 1);
+  await wait(() => window.fixtureApp.priorityMarkers.size === 0);
+  const paid = await read(() => ({ score: window.fixtureApp.model.score, pops: window.priorityPops }));
+  assert.equal(paid.score - scoreBefore, 200, 'the load scores its points and the priority bonus');
+  assert.ok(paid.pops.includes('PRIORITY +100'), `the bonus pops: ${JSON.stringify(paid.pops)}`);
+  await read(() => { const app = window.fixtureApp; Object.assign(app.model, { ended: true, won: true }); app.state = 'celebrating'; app.showResults(); });
+  { const results = await page.locator('.b3d-panel').innerText(); assert.ok(results.includes('1 of 1 priority parcels on time · +100'), results); }
+  console.log('PASS a priority parcel wears a gold countdown ring and label that run down to red and hide while carried; a real Space load in time pays +100 with its own pop and a results line');
+
   await read(() => { const app = window.fixtureApp; app.restart(); app.overlay.clearCenter(); app.beginMall(); });
   await page.keyboard.press('Space'); await wait(() => window.fixtureApp.mall.cart.pushed);
   await page.keyboard.press('Space'); await wait(() => !window.fixtureApp.mall.cart.pushed);

@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { ShiftModel, SHIFT_LAYOUT } from '../src/game/slice/ShiftModel.ts';
-import { PEAK_NIGHT, ShiftModel3D, WRONG_DROP_PENALTY, WORKER_SPEED_3D } from '../src/three/ShiftModel3D.ts';
+import { PEAK_NIGHT, PRIORITY_3D, ShiftModel3D, WRONG_DROP_PENALTY, WORKER_SPEED_3D } from '../src/three/ShiftModel3D.ts';
+import { ROUTE_INFO } from '../src/three/addresses.ts';
 import { DEPOT_3D_LAYOUT as L, platformLevelAt, onLowerFloor, truckInteriorAt } from '../src/three/layout.ts';
 import { platformWalkPath, pathLength, walkPath } from '../src/three/walking.ts';
 import { RECEIVING_CROSSING_Y, RECEIVING_FEEDERS, receivingBlocked, clearReceiving } from '../src/three/receivingCollision.ts';
@@ -528,4 +529,93 @@ test('a peak night brings more freight on a faster belt with less room in recove
   assert.equal(peak.ended, true);
   assert.equal(peak.won, true, `the ordinary player still finishes a peak night: sorted ${peak.sorted}/${peak.packages.length}, recovery ${peak.pileup}`);
   assert.ok(peak.sorted >= peak.goal);
+});
+
+// Priority freight: run the shift with the recovery limit lifted until the next parcel is marked.
+// A seeded freight mix keeps the counts the same on every run (a random night marks two to five).
+const seededFreight = (seed) => () => { seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t ^= t + Math.imul(t ^ (t >>> 7), 61 | t); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+const untilPriority = (m, limitMs = 200_000) => {
+  for (let t = 0; t < limitMs && !m.ended; t += 10) {
+    m.update(10);
+    const marked = m.drainEvents().find(event => event.type === 'priority' && event.score === undefined);
+    if (marked) return m.packages.find(parcel => parcel.id === marked.packageId);
+  }
+  return null;
+};
+const carryToDrop = (m, parcel) => {
+  const w = m.activeWorker, area = L.dropAreas[parcel.route];
+  if (w.heldId !== null) Object.assign(m.packages.find(p => p.id === w.heldId), { state: 'belt', workerId: null });
+  Object.assign(parcel, { state: 'held', workerId: w.id, flight: null });
+  Object.assign(w, { x: area.x, y: area.y, heldId: parcel.id });
+  m.action();
+};
+
+test('priority freight is marked through the flow and the rush, one at a time, on the player side', () => {
+  const m = new ShiftModel3D({ freightRandom: seededFreight(7) });
+  m.capacity = 999;
+  const marked = [], late = [];
+  let live = null;
+  for (let t = 0; t < 230_000 && !m.ended; t += 10) {
+    m.update(10);
+    for (const event of m.drainEvents().filter(item => item.type === 'priority')) {
+      const parcel = m.packages.find(item => item.id === event.packageId);
+      if (event.score === undefined) {
+        assert.equal(live, null, 'one priority parcel at a time');
+        live = { id: parcel.id, at: m.elapsedMs };
+        marked.push({ parcel, at: m.elapsedMs, phase: m.phase, side: m.activeWorker.side });
+      } else {
+        assert.equal(event.score, 0, 'nobody delivers on an idle shift, so every one runs late');
+        assert.equal(live.id, parcel.id);
+        assert.ok(m.elapsedMs - live.at > PRIORITY_3D.windowMs && m.elapsedMs - live.at <= PRIORITY_3D.windowMs + 10, 'late exactly when the window closes');
+        late.push(parcel.id); live = null;
+      }
+    }
+  }
+  assert.ok(marked.length >= 2 && marked.length <= 8, `a handful a shift: ${marked.length}`);
+  assert.equal(m.priorityCount, marked.length);
+  assert.equal(m.priorityOnTime, 0);
+  for (const { parcel, at, phase, side } of marked) {
+    assert.ok(phase === 'flow' || phase === 'rush', `marked in the flow or the rush, not the lesson: ${phase} at ${at}`);
+    assert.notEqual(parcel.route, 'C'); assert.equal(parcel.size, 'normal'); assert.notEqual(parcel.kind, 'mesa');
+    assert.equal(ROUTE_INFO[parcel.route].side, side, 'only freight the player can take');
+  }
+  assert.ok(late.length >= marked.length - 1, 'each marked parcel either ran late or was still live at the end');
+});
+
+test('a priority parcel the player delivers in time earns its bonus; late or by the partner it earns nothing extra', () => {
+  const onTime = new ShiftModel3D({ freightRandom: seededFreight(11) }); onTime.capacity = 999;
+  const parcel = untilPriority(onTime);
+  assert.ok(parcel, 'a priority parcel arrives');
+  assert.ok(onTime.priorityRemainingMs(parcel.id) > PRIORITY_3D.windowMs - 50);
+  advance(onTime, 4_000); onTime.drainEvents();
+  const before = onTime.score;
+  carryToDrop(onTime, parcel);
+  const events = onTime.drainEvents();
+  const sort = events.find(event => event.type === 'sort'), bonus = events.find(event => event.type === 'priority');
+  assert.equal(parcel.state, 'delivered', 'loaded at its own drop');
+  assert.equal(bonus?.score, PRIORITY_3D.bonus);
+  assert.equal(onTime.score, before + sort.score + PRIORITY_3D.bonus);
+  assert.equal(onTime.priorityOnTime, 1);
+  assert.equal(onTime.priorityRemainingMs(parcel.id), null, 'no longer a priority parcel once loaded');
+
+  const lateModel = new ShiftModel3D({ freightRandom: seededFreight(12) }); lateModel.capacity = 999;
+  const latecomer = untilPriority(lateModel);
+  advance(lateModel, PRIORITY_3D.windowMs + 20);
+  assert.equal(lateModel.drainEvents().filter(event => event.type === 'priority').map(event => event.score).join(), '0', 'one late notice');
+  assert.equal(lateModel.priorityRemainingMs(latecomer.id), null);
+  const lateScore = lateModel.score;
+  carryToDrop(lateModel, latecomer);
+  const lateEvents = lateModel.drainEvents();
+  assert.equal(latecomer.state, 'delivered');
+  assert.equal(lateEvents.filter(event => event.type === 'priority').length, 0, 'no bonus once late');
+  assert.equal(lateModel.score, lateScore + lateEvents.find(event => event.type === 'sort').score);
+  assert.equal(lateModel.priorityOnTime, 0);
+
+  const partner = new ShiftModel3D({ freightRandom: seededFreight(13) }); partner.capacity = 999;
+  const handed = untilPriority(partner);
+  const partnerScore = partner.score;
+  partner.deliver(handed, true);
+  assert.equal(partner.drainEvents().filter(event => event.type === 'priority').length, 0, 'the partner earns no bonus');
+  assert.equal(partner.score, partnerScore);
+  assert.equal(partner.priorityOnTime, 0);
 });

@@ -19,6 +19,13 @@ export const BELT_STOPS_3D = { limit: 3, durationMs: 2_000, cooldownMs: 15_000 }
  */
 export const PEAK_NIGHT = { arrivals: 0.8, belt: 1.125, capacity: 6 } as const;
 export interface Shift3DOptions extends ShiftOptions { peak?: boolean }
+/**
+ * Priority freight. Through the flow and the rush, every third parcel the player
+ * could take (their own side's trucks and floor routes, not bulk, heavy freight or
+ * the Mesa) is marked urgent, one at a time: delivered by the player inside the
+ * window it earns a bonus on top of its points. Late, it is only an ordinary parcel.
+ */
+export const PRIORITY_3D = { every: 3, windowMs: 15_000, bonus: 100 } as const;
 export interface TruckLoad { route: TruckRoute; x: number; y: number; height: number; layer: number; column: number; row: number; cells: number; parcelHeight: number; overflow: boolean }
 // Conservative dimensions in model pixels for the actual parcel forms at their
 // normal render scale. Long boxes lie along the cargo bay, occupying two slots.
@@ -35,6 +42,13 @@ export class ShiftModel3D extends ShiftModel {
   public readonly peak: boolean;
   public override readonly cleanupMs = 25_000;
   public beltStopsRemaining: number = BELT_STOPS_3D.limit;
+  /** Priority parcels marked this shift, and those the player delivered in time. */
+  public priorityCount = 0;
+  public priorityOnTime = 0;
+  /** Live priority parcels and the shift time each falls due. */
+  private readonly priorityDue = new Map<number, number>();
+  private priorityEligible = 0;
+  private priorityScanned = 0;
   constructor(options: Shift3DOptions = {}) {
     super(options);
     this.peak = options.peak === true;
@@ -111,6 +125,39 @@ export class ShiftModel3D extends ShiftModel {
     const range = ROUTE_INFO[route].streets;
     const street = range ? range[0] + id * 17 % (range[1] - range[0] + 1) : undefined;
     return { id, route, kind, label: regular?.label ?? PARCEL_LABELS[kind], street, address: parcelAddress({ id, route, street }), size: CARRY_MULTIPLIER[kind] <= 0.7 ? 'heavy' as const : 'normal' as const };
+  }
+
+  public override update(deltaMs: number, move: { x: number; y: number } = { x: 0, y: 0 }): void {
+    super.update(deltaMs, move);
+    if (!this.paused && !this.ended) this.updatePriority();
+  }
+
+  /** Time left on a live priority parcel, or null when the parcel is not one (or no longer). */
+  public priorityRemainingMs(id: number): number | null {
+    const due = this.priorityDue.get(id);
+    return due === undefined ? null : Math.max(0, due - this.elapsedMs);
+  }
+
+  private updatePriority(): void {
+    // Freight only ever joins the end of the list: look at each new parcel once, as it lands on the belt.
+    for (; this.priorityScanned < this.packages.length; this.priorityScanned++) {
+      const parcel = this.packages[this.priorityScanned];
+      if (parcel.state !== 'belt' || (this.phase !== 'flow' && this.phase !== 'rush')) continue;
+      if (parcel.route === 'C' || parcel.size === 'heavy' || parcel.kind === 'mesa') continue;
+      if (ROUTE_INFO[parcel.route].side !== this.activeWorker.side) continue;
+      this.priorityEligible += 1;
+      if (this.priorityDue.size > 0 || this.priorityEligible % PRIORITY_3D.every !== 0) continue;
+      this.priorityDue.set(parcel.id, this.elapsedMs + PRIORITY_3D.windowMs);
+      this.priorityCount += 1;
+      this.emit('priority', `PRIORITY · ${ROUTE_INFO[parcel.route].name} · ${PRIORITY_3D.windowMs / 1000} SECONDS FOR +${PRIORITY_3D.bonus}`, parcel, parcel);
+    }
+    for (const [id, due] of this.priorityDue) {
+      const parcel = this.packages.find(item => item.id === id);
+      if (!parcel || parcel.state === 'delivered' || parcel.state === 'damaged') { this.priorityDue.delete(id); continue; }
+      if (this.elapsedMs <= due) continue;
+      this.priorityDue.delete(id);
+      this.emit('priority', 'PRIORITY LATE · no bonus, still ship it', parcel, parcel, 0);
+    }
   }
 
   public penalizeMesaTheft(): number {
@@ -404,7 +451,15 @@ export class ShiftModel3D extends ShiftModel {
   }
 
   protected override deliver(parcel: Parcel, assisted = false): void {
+    const due = this.priorityDue.get(parcel.id);
+    this.priorityDue.delete(parcel.id);
     super.deliver(parcel, assisted);
+    // The partner's deliveries never score, so a priority parcel only pays in the player's hands.
+    if (due !== undefined && !assisted && this.elapsedMs <= due) {
+      this.score += PRIORITY_3D.bonus;
+      this.priorityOnTime += 1;
+      this.emit('priority', `PRIORITY ON TIME +${PRIORITY_3D.bonus}`, parcel, parcel, PRIORITY_3D.bonus);
+    }
     if (!TRUCK_ROUTES.includes(parcel.route as TruckRoute)) return;
     const route = parcel.route as TruckRoute;
     const existing = [...this.truckLoads.values()].filter(load => load.route === route);
