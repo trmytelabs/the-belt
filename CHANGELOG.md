@@ -2,6 +2,14 @@
 
 ## 0.1.0 — development snapshot
 
+- Give the 3D shift HUD some life. The score rolls up to each gain in about a
+  third of a second with a gold jump, and shakes red on a loss; a streak of
+  five reads ON A ROLL and warms to amber, ten reads ON FIRE and flickers; a
+  streak of three or more that breaks shows STREAK LOST for a moment; and the
+  clock turns red and ticks through the last 30 seconds. With reduced motion
+  the colours change but nothing jumps, shakes or ticks. The results screen
+  stamps its grade down and raises its lines in one after another, every line
+  readable from the start.
 - Give the 3D conveyor its sound. While sorting goes on, a low motor hum whose
   pitch follows the belt's speed and a band of roller rattle that clacks at
   the rollers' rate and grows with the freight riding it play under the
