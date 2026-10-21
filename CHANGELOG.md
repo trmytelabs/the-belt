@@ -2,6 +2,8 @@
 
 ## 0.1.0 — development snapshot
 
+- Play a short rising chime on the 3D results for a promotion or a new medal,
+  one note longer for a new personal best (and for a new endless best).
 - Fold the 3D briefing's HOW TO PLAY section into its one-line summary once a
   night is finished; a click (or the controller's highlight and A) opens it.
   A first briefing still shows it open.

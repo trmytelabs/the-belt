@@ -2091,6 +2091,7 @@ export class Belt3d {
     const now = seniority(this.record);
     const promoted = now.level > before ? `<p class="b3d-medal"><b>PROMOTED · ${now.rank.title}</b> · ${rankNeeds(now.rank).toLowerCase()}</p>` : '';
     const medals = promoted + awarded.fresh.map((medal) => `<p class="b3d-medal"><b>MEDAL · ${medal.title}</b> · ${escapeHtml(medal.detail)}</p>`).join('');
+    if (result.newBest || promoted || awarded.fresh.length) audioSystem.fanfare(result.newBest);
     if (result.newBest) return `<p class="b3d-best"><b>NEW PERSONAL BEST · ${nightLabel}</b>${result.previous ? ` · beat ${formatTotal(result.previous.total)}` : ''}</p>${medals}`;
     const best = this.record.best;
     return `<p class="b3d-best">${best ? `BEST NIGHT ${formatTotal(best.total)} · GRADE ${escapeHtml(best.grade)}` : 'NO SHIFT FINISHED YET'} · ${nightLabel} · ${this.record.completed} finished</p>${medals}`;
@@ -2103,6 +2104,7 @@ export class Belt3d {
     const result = recordEndless(this.record, { sorted: m.sorted, seconds, score: m.score, date: new Date().toISOString().slice(0, 10) });
     this.record = result.record;
     saveRecord(browserStorage(), this.record);
+    if (result.newBest) audioSystem.fanfare(true);
     const best = this.record.endless!;
     const bestClock = `${Math.floor(best.seconds / 60)}:${String(best.seconds % 60).padStart(2, '0')}`;
     this.overlay.showPanel(`
