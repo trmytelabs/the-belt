@@ -1,5 +1,5 @@
 import { DEPOT_3D_LAYOUT as SHIFT_LAYOUT, floorPileSlot, truckInteriorAt } from './layout';
-import { ARRIVALS_3D, INSPECTION_3D, PEAK_NIGHT, PRIORITY_3D, ShiftModel3D } from './ShiftModel3D';
+import { ARRIVALS_3D, FLOW_3D, INSPECTION_3D, PEAK_NIGHT, PRIORITY_3D, ShiftModel3D } from './ShiftModel3D';
 import { createPriorityMarker, updatePriorityMarker, type PriorityMarker } from './priorityMarker';
 import { GOAL_BONUS, judgeGoals, nightGoals, type NightGoal } from './nightGoals';
 import { MEDALS, awardMedals, type NightFacts } from './medals';
@@ -143,6 +143,8 @@ export class Belt3d {
   /** Tonight's three goals, chosen by the nights on record, and the live ones already announced. */
   public goals: NightGoal[] = nightGoals(this.record.played);
   private readonly goalsAnnounced = new Set<string>();
+  /** Whether the streak was on fire last frame, so the faster walk is announced once per streak. */
+  private wasOnFire = false;
   /** What the goals paid at the last results. */
   public goalBonus = 0;
   /** The medals the last results awarded for the first time. */
@@ -889,7 +891,7 @@ export class Belt3d {
       ['THROW', `${touch ? 'THROW' : pad ? 'B' : 'F'} throws to the nearest drop to save the walk. Fragile freight can break, and a throw down the stairs risks more.`],
       ['PRIORITY', `A gold ring marks urgent freight. Load it yourself before the ring runs out for +${PRIORITY_3D.bonus}.`],
       ['INSPECTIONS', `Twice a night a supervisor watches for ${INSPECTION_3D.durationMs / 1000} seconds. Each clean load while they watch pays +${m.inspectionPay}; a wrong drop costs ${INSPECTION_3D.penalty} more than usual.`],
-      ['STREAKS', 'Each clean load in a row adds 15 more points, up to +150. A wrong drop or a miss ends the streak.'],
+      ['STREAKS', `Each clean load in a row adds 15 more points, up to +150. From ${FLOW_3D.combo} in a row you are ON FIRE and walk ${Math.round((FLOW_3D.pace - 1) * 100)}% faster. A wrong drop or a miss ends the streak.`],
       ['GOALS', `Each night sets three goals, shown on the briefing and as chips on the HUD. Each one met pays +${GOAL_BONUS}.`],
       ['PERKS', `Once you finish a night, the briefing offers three perks: pick one${touch ? '' : pad ? ' with LB / RB' : ' with 1, 2 or 3'} to bend that night's rules.`],
       ['ENDLESS SHIFT', 'Also unlocked by a finished night: no clock. From the rush on, freight comes sooner and the belt runs faster every minute until recovery overflows. It keeps its own best.'],
@@ -1201,6 +1203,8 @@ export class Belt3d {
       for (const event of m.drainEvents()) this.handleEvent(event);
       this.crew.watcher = m.inspection ? this.watcherName === 'VIC' ? 'vic' : 'shan' : null;
       this.announceGoals();
+      if (m.onFire && !this.wasOnFire) this.overlay.showToast(`ON FIRE · ${FLOW_3D.combo} IN A ROW · YOU WALK FASTER WHILE THE STREAK LASTS`, 2600);
+      this.wasOnFire = m.onFire;
       this.updateBanter();
       this.crew.update(dispersed ? 0 : dt, m, this.time);
       this.setPieces.update(dt, m, this.time);
@@ -1652,8 +1656,10 @@ export class Belt3d {
     }
     const active = this.workers[m.activeWorker.id];
     this.activeRing.position.set(active.root.position.x, active.root.position.y + 0.02, active.root.position.z);
-    const pulse = 1 + Math.sin(this.time * 4) * 0.05;
+    // On fire, the ring under your worker burns orange and beats faster.
+    const pulse = 1 + Math.sin(this.time * (m.onFire ? 9 : 4)) * (m.onFire ? 0.09 : 0.05);
     this.activeRing.scale.set(pulse, pulse, 1);
+    (this.activeRing.material as THREE.MeshBasicMaterial).color.setHex(m.onFire ? 0xff8a3c : 0xf3e6c6);
     this.activeRing.visible = this.state !== 'story';
     const idle = this.workers[m.activeIndex === 0 ? 'skanky' : 'termite'];
     this.sleepTag.position.set(idle.root.position.x + 0.3, idle.root.position.y + 2.5 + Math.sin(this.time * 2) * 0.08, idle.root.position.z);

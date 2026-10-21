@@ -2,6 +2,11 @@
 
 ## 0.1.0 — development snapshot
 
+- Make an ON FIRE streak count in play: from 10 clean loads in a row the 3D
+  worker you control walks 8% faster until the streak ends (your partner keeps
+  their pace). A toast says so once per streak, the ring under your worker
+  burns orange while it lasts, and HOW TO PLAY's STREAKS row
+  explains it.
 - Add up the 3D night total on the results: a line above it lists the shift’s
   points, the night goals, the mall run and the par bonus, less the road
   deductions.

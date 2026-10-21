@@ -203,6 +203,9 @@ SORT!** countdown starts the shift.
 - Recovered freight counts as dispatched for the 3D grade. S starts at 95%;
   freight left behind, wrong drops and excess breakages lower the percentage.
   Results show the calculation. Recovery still reduces points and breaks a streak.
+- Streaks: each clean load in a row adds 15 more points, up to +150. From 10 in
+  a row you are ON FIRE, and the worker you control walks 8% faster until the
+  streak ends.
 - Approaching either stair flight gently aligns the worker with its clear
   centre, including while carrying bulky freight.
 - With one minute left, the trucks start their engines, illuminate headlights

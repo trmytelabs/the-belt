@@ -213,7 +213,10 @@ try {
   await read(() => Object.assign(window.fixtureApp.model, { combo: 12, sorted: 12 }));
   await wait(() => document.querySelector('[data-f="combo"]').classList.contains('blazing'));
   assert.match((await hud()).combo, /^ON FIRE · 12 IN A ROW/);
+  // On fire, the ring under the worker you control burns orange; it cools when the streak breaks.
+  await wait(() => window.fixtureApp.activeRing.material.color.getHexString() === "ff8a3c");
   await read(() => Object.assign(window.fixtureApp.model, { combo: 0, score: 440 }));
+  await wait(() => window.fixtureApp.activeRing.material.color.getHexString() === "f3e6c6");
   await wait(() => document.querySelector('[data-f="combo"]').classList.contains('lost'));
   const lost = await hud();
   assert.ok(lost.combo.startsWith('STREAK LOST') && lost.combo.includes('12 IN A ROW') && lost.score === '00440' && lost.scoreClass.includes('loss'), `a broken streak and a loss show at once: ${JSON.stringify(lost)}`);
