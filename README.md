@@ -58,7 +58,13 @@ plain parcels, the bulk stock, Ralph's load and the receiving cargo are a
 photographed cardboard box, the UPS lot has a real chain-link fence and lamp
 posts, the living room has a leather sofa, armchair, coffee table and bookcase,
 and a screen-space ambient-occlusion pass grounds everything; see
-[prop models](docs/prop-models.md).
+[prop models](docs/prop-models.md). The sedans carry a vehicle contract
+(`src/three/vehicleRig.ts`): named seats, a steering wheel that turns with
+the front wheels, hand and foot targets and a suspension pivot, so the
+drivers and passengers in the lot and on the drive in from home sit on
+their seats with their hands on the wheel or their lap and their feet on
+the pedals or the floor, and the body pitches under power and braking and
+leans out of a bend.
 
 The 3D game plays a whole snowy Christmas night: it starts at home, where Termite and Skanky decide whether
 to go in or quit UPS (quitting ends the night on the couch with a Wii; going in

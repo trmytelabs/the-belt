@@ -7,6 +7,9 @@ import { DRIVERS, SHAN_BREAKAGE_LINES } from '../game/slice/StoryScript';
 import type { Parcel, ShiftEvent, ShiftModel } from '../game/slice/ShiftModel';
 import { audioSystem } from './audio';
 import { animateCharacter, bendElbows, bendKnees, createCharacter, mergeCharacter, type Character } from './characters';
+import { SEATED_BODY_DROP } from './figure';
+
+export { SEATED_BODY_DROP } from './figure';
 import { alignParcelToSurface, createParcelView, type ParcelView } from './parcels';
 import { CrewFreightTrip } from './crewFreight';
 import { BELT_HEIGHT, actorSurfaceAt, setFromModel, standard, textSprite, toWorld } from './space';
@@ -192,7 +195,7 @@ export function applyPose(c: Character, pose: Pose, t: number, still: boolean): 
     case 'sit':
       c.leftLeg.rotation.x = c.rightLeg.rotation.x = -1.5;
       bendKnees(c, 1.5);
-      c.body.position.y = -0.41;
+      c.body.position.y = -SEATED_BODY_DROP;
       c.leftArm.rotation.set(-0.5, 0, 0.1);
       c.rightArm.rotation.set(-0.5, 0, -0.1);
       bendElbows(c, -0.9);

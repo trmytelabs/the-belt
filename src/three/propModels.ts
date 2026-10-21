@@ -3,7 +3,7 @@ import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { mergeStatic } from './merge.ts';
 import { createSedanInterior } from './vehicleInterior.ts';
-import { rigWheels } from './vehicleRig.ts';
+import { attachSteeringWheel, readContract, rigWheels } from './vehicleRig.ts';
 
 const loads = new Map<string, Promise<GLTF>>();
 function load(url: string): Promise<GLTF> {
@@ -21,16 +21,19 @@ export async function upgradeCar(car: THREE.Group, color: number): Promise<boole
   const variant = [0x7d4d9c, 0xd8d4c8, 0x6d5534, 0x7a7a70].includes(color) ? 'sedan-wide' : 'sedan';
   try {
     const source = await load(`/models/vehicles/${variant}.glb`);
-    const model = source.scene.clone(true);
+    // The outer group is the suspension pivot the body and interior pitch and roll about; the fitted body hangs under it.
+    const model = new THREE.Group();
     model.name = 'vehicle-model'; model.userData.keep = true;
-    model.rotation.y = Math.PI / 2; // The source nose is +Z; the story drives along +X.
-    model.updateMatrixWorld(true);
-    const bounds = new THREE.Box3().setFromObject(model), size = bounds.getSize(new THREE.Vector3());
-    model.scale.set(1.8 / size.z, 1.5 / size.y, 4.2 / size.x);
-    model.position.y = -bounds.min.y * model.scale.y;
+    const body = source.scene.clone(true);
+    body.name = 'vehicle-body'; body.userData.keep = true;
+    body.rotation.y = Math.PI / 2; // The source nose is +Z; the story drives along +X.
+    body.updateMatrixWorld(true);
+    const bounds = new THREE.Box3().setFromObject(body), size = bounds.getSize(new THREE.Vector3());
+    body.scale.set(1.8 / size.z, 1.5 / size.y, 4.2 / size.x);
+    body.position.y = -bounds.min.y * body.scale.y;
     const headlight = car.children.find(child => child.name === 'headlight') as THREE.Mesh | undefined;
     const headMaterial = headlight?.material as THREE.MeshStandardMaterial | undefined;
-    model.traverse(object => {
+    body.traverse(object => {
       const mesh = object as THREE.Mesh;
       if (!mesh.isMesh) return;
       mesh.castShadow = true; mesh.receiveShadow = true;
@@ -62,18 +65,21 @@ export async function upgradeCar(car: THREE.Group, color: number): Promise<boole
       mesh.material = Array.isArray(mesh.material) ? mesh.material.map(prepare) : prepare(mesh.material);
     });
     // The wheels are their own nodes: give them pivots at their centres so they roll and steer.
-    const wheelNodes = model.children.filter(child => /wheel/i.test(child.name)).map(node => ({ node, steered: /front/i.test(node.name) }));
+    const wheelNodes = body.children.filter(child => /wheel/i.test(child.name)).map(node => ({ node, steered: /front/i.test(node.name) }));
     const wheels = rigWheels(wheelNodes, { forward: 1, wheelbase: 2.7 });
     if (wheels) car.userData.wheels = wheels;
-    mergeStatic(model, object => object.name === 'model-headlight' || object.userData.wheel === true);
-    // The generated interior sits inside the model, in the car's own frame: undo the fit scale and turn.
-    const unscale = new THREE.Group();
-    unscale.scale.set(1 / model.scale.x, 1 / model.scale.y, 1 / model.scale.z);
-    const holder = new THREE.Group();
-    holder.rotation.y = -model.rotation.y;
-    holder.position.y = -model.position.y;
+    mergeStatic(body, object => object.name === 'model-headlight' || object.userData.wheel === true);
+    // The generated interior sits beside the body in the car's own frame. Its static parts merge;
+    // the steering wheel and the contract's empties stay as they are.
     const interior = createSedanInterior();
-    holder.add(interior); unscale.add(holder); model.add(unscale);
+    mergeStatic(interior, object => object.userData.keep === true);
+    model.add(body, interior);
+    // The contract (vehicleRig.ts): seats, hand and foot targets and the wheel, which turns with the front pair.
+    const contract = readContract(model);
+    contract.suspension = model;
+    if (wheels && contract.steeringWheel) attachSteeringWheel(wheels, contract.steeringWheel);
+    car.userData.contract = contract;
+    car.userData.suspension = model;
     // Retain hidden light controls: Brian's authored blink drives the imported lights too.
     for (const child of car.children) child.visible = false;
     car.add(model);

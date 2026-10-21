@@ -101,18 +101,9 @@ export function triggerAction(character: Character, kind: ActionKind, time: numb
   character.action = { kind, start: time };
 }
 
-/** Joint heights and limb lengths, in metres at scale 1. */
-export const BODY = {
-  hipY: 0.9,
-  hipX: 0.092,
-  thigh: 0.44,
-  shin: 0.4,
-  shoulderY: 1.385,
-  shoulderX: 0.205,
-  upperArm: 0.29,
-  forearm: 0.25,
-  neckY: 1.5,
-} as const;
+import { BODY } from './figure';
+
+export { BODY } from './figure';
 
 /**
  * Every cloth, skin and hair surface shares one roughness band, so the merge

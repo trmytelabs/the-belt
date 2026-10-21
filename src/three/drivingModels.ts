@@ -47,6 +47,8 @@ export class DrivingModels {
     const centre = bounds.getCenter(new THREE.Vector3());
     oriented.position.set(-centre.x * fit.x, -bounds.min.y * fit.y, -centre.z * fit.z);
     oriented.name = `driving-model-${id}`;
+    // A vehicle's fitted model is the pivot its body pitches and rolls about on its springs.
+    if (id === 'truck') slot.userData.suspension = oriented;
     // Clones share template geometry and textures; all belong to this scene.
     oriented.traverse(object => {
       const mesh = object as THREE.Mesh;

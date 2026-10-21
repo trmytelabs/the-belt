@@ -39,9 +39,13 @@ try {
     const control=car.children.find(child=>child.name==='headlight');
     const light=model.getObjectByName('model-headlight');
     control.material.emissiveIntensity=0.15;
+    const contract=car.userData.contract;
     return{name,vertices,length:maxX-minX,width:maxZ-minZ,height:maxY-minY,base:minY,
       sharedLight:light.material===control.material,blink:light.material.emissiveIntensity,
-      fallbackHidden:car.children.filter(child=>child!==model).every(child=>!child.visible)};
+      fallbackHidden:car.children.filter(child=>child!==model).every(child=>!child.visible),
+      contract:Boolean(contract&&contract.steeringWheel&&['driver','passenger','rearL','rearR'].every(seat=>contract.seats[seat]&&contract.seats[seat].hands&&contract.seats[seat].feet)),
+      suspension:car.userData.suspension===model&&contract.suspension===model,
+      wheelTurns:car.userData.wheels&&car.userData.wheels.steeringWheel===contract.steeringWheel};
   }));
   assert.ok(cars.length>=8);
   assert.ok(new Set(cars.map(car=>car.vertices)).size>=2,'use two different vehicle shapes');
@@ -50,8 +54,9 @@ try {
     assert.ok(Math.abs(car.length-4.2)<0.02 && Math.abs(car.width-1.8)<0.02 && Math.abs(car.height-1.5)<0.02,JSON.stringify(car));
     assert.ok(Math.abs(car.base)<0.02,'tyres meet the road');
     assert.equal(car.sharedLight,true);assert.equal(car.blink,0.15);assert.equal(car.fallbackHidden,true);
+    assert.ok(car.contract&&car.suspension&&car.wheelTurns,`${car.name} carries the vehicle contract, its suspension pivot and a steering wheel on the wheel rig`);
   }
-  console.log('PASS two detailed 3D car models fit existing driving roots, road height and Brian\'s working headlights');
+  console.log('PASS two detailed 3D car models fit existing driving roots, road height and Brian\'s working headlights, with the vehicle contract');
 
   const devil=await read(()=>{
     const app=window.fixtureApp,model=app.setPieces.demon.getObjectByName('devil-model'),samples=[];

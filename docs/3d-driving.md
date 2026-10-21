@@ -16,6 +16,15 @@ about 40–60 seconds each way, including turns, traffic and the loading yard. P
 choose other streets and explore for longer, with no timer or cargo-loss condition.
 A raised chase camera follows the actual truck heading.
 
+On the drive in from home, Skanky sits at the wheel of his car with Termite
+beside him, placed by the car's vehicle contract (`src/three/vehicleRig.ts`):
+hips on the seat nodes, the driver's wrists on the rim targets by two-bone
+inverse kinematics on the figure's pivots, feet on the pedals and the floor.
+The steering wheel turns with the front wheels, and both the car and the
+five-ton settle on springs: the nose rises under power and dips under braking,
+the body leans out of a bend and a bump kicks it. The five-ton carries no
+visible driver because its Kenney cab is opaque.
+
 - W / up arrow accelerates; S / down arrow brakes; A/D / left/right steers.
   Holding BRAKE after stopping reverses slowly, so the truck can back out.
 - Every intersection offers real turns. The player moves freely in the city;
