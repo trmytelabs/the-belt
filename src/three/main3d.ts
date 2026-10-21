@@ -48,7 +48,7 @@ import { BELT_SOLID_WIDTH, HEAD_DRIVE, clearReceiving } from './receivingCollisi
 import { TouchControls } from './touch';
 import { GamepadInput, IDLE_PAD, padKey, type PadFrame } from './gamepad';
 import { Overlay } from './overlay';
-import { loadSettings, saveSettings, type GameSettings } from './settings';
+import { MIN_RESOLUTION, loadSettings, saveSettings, type GameSettings } from './settings';
 import { OPENER_COUNT, browserStorage, formatTotal, loadRecord, recordEndless, recordNight, saveRecord, type NightRecord } from './nightRecord';
 import { alignParcelToSurface, createParcelView, setParcelCarried, setParcelModels, type ParcelView } from './parcels';
 import { disposeObject3D } from './resources';
@@ -230,7 +230,7 @@ export class Belt3d {
     const debug = gl.getExtension('WEBGL_debug_renderer_info');
     const rendererName = debug ? String(gl.getParameter(debug.UNMASKED_RENDERER_WEBGL)) : '';
     this.quality = /swiftshader|llvmpipe|software|basic render/i.test(rendererName) ? 'low' : 'high';
-    this.renderer.setPixelRatio(this.quality === 'high' ? Math.min(window.devicePixelRatio, 2) : 0.6);
+    this.renderer.setPixelRatio(this.pixelRatio());
     // Software renderers keep the lighter procedural people and cartons and download no models.
     if (this.quality === 'low') void useCharacterModels([]);
     // Motion-captured clips move the crew models on GPU renderers; software renderers keep the figures' poses.
@@ -888,15 +888,16 @@ export class Belt3d {
     { back: () => this.showPausePanel(kicker), resume: () => this.resume() });
   }
 
-  /** Music and effects levels and the camera shake, changed live and kept on this device. */
+  /** Music and effects levels, the camera shake and the resolution, changed live and kept on this device. */
   private showSettings(kicker: string): void {
     const percent = (value: number): number => Math.round(value * 100);
     const s = this.settings;
     this.overlay.showPanel(`<div class="kicker">${kicker} · SETTINGS</div><h1>SOUND AND CAMERA</h1>
       <label class="b3d-setting">MUSIC <input type="range" min="0" max="100" step="5" data-setting="music" value="${percent(s.music)}"><output>${percent(s.music)}%</output></label>
       <label class="b3d-setting">EFFECTS <input type="range" min="0" max="100" step="5" data-setting="effects" value="${percent(s.effects)}"><output>${percent(s.effects)}%</output></label>
+      <label class="b3d-setting">RESOLUTION <input type="range" min="${percent(MIN_RESOLUTION)}" max="100" step="5" data-setting="resolution" value="${percent(s.resolution)}"><output>${percent(s.resolution)}%</output></label>
       <label class="b3d-setting check"><input type="checkbox" data-setting="shake"${s.shake ? ' checked' : ''}> CAMERA SHAKE WHEN FREIGHT BREAKS</label>
-      <p>Saved on this device. M still mutes everything; reduced motion always stills the camera.</p>
+      <p>Saved on this device. M still mutes everything; reduced motion always stills the camera. A lower resolution draws fewer pixels, for a smoother game on a slow or very sharp screen.</p>
       <button type="button" data-action="back">BACK</button><button type="button" class="b3d-secondary" data-action="resume">RESUME  ↵</button>`,
     { back: () => this.showPausePanel(kicker), resume: () => this.resume() });
     for (const input of document.querySelectorAll<HTMLInputElement>('.b3d-panel [data-setting]')) {
@@ -916,6 +917,18 @@ export class Belt3d {
 
   private applySettings(): void {
     audioSystem.setLevels(this.settings.music, this.settings.effects);
+    // The constructor sets the levels before the renderer exists, and gives it its first pixel ratio itself.
+    if (!this.renderer) return;
+    const ratio = this.pixelRatio();
+    if (this.renderer.getPixelRatio() === ratio) return;
+    this.renderer.setPixelRatio(ratio);
+    this.composer?.setPixelRatio(ratio);
+    this.resize();
+  }
+
+  /** The screen's pixel ratio (up to 2) on a GPU, 0.6 on a software renderer, scaled by the RESOLUTION setting. */
+  private pixelRatio(): number {
+    return (this.quality === 'high' ? Math.min(window.devicePixelRatio, 2) : 0.6) * this.settings.resolution;
   }
 
   private resume(): void {

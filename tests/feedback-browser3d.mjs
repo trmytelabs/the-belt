@@ -104,11 +104,17 @@ try {
   await page.locator('[data-setting="music"]').focus();
   const workerBefore = await read(() => ({ x: window.fixtureApp.model.activeWorker.x, y: window.fixtureApp.model.activeWorker.y }));
   for (let i = 0; i < 12; i++) await page.keyboard.press('ArrowLeft');
+  // The resolution slider redraws at a share of the usual pixel ratio, down to half.
+  const ratioBefore = await read(() => window.fixtureApp.renderer.getPixelRatio());
+  await page.locator('[data-setting="resolution"]').focus();
+  for (let i = 0; i < 12; i++) await page.keyboard.press('ArrowLeft');
+  const ratioAfter = await read(() => window.fixtureApp.renderer.getPixelRatio());
+  assert.ok(Math.abs(ratioAfter - ratioBefore / 2) < 1e-9, `half resolution halves the pixel ratio: ${ratioBefore} to ${ratioAfter}`);
   await page.locator('[data-setting="shake"]').click();
   const saved = await read(() => ({ settings: window.fixtureApp.settings, stored: JSON.parse(localStorage.getItem('the-belt:3d-settings:v1')),
     output: document.querySelector('[data-setting="music"]').nextElementSibling.textContent, state: window.fixtureApp.state,
     worker: { x: window.fixtureApp.model.activeWorker.x, y: window.fixtureApp.model.activeWorker.y } }));
-  assert.deepEqual(saved.settings, { music: 0.4, effects: 1, shake: false });
+  assert.deepEqual(saved.settings, { music: 0.4, effects: 1, shake: false, resolution: 0.5 });
   assert.deepEqual(saved.stored, saved.settings, 'kept on this device');
   assert.equal(saved.output, '40%');
   assert.equal(saved.state, 'paused', 'arrow keys on a slider do not resume');
@@ -127,8 +133,8 @@ try {
   await read(() => { window.fixtureApp.shake = 0.3; });
   await page.waitForTimeout(120);
   assert.equal(await read(() => window.fixtureApp.shake), 0, 'no camera shake with the switch off');
-  await read(() => { const app = window.fixtureApp; app.settings = { music: 1, effects: 1, shake: true }; app.applySettings(); localStorage.removeItem('the-belt:3d-settings:v1'); });
-  console.log('PASS settings from the pause screen: a real-key music slider and a shake switch apply at once, are kept on this device, and never move the worker; HOW TO PLAY lists the rules and controls');
+  await read(() => { const app = window.fixtureApp; app.settings = { music: 1, effects: 1, shake: true, resolution: 1 }; app.applySettings(); localStorage.removeItem('the-belt:3d-settings:v1'); });
+  console.log('PASS settings from the pause screen: real-key music and resolution sliders and a shake switch apply at once, are kept on this device, and never move the worker; HOW TO PLAY lists the rules and controls');
 
   const patrols = await read(() => {
     const app = window.fixtureApp; app.restart(); app.state = 'paused';

@@ -2,6 +2,9 @@
 
 ## 0.1.0 — development snapshot
 
+- Add a RESOLUTION slider to the 3D settings: 50 to 100% of the renderer's
+  usual pixel ratio, applied at once and kept on this device, for a smoother
+  game on a slow or very sharp screen.
 - Add seniority to the 3D depot: six titles from NEW HIRE to BELT LEGEND,
   climbed with finished nights and medals and worked out from the existing
   record. The briefing names the player's title and what the next one takes,
