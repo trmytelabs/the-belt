@@ -3,7 +3,7 @@ import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
 import type { Character, CharacterSpec } from './characters';
 import { ROCKETBOX_CAST } from './rocketboxCast.ts';
-import { CLIP_SPEEDS, CREW_CLIPS_URL, ROCKETBOX_CLIPS, clipName, type ClipRole } from './rocketboxClips.ts';
+import { CLIP_SPANS, CLIP_SPEEDS, CREW_CLIPS_URL, ROCKETBOX_CLIPS, clipName, type ClipRole } from './rocketboxClips.ts';
 
 /**
  * Imported character models (glTF/GLB with a humanoid skeleton).
@@ -72,6 +72,8 @@ interface Drive {
   rest: THREE.Quaternion;
   /** An arm bone, which follows the figure while carrying even when clips move the rest of the body. */
   arm: boolean;
+  /** A leg bone, which follows the figure on a stair flight even when clips move the rest of the body. */
+  leg: boolean;
 }
 
 interface ModelRig {
@@ -104,6 +106,10 @@ interface ClipRig {
   figure: number;
   /** The same for the arms alone, raised for carrying and hand-held props. */
   arms: number;
+  /** The same for the legs alone, raised on a stair flight where the figure plants its feet on the treads. */
+  legs: number;
+  /** The lift or put-down the crouch clips are playing, by the figure action's start time. */
+  lift: { start: number } | null;
   /** Every bone the figure does not drive, with its rest rotation, to blend toward the figure's (unposed) look. */
   free: { bone: THREE.Object3D; rest: THREE.Quaternion }[];
   /** `Bip01`: a bone on most avatars, a plain node on a few (it is not always a skin joint). */
@@ -122,6 +128,8 @@ interface ClipRig {
 const POSE_CLIPS: Partial<Record<string, ClipRole>> = {
   cheer: 'cheer', cough: 'cough', phone: 'phone', dance: 'dance', sip: 'sip', shrug: 'shrug', announce: 'announce', crouch: 'crouch',
 };
+/** Seconds a lift or put-down takes on a model: down on the crouch-in clip, up on the crouch-out. */
+export const LIFT_SECONDS = 0.84;
 // Two long, lively standing idles; Rocketbox's "breathe" clips are nearly still and read as a statue.
 const IDLE_ROLES: ClipRole[] = ['idle', 'idleAlt'];
 const LOOPING = new Set(ROCKETBOX_CLIPS.filter((source) => source.loop).map((source) => source.role));
@@ -310,8 +318,8 @@ export function attachModel(character: Character, source: THREE.Object3D, entry:
   }
 
   const drives: Drive[] = [];
-  const add = (pivot: THREE.Object3D, bone: THREE.Bone, arm = false): void => {
-    drives.push({ pivot, bone, rest: frameQuaternion(bone, container), arm });
+  const add = (pivot: THREE.Object3D, bone: THREE.Bone, arm = false, leg = false): void => {
+    drives.push({ pivot, bone, rest: frameQuaternion(bone, container), arm, leg });
   };
   // Parents before children, so each bone is set after its parent. The body
   // pivot moves the container, so the hips need no drive of their own.
@@ -322,10 +330,10 @@ export function attachModel(character: Character, source: THREE.Object3D, entry:
   add(character.rightForearm, forearm.pos, true);
   add(character.leftHand, hand.neg, true);
   add(character.rightHand, hand.pos, true);
-  add(character.leftLeg, thigh.neg);
-  add(character.rightLeg, thigh.pos);
-  add(character.leftShin, shin.neg);
-  add(character.rightShin, shin.pos);
+  add(character.leftLeg, thigh.neg, false, true);
+  add(character.rightLeg, thigh.pos, false, true);
+  add(character.leftShin, shin.neg, false, true);
+  add(character.rightShin, shin.pos, false, true);
 
   // Each copy gets its own materials, so a gag or fade on one person leaves the rest alone.
   const skin: ModelRig['skin'] = [];
@@ -447,6 +455,8 @@ function buildClipRig(rig: ModelRig, name: string): ClipRig | null {
     // Starts as the figure and eases into the clips, so nobody snaps on arrival.
     figure: 1,
     arms: 1,
+    legs: 1,
+    lift: null,
     free: bones.filter((bone) => !driven.has(bone)).map((bone) => ({ bone, rest: bone.quaternion.clone() })),
     root,
     rootRest: root.position.clone(),
@@ -472,15 +482,25 @@ function advanceClips(character: Character, rig: ModelRig, clips: ClipRig): void
     if (clips.last) clips.speed += (Math.hypot(position.x - clips.last.x, position.z - clips.last.z) / dt - clips.speed) * Math.min(1, dt * 8);
     clips.last = (clips.last ?? new THREE.Vector3()).copy(position);
   }
-  // The figure's pose wins whenever a clip would be wrong: reduced motion, a seat, a lift or throw, a pose without a clip.
+  // A lift or put-down starts the crouch clips on their own clock: down for the first half, back up for
+  // the second, a little longer than the figure's quick dip so the mocap reads. A throw keeps the figure's swing.
+  const action = character.action;
+  if (action && action.kind !== 'throw' && action.start !== clips.lift?.start && clipLibrary?.has(clipName('crouchIn', clips.female))) clips.lift = { start: action.start };
+  const lift = clips.lift && now - clips.lift.start < LIFT_SECONDS && now >= clips.lift.start ? clips.lift : null;
+  if (!lift) clips.lift = null;
+  // The figure's pose wins whenever a clip would be wrong: reduced motion, a seat, a throw, a pose without a clip.
   let role: ClipRole | null = null;
   let figure = 0;
-  if (!clipsWanted || !motion || motion.reduced || motion.seated || character.action) figure = 1;
+  if (!clipsWanted || !motion || motion.reduced || motion.seated || (action && !lift)) figure = 1;
+  else if (lift) role = now - lift.start < LIFT_SECONDS / 2 ? 'crouchIn' : 'crouchOut';
   else if (motion.pose !== 'none') {
     role = POSE_CLIPS[motion.pose] ?? null;
     if (!role) figure = 1;
   }
-  const arms = motion && (motion.carrying || motion.holding) ? 1 : 0;
+  // The arms reach for the parcel from the figure while carrying, holding or lifting; the legs follow the
+  // figure's steps (and their planted feet) on a stair flight.
+  const arms = motion && (motion.carrying || motion.holding || lift) ? 1 : 0;
+  const legs = motion?.stairs ? 1 : 0;
   // Underneath, the walk or idle keeps playing, so a pose ends back in motion.
   role ??= motion?.moving
     ? clips.speed > 2.4 ? 'run' : clips.speed < 0.9 ? 'walkSlow' : 'walk'
@@ -496,23 +516,29 @@ function advanceClips(character: Character, rig: ModelRig, clips: ClipRig): void
       clips.actions.set(name, next);
     }
     next.reset();
-    next.time = (clips.phase * clip.duration) % clip.duration;
+    // A looping clip starts at this person's own point in it; a one-shot starts where its motion starts.
+    next.time = LOOPING.has(role) ? (clips.phase * clip.duration) % clip.duration : CLIP_SPANS[name]?.[0] ?? 0;
     next.play();
     const current = clips.role ? clips.actions.get(clipName(clips.role, clips.female)) : undefined;
-    if (current && current !== next) current.crossFadeTo(next, CROSS_FADE, false);
+    if (current && current !== next) current.crossFadeTo(next, lift ? CROSS_FADE / 2 : CROSS_FADE, false);
     clips.role = role;
   }
-  const action = clip ? clips.actions.get(name) : undefined;
+  const playing = clip ? clips.actions.get(name) : undefined;
   const natural = CLIP_SPEEDS[name];
-  if (action && natural) {
+  if (playing && natural) {
     // World metres per clip unit: the model's fit to the figure's height and the character's own scale.
     const metres = natural * rig.model.scale.x * character.root.scale.x;
-    action.timeScale = THREE.MathUtils.clamp(clips.speed / metres, 0.5, 2);
-  } else if (action) action.timeScale = 1;
+    playing.timeScale = THREE.MathUtils.clamp(clips.speed / metres, 0.5, 2);
+  } else if (playing && clip && (role === 'crouchIn' || role === 'crouchOut')) {
+    // Each half of the lift plays its clip's movement in half the lift's time.
+    const span = CLIP_SPANS[name];
+    playing.timeScale = (span ? span[1] - span[0] : clip.duration) / (LIFT_SECONDS / 2);
+  } else if (playing) playing.timeScale = 1;
   clips.mixer.update(dt);
   const ease = clipsWanted ? Math.min(1, dt * BLEND_RATE) : 1;
   clips.figure += (figure - clips.figure) * ease;
   clips.arms += (arms - clips.arms) * ease;
+  clips.legs += (legs - clips.legs) * ease;
 }
 
 /**
@@ -527,6 +553,7 @@ function driveModel(character: Character, rig: ModelRig): void {
   if (clips) advanceClips(character, rig, clips);
   const figure = clips ? clips.figure : 1;
   const arms = clips ? Math.max(clips.figure, clips.arms) : 1;
+  const legs = clips ? Math.max(clips.figure, clips.legs) : 1;
   // The body pivot's bob, crouch, lean and seat height move the whole model; a clip carries its own.
   rig.container.position.copy(body.position).multiplyScalar(figure);
   rig.container.quaternion.copy(IDENTITY).slerp(body.quaternion, figure);
@@ -536,8 +563,8 @@ function driveModel(character: Character, rig: ModelRig): void {
     for (const { bone, rest } of clips.free) bone.quaternion.slerp(rest, figure);
     clips.root.position.lerp(clips.rootRest, figure);
   }
-  for (const { pivot, bone, rest, arm } of rig.drives) {
-    const weight = arm ? arms : figure;
+  for (const { pivot, bone, rest, arm, leg } of rig.drives) {
+    const weight = arm ? arms : leg ? legs : figure;
     if (weight <= 0) continue;
     // The pivot's rotation away from its rest (no rotation at all) within the body...
     frameQuaternion(pivot, body, pivotFrame);

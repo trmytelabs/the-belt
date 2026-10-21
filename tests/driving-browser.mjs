@@ -99,15 +99,18 @@ try {
   await page.keyboard.up('KeyS');
   assert.equal(await page.evaluate(() => window.fixtureApp.driving.parked), false, 'mid-road braking never finishes');
 
-  // Put a single synthetic cone in the real truck's path; keep every mall bundle pristine.
-  await page.evaluate(() => {
+  // Put a single synthetic cone in the real truck's path; keep every mall bundle pristine. The drive so far
+  // may already have clipped a kerb or a car on a slow runner, so count the cone's bump from where the tally stands.
+  const bumpsBefore = await page.evaluate(() => {
     const d = window.fixtureApp.driving;
-    Object.assign(d.obstacles[0], { x: d.x + d.pose.tx * 5, z: d.z + d.pose.tz * 5 });
+    Object.assign(d.obstacles[0], { x: d.x + d.pose.tx * 5, z: d.z + d.pose.tz * 5, hit: false });
+    return d.collisions;
   });
   await page.keyboard.down('KeyW');
-  await page.waitForFunction(() => window.fixtureApp.driving.collisions === 1, null, { polling: 10 });
+  await page.waitForFunction(n => window.fixtureApp.driving.collisions > n, bumpsBefore, { polling: 10 });
   await page.keyboard.up('KeyW');
-  assert.equal(await page.evaluate(() => window.fixtureApp.drivingPenalty), 100);
+  const bumped = await page.evaluate(() => ({ collisions: window.fixtureApp.driving.collisions, penalty: window.fixtureApp.drivingPenalty }));
+  assert.ok(bumped.collisions >= 1 && bumped.penalty === bumped.collisions * 100, `every bump costs 100 points: ${JSON.stringify(bumped)}`);
   assert.match(await page.locator('.b3d-chapterhud').innerText(), /900|SAFE/);
   const beforePause = await page.evaluate(() => ({ elapsed: window.fixtureApp.driving.elapsed, distance: window.fixtureApp.driving.distance }));
   await page.keyboard.press('Escape');

@@ -30,6 +30,9 @@ export const BELT_WIDTH = 64 * WORLD_SCALE;
 /** Walking surface height at a model point: platform, stairs or lower floor. */
 export const surfaceAt = (x: number, y: number): number => platformLevelAt(x, y) * PLATFORM_HEIGHT;
 
+/** The floor height in world metres under a world point: the actors' surface at that point's depot pixel. */
+export const surfaceUnder = (x: number, z: number): number => actorSurfaceAt(x * 32 + 480, z * 32 + 340);
+
 /**
  * Crew who live in the outer bays climb the short steps in the aisles between
  * parked trucks; this eases them up and down the platform edge.

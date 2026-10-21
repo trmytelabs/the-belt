@@ -8,7 +8,8 @@
  */
 export type ClipRole =
   | 'idle' | 'idleAlt' | 'walk' | 'walkSlow' | 'run'
-  | 'cough' | 'cheer' | 'clap' | 'wave' | 'phone' | 'crouch' | 'dance' | 'sip' | 'shrug' | 'announce';
+  | 'cough' | 'cheer' | 'clap' | 'wave' | 'phone' | 'crouch' | 'dance' | 'sip' | 'shrug' | 'announce'
+  | 'crouchIn' | 'crouchOut';
 
 export interface ClipSource {
   role: ClipRole;
@@ -33,6 +34,9 @@ export const ROCKETBOX_CLIPS: ClipSource[] = [
   { role: 'wave', male: 'static/m_wave_01', female: 'static/f_wave_01', loop: true },
   { role: 'phone', male: 'static/m_cell_phone_talk_01', female: 'xyz/f_cell_phone_talk_01', loop: true },
   { role: 'crouch', male: 'static/m_crouch_idle', female: 'static/f_crouch_idle', loop: true },
+  // Going down to the floor and standing back up: the lift and the put-down play these once over the figure's reach.
+  { role: 'crouchIn', male: 'xy/m_crouch_in', female: 'static/f_crouch_in', loop: false },
+  { role: 'crouchOut', male: 'xy/m_crouch_out', female: 'static/f_crouch_out', loop: false },
   { role: 'dance', male: 'static/m_dancing_cool', female: 'static/f_dancing_cool', loop: true },
   { role: 'sip', male: 'static/m_drink_drinking', female: 'static/f_drink_drinking', loop: true },
   { role: 'shrug', male: 'static/m_gestic_shrug_01', female: 'static/f_gestic_shrug_01', loop: true },
@@ -49,6 +53,16 @@ export const CLIP_SPEEDS: Partial<Record<string, number>> = {
   m_walk: 140.2, f_walk: 129.5,
   m_walkSlow: 82.1, f_walkSlow: 88.7,
   m_run: 307.5, f_run: 315.7,
+};
+
+/**
+ * Where each one-shot clip's motion lies, in seconds from its start to its end,
+ * measured from the root's height track: the crouch clips stand still before
+ * going down and sit still after, and the lift plays only the movement.
+ */
+export const CLIP_SPANS: Partial<Record<string, [number, number]>> = {
+  m_crouchIn: [1.35, 3.0], f_crouchIn: [0.25, 1.65],
+  m_crouchOut: [1.0, 2.4], f_crouchOut: [0.2, 1.5],
 };
 
 /** The clip name in the GLB for a role and a body. */

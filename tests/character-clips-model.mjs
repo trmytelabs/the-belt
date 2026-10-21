@@ -96,7 +96,8 @@ test('each avatar stands at the hip height its body\'s clips were captured at', 
 test('clips play in place: the game moves the character, the clip keeps only sway and rise', () => {
   // Sway, a step's lean and a gesture's weight shift, never travel (the walk covered 150 cm a cycle before);
   // dancing moves about its spot the most. Bounds in centimetres either way across the floor.
-  const bound = (role) => (role === 'dance' ? 35 : ['walk', 'walkSlow', 'run', 'idle', 'idleAlt', 'cough', 'crouch', 'shrug'].includes(role) ? 15 : 20);
+  // Going down to the floor and standing back up shifts the hips the most after the dance.
+  const bound = (role) => (role === 'dance' ? 35 : role === 'crouchIn' || role === 'crouchOut' ? 30 : ['walk', 'walkSlow', 'run', 'idle', 'idleAlt', 'cough', 'crouch', 'shrug'].includes(role) ? 15 : 20);
   for (const { role } of ROCKETBOX_CLIPS) {
     for (const female of [false, true]) {
       const name = clipName(role, female);
