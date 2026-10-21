@@ -136,6 +136,11 @@ SORT!** countdown starts the shift.
   time. A gold ring around it runs down over 15 seconds, turning red for the
   last five. Load it yourself before it empties for a 100-point bonus; late, or
   loaded by your partner, it is an ordinary parcel. Results show how many made it.
+- Night goals: each night sets three optional goals, named in the briefing
+  (for example, load 8 in a row, finish with nothing broken, make 3 priority
+  parcels on time). They rotate with the nights recorded on this device, and the HUD tracks each one. A goal
+  you reach mid-shift is announced at once; goals about a clean shift are judged
+  when it ends. Each goal met adds 150 points to the night total.
 - E / STOP THE BELT stops it for two seconds. You get three stops per 3D run,
   with a 15-second cooldown starting on each use. The controls show stops left
   and cooldown time; starting another night restores all three.

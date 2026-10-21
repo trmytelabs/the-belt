@@ -198,6 +198,39 @@ try {
   { const results = await page.locator('.b3d-panel').innerText(); assert.ok(results.includes('1 of 1 priority parcels on time · +100'), results); }
   console.log('PASS a priority parcel wears a gold countdown ring and label that run down to red and hide while carried; a real Space load in time pays +100 with its own pop and a results line');
 
+  // Night goals: tonight's are named in the briefing; a goal reached mid-shift is announced once with a toast,
+  // and the results tick what was met and pay it into the night total.
+  await read(() => { const app = window.fixtureApp; app.restart(); });
+  await wait(() => window.fixtureApp.state === 'briefing');
+  const briefingGoals = await read(() => ({ text: document.querySelector('.b3d-panel').innerText, goals: window.fixtureApp.goals.map((goal) => ({ label: goal.label, live: goal.live })) }));
+  assert.ok(briefingGoals.goals.length === 3 && briefingGoals.goals.every((goal) => briefingGoals.text.includes(goal.label)), `the briefing names tonight's goals: ${JSON.stringify(briefingGoals)}`);
+  await read(() => {
+    const app = window.fixtureApp; app.forceStory({ breakAtMs: 1e12 }); app.benStarted = true;
+    app.model.autonomousCoworker = false; app.model.eventStopped = true; app.overlay.clearCenter(); app.state = 'playing';
+    window.goalToasts = [];
+    const toast = app.overlay.showToast.bind(app.overlay);
+    app.overlay.showToast = (text, ms) => { window.goalToasts.push(text); return toast(text, ms); };
+    // Every live goal's figure reached at once; the end-of-shift goals wait for the results.
+    Object.assign(app.model, { bestCombo: 15, priorityOnTime: 3, thrownDeliveries: 3, bulkSorted: 8 });
+  });
+  const liveGoals = briefingGoals.goals.filter((goal) => goal.live);
+  await wait((count) => window.goalToasts.filter((text) => text.startsWith('NIGHT GOAL MET')).length >= count, liveGoals.length);
+  await page.waitForTimeout(300);
+  const toasts = await read(() => window.goalToasts.filter((text) => text.startsWith('NIGHT GOAL MET')));
+  assert.equal(toasts.length, liveGoals.length, `each live goal is announced once: ${JSON.stringify(toasts)}`);
+  for (const goal of liveGoals) assert.ok(toasts.some((text) => text.includes(goal.label.toUpperCase())), `${goal.label} is announced`);
+  // The HUD carries a chip per goal: the live ones ticked now, the clean-shift ones still open until the end.
+  await wait((count) => document.querySelectorAll('.b3d-goal-chips span.met').length === count, liveGoals.length);
+  const chips = await read(() => [...document.querySelectorAll('.b3d-goal-chips span')].map((chip) => ({ text: chip.textContent, state: chip.className })));
+  assert.equal(chips.length, 3, `three goal chips: ${JSON.stringify(chips)}`);
+  assert.equal(chips.filter((chip) => chip.state === 'open').length, 3 - liveGoals.length, `clean-shift goals stay open mid-shift: ${JSON.stringify(chips)}`);
+  await read(() => { const app = window.fixtureApp; Object.assign(app.model, { ended: true, won: true }); app.state = 'celebrating'; app.showResults(); });
+  const goalResults = await read(() => ({ text: document.querySelector('.b3d-panel').innerText, bonus: window.fixtureApp.goalBonus }));
+  // A clean, finished synthetic shift with every live figure reached meets all three.
+  assert.equal(goalResults.bonus, 450, goalResults.text);
+  assert.ok(goalResults.text.includes('NIGHT GOALS · 3 OF 3') && goalResults.text.includes('+450'), goalResults.text);
+  console.log('PASS the briefing names the three goals for the night; live goals are announced once as they are reached; the results tick all three and pay +450');
+
   await read(() => { const app = window.fixtureApp; app.restart(); app.overlay.clearCenter(); app.beginMall(); });
   await page.keyboard.press('Space'); await wait(() => window.fixtureApp.mall.cart.pushed);
   await page.keyboard.press('Space'); await wait(() => !window.fixtureApp.mall.cart.pushed);

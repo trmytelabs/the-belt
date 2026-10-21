@@ -23,6 +23,11 @@ const CSS = `
 .b3d-pips i.on { background: #ef7d68; box-shadow: 0 0 8px #ef7d68; }
 .b3d-phase { margin-left: auto; text-align: right; font-size: 12px; letter-spacing: 1.5px; color: #76cbd1; }
 .b3d-phase em { display: block; font-style: normal; color: #edb765; margin-top: 4px; }
+.b3d-goal-chips { display: flex; gap: 5px; justify-content: flex-end; margin-top: 6px; }
+.b3d-goal-chips span { font-size: 10px; letter-spacing: 1px; padding: 2px 6px; border-radius: 4px; border: 1px solid #76cbd155; color: #a9c7ca; background: #0b171c99; white-space: nowrap; }
+.b3d-goal-chips span.met { background: #2f6b46; border-color: #63c58a; color: #e6ffef; }
+.b3d-goal-chips span.met::before { content: '✓ '; }
+.b3d-goal-chips span.lost { opacity: .45; text-decoration: line-through; }
 .b3d-bottom { position: absolute; left: 0; right: 0; bottom: 0; display: flex; align-items: center; gap: 24px; padding: 12px 22px;
   background: linear-gradient(#0b171c00, #0b171ce8); font-size: 13px; }
 .b3d-worker { font-weight: 800; letter-spacing: 1px; min-width: 120px; }
@@ -157,6 +162,8 @@ const CSS = `
 export interface HudState {
   sorted: number; goal: number; score: number; timeLeftMs: number; backlog: number; capacity: number;
   phase: string; combo: number; worker: 'termite' | 'skanky'; hint: string; brake: string; overview: boolean; routes?: string; scanner?: string;
+  /** Tonight's goals as HUD chips. */
+  goals?: { text: string; state: 'met' | 'open' | 'lost' }[];
 }
 
 interface Bubble {
@@ -202,7 +209,7 @@ export class Overlay {
         <div class="b3d-stat"><small>YOUR SCORE</small><b data-f="score">00000</b></div>
         <div class="b3d-stat time"><small>TIME LEFT</small><b data-f="time">03:00</b></div>
         <div class="b3d-stat"><small>RECOVERY</small><div class="b3d-pips" data-f="pips"></div><span class="b3d-backlog" data-f="backlog"></span></div>
-        <div class="b3d-phase"><span data-f="phase"></span><em data-f="combo"></em></div>
+        <div class="b3d-phase"><span data-f="phase"></span><em data-f="combo"></em><div class="b3d-goal-chips" data-f="goals" aria-label="Tonight's goals"></div></div>
       </div>
       <div class="b3d-scanner" data-f="scanner" role="status" aria-live="polite" hidden></div>
       <div class="b3d-guide" data-f="guide" hidden><b data-f="guide-title"></b><span data-f="guide-detail"></span></div>
@@ -395,6 +402,8 @@ export class Overlay {
     f.scanner.hidden = !scanner;
     this.root.classList.toggle('scanner-pending', !!scanner);
     if (state.routes !== undefined && f.routes.innerHTML !== state.routes) f.routes.innerHTML = state.routes;
+    const goals = (state.goals ?? []).map((goal) => `<span class="${goal.state}">${goal.text}</span>`).join('');
+    if (f.goals.innerHTML !== goals) f.goals.innerHTML = goals;
   }
 
   public sortingGuide(guide: { title: string; detail: string } | null): void {

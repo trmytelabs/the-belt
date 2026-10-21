@@ -2,6 +2,15 @@
 
 ## 0.1.0 — development snapshot
 
+- Add night goals to the 3D game (`nightGoals.ts`). Each night sets three of
+  nine optional goals, chosen by the nights on record so nine nights see nine
+  different sets, mixing goals reached mid-shift (load 8 or 15 in a row, make 3
+  priority parcels on time, throw 3 in clean, send 8 to bulk) with goals judged
+  on a finished shift (no wrong drops, the belt never stopped, nothing broken, 2
+  or fewer missed). The briefing names them; the HUD shows a chip for each,
+  counting towards it or struck out once it is out of reach; a live goal is
+  announced with a toast the moment it is reached; the results tick or cross each one and add
+  150 points per goal met to the night total.
 - Give the 3D conveyor its sound. While sorting goes on, a low motor hum whose
   pitch follows the belt's speed and a band of roller rattle that clacks at
   the rollers' rate and grows with the freight riding it play under the

@@ -240,7 +240,9 @@ try {
   const results = await page.locator('.b3d-panel').innerText();
   assert.ok(results.includes(`DRIVING · ${deductions.bumps} bumps`));
   assert.ok(results.includes(`−${deductions.penalty} points · cargo safe`));
-  assert.ok(results.includes(`NIGHT TOTAL ${String(Math.max(0, 1000 - deductions.penalty)).padStart(5, '0')}`));
+  // Whatever tonight's goals paid is part of the night total too.
+  const goalBonus = await page.evaluate(() => window.fixtureApp.goalBonus);
+  assert.ok(results.includes(`NIGHT TOTAL ${String(Math.max(0, 1000 - deductions.penalty + goalBonus)).padStart(5, '0')}`), results);
   assert.equal(await page.evaluate(() => window.fixtureApp.model.score), 1000, 'driving leaves warehouse scoring and grade inputs intact');
   await page.evaluate(() => window.fixtureApp.restart());
   assert.deepEqual(await page.evaluate(() => ({ state: window.fixtureApp.state, drive: window.fixtureApp.driving, penalty: window.fixtureApp.drivingPenalty, bumps: window.fixtureApp.drivingCollisions, gas: window.fixtureApp.touch.pedals.throttle })),

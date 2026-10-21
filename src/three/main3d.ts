@@ -1,6 +1,7 @@
 import { DEPOT_3D_LAYOUT as SHIFT_LAYOUT, floorPileSlot, truckInteriorAt } from './layout';
 import { ARRIVALS_3D, PEAK_NIGHT, PRIORITY_3D, ShiftModel3D } from './ShiftModel3D';
 import { createPriorityMarker, updatePriorityMarker, type PriorityMarker } from './priorityMarker';
+import { GOAL_BONUS, judgeGoals, nightGoals, type NightGoal } from './nightGoals';
 import { sortingGuide } from './sortingGuide';
 import { pathLength, platformWalkPath, walkPath, type WalkPoint } from './walking';
 import * as THREE from 'three';
@@ -134,6 +135,11 @@ export class Belt3d {
   private forcedStory: Partial<StoryChoices> = {};
   /** The player's record between nights, kept in this browser's local storage (nightRecord.ts). */
   public record: NightRecord = loadRecord(browserStorage());
+  /** Tonight's three goals, chosen by the nights on record, and the live ones already announced. */
+  public goals: NightGoal[] = nightGoals(this.record.played);
+  private readonly goalsAnnounced = new Set<string>();
+  /** What the goals paid at the last results. */
+  public goalBonus = 0;
   private depotShot: { position: THREE.Vector3; look: THREE.Vector3 } | null = null;
   private readonly stolen = new Set<number>();
   private readonly parcels = new Map<number, ParcelView>();
@@ -534,6 +540,7 @@ export class Belt3d {
       <p>Story scenes: SPACE next line, ENTER skips the scene, ESC pauses.</p>`}
       <p>The night starts at home: go in to work, or quit UPS. After the shift, drive the five-ton to Southgate Mall and finish the deliveries. Driving controls appear when you get there.</p>
       ${this.recordLine()}
+      ${this.goalsLine()}
       ${this.record.completed > 0 ? `<p class="b3d-record">PEAK NIGHT UNLOCKED · in the flow and the rush freight comes a fifth sooner, the belt runs faster and recovery holds ${PEAK_NIGHT.capacity}. ${this.touch.enabled ? 'Tap PEAK NIGHT.' : 'Press P or click PEAK NIGHT.'}</p>` : ''}
       <button type="button" data-action="night">START THE NIGHT  ↵</button>
       ${this.record.completed > 0 ? '<button type="button" data-action="peak">PEAK NIGHT  P</button>' : ''}
@@ -875,6 +882,9 @@ export class Belt3d {
     this.dream.stop();
     this.overlay.root.classList.remove('dreaming');
     this.model = new ShiftModel3D();
+    this.goals = nightGoals(this.record.played);
+    this.goalsAnnounced.clear();
+    this.goalBonus = 0;
     this.story = new StoryRun(Math.random, this.forcedStory);
     this.cutscene = null;
     this.mall = null;
@@ -969,6 +979,7 @@ export class Belt3d {
       m.laneObstacles = this.crew.patrolObstacles;
       m.update(dt * 1000, this.movement());
       for (const event of m.drainEvents()) this.handleEvent(event);
+      this.announceGoals();
       this.updateBanter();
       this.crew.update(dispersed ? 0 : dt, m, this.time);
       this.setPieces.update(dt, m, this.time);
@@ -1088,7 +1099,7 @@ export class Belt3d {
       hint: this.state === 'interlude' ? 'Belt held · your freight is safe' : this.state === 'mesa' ? 'Y steals the Mesa · N leaves it'
         : scannerSelected ? `${this.touch.enabled ? 'RESET SCANNER' : 'SPACE resets scanner'} · carried freight stays in hand`
         : held ? `${parcelAddress(held)} · ${held.label}${throwHint}${loadingHint ? ` · ${loadingHint}` : ''}` : loadingHint || this.hint,
-      overview: this.overview, routes: this.routeLegend(), scanner,
+      overview: this.overview, routes: this.routeLegend(), scanner, goals: this.goals.map((goal) => goal.chip(m)),
       brake: m.brakeRemainingMs > 0 || m.eventStopped ? `■ BELT STOPPED · ${m.beltStopsRemaining} LEFT`
         : `[E] STOP THE BELT · ${m.beltStopsRemaining} LEFT${m.beltStopsRemaining > 0 && m.brakeCooldownMs > 0 ? ` · ${Math.ceil(m.brakeCooldownMs / 1000)}s` : ''}`,
     });
@@ -1721,6 +1732,21 @@ export class Belt3d {
     }
   }
 
+  /** The briefing's line naming tonight's goals. */
+  private goalsLine(): string {
+    return `<p class="b3d-goals"><b>TONIGHT’S GOALS · +${GOAL_BONUS} EACH:</b> ${this.goals.map((goal) => escapeHtml(goal.label)).join(' · ')}</p>`;
+  }
+
+  /** A goal reached mid-shift is announced once, the moment it happens; it pays at the results. */
+  private announceGoals(): void {
+    for (const goal of this.goals) {
+      if (!goal.live || this.goalsAnnounced.has(goal.id) || !goal.met(this.model)) continue;
+      this.goalsAnnounced.add(goal.id);
+      audioSystem.play('countdown-go');
+      this.overlay.showToast(`NIGHT GOAL MET · ${goal.label.toUpperCase()} · +${GOAL_BONUS} AT THE RESULTS`, 3000);
+    }
+  }
+
   /** The briefing's line about the player's record, once there is one. */
   private recordLine(): string {
     const { played, completed, best, openers } = this.record;
@@ -1753,7 +1779,10 @@ export class Belt3d {
     const home = this.lot?.done === true;
     const mall = this.mall;
     const routes = (['A', 'D', 'T', 'B', 'E', 'S', 'C'] as const).map((route) => `${ROUTE_INFO[route].name} ${m.routeSorted[route]}`).join(' · ');
-    const total = Math.max(0, m.score + this.mallBonus - this.drivingPenalty);
+    const judged = judgeGoals(this.goals, m);
+    this.goalBonus = judged.bonus;
+    const total = Math.max(0, m.score + this.mallBonus - this.drivingPenalty + judged.bonus);
+    const goals = this.goals.map((goal) => `${judged.met.includes(goal) ? '✓' : '✗'} ${escapeHtml(goal.label)}`).join(' · ');
     const record = this.recordResults(m.won, total, m.won ? m.grade : 'F');
     this.overlay.showPanel(`
       <div class="grade">${m.won ? m.grade : 'F'}</div>
@@ -1765,6 +1794,7 @@ export class Belt3d {
       <p>${m.unshipped} left behind · ${m.wrongDrops} wrong drops · GRADE ${m.accuracy.toFixed(1)}% (S: 95%+)</p>
       <p>${escapeHtml(routes)}</p>
       ${m.priorityCount ? `<p>${m.priorityOnTime} of ${m.priorityCount} priority parcels on time · +${m.priorityOnTime * PRIORITY_3D.bonus}</p>` : ''}
+      <p class="b3d-goals">NIGHT GOALS · ${judged.met.length} OF ${this.goals.length} · ${goals} · +${judged.bonus}</p>
       <p>${m.thrownDeliveries} thrown in clean · ${m.damaged} broken (−${m.breakagePenalty} points${m.damaged > THROWING.gradeForgivenBreaks ? `, ${m.gradedBreaks} counted against the grade` : ''})</p>
       ${mall ? `<p>MALL RUN · ${mall.delivered}/6 delivered · ${mall.signatures}/6 signed · five-ton ${home ? 'returned' : 'not returned'} · +${this.mallBonus}</p>
       <p>DRIVING · ${this.drivingCollisions} bumps${this.drivingRedLights ? ` · ${this.drivingRedLights} red lights` : ''} · −${this.drivingPenalty} points · cargo safe</p>

@@ -449,6 +449,8 @@ try {
   assert.match(results, /MALL RUN · 6\/6 delivered · 6\/6 signed · five-ton returned · \+300/);
   assert.match(results, /1 broken \(−150 points\)/);
   assert.match(results, /NIGHT TOTAL/);
+  // Tonight's goals: named in the results with a tick or a cross each, and paid into the night total.
+  assert.match(results, /NIGHT GOALS · [0-3] OF 3 · [✓✗] Load 8 in a row · [✓✗] Finish with no wrong drops · [✓✗] Make 3 priority parcels on time · [+](0|150|300|450)/);
   // The first night in a fresh browser is a personal best, and the record is kept for the next.
   assert.match(results, /NEW PERSONAL BEST · NIGHT 1/);
   const stored = await read(() => JSON.parse(window.localStorage.getItem('the-belt:3d-record:v1')));
@@ -476,7 +478,8 @@ try {
   const driveTotals = await read(() => ({ penalty: window.fixtureApp.drivingPenalty,
     bumps: window.fixtureApp.drivingCollisions, redLights: window.fixtureApp.drivingRedLights }));
   assert.equal(driveTotals.penalty, (driveTotals.bumps + driveTotals.redLights) * 100, 'road incidents retain their separate 100-point deduction');
-  const expectedNightTotal = String(Math.max(0, 6250 - driveTotals.penalty)).padStart(5, '0');
+  const goalBonus = await read(() => window.fixtureApp.goalBonus);
+  const expectedNightTotal = String(Math.max(0, 6250 - driveTotals.penalty + goalBonus)).padStart(5, '0');
   assert.match(recovered, new RegExp(`NIGHT TOTAL ${expectedNightTotal}.*OUTSTANDING SHIFT`));
   await shot('recovered-s-rank');
   console.log(`PASS 56 of 57 dispatched, recovered freight and the completed mall run render S rank, an explicit grade breakdown and the correct ${expectedNightTotal} night total after driving deductions`);
@@ -494,6 +497,8 @@ try {
   });
   assert.deepEqual(clean, { cutscene: null, mall: null, lot: null, stage: null, speech: 0, elapsed: 0, breakTaken: false, chapter: 'briefing', damaged: 0, piles: 0, shan: 0 });
   // The briefing shows the record so far: two nights reached the results (the finale and the synthetic regression), both finished.
+  // Two nights on record: the third night's goals are the rotation's third set.
+  assert.match(await page.locator('.b3d-panel').innerText(), /TONIGHT’S GOALS · [+]150 EACH: Finish with 2 or fewer missed · Load 8 in a row · Finish with no wrong drops/);
   assert.match(await page.locator('.b3d-panel').innerText(), /YOUR RECORD · 2 OF 2 NIGHTS FINISHED · BEST NIGHT \d{5} · GRADE [SABCDF] · 1 OF 3 OPENERS SEEN/);
   // A finished night unlocks the peak night beside the ordinary one; Enter still starts the ordinary night.
   assert.match(await page.locator('.b3d-panel').innerText(), /PEAK NIGHT UNLOCKED/);
