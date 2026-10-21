@@ -144,6 +144,8 @@ export class Belt3d {
   /** Tonight's three goals, chosen by the nights on record, and the live ones already announced. */
   public goals: NightGoal[] = nightGoals(this.record.played);
   private readonly goalsAnnounced = new Set<string>();
+  /** Sorting time and frames counted towards the one-time hint to lower the resolution. */
+  private readonly slowFrames = { seconds: 0, frames: 0, hinted: false };
   /** Tonight's shift score every five seconds, kept with the record if tonight becomes the best night. */
   private paceSamples: number[] = [];
   /** Whether the streak was on fire last frame, so the faster walk is announced once per streak. */
@@ -1207,6 +1209,7 @@ export class Belt3d {
       m.laneObstacles = this.crew.patrolObstacles;
       m.update(dt * 1000, this.movement());
       if (!m.endless) samplePace(this.paceSamples, m.elapsedMs, m.score);
+      this.watchFrameRate(dt);
       for (const event of m.drainEvents()) this.handleEvent(event);
       this.crew.watcher = m.inspection ? this.watcherName === 'VIC' ? 'vic' : 'shan' : null;
       this.announceGoals();
@@ -1310,6 +1313,22 @@ export class Belt3d {
     // Bubbles project with the camera as it is now, whether or not a draw follows.
     camera.updateMatrixWorld();
     this.overlay.update(dt * 1000, speechClock, camera, size.x, size.y);
+  }
+
+  /**
+   * Once a visit, after eight seconds of sorting below 30 frames a second on a GPU renderer, suggests a lower
+   * resolution; never at the lowest already, and never on a software renderer, which draws at 0.6 anyway.
+   */
+  private watchFrameRate(dt: number): void {
+    const watch = this.slowFrames;
+    if (watch.hinted || this.quality !== 'high' || this.settings.resolution <= MIN_RESOLUTION || !(dt > 0)) return;
+    watch.seconds += dt; watch.frames += 1;
+    if (watch.seconds < 8) return;
+    if (watch.frames / watch.seconds < 30) {
+      watch.hinted = true;
+      this.overlay.showToast('RUNNING SLOWLY? A LOWER RESOLUTION IN SETTINGS (ESC) CAN HELP', 5000);
+    }
+    watch.seconds = 0; watch.frames = 0;
   }
 
   /** Tonight's score less the best night's at the same moment of the shift, while sorting; null with nothing to race. */

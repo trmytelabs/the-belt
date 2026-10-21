@@ -248,6 +248,20 @@ try {
   });
   assert.ok(endlessMedals.text.includes('MEDAL · LONG HAUL') && endlessMedals.text.includes('MEDAL · BELT MARATHON'), endlessMedals.text);
   assert.ok(['long-haul', 'marathon'].every((id) => endlessMedals.medals.includes(id) && endlessMedals.stored.includes(id)), JSON.stringify(endlessMedals));
+  // Eight seconds of sorting below 30 frames a second on a GPU suggests a lower resolution, once a visit.
+  const slowHint = await read(() => {
+    const app = window.fixtureApp, quality = app.quality, toasts = [], show = app.overlay.showToast.bind(app.overlay);
+    app.overlay.showToast = (text, ms) => { toasts.push(text); return show(text, ms); };
+    app.quality = 'high'; app.slowFrames.hinted = false; app.slowFrames.seconds = app.slowFrames.frames = 0;
+    for (let i = 0; i < 500; i++) app.watchFrameRate(1 / 60);
+    const fast = toasts.length;
+    for (let i = 0; i < 90; i++) app.watchFrameRate(0.1);
+    for (let i = 0; i < 90; i++) app.watchFrameRate(0.1);
+    app.quality = quality; app.overlay.showToast = show;
+    return { fast, toasts };
+  });
+  assert.equal(slowHint.fast, 0, 'a smooth game gets no hint');
+  assert.deepEqual(slowHint.toasts, ['RUNNING SLOWLY? A LOWER RESOLUTION IN SETTINGS (ESC) CAN HELP'], 'a slow one gets it once');
   // An endless shift names the endless best to beat.
   const endlessKept = await read(() => {
     const app = window.fixtureApp, kept = app.record, Model = app.model.constructor;

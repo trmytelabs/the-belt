@@ -2,6 +2,9 @@
 
 ## 0.1.0 — development snapshot
 
+- Suggest a lower resolution, once a visit, when the 3D game sorts for eight
+  seconds below 30 frames a second on a GPU renderer (not at the lowest
+  setting already, and never on a software renderer).
 - Give the 3D endless shift two medals, making twelve: LONG HAUL (reach level
   5) and BELT MARATHON (dispatch 60 in one run). The endless results now award
   medals too, including the night medals that need no finished shift (TWENTY
