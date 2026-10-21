@@ -87,6 +87,10 @@ const CSS = `
 .b3d-panel button { display: block; width: 100%; margin-top: 18px; padding: 14px; border: 0; border-radius: 6px; background: #edb765;
   color: #1a2226; font: 800 16px "Segoe UI", Arial, sans-serif; letter-spacing: 1px; cursor: pointer; }
 .b3d-panel button.b3d-secondary { margin-top: 10px; padding: 10px; background: transparent; border: 1px solid #3b5a62; color: #c9dcdc; font-size: 13px; }
+.b3d-help { display: grid; grid-template-columns: 130px 1fr; gap: 6px 14px; margin: 4px 0 8px; font-size: 13px; }
+.b3d-help dt { font-weight: 800; letter-spacing: 1.5px; color: #edb765; font-size: 12px; padding-top: 2px; }
+.b3d-help dd { margin: 0; color: #d9e6e6; line-height: 1.35; }
+@media (max-width: 560px) { .b3d-help { grid-template-columns: 1fr; } .b3d-help dd { margin-bottom: 6px; } }
 .b3d-panel a { display: block; margin-top: 12px; text-align: center; color: #9fb4b4; font-size: 12px; letter-spacing: 1.5px; }
 .b3d-count { font: 900 120px "Segoe UI", Arial, sans-serif; color: #f0dfb3; text-shadow: 0 8px 30px #000; }
 .b3d-toast { position: absolute; top: 92px; left: 50%; transform: translateX(-50%); background: #10232ae6; border: 1px solid #3b5a62;

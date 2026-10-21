@@ -111,6 +111,11 @@ try {
   assert.equal(saved.state, 'paused', 'arrow keys on a slider do not resume');
   assert.deepEqual(saved.worker, workerBefore, 'arrow keys on a slider do not walk the worker');
   await page.getByRole('button', { name: 'BACK' }).click();
+  // HOW TO PLAY lists the rules and controls, and BACK returns to the pause screen.
+  await page.getByRole('button', { name: 'HOW TO PLAY' }).click();
+  const help = await read(() => [...document.querySelectorAll('.b3d-help dt')].map((term) => term.textContent));
+  assert.deepEqual(help, ['SORT', 'RECOVERY', 'STOP THE BELT', 'THROW', 'PRIORITY', 'STREAKS', 'CONTROLS']);
+  await page.getByRole('button', { name: 'BACK' }).click();
   await page.getByRole('button', { name: /RESUME/ }).click();
   await wait(() => window.fixtureApp.state === 'playing');
   // With the switch off, a breakage shake is dropped at once instead of decaying over half a second.
@@ -118,7 +123,7 @@ try {
   await page.waitForTimeout(120);
   assert.equal(await read(() => window.fixtureApp.shake), 0, 'no camera shake with the switch off');
   await read(() => { const app = window.fixtureApp; app.settings = { music: 1, effects: 1, shake: true }; app.applySettings(); localStorage.removeItem('the-belt:3d-settings:v1'); });
-  console.log('PASS settings from the pause screen: a real-key music slider and a shake switch apply at once, are kept on this device, and never move the worker');
+  console.log('PASS settings from the pause screen: a real-key music slider and a shake switch apply at once, are kept on this device, and never move the worker; HOW TO PLAY lists the rules and controls');
 
   const patrols = await read(() => {
     const app = window.fixtureApp; app.restart(); app.state = 'paused';

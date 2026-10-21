@@ -2,6 +2,9 @@
 
 ## 0.1.0 — development snapshot
 
+- Add HOW TO PLAY to the 3D pause screen: sorting, recovery, stopping the belt,
+  throwing, priority freight, streaks and the controls (keyboard or touch, as
+  the device uses) on one page, with BACK to the pause screen.
 - Add settings to the 3D game (`settings.ts`): SETTINGS on the pause screen
   opens music and effects sliders and a camera shake switch. Changes apply at
   once and are kept in local storage on this device; M still mutes

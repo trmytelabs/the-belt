@@ -797,8 +797,27 @@ export class Belt3d {
   }
 
   private showPausePanel(kicker: string): void {
-    this.overlay.showPanel(`<div class="kicker">${kicker}</div><h1>GAME PAUSED.</h1><p>Click RESUME or press ENTER to keep playing.</p><p>Your packages and timers are safe while paused.</p><button type="button" data-action="resume">RESUME  ↵</button><button type="button" class="b3d-secondary" data-action="settings">SETTINGS</button>`,
-      { resume: () => this.resume(), settings: () => this.showSettings(kicker) });
+    this.overlay.showPanel(`<div class="kicker">${kicker}</div><h1>GAME PAUSED.</h1><p>Click RESUME or press ENTER to keep playing.</p><p>Your packages and timers are safe while paused.</p><button type="button" data-action="resume">RESUME  ↵</button><button type="button" class="b3d-secondary" data-action="settings">SETTINGS</button><button type="button" class="b3d-secondary" data-action="help">HOW TO PLAY</button>`,
+      { resume: () => this.resume(), settings: () => this.showSettings(kicker), help: () => this.showHelp(kicker) });
+  }
+
+  /** The rules and controls in one place, from the pause screen. */
+  private showHelp(kicker: string): void {
+    const touch = this.touch.enabled;
+    const rows: [string, string][] = [
+      ['SORT', `${touch ? 'Tap GRAB' : 'SPACE grabs'} a parcel at the belt. Its street number names the truck: carry it through that truck's rear door and load it. Oversize goes to bulk at the back; floor freight goes down the side stairs.`],
+      ['RECOVERY', `A parcel that reaches the belt end piles up in recovery; pick it up again for half points. ${this.model.capacity} in recovery ends the shift.`],
+      ['STOP THE BELT', `${touch ? 'STOP THE BELT' : 'E'} holds the belt for two seconds, three times a night, with 15 seconds between.`],
+      ['THROW', `${touch ? 'THROW' : 'F'} throws to the nearest drop to save the walk. Fragile freight can break, and a throw down the stairs risks more.`],
+      ['PRIORITY', `A gold ring marks urgent freight. Load it yourself before the ring runs out for +${PRIORITY_3D.bonus}.`],
+      ['STREAKS', 'Each clean load in a row adds 15 more points, up to +150. A wrong drop or a miss ends the streak.'],
+      ['CONTROLS', touch ? 'The stick moves; SWITCH changes worker; GRAB / DELIVER, THROW and STOP THE BELT do what they say; VIEW shows the whole warehouse.'
+        : 'WASD or arrows move · TAB or right-click switches worker · SPACE grabs and delivers · F throws · E stops the belt · V overview · ESC pause · M sound.'],
+    ];
+    this.overlay.showPanel(`<div class="kicker">${kicker} · HOW TO PLAY</div><h1>HOW TO PLAY</h1>
+      <dl class="b3d-help">${rows.map(([term, text]) => `<dt>${term}</dt><dd>${escapeHtml(text)}</dd>`).join('')}</dl>
+      <button type="button" data-action="back">BACK</button><button type="button" class="b3d-secondary" data-action="resume">RESUME  ↵</button>`,
+    { back: () => this.showPausePanel(kicker), resume: () => this.resume() });
   }
 
   /** Music and effects levels and the camera shake, changed live and kept on this device. */
