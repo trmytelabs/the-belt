@@ -424,6 +424,21 @@ export class DepotAudio extends AudioSystem {
     this.ambienceIn = 11 + (this.ambienceIndex * 5) % 9;
   }
 
+  /**
+   * The results' short rising chime for a promotion or a new medal; `best`, for a
+   * new personal best, climbs one note higher. Over in about a second.
+   */
+  public fanfare(best = false): void {
+    const context = this.getContext();
+    if (!context || context.state !== 'running' || this.muted) return;
+    const now = context.currentTime + 0.05;
+    const notes = best ? [523.25, 659.25, 783.99, 1046.5] : [523.25, 659.25, 783.99];
+    notes.forEach((frequency, index) => {
+      const last = index === notes.length - 1;
+      this.voice(frequency, last ? 0.65 : 0.16, now + index * 0.11, last ? 0.12 : 0.09, { type: 'triangle', attack: 0.01, cutoff: 3200 });
+    });
+  }
+
   /** One distant depot sound: quiet and low-passed, as if from the far end of the building. */
   public ambience(kind: (typeof DepotAudio.AMBIENCE)[number]): void {
     const context = this.getContext();

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { ShiftModel, SHIFT_LAYOUT } from '../src/game/slice/ShiftModel.ts';
-import { ENDLESS_3D, INSPECTION_3D, PEAK_NIGHT, PRIORITY_3D, ShiftModel3D, WRONG_DROP_PENALTY, WORKER_SPEED_3D } from '../src/three/ShiftModel3D.ts';
+import { ENDLESS_3D, FLOW_3D, INSPECTION_3D, PEAK_NIGHT, PRIORITY_3D, ShiftModel3D, WRONG_DROP_PENALTY, WORKER_SPEED_3D } from '../src/three/ShiftModel3D.ts';
 import { ROUTE_INFO } from '../src/three/addresses.ts';
 import { DEPOT_3D_LAYOUT as L, platformLevelAt, onLowerFloor, truckInteriorAt } from '../src/three/layout.ts';
 import { platformWalkPath, pathLength, walkPath } from '../src/three/walking.ts';
@@ -694,4 +694,22 @@ test('an endless shift never ends on the clock, levels up each minute from the r
   assert.equal(m.won, false);
   const ordinary = new ShiftModel3D();
   assert.deepEqual([ordinary.endless, ordinary.durationMs, ordinary.endlessLevel], [false, 180_000, 1], 'an ordinary night is unchanged');
+});
+
+test('on fire: from ten clean loads in a row the controlled worker walks 8% faster, until the streak ends', () => {
+  const walk = (combo) => {
+    const model = new ShiftModel3D({ autonomousCoworker: false });
+    model.combo = combo;
+    const start = model.activeWorker.y;
+    for (let i = 0; i < 50; i++) model.update(10, { x: 0, y: 1 });
+    return { distance: model.activeWorker.y - start, onFire: model.onFire };
+  };
+  assert.deepEqual([FLOW_3D.combo, FLOW_3D.pace], [10, 1.08]);
+  const cold = walk(FLOW_3D.combo - 1), hot = walk(FLOW_3D.combo);
+  assert.deepEqual([cold.onFire, hot.onFire], [false, true]);
+  assert.ok(hot.distance > cold.distance * 1.06 && hot.distance < cold.distance * 1.1, `8% further: ${hot.distance} vs ${cold.distance}`);
+  const broken = new ShiftModel3D({ autonomousCoworker: false });
+  broken.combo = 12;
+  broken.combo = 0;
+  assert.equal(broken.onFire, false, 'a broken streak walks at the ordinary pace again');
 });

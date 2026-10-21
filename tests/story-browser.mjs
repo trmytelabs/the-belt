@@ -449,6 +449,9 @@ try {
   assert.match(results, /MALL RUN · 6\/6 delivered · 6\/6 signed · five-ton returned · \+300/);
   assert.match(results, /1 broken \(−150 points\)/);
   assert.match(results, /NIGHT TOTAL/);
+  // The line above the total adds it up: the shift, the goals, the mall run and par, less the road.
+  const sum = await read(() => { const app = window.fixtureApp; return { text: document.querySelector(".b3d-sum").textContent, parts: [app.model.score, app.goalBonus, app.mallBonus, app.driveBonus, app.drivingPenalty] }; });
+  assert.equal(sum.text, `SHIFT ${sum.parts[0]} + NIGHT GOALS ${sum.parts[1]} + MALL RUN ${sum.parts[2]} + ON PAR ${sum.parts[3]} − ROAD ${sum.parts[4]}`);
   // Tonight's goals: named in the results with a tick or a cross each, and paid into the night total.
   assert.match(results, /NIGHT GOALS · [0-3] OF 3 · [✓✗] Load 8 in a row · [✓✗] Finish with no wrong drops · [✓✗] Make 3 priority parcels on time · [+](0|150|300|450)/);
   // The first night in a fresh browser is a personal best, and the record is kept for the next.
@@ -505,11 +508,21 @@ try {
   // Two nights on record: the third night's goals are the rotation's third set.
   assert.match(await page.locator('.b3d-panel').innerText(), /TONIGHT’S GOALS · [+]150 EACH: Finish with 2 or fewer missed · Load 8 in a row · Finish with no wrong drops/);
   assert.match(await page.locator('.b3d-panel').innerText(), /YOUR RECORD · 2 OF 2 NIGHTS FINISHED · BEST NIGHT \d{5} · GRADE [SABCDF] · 1 OF 3 OPENERS SEEN · \d+ OF 10 MEDALS/);
+  // A returning player's briefing folds HOW TO PLAY into its one line, which opens on a click.
+  assert.equal(await read(() => document.querySelector('.b3d-howto').open), false, 'folded once a night is finished');
+  await page.locator('.b3d-howto summary').click();
+  assert.equal(await read(() => document.querySelector('.b3d-howto').open), true);
   // The briefing's MEDALS button lists all ten, the first finished shift's ticked, and BACK returns to the briefing.
   await page.getByRole('button', { name: /^MEDALS/ }).click();
   const medalList = await read(() => [...document.querySelectorAll('.b3d-medal-list li')].map((item) => ({ title: item.querySelector('b').textContent, earned: item.classList.contains('earned') })));
   assert.equal(medalList.length, 10);
   assert.ok(medalList.find((medal) => medal.title === 'FIRST SHIFT')?.earned, JSON.stringify(medalList));
+  // Below the medals, the two nights so far: a bar each, and the list newest first.
+  const recent = await read(() => ({ bars: document.querySelectorAll('.b3d-trend span').length, rows: [...document.querySelectorAll('.b3d-recent li')].map((row) => row.innerText) }));
+  assert.equal(recent.bars, 2);
+  assert.equal(recent.rows.length, 2);
+  assert.match(recent.rows[0], /^NIGHT 2 · GRADE S/);
+  assert.match(recent.rows[1], /^NIGHT 1 · GRADE [SABCD]/);
   await page.getByRole('button', { name: /BACK/ }).click();
   await page.getByRole('button', { name: /START THE NIGHT/ }).waitFor();
   // The endless shift, unlocked by a finished night: N starts it straight into the countdown with a clock that counts up,
@@ -551,6 +564,7 @@ try {
   await wait(() => document.querySelector('.b3d-perk.picked')?.textContent.includes('ROOMY RECOVERY'));
   await page.keyboard.press('Enter');
   assert.deepEqual(await read(() => [window.fixtureApp.perkInPlay?.id, window.fixtureApp.model.capacity]), ['roomy-recovery', 8], 'the perk is in play for the night');
+  await wait(() => document.querySelector('.b3d-goal-chips span.perk')?.textContent === 'PERK · ROOMY RECOVERY');
   await wait(() => window.fixtureApp.state === 'story' && window.fixtureApp.story.chapter === 'arrival');
   await page.keyboard.press('Enter');
   await wait(() => window.fixtureApp.cutscene?.scene.id === 'scrum');

@@ -28,6 +28,7 @@ const CSS = `
 .b3d-goal-chips span.met { background: #2f6b46; border-color: #63c58a; color: #e6ffef; }
 .b3d-goal-chips span.met::before { content: '✓ '; }
 .b3d-goal-chips span.lost { opacity: .45; text-decoration: line-through; }
+.b3d-goal-chips span.perk { border-color: #edb76588; color: #edb765; }
 /* HUD feedback: the score rolls up and jumps on a gain, shakes on a loss; a streak warms up and catches fire; the last half minute ticks red. */
 .b3d-stat b { transition: color .25s; transform-origin: left center; }
 .b3d-stat b.gain { color: #ffd98a; animation: b3d-bump .35s ease-out; }
@@ -114,6 +115,8 @@ const CSS = `
 .b3d-panel .grade ~ :nth-child(13) { animation-delay: 1.12s; }
 .b3d-panel .grade ~ :nth-child(14) { animation-delay: 1.19s; }
 .b3d-panel .grade ~ :nth-child(15) { animation-delay: 1.26s; }
+/* A long night's later lines (the mall run, the road, the sum and the total) rise together last rather than first. */
+.b3d-panel .grade ~ :nth-child(n+16) { animation-delay: 1.33s; }
 @keyframes b3d-stamp { 0% { transform: scale(2.6) rotate(-14deg); opacity: 0; } 60% { transform: scale(.92) rotate(2deg); opacity: 1; } 100% { transform: none; opacity: 1; } }
 @keyframes b3d-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .b3d-panel .grade, .b3d-panel .grade ~ * { animation: none; } }
@@ -135,6 +138,20 @@ const CSS = `
 .b3d-medal-list li.earned b { color: #edb765; }
 .b3d-medal-list li.earned b::before { content: '✓ '; }
 .b3d-medal-list li.locked { opacity: .55; }
+.b3d-howto summary { cursor: pointer; margin: 6px 0; color: #cfd8cc; font-size: 15px; list-style: none; }
+.b3d-howto summary::-webkit-details-marker { display: none; }
+.b3d-howto summary::before { content: '▸ '; color: #edb765; }
+.b3d-howto[open] summary::before { content: '▾ '; }
+.b3d-panel p.b3d-sum { margin-top: 10px; padding-top: 8px; border-top: 1px solid #3b5a62; color: #9fb4b4; font-size: 13px; letter-spacing: .5px; }
+.b3d-trend { display: flex; align-items: flex-end; gap: 4px; height: 48px; margin: 4px 0 8px; border-bottom: 1px solid #3b5a62; }
+.b3d-trend span { flex: 1; min-width: 6px; border-radius: 2px 2px 0 0; background: #edb765; }
+.b3d-trend span.failed { background: #5d7173; }
+.b3d-recent { list-style: none; margin: 0 0 6px; padding: 0; display: grid; gap: 4px; }
+.b3d-recent li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 10px; padding: 4px 8px; border-left: 3px solid #edb765; background: #0b171c; font-size: 12px; }
+.b3d-recent li.failed { border-left-color: #5d7173; }
+.b3d-recent li b { letter-spacing: 1px; color: #f3e6c6; }
+.b3d-recent li.failed b { color: #9fb4b4; }
+.b3d-recent li span { color: #9fb4b4; }
 .b3d-panel p.b3d-medal { color: #f3e6c6; border-left: 3px solid #edb765; padding-left: 10px; }
 .b3d-panel p.b3d-medal b { color: #edb765; letter-spacing: 1px; }
 /* A long briefing scrolls, but START THE NIGHT stays in view at the bottom of the panel. */
@@ -228,8 +245,8 @@ export interface HudState {
   phase: string; combo: number; worker: 'termite' | 'skanky'; hint: string; brake: string; overview: boolean; routes?: string; scanner?: string;
   /** The clock's label when it shows something other than the time left (the endless shift's time survived). */
   clockLabel?: string;
-  /** Tonight's goals as HUD chips. */
-  goals?: { text: string; state: 'met' | 'open' | 'lost' }[];
+  /** Tonight's goals as HUD chips, and tonight's perk after them. */
+  goals?: { text: string; state: 'met' | 'open' | 'lost' | 'perk' }[];
 }
 
 interface Bubble {
@@ -283,7 +300,7 @@ export class Overlay {
         <div class="b3d-stat"><small>YOUR SCORE</small><b data-f="score">00000</b></div>
         <div class="b3d-stat time"><small data-f="timelabel">TIME LEFT</small><b data-f="time">03:00</b></div>
         <div class="b3d-stat"><small>RECOVERY</small><div class="b3d-pips" data-f="pips"></div><span class="b3d-backlog" data-f="backlog"></span></div>
-        <div class="b3d-phase"><span data-f="phase"></span><em data-f="combo"></em><div class="b3d-goal-chips" data-f="goals" aria-label="Tonight's goals"></div></div>
+        <div class="b3d-phase"><span data-f="phase"></span><em data-f="combo"></em><div class="b3d-goal-chips" data-f="goals" aria-label="Tonight's goals and perk"></div></div>
       </div>
       <div class="b3d-scanner" data-f="scanner" role="status" aria-live="polite" hidden></div>
       <div class="b3d-guide" data-f="guide" hidden><b data-f="guide-title"></b><span data-f="guide-detail"></span></div>

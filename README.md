@@ -139,7 +139,11 @@ SORT!** countdown starts the shift.
 - Medals: ten achievements, each earned once and kept with the record on this
   device (for example an S, a peak night, all three goals in one night, 20 in
   a row, or bringing the five-ton home with no bumps or red lights). The
-  results name new ones; the briefing counts them and MEDALS lists them all.
+  results name new ones; the briefing counts them and MEDALS lists them all,
+  with your last eight nights below (a bar for each total, then grade, total
+  and freight dispatched). Once a night is finished, the briefing folds its
+  HOW TO PLAY section into one line (click it to open), so the record, goals
+  and perks come first.
 - Seniority: finished nights and medals climb six titles, from NEW HIRE through
   PART-TIMER, LOADER, SENIOR LOADER and PRELOAD LEAD to BELT LEGEND (15
   finished nights and every medal). The briefing names yours and what the next
@@ -168,7 +172,7 @@ SORT!** countdown starts the shift.
   briefing Y starts a peak night, X the endless shift, and LB / RB step through
   the perks. On the briefing, pause and results screens the d-pad or stick
   highlights a button or setting, A presses it, left and right move a slider,
-  and B goes back.
+  and B goes back. A controller that drops out mid-play pauses the game.
 - Escape pauses; M toggles sound. SETTINGS on the pause screen sets the music
   and effects levels and the resolution (down to half, for a smoother game on a
   slow or very sharp screen) and turns the breakage camera shake on or off; they are
@@ -199,6 +203,9 @@ SORT!** countdown starts the shift.
 - Recovered freight counts as dispatched for the 3D grade. S starts at 95%;
   freight left behind, wrong drops and excess breakages lower the percentage.
   Results show the calculation. Recovery still reduces points and breaks a streak.
+- Streaks: each clean load in a row adds 15 more points, up to +150. From 10 in
+  a row you are ON FIRE, and the worker you control walks 8% faster until the
+  streak ends.
 - Approaching either stair flight gently aligns the worker with its clear
   centre, including while carrying bulky freight.
 - With one minute left, the trucks start their engines, illuminate headlights

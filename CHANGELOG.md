@@ -2,6 +2,28 @@
 
 ## 0.1.0 — development snapshot
 
+- Show tonight’s perk on the 3D HUD as a gold chip after the goal chips
+  (PERK · ROOMY RECOVERY, for example).
+- Pause the 3D game when the controller in use drops out mid-play (a flat
+  battery or a pulled cable), as a console does; A resumes once it is back.
+- Make an ON FIRE streak count in play: from 10 clean loads in a row the 3D
+  worker you control walks 8% faster until the streak ends (your partner keeps
+  their pace). A toast says so once per streak, the ring under your worker
+  burns orange while it lasts, and HOW TO PLAY's STREAKS row
+  explains it.
+- Add up the 3D night total on the results: a line above it lists the shift’s
+  points, the night goals, the mall run and the par bonus, less the road
+  deductions.
+- Play a short rising chime on the 3D results for a promotion or a new medal,
+  one note longer for a new personal best (and for a new endless best).
+- Fold the 3D briefing's HOW TO PLAY section into its one-line summary once a
+  night is finished; a click (or the controller's highlight and A) opens it.
+  A first briefing still shows it open.
+- Keep the last eight 3D nights in the record (finished or failed, with grade,
+  total, freight dispatched and whether it was a peak night). The MEDALS panel
+  from the briefing shows them below the medals: a bar for each night's total,
+  then the list, newest first. Records saved before this read with an empty
+  list.
 - Let a controller work the 3D menus: on the briefing, pause and results
   screens the d-pad or stick steps a highlight through the buttons, links and
   settings, A presses the highlighted one, left and right move a slider and B

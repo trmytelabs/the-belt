@@ -1,7 +1,7 @@
 /**
  * The player's record between nights (the 3D depot only): how many nights
- * they have worked and finished, their best night and which of the three
- * openers they have seen. Kept in the browser's local storage on this device
+ * they have worked and finished, their best night, their last few nights and
+ * which of the three openers they have seen. Kept in the browser's local storage on this device
  * only; nothing leaves it. A storage that is missing, full or blocked (a
  * private window) just means no record: the game plays the same without one.
  */
@@ -10,8 +10,12 @@ import { MEDAL_IDS } from './medals.ts';
 
 export const RECORD_KEY = 'the-belt:3d-record:v1';
 export const OPENER_COUNT = 3;
+/** How many nights the recent list keeps, newest first. */
+export const RECENT_NIGHTS = 8;
 
 export interface BestNight { total: number; grade: string; sorted: number; date: string }
+/** One night in the recent list: its number among the nights played, and how it went. */
+export interface RecentNight { night: number; won: boolean; total: number; grade: string; sorted: number; peak: boolean; date: string }
 /** The longest endless shift: freight dispatched (what ranks it), then seconds survived and points. */
 export interface EndlessBest { sorted: number; seconds: number; score: number; date: string }
 export interface NightRecord {
@@ -26,13 +30,15 @@ export interface NightRecord {
   medals: string[];
   /** The best endless shift, if any; endless shifts are not nights and leave the rest alone. */
   endless: EndlessBest | null;
+  /** The last `RECENT_NIGHTS` nights, finished or failed, newest first. */
+  recent: RecentNight[];
 }
-export interface NightResult { won: boolean; total: number; grade: string; sorted: number; opener: string; date: string }
+export interface NightResult { won: boolean; total: number; grade: string; sorted: number; opener: string; date: string; peak?: boolean }
 
 /** The subset of the Web Storage API the record needs, so the model tests can hand in a stand-in. */
 export interface RecordStorage { getItem(key: string): string | null; setItem(key: string, value: string): void }
 
-export const emptyRecord = (): NightRecord => ({ played: 0, completed: 0, best: null, openers: [], medals: [], endless: null });
+export const emptyRecord = (): NightRecord => ({ played: 0, completed: 0, best: null, openers: [], medals: [], endless: null, recent: [] });
 
 const count = (value: unknown): number => typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.floor(value) : 0;
 
@@ -51,7 +57,13 @@ export function loadRecord(storage: RecordStorage | null): NightRecord {
     const endless = data.endless && typeof data.endless === 'object'
       ? { sorted: count(data.endless.sorted), seconds: count(data.endless.seconds), score: count(data.endless.score), date: String(data.endless.date ?? '').slice(0, 10) }
       : null;
-    return { played, completed: Math.min(count(data.completed), played), best, openers, medals, endless };
+    const recent = Array.isArray(data.recent)
+      ? (data.recent as unknown[]).filter((entry): entry is Partial<RecentNight> => !!entry && typeof entry === 'object').slice(0, RECENT_NIGHTS).map((entry) => ({
+        night: count(entry.night), won: entry.won === true, total: count(entry.total), grade: String(entry.grade ?? '').slice(0, 2),
+        sorted: count(entry.sorted), peak: entry.peak === true, date: String(entry.date ?? '').slice(0, 10),
+      }))
+      : [];
+    return { played, completed: Math.min(count(data.completed), played), best, openers, medals, endless, recent };
   } catch {
     return emptyRecord();
   }
@@ -82,6 +94,8 @@ export function recordNight(record: NightRecord, night: NightResult): { record: 
       openers: record.openers.includes(night.opener) ? record.openers : [...record.openers, night.opener],
       medals: record.medals,
       endless: record.endless,
+      recent: [{ night: record.played + 1, won: night.won, total: night.total, grade: night.grade, sorted: night.sorted, peak: night.peak === true, date: night.date },
+        ...record.recent].slice(0, RECENT_NIGHTS),
     },
     newBest,
     previous,

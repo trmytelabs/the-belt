@@ -42,6 +42,8 @@ export const PRIORITY_3D = { every: 3, windowMs: 15_000, bonus: 100 } as const;
  * player makes meanwhile earns a bonus; a wrong drop costs extra on top of its
  * usual ten points.
  */
+/** On fire: from this many clean loads in a row, the worker you control walks this much faster until the streak ends. */
+export const FLOW_3D = { combo: 10, pace: 1.08 } as const;
 export const INSPECTION_3D = { at: [58_000, 148_000], durationMs: 20_000, bonus: 50, penalty: 30 } as const;
 export interface TruckLoad { route: TruckRoute; x: number; y: number; height: number; layer: number; column: number; row: number; cells: number; parcelHeight: number; overflow: boolean }
 // Conservative dimensions in model pixels for the actual parcel forms at their
@@ -53,6 +55,11 @@ const distance = (a: { x: number; y: number }, b: { x: number; y: number }): num
 
 /** Current 3D rules. The legacy depots retain the base model's layout and behavior. */
 export class ShiftModel3D extends ShiftModel {
+  /** On fire (`FLOW_3D`): a streak long enough that the worker you control walks faster. */
+  public get onFire(): boolean {
+    return this.combo >= FLOW_3D.combo;
+  }
+
   public override readonly layout = DEPOT_3D_LAYOUT;
   public override readonly capacity: number;
   /** A peak night: faster freight, a quicker belt and less room in recovery (`PEAK_NIGHT`). */
@@ -379,7 +386,8 @@ export class ShiftModel3D extends ShiftModel {
       const dx = point.x - worker.x, dy = point.y - worker.y;
       return Math.hypot(dx, dy) < 32 && dx * x + dy * y > 0 && Math.abs(dx * y - dy * x) / magnitude < 22;
     });
-    const speed = WORKER_SPEED_3D * this.walkPace * (held ? Math.max(MIN_CARRY_SPEED_3D, CARRY_MULTIPLIER[held.kind]) : 1)
+    const flow = worker === this.activeWorker && this.onFire ? FLOW_3D.pace : 1;
+    const speed = WORKER_SPEED_3D * this.walkPace * flow * (held ? Math.max(MIN_CARRY_SPEED_3D, CARRY_MULTIPLIER[held.kind]) : 1)
       * deltaMs / 1000 * requestedSpeed / magnitude * (squeezed ? 0.75 : 1);
     const previousX = worker.x, previousY = worker.y;
     const maxY = held ? this.layout.stairs.maxY - this.layout.carriedClearance : this.layout.workerMaxY;

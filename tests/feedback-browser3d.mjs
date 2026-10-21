@@ -213,7 +213,10 @@ try {
   await read(() => Object.assign(window.fixtureApp.model, { combo: 12, sorted: 12 }));
   await wait(() => document.querySelector('[data-f="combo"]').classList.contains('blazing'));
   assert.match((await hud()).combo, /^ON FIRE · 12 IN A ROW/);
+  // On fire, the ring under the worker you control burns orange; it cools when the streak breaks.
+  await wait(() => window.fixtureApp.activeRing.material.color.getHexString() === "ff8a3c");
   await read(() => Object.assign(window.fixtureApp.model, { combo: 0, score: 440 }));
+  await wait(() => window.fixtureApp.activeRing.material.color.getHexString() === "f3e6c6");
   await wait(() => document.querySelector('[data-f="combo"]').classList.contains('lost'));
   const lost = await hud();
   assert.ok(lost.combo.startsWith('STREAK LOST') && lost.combo.includes('12 IN A ROW') && lost.score === '00440' && lost.scoreClass.includes('loss'), `a broken streak and a loss show at once: ${JSON.stringify(lost)}`);
@@ -471,6 +474,12 @@ try {
   await tap(3, (id) => window.fixtureApp.model.activeWorker.id !== id, onDuty);
   await read(() => { window.fixtureApp.model.eventStopped = false; });
   await tap(2, () => window.fixtureApp.model.beltStopsRemaining === 2);
+  // A controller that drops out mid-play pauses the game; plugged back in, A resumes.
+  await read(() => { window.fakePads = []; });
+  await wait(() => window.fixtureApp.state === "paused");
+  await read(() => { window.fakePads = [{ connected: true, axes: [0, 0, 0, 0], buttons: [] }]; window.padSet(); });
+  await wait(() => window.fixtureApp.pad.connected);
+  await tap(0, () => window.fixtureApp.state === "playing");
   await read(() => window.fixtureApp.beginDriving('mall'));
   await wait(() => window.fixtureApp.state === 'driving' && window.fixtureApp.driving);
   await read(() => window.padSet({ buttons: { 7: 1 } }));
@@ -480,7 +489,7 @@ try {
   await read(() => { window.padSet(); window.fakePads = []; window.fixtureApp.restart(); });
   await wait(() => !window.fixtureApp.pad.connected);
   assert.equal(await read(() => document.querySelector('[data-f=keyhints]').hidden), false, 'and the keyboard keys again once it is gone');
-  console.log('PASS a controller pauses and resumes, walks the worker, switches workers, stops the belt, and drives and brakes the five-ton with its triggers; the HUD and HOW TO PLAY name its buttons while it is connected, and the d-pad, A and B work the pause and settings panels');
+  console.log('PASS a controller pauses and resumes (and dropping out mid-play pauses), walks the worker, switches workers, stops the belt, and drives and brakes the five-ton with its triggers; the HUD and HOW TO PLAY name its buttons while it is connected, and the d-pad, A and B work the pause and settings panels');
 
   await read(async list=>{
     const app=window.fixtureApp;app.state='paused';app.pausedFrom='playing';app.stage.end();app.overlay.setMode('shift');app.overlay.clearSpeech();app.overlay.setLunchAlert(false);app.overlay.clearCenter();

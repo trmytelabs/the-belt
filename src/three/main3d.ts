@@ -1,5 +1,5 @@
 import { DEPOT_3D_LAYOUT as SHIFT_LAYOUT, floorPileSlot, truckInteriorAt } from './layout';
-import { ARRIVALS_3D, INSPECTION_3D, PEAK_NIGHT, PRIORITY_3D, ShiftModel3D } from './ShiftModel3D';
+import { ARRIVALS_3D, FLOW_3D, INSPECTION_3D, PEAK_NIGHT, PRIORITY_3D, ShiftModel3D } from './ShiftModel3D';
 import { createPriorityMarker, updatePriorityMarker, type PriorityMarker } from './priorityMarker';
 import { GOAL_BONUS, judgeGoals, nightGoals, type NightGoal } from './nightGoals';
 import { MEDALS, awardMedals, type NightFacts } from './medals';
@@ -143,6 +143,8 @@ export class Belt3d {
   /** Tonight's three goals, chosen by the nights on record, and the live ones already announced. */
   public goals: NightGoal[] = nightGoals(this.record.played);
   private readonly goalsAnnounced = new Set<string>();
+  /** Whether the streak was on fire last frame, so the faster walk is announced once per streak. */
+  private wasOnFire = false;
   /** What the goals paid at the last results. */
   public goalBonus = 0;
   /** The medals the last results awarded for the first time. */
@@ -553,7 +555,7 @@ export class Belt3d {
     this.overlay.showPanel(`
       <div class="kicker">TERMITE &amp; SKANKY  /  ONE MORE OVERNIGHT</div>
       <h1>ANOTHER NIGHT ON THE BELT.</h1>
-      <p><b>HOW TO PLAY · Dispatch ${this.model.goal} packages together in three minutes.</b></p>
+      <details class="b3d-howto"${this.record.completed > 0 ? '' : ' open'}><summary><b>HOW TO PLAY · Dispatch ${this.model.goal} packages together in three minutes.</b></summary>
       <ol class="b3d-steps">
         <li><b>Move beside a package.</b> ${this.touch.enabled ? 'Use the stick. Tap GRAB / DELIVER' : 'Use WASD / arrows. Press SPACE'} to grab the glowing parcel.</li>
         <li><b>Follow its destination.</b> The big street number chooses the truck: <b>27 ST → MILL WOODS (10–49 ST)</b>. The guide and gold marker show where to go.</li>
@@ -568,6 +570,7 @@ export class Belt3d {
       <p>F throws toward the nearest drop. At the top of the stairs, throw down with a 30% break risk. E stops the belt. V overview.</p>
       <p>Story scenes: SPACE next line, ENTER skips the scene, ESC pauses.</p>`}
       <p>The night starts at home: go in to work, or quit UPS. After the shift, drive the five-ton to Southgate Mall and finish the deliveries. Driving controls appear when you get there.</p>
+      </details>
       ${this.recordLine()}
       ${this.seniorityLine()}
       ${this.goalsLine()}
@@ -575,7 +578,7 @@ export class Belt3d {
       ${this.record.completed > 0 ? `<p class="b3d-record">PEAK NIGHT UNLOCKED · in the flow and the rush freight comes a fifth sooner, the belt runs faster and recovery holds ${PEAK_NIGHT.capacity}. ${this.touch.enabled ? 'Tap PEAK NIGHT.' : 'Press P or click PEAK NIGHT.'} ENDLESS SHIFT${this.touch.enabled ? '' : ' (N)'} has no clock: the belt speeds up every minute until recovery overflows.</p>` : ''}
       <button type="button" data-action="night">START THE NIGHT  ↵</button>
       ${this.record.completed > 0 ? '<button type="button" data-action="peak">PEAK NIGHT  P</button><button type="button" data-action="endless">ENDLESS SHIFT  N</button>' : ''}
-      ${this.record.played > 0 ? `<button type="button" class="b3d-medals-link" data-action="medals">MEDALS · ${this.record.medals.length} OF ${MEDALS.length}</button>` : ''}
+      ${this.record.played > 0 ? `<button type="button" class="b3d-medals-link" data-action="medals">MEDALS · ${this.record.medals.length} OF ${MEDALS.length} · RECENT NIGHTS</button>` : ''}
       <a href="${window.location.pathname}?mode=3d&amp;drive=mall">TRY JUST THE DRIVE · EXPLORE THE CITY</a>
       <a href="${window.location.pathname}?mode=classic">PLAY THE ORIGINAL FULL SHIFT</a>`, { night: () => this.startNight(), peak: () => this.startNight(true), medals: () => this.showMedals(), endless: () => this.startEndless(),
         'perk-0': () => this.pickPerk(0), 'perk-1': () => this.pickPerk(1), 'perk-2': () => this.pickPerk(2) });
@@ -888,7 +891,7 @@ export class Belt3d {
       ['THROW', `${touch ? 'THROW' : pad ? 'B' : 'F'} throws to the nearest drop to save the walk. Fragile freight can break, and a throw down the stairs risks more.`],
       ['PRIORITY', `A gold ring marks urgent freight. Load it yourself before the ring runs out for +${PRIORITY_3D.bonus}.`],
       ['INSPECTIONS', `Twice a night a supervisor watches for ${INSPECTION_3D.durationMs / 1000} seconds. Each clean load while they watch pays +${m.inspectionPay}; a wrong drop costs ${INSPECTION_3D.penalty} more than usual.`],
-      ['STREAKS', 'Each clean load in a row adds 15 more points, up to +150. A wrong drop or a miss ends the streak.'],
+      ['STREAKS', `Each clean load in a row adds 15 more points, up to +150. From ${FLOW_3D.combo} in a row you are ON FIRE and walk ${Math.round((FLOW_3D.pace - 1) * 100)}% faster. A wrong drop or a miss ends the streak.`],
       ['GOALS', `Each night sets three goals, shown on the briefing and as chips on the HUD. Each one met pays +${GOAL_BONUS}.`],
       ['PERKS', `Once you finish a night, the briefing offers three perks: pick one${touch ? '' : pad ? ' with LB / RB' : ' with 1, 2 or 3'} to bend that night's rules.`],
       ['ENDLESS SHIFT', 'Also unlocked by a finished night: no clock. From the rush on, freight comes sooner and the belt runs faster every minute until recovery overflows. It keeps its own best.'],
@@ -1092,6 +1095,8 @@ export class Belt3d {
       this.overlay.showToast('CONTROLLER READY · A grab / deliver · B throw · X stop the belt · Y switch · START pause', 4200);
     }
     if (frame.connected !== this.pad.connected) this.showPadHints(frame.connected);
+    // A controller that drops out mid-play (a flat battery, a pulled cable) pauses the game, as a console does.
+    if (!frame.connected && this.pad.connected && this.canPause()) this.pause();
     this.pad = frame;
     for (const button of frame.pressed) {
       if (this.padMenu(button)) continue;
@@ -1111,7 +1116,7 @@ export class Belt3d {
    */
   private padMenu(button: PadButton): boolean {
     if (this.state !== 'briefing' && this.state !== 'paused' && this.state !== 'ended') return false;
-    const controls = [...this.overlay.root.querySelectorAll<HTMLElement>('.b3d-panel button, .b3d-panel a[href], .b3d-panel input')]
+    const controls = [...this.overlay.root.querySelectorAll<HTMLElement>('.b3d-panel button, .b3d-panel summary, .b3d-panel a[href], .b3d-panel input')]
       .filter((control) => control.offsetParent !== null);
     const at = controls.findIndex((control) => control.classList.contains('pad-focus'));
     const current = controls[at];
@@ -1200,6 +1205,8 @@ export class Belt3d {
       for (const event of m.drainEvents()) this.handleEvent(event);
       this.crew.watcher = m.inspection ? this.watcherName === 'VIC' ? 'vic' : 'shan' : null;
       this.announceGoals();
+      if (m.onFire && !this.wasOnFire) this.overlay.showToast(`ON FIRE · ${FLOW_3D.combo} IN A ROW · YOU WALK FASTER WHILE THE STREAK LASTS`, 2600);
+      this.wasOnFire = m.onFire;
       this.updateBanter();
       this.crew.update(dispersed ? 0 : dt, m, this.time);
       this.setPieces.update(dt, m, this.time);
@@ -1325,7 +1332,8 @@ export class Belt3d {
       hint: this.state === 'interlude' ? 'Belt held · your freight is safe' : this.state === 'mesa' ? 'Y steals the Mesa · N leaves it'
         : scannerSelected ? `${this.touch.enabled ? 'RESET SCANNER' : 'SPACE resets scanner'} · carried freight stays in hand`
         : held ? `${parcelAddress(held)} · ${held.label}${throwHint}${loadingHint ? ` · ${loadingHint}` : ''}` : loadingHint || this.hint,
-      overview: this.overview, routes: this.routeLegend(), scanner, goals: m.endless ? [] : this.goals.map((goal) => goal.chip(m)),
+      overview: this.overview, routes: this.routeLegend(), scanner,
+      goals: [...(m.endless ? [] : this.goals.map((goal) => goal.chip(m))), ...(this.perkInPlay ? [{ text: `PERK · ${this.perkInPlay.title}`, state: 'perk' as const }] : [])],
       brake: m.brakeRemainingMs > 0 || m.eventStopped ? `■ BELT STOPPED · ${m.beltStopsRemaining} LEFT`
         : `[E] STOP THE BELT · ${m.beltStopsRemaining} LEFT${m.beltStopsRemaining > 0 && m.brakeCooldownMs > 0 ? ` · ${Math.ceil(m.brakeCooldownMs / 1000)}s` : ''}`,
     });
@@ -1651,8 +1659,10 @@ export class Belt3d {
     }
     const active = this.workers[m.activeWorker.id];
     this.activeRing.position.set(active.root.position.x, active.root.position.y + 0.02, active.root.position.z);
-    const pulse = 1 + Math.sin(this.time * 4) * 0.05;
+    // On fire, the ring under your worker burns orange and beats faster.
+    const pulse = 1 + Math.sin(this.time * (m.onFire ? 9 : 4)) * (m.onFire ? 0.09 : 0.05);
     this.activeRing.scale.set(pulse, pulse, 1);
+    (this.activeRing.material as THREE.MeshBasicMaterial).color.setHex(m.onFire ? 0xff8a3c : 0xf3e6c6);
     this.activeRing.visible = this.state !== 'story';
     const idle = this.workers[m.activeIndex === 0 ? 'skanky' : 'termite'];
     this.sleepTag.position.set(idle.root.position.x + 0.3, idle.root.position.y + 2.5 + Math.sin(this.time * 2) * 0.08, idle.root.position.z);
@@ -1995,8 +2005,20 @@ export class Belt3d {
     const held = new Set(this.record.medals);
     const rows = MEDALS.map((medal) => `<li class="${held.has(medal.id) ? 'earned' : 'locked'}"><b>${medal.title}</b><span>${escapeHtml(medal.detail)}</span></li>`).join('');
     this.overlay.showPanel(`<div class="kicker">YOUR RECORD · MEDALS</div><h1>${held.size} OF ${MEDALS.length} EARNED</h1>
-      <ul class="b3d-medal-list">${rows}</ul><p>Kept on this device with your record.</p>
+      <ul class="b3d-medal-list">${rows}</ul>${this.recentNights()}<p>Kept on this device with your record.</p>
       <button type="button" data-action="back">BACK</button>`, { back: () => this.showBriefing() });
+  }
+
+  /** The record panel's last few nights: a bar for each night's total, oldest to newest, then the list, newest first. */
+  private recentNights(): string {
+    const recent = this.record.recent;
+    if (!recent.length) return '';
+    const top = Math.max(1, ...recent.map((night) => night.total));
+    const bars = [...recent].reverse().map((night) =>
+      `<span class="${night.won ? 'won' : 'failed'}" style="height:${Math.max(4, Math.round(night.total / top * 100))}%"></span>`).join('');
+    const rows = recent.map((night) => `<li class="${night.won ? 'won' : 'failed'}"><b>NIGHT ${night.night} · GRADE ${escapeHtml(night.grade)}${night.peak ? ' · PEAK' : ''}</b>`
+      + `<span>${formatTotal(night.total)} · ${night.sorted} dispatched${night.won ? '' : ' · shift failed'}${night.date ? ` · ${escapeHtml(night.date)}` : ''}</span></li>`).join('');
+    return `<p class="b3d-record"><b>RECENT NIGHTS</b></p><div class="b3d-trend" aria-hidden="true">${bars}</div><ol class="b3d-recent">${rows}</ol>`;
   }
 
   /** Once a night is finished, the briefing offers three perks for tonight; 1, 2 or 3 (or a click) picks one. */
@@ -2069,7 +2091,7 @@ export class Belt3d {
   /** Adds this night to the record and says how it compares with the best, and any promotion or medal it earned. */
   private recordResults(won: boolean, total: number, grade: string, night: Omit<NightFacts, 'openersSeen' | 'nightsPlayed'>): string {
     const before = seniority(this.record).level;
-    const result = recordNight(this.record, { won, total, grade, sorted: this.model.sorted, opener: this.story.opener.id, date: new Date().toISOString().slice(0, 10) });
+    const result = recordNight(this.record, { won, total, grade, sorted: this.model.sorted, opener: this.story.opener.id, date: new Date().toISOString().slice(0, 10), peak: this.model.peak });
     const awarded = awardMedals(result.record.medals, { ...night, openersSeen: result.record.openers.length, nightsPlayed: result.record.played });
     this.record = { ...result.record, medals: awarded.medals };
     this.medalsEarned = awarded.fresh.map((medal) => medal.id);
@@ -2078,6 +2100,7 @@ export class Belt3d {
     const now = seniority(this.record);
     const promoted = now.level > before ? `<p class="b3d-medal"><b>PROMOTED · ${now.rank.title}</b> · ${rankNeeds(now.rank).toLowerCase()}</p>` : '';
     const medals = promoted + awarded.fresh.map((medal) => `<p class="b3d-medal"><b>MEDAL · ${medal.title}</b> · ${escapeHtml(medal.detail)}</p>`).join('');
+    if (result.newBest || promoted || awarded.fresh.length) audioSystem.fanfare(result.newBest);
     if (result.newBest) return `<p class="b3d-best"><b>NEW PERSONAL BEST · ${nightLabel}</b>${result.previous ? ` · beat ${formatTotal(result.previous.total)}` : ''}</p>${medals}`;
     const best = this.record.best;
     return `<p class="b3d-best">${best ? `BEST NIGHT ${formatTotal(best.total)} · GRADE ${escapeHtml(best.grade)}` : 'NO SHIFT FINISHED YET'} · ${nightLabel} · ${this.record.completed} finished</p>${medals}`;
@@ -2090,6 +2113,7 @@ export class Belt3d {
     const result = recordEndless(this.record, { sorted: m.sorted, seconds, score: m.score, date: new Date().toISOString().slice(0, 10) });
     this.record = result.record;
     saveRecord(browserStorage(), this.record);
+    if (result.newBest) audioSystem.fanfare(true);
     const best = this.record.endless!;
     const bestClock = `${Math.floor(best.seconds / 60)}:${String(best.seconds % 60).padStart(2, '0')}`;
     this.overlay.showPanel(`
@@ -2149,6 +2173,7 @@ export class Belt3d {
       <p>${m.thrownDeliveries} thrown in clean · ${m.damaged} broken (−${m.breakagePenalty} points${m.damaged > THROWING.gradeForgivenBreaks ? `, ${m.gradedBreaks} counted against the grade` : ''})</p>
       ${mall ? `<p>MALL RUN · ${mall.delivered}/6 delivered · ${mall.signatures}/6 signed · five-ton ${home ? 'returned' : 'not returned'} · +${this.mallBonus}</p>
       <p>DRIVING · ${this.drivingCollisions} bumps${this.drivingRedLights ? ` · ${this.drivingRedLights} red lights` : ''} · −${this.drivingPenalty} points · cargo safe${this.driveTimes.length ? ` · ${this.driveTimes.map(driveClock).join(' and ')}${this.driveBonus ? ` · against par +${this.driveBonus}` : ''}` : ''}</p>
+      <p class="b3d-sum">SHIFT ${m.score} + NIGHT GOALS ${judged.bonus} + MALL RUN ${this.mallBonus} + ON PAR ${this.driveBonus} − ROAD ${this.drivingPenalty}</p>
       <p><b>NIGHT TOTAL ${String(total).padStart(5, '0')}</b> · ${m.gradeQuote}</p>` : ''}
       <button type="button">ANOTHER NIGHT  ↵</button>
       <a href="${window.location.pathname}?mode=classic">PLAY THE ORIGINAL FULL SHIFT</a>`, () => this.restart());
