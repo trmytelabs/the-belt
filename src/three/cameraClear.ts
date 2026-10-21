@@ -12,13 +12,19 @@ import * as THREE from 'three';
 
 const direction = new THREE.Vector3();
 const point = new THREE.Vector3();
+const arc = new THREE.Vector3();
+/** How far up the crane goes when hemmed in: about 80 degrees, nearly over the vehicle. */
+const CRANE_TOP = 1.4;
+const CRANE_STEPS = 8;
 
 /**
  * Pulls `camera` toward `anchor` (a point on the vehicle) until the segment
  * between them stays `margin` clear of every box, but no nearer the anchor
- * than `minDistance` unless that would still leave it inside a box (a
- * building hard by the vehicle in a tight turn); returns true when it moved.
- * A camera already inside a box comes out to that box's near side.
+ * than `minDistance`; returns true when it moved. A camera already inside a
+ * box comes out to that box's near side. Hemmed in (a building hard by the
+ * vehicle in a tight turn, so even `minDistance` is inside it), the camera
+ * rises over the vehicle at that distance instead, and only if no height is
+ * clear does it come nearer than the minimum.
  */
 export function pullClear(anchor: THREE.Vector3, camera: THREE.Vector3, boxes: readonly THREE.Box3[], margin = 0.4, minDistance = 0.5): boolean {
   direction.subVectors(camera, anchor);
@@ -33,11 +39,33 @@ export function pullClear(anchor: THREE.Vector3, camera: THREE.Vector3, boxes: r
   if (nearest === Infinity) return false;
   const clear = Math.max(0, nearest - margin);
   let distance = Math.max(minDistance, clear);
-  // Held at minDistance the camera can still be inside the box it was pulled from; then it comes as near as it has to.
-  if (distance > clear && boxes.some((box) => box.containsPoint(point.copy(anchor).addScaledVector(direction, distance)))) distance = clear;
+  if (distance > clear && boxes.some((box) => box.containsPoint(point.copy(anchor).addScaledVector(direction, distance)))) {
+    // Held at minDistance the camera would be inside the box: crane up over the vehicle, or failing that come as near as it has to.
+    if (craneUp(anchor, boxes, margin, minDistance, camera)) return true;
+    distance = clear;
+  }
   if (distance >= length) return false;
   camera.copy(point.copy(anchor).addScaledVector(direction, distance));
   return true;
+}
+
+/**
+ * Puts `camera` at the first point, `distance` from `anchor`, on an arc from
+ * the current line of sight (`direction`) up to nearly overhead whose line
+ * to the anchor stays `margin` clear of every box; false when none does.
+ */
+function craneUp(anchor: THREE.Vector3, boxes: readonly THREE.Box3[], margin: number, distance: number, camera: THREE.Vector3): boolean {
+  const flat = Math.hypot(direction.x, direction.z);
+  const from = Math.atan2(direction.y, flat);
+  if (flat < 1e-6 || from >= CRANE_TOP) return false;
+  for (let step = 1; step <= CRANE_STEPS; step += 1) {
+    const angle = from + (CRANE_TOP - from) * step / CRANE_STEPS;
+    arc.set(direction.x / flat * Math.cos(angle), Math.sin(angle), direction.z / flat * Math.cos(angle));
+    if (boxes.some((box) => entry(anchor, arc, distance + margin, box) !== null)) continue;
+    camera.copy(anchor).addScaledVector(arc, distance);
+    return true;
+  }
+  return false;
 }
 
 /** Where a ray from `origin` along `direction` first enters `box` within `length`, or null; an origin inside the box enters at 0. */
