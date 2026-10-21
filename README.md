@@ -139,6 +139,9 @@ SORT!** countdown starts the shift.
 - E / STOP THE BELT stops it for two seconds. You get three stops per 3D run,
   with a 15-second cooldown starting on each use. The controls show stops left
   and cooldown time; starting another night restores all three.
+- Controllers with the standard layout work too: stick or d-pad to move, A to
+  grab and deliver, B to throw, X to stop the belt, Y to switch, Back for the
+  overview, Start to pause; on the road the triggers are gas and brake.
 - Escape pauses; M toggles sound. Losing focus pauses the preview automatically.
 - The closer camera follows your worker up and down the belt, leads them a
   little as they walk, and reframes when you switch workers. At the back of

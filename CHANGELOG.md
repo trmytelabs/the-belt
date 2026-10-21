@@ -2,6 +2,16 @@
 
 ## 0.1.0 — development snapshot
 
+- Add controller support to the 3D game (`gamepad.ts`), for pads with the
+  browser's standard layout. The left stick or d-pad walks and steers; the
+  right and left triggers are the five-ton's gas and brake; A grabs and
+  delivers, confirms and parks; B throws (and skips a story scene); X stops the
+  belt (and moves the mall cart); Y switches workers (and on the Mesa, steals
+  it); Back is the overview or the cab view; Start pauses. Buttons press the
+  same keys the keyboard does, so every screen behaves the same. A toast
+  confirms the controller when it connects, and while it is connected the
+  HUD's key line and the grab prompt name its buttons. Pads that can rumble do
+  so for a breakage, a bump on the road and a wrong drop.
 - Give the 3D conveyor its sound. While sorting goes on, a low motor hum whose
   pitch follows the belt's speed and a band of roller rattle that clacks at
   the rollers' rate and grows with the freight riding it play under the

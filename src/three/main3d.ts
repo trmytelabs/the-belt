@@ -42,13 +42,14 @@ import { DECISION, HOME_DECISION, LEAVE_HOUSE, QUIT_ENDING, QUIT_NIGHT, type Hom
 import { DrivingView } from './driving';
 import { BELT_SOLID_WIDTH, HEAD_DRIVE, clearReceiving } from './receivingCollision';
 import { TouchControls } from './touch';
+import { GamepadInput, IDLE_PAD, padKey, type PadFrame } from './gamepad';
 import { Overlay } from './overlay';
 import { OPENER_COUNT, browserStorage, formatTotal, loadRecord, recordNight, saveRecord, type NightRecord } from './nightRecord';
 import { alignParcelToSurface, createParcelView, setParcelCarried, setParcelModels, type ParcelView } from './parcels';
 import { disposeObject3D } from './resources';
 import { loadSurfaces } from './textures';
 import {
-  BELT_HEIGHT, PLATFORM_HEIGHT, ROUTE_COLORS, actorSurfaceAt, setFromModel, surfaceAt, surfaceUnder, textSprite, toWorld, toWorldX, toWorldZ,
+  BELT_HEIGHT, PLATFORM_HEIGHT, ROUTE_COLORS, actorSurfaceAt, setFromModel, surfaceAt, surfaceUnder, textSprite, textTexture, toWorld, toWorldX, toWorldZ,
 } from './space';
 import { DepotWorld, SKANKY_SPEC, TERMITE_SPEC } from './world';
 
@@ -153,6 +154,9 @@ export class Belt3d {
   private readonly deliveryHalo: THREE.Mesh;
   private readonly keys = new Set<string>();
   private readonly reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  /** A connected controller, read once a frame. */
+  private readonly gamepad = new GamepadInput();
+  public pad: PadFrame = { ...IDLE_PAD };
   private overview = false;
   private hint = 'Approach the belt · read the street address';
   private chapterHint = '';
@@ -907,9 +911,38 @@ export class Belt3d {
     const keyX = (this.keys.has('KeyD') || this.keys.has('ArrowRight') ? 1 : 0) - (this.keys.has('KeyA') || this.keys.has('ArrowLeft') ? 1 : 0);
     const keyY = (this.keys.has('KeyS') || this.keys.has('ArrowDown') ? 1 : 0) - (this.keys.has('KeyW') || this.keys.has('ArrowUp') ? 1 : 0);
     return {
-      x: Math.max(-1, Math.min(1, keyX + this.touch.move.x)),
-      y: Math.max(-1, Math.min(1, keyY + this.touch.move.y)),
+      x: Math.max(-1, Math.min(1, keyX + this.touch.move.x + this.pad.move.x)),
+      y: Math.max(-1, Math.min(1, keyY + this.touch.move.y + this.pad.move.y)),
     };
+  }
+
+  /** With a controller in use, the HUD and the grab prompt name its buttons; without one, the keyboard's again. */
+  private showPadHints(pad: boolean): void {
+    this.overlay.setPadHints(pad);
+    if (this.touch.enabled) return;
+    const material = this.pickupPrompt.material;
+    const previous = material.map;
+    material.map = textTexture([pad ? 'A · GRAB' : 'SPACE · GRAB'], { width: 150, height: 30, color: '#ffefc1', background: '#172b30' });
+    material.needsUpdate = true;
+    previous?.dispose();
+  }
+
+  /** Reads the controller: its stick and triggers feed movement and the pedals, and each button press presses its key. */
+  private pollGamepad(): void {
+    const pads = typeof navigator.getGamepads === 'function' ? [...navigator.getGamepads()] : [];
+    const frame = this.gamepad.poll(pads);
+    if (frame.connected && !this.pad.connected) {
+      this.overlay.showToast('CONTROLLER READY · A grab / deliver · B throw · X stop the belt · Y switch · START pause', 4200);
+    }
+    if (frame.connected !== this.pad.connected) this.showPadHints(frame.connected);
+    this.pad = frame;
+    for (const button of frame.pressed) {
+      const code = padKey(this.state, button);
+      if (!code) continue;
+      // The same path as a key press, so every screen behaves exactly as it does for the keyboard.
+      window.dispatchEvent(new KeyboardEvent('keydown', { code }));
+      window.dispatchEvent(new KeyboardEvent('keyup', { code }));
+    }
   }
 
   private tick(): void {
@@ -917,6 +950,7 @@ export class Belt3d {
     const dt = Math.min(0.1, (now - this.lastFrame) / 1000);
     this.lastFrame = now;
     this.time += dt;
+    this.pollGamepad();
     const m = this.model;
     let dispersed = false;
 
@@ -1001,12 +1035,13 @@ export class Belt3d {
     } else if (this.state === 'driving' && this.driving) {
       const drive = this.driving, move = this.movement();
       const wasBraking = drive.braking;
-      drive.update(dt, { steer: move.x, throttle: Math.max(0, -move.y, this.touch.pedals.throttle), brake: Math.max(0, move.y, this.touch.pedals.brake) });
+      drive.update(dt, { steer: move.x, throttle: Math.max(0, -move.y, this.touch.pedals.throttle, this.pad.throttle), brake: Math.max(0, move.y, this.touch.pedals.brake, this.pad.brake) });
       if (drive.braking && !wasBraking) audioSystem.drivingCue('brake');
       for (const event of drive.drainEvents()) {
         if (event.type === 'collision') {
           this.drivingPenalty += event.points; this.drivingCollisions++;
           audioSystem.drivingCue('collision');
+          this.gamepad.rumble(event.kind === 'cone' ? 0.35 : 0.7, 220);
           this.drivingView?.jolt(event.kind === 'cone' ? 0.18 : 0.4);
           this.overlay.showToast(`EASY DOES IT · −${event.points} points${drive.origin === 'home' ? '' : ' · cargo safe'}`, 1600);
         } else if (event.type === 'red-light') {
@@ -1192,6 +1227,7 @@ export class Belt3d {
     if (event.type === 'priority') { this.handlePriority(event); return; }
     const sound = event.assisted || event.type === 'wrong' && !event.message.startsWith('WRONG DROP') ? undefined : EVENT_SOUNDS[event.type];
     if (sound) audioSystem.play(sound);
+    if (event.type === 'wrong' && event.message.startsWith('WRONG DROP')) this.gamepad.rumble(0.25, 120);
     // The worker whose hands did it: the event names a worker, or stands nearest the spot.
     const actor = event.workerId ? this.workers[event.workerId]
       : this.workers[[...this.model.workers].sort((a, b) => Math.hypot(a.x - event.x, a.y - event.y) - Math.hypot(b.x - event.x, b.y - event.y))[0].id];
@@ -1218,6 +1254,7 @@ export class Belt3d {
       if (view) this.throwStarts.set(event.packageId, view.root.position.clone());
     }
     if (event.type === 'damage') {
+      this.gamepad.rumble(0.8, 260);
       const parcel = this.model.packages.find((item) => item.id === event.packageId);
       const lost = Math.abs(event.score ?? 0);
       this.overlay.pop(`BROKEN −${lost}`, '#f3987c', toWorld(event, surfaceAt(event.x, event.y) + 2.0));

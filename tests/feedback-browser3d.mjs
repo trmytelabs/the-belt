@@ -225,6 +225,49 @@ try {
   }
   console.log('PASS real Space grabs and parks the cart, highlights available truck freight, skips emptied slots and loads two full bundles matching their store box counts');
 
+  // A controller (a stand-in for navigator.getGamepads): Start pauses and A resumes, the stick walks,
+  // Y switches workers, X stops the belt, and the triggers drive and brake the five-ton.
+  await read(() => {
+    window.fakePads = [{ connected: true, axes: [0, 0, 0, 0], buttons: [] }];
+    window.padSet = (over = {}) => {
+      const pad = window.fakePads[0];
+      pad.axes = over.axes ?? [0, 0, 0, 0];
+      pad.buttons = Array.from({ length: 17 }, (_, index) => { const value = over.buttons?.[index] ?? 0; return { pressed: value > 0.5, value }; });
+    };
+    window.padSet();
+    navigator.getGamepads = () => window.fakePads;
+    const app = window.fixtureApp; app.restart(); app.forceStory({ breakAtMs: 1e12 }); app.benStarted = true;
+    app.model.autonomousCoworker = false; app.model.eventStopped = true; app.overlay.clearCenter(); app.state = 'playing';
+  });
+  await wait(() => window.fixtureApp.pad.connected);
+  assert.deepEqual(await read(() => ({ pad: !document.querySelector('[data-f=padhints]').hidden, keys: !document.querySelector('[data-f=keyhints]').hidden })), { pad: true, keys: false }, 'the HUD names the controller buttons');
+  const tap = async (index, until, arg) => {
+    await read((i) => window.padSet({ buttons: { [i]: 1 } }), index);
+    await wait(until, arg);
+    await read(() => window.padSet());
+    await page.waitForTimeout(60);
+  };
+  await tap(9, () => window.fixtureApp.state === 'paused');
+  await tap(0, () => window.fixtureApp.state === 'playing');
+  const startY = await read(() => window.fixtureApp.model.activeWorker.y);
+  await read(() => window.padSet({ axes: [0, 1] }));
+  await wait((y) => window.fixtureApp.model.activeWorker.y > y + 20, startY);
+  await read(() => window.padSet());
+  const onDuty = await read(() => window.fixtureApp.model.activeWorker.id);
+  await tap(3, (id) => window.fixtureApp.model.activeWorker.id !== id, onDuty);
+  await read(() => { window.fixtureApp.model.eventStopped = false; });
+  await tap(2, () => window.fixtureApp.model.beltStopsRemaining === 2);
+  await read(() => window.fixtureApp.beginDriving('mall'));
+  await wait(() => window.fixtureApp.state === 'driving' && window.fixtureApp.driving);
+  await read(() => window.padSet({ buttons: { 7: 1 } }));
+  await wait(() => window.fixtureApp.driving.speed > 3);
+  await read(() => window.padSet({ buttons: { 6: 1 } }));
+  await wait(() => Math.abs(window.fixtureApp.driving.speed) < 0.5);
+  await read(() => { window.padSet(); window.fakePads = []; window.fixtureApp.restart(); });
+  await wait(() => !window.fixtureApp.pad.connected);
+  assert.equal(await read(() => document.querySelector('[data-f=keyhints]').hidden), false, 'and the keyboard keys again once it is gone');
+  console.log('PASS a controller pauses and resumes, walks the worker, switches workers, stops the belt, and drives and brakes the five-ton with its triggers; the HUD names its buttons while it is connected');
+
   await read(async list=>{
     const app=window.fixtureApp;app.state='paused';app.pausedFrom='playing';app.stage.end();app.overlay.setMode('shift');app.overlay.clearSpeech();app.overlay.setLunchAlert(false);app.overlay.clearCenter();
     await app.useCharacterModels(list);
