@@ -277,7 +277,9 @@ try {
   const stick = await touch.getByLabel('Steer truck', { exact: true }).boundingBox();
   const steerPoint = { x: stick.x + 15, y: stick.y + stick.height / 2, id: 2 };
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [gasPoint, steerPoint] });
-  await touch.waitForTimeout(250);
+  // Steer until the truck has turned: a quarter second of wall time was enough on a GPU but not on CI's
+  // software renderer, where the same time covers fewer simulated frames.
+  await touch.waitForFunction(() => window.fixtureApp.driving.heading > Math.PI / 2 + 0.1, null, { polling: 10, timeout: 30_000 });
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [steerPoint] });
   assert.equal(await touch.evaluate(() => window.fixtureApp.touch.pedals.throttle), 1, 'releasing steering keeps the held gas pedal');
   assert.ok(await touch.evaluate(() => window.fixtureApp.driving.heading > Math.PI / 2 + 0.1));
