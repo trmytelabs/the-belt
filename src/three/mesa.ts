@@ -95,7 +95,8 @@ export class MesaEncounter {
       // Vic hurries up the west lane to make his offer.
       this.vicMs += dtMs;
       const vic = this.crew.actor('vic');
-      vic.place(401, mix(40, 278, this.vicMs / 1100));
+      const run = Math.min(1, this.vicMs / 1100);
+      vic.place(401, mix(40, 278, 1 - (1 - run) * (1 - run)));
       vic.faceAngle = this.vicMs >= 1100 ? Math.PI / 2 : null;
       vic.pose = this.stage === 'choice' ? 'announce' : 'none';
       this.crew.animateActors(dtMs / 1000, wallTime, new Set(['vic']));

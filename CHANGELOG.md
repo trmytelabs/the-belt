@@ -2,6 +2,23 @@
 
 ## 0.1.0 — development snapshot
 
+- Fixes from the owner's play. The screen no longer flashes black on the
+  drives. Two causes, both found by sampling every rendered frame of a drive:
+  now and then a sub-sample of the multisampled scene resolved to
+  not-a-number, and the bloom's mip blur spread that one pixel over the whole
+  frame, which came out fully black; the bloom's input filter now treats such a
+  value as no light (`bloomGuard.ts`). And the chase camera, lagging through
+  a corner, could end a run of frames inside a building beside the road; it now
+  slides along its line of sight toward the truck until that line is clear of
+  every building, lamp post and signal (`cameraClear.ts`). The five-ton in the lot and on the road stage
+  now wears the same downloaded model as the drive, fitted to the procedural
+  truck's own length so the stall and the layout keep their clearances (the
+  mall's dock truck keeps its cutaway body, whose open tailgate the cart runs
+  use). Shan walks to Skanky facing the way he goes in the clock-out and the
+  mall assignment, and turns to him on arrival, instead of crab-walking sideways.
+  The two figures in the Mesa dream carry a motion record, so the crew models
+  play seated idles under the hand-set guitar and controller arms instead of
+  copying a few sine waves; Vic eases into his spot for the Mesa offer.
 - Make the 3D night colder and livelier. One wind blows through every
   snowfall in the game (the depot yards, the lot and the other stages, the
   drive), a steady breeze toward the west with slow swells and a gust every two

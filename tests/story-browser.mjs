@@ -325,7 +325,18 @@ try {
   assert.equal(await read(() => window.fixtureApp.story.chapter), 'clockout');
   await read(() => { window.fixtureApp.crew.celebrationMs = 12_950; });
   await wait(() => window.fixtureApp.cutscene?.scene.id === 'mall-assignment');
-  await page.waitForTimeout(800);
+  // Shan walks down to Skanky facing the way he goes (he used to crab-walk sideways).
+  const shanWalk = [];
+  for (let i = 0; i < 30; i++) {
+    shanWalk.push(await read(() => { const root = window.fixtureApp.crew.actor('shan').root; return { x: root.position.x, z: root.position.z, yaw: root.rotation.y }; }));
+    await page.waitForTimeout(40);
+  }
+  const moving = shanWalk.slice(1).map((s, i) => ({ ...s, dx: s.x - shanWalk[i].x, dz: s.z - shanWalk[i].z })).filter(s => Math.hypot(s.dx, s.dz) > 0.02);
+  assert.ok(moving.length >= 3, `Shan walks during the first beat: ${moving.length} moving samples`);
+  for (const s of moving) {
+    const off = Math.atan2(Math.sin(Math.atan2(s.dx, s.dz) - s.yaw), Math.cos(Math.atan2(s.dx, s.dz) - s.yaw));
+    assert.ok(Math.abs(off) < 1.0, `Shan faces the way he walks: ${off.toFixed(2)} rad off`);
+  }
   await shot('mall-assignment');
   await spoken("SHAN O'MAC: Skanky. Mall run. The five-ton's loaded.");
   await page.keyboard.press('Enter');

@@ -102,6 +102,59 @@ try {
   await page.waitForFunction(() => window.fixtureApp.driving.speed > 10, null, { polling: 10 });
   await page.keyboard.down('KeyA'); await page.waitForTimeout(220); await page.keyboard.up('KeyA');
   assert.ok(await page.evaluate(() => window.fixtureApp.driving.heading > Math.PI / 2 + 0.1), 'A changes actual world heading to the left');
+  // A hard turn at speed: the chase camera lags through the corner, and must never end a frame inside a building or a lamp post
+  // (that showed as the screen flashing black), nor present a frame with nothing in it.
+  await page.evaluate(() => {
+    const app = window.fixtureApp, view = app.drivingView, gl = app.renderer.getContext(), draw = app.draw.bind(app), px = new Uint8Array(4);
+    // The camera's place is checked on every game tick (a software renderer spaces its draws out); the picture on every draw.
+    window.cameraFrames = { ticks: 0, inside: 0, draws: 0, black: 0 };
+    const update = view.update.bind(view);
+    view.update = (model, dt) => {
+      update(model, dt);
+      window.cameraFrames.ticks += 1;
+      if (view.blockers.some(box => box.containsPoint(view.camera.position))) window.cameraFrames.inside += 1;
+    };
+    app.draw = () => {
+      draw();
+      window.cameraFrames.draws += 1;
+      const { width, height } = app.renderer.domElement; let lit = 0;
+      for (let i = 1; i < 6; i++) for (let j = 1; j < 6; j++) { gl.readPixels(Math.floor(width * i / 6), Math.floor(height * j / 6), 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); if (px[0] + px[1] + px[2] > 12) lit += 1; }
+      if (lit === 0) window.cameraFrames.black += 1;
+    };
+  });
+  for (const key of ['KeyA', 'KeyD', 'KeyA']) { await page.keyboard.down(key); await page.waitForTimeout(900); await page.keyboard.up(key); await page.waitForTimeout(500); }
+  const cameraFrames = await page.evaluate(() => window.cameraFrames);
+  // A software renderer runs only a handful of ticks in those seconds; a real GPU runs dozens.
+  const minimumTicks = await page.evaluate(() => window.fixtureApp.quality === 'high' ? 21 : 1);
+  assert.ok(cameraFrames.ticks >= minimumTicks && cameraFrames.draws >= 1 && cameraFrames.inside === 0 && cameraFrames.black === 0, `the chase camera stays out of the scenery through hard turns: ${JSON.stringify(cameraFrames)}`);
+  // One not-a-number pixel through the bloom: a stock bloom pass spreads it over the frame (the black flashes), the game's guarded one
+  // leaves the rest of the frame intact. Only the high-quality renderer has the bloom; the software renderer draws without it.
+  const bloomCheck = await page.evaluate(() => {
+    const app = window.fixtureApp;
+    if (!app.composer) return null;
+    const guarded = app.composer.passes.find(p => p.strength !== undefined && p.radius !== undefined);
+    const size = 64, Target = app.composer.renderTarget1.constructor, Material = guarded.materialHighPassFilter.constructor;
+    const seed = new Material({ uniforms: { zero: { value: 0 } }, vertexShader: 'void main() { gl_Position = vec4( position.xy, 0.0, 1.0 ); }',
+      fragmentShader: 'uniform float zero; void main() { bool hole = abs( gl_FragCoord.x - 20.5 ) < 0.6 && abs( gl_FragCoord.y - 20.5 ) < 0.6; float bad = uintBitsToFloat( 0x7fc00000u + uint( zero ) ); gl_FragColor = hole ? vec4( bad ) : vec4( 0.4, 0.4, 0.4, 1.0 ); }' });
+    const spread = (bloom) => {
+      const target = new Target(size, size, { type: app.composer.renderTarget1.texture.type });
+      bloom.setSize(size, size);
+      const quad = guarded._fsQuad ?? guarded.fsQuad, previous = quad.material;
+      quad.material = seed; app.renderer.setRenderTarget(target); quad.render(app.renderer); quad.material = previous;
+      bloom.render(app.renderer, null, target, 0, false);
+      const raw = new Uint16Array(size * size * 4); app.renderer.readRenderTargetPixels(target, 0, 0, size, size, raw);
+      let bad = 0; for (let i = 0; i < raw.length; i += 4) if ((raw[i] & 0x7c00) === 0x7c00) bad += 1;
+      target.dispose(); app.renderer.setRenderTarget(null);
+      return bad;
+    };
+    const stock = new guarded.constructor(guarded.resolution.clone(), guarded.strength, guarded.radius, guarded.threshold);
+    const result = { stock: spread(stock), guarded: spread(guarded) };
+    stock.dispose(); seed.dispose();
+    // Back to the game's own sizes for every pass.
+    app.resize();
+    return result;
+  });
+  if (bloomCheck) assert.ok(bloomCheck.stock > 100 && bloomCheck.guarded <= 1, `a stock bloom spreads one invalid pixel, the game's guarded bloom does not: ${JSON.stringify(bloomCheck)}`);
   await page.keyboard.down('KeyD'); await page.waitForTimeout(220); await page.keyboard.up('KeyD');
   if (process.env.BELT_SCREENSHOT_DIR) await page.screenshot({ path: join(process.env.BELT_SCREENSHOT_DIR, 'driving-road.png') });
   await page.keyboard.up('KeyW');

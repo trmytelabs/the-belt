@@ -15,6 +15,7 @@ import { DrivingModels } from './drivingModels';
 import { DrivingNavigation } from './drivingNavigation';
 import { snowMaterial, Snowfall } from './snow';
 import { windAt } from './wind';
+import { blocker, pullClear } from './cameraClear';
 import { TRAFFIC_VARIANTS, TrafficBatch } from './trafficBatch';
 import { createCityWindows } from './cityWindows';
 
@@ -31,6 +32,8 @@ export class DrivingView {
   public buildingCount = 0;
   public readonly navigation: DrivingNavigation;
   private readonly models: DrivingModels;
+  /** Padded boxes the chase camera stays out of: the buildings, the lamp posts and the signals. */
+  public readonly blockers: THREE.Box3[] = [];
   private readonly signalProps: { signal: CitySignal; axis: CityAxis; root: THREE.Group; bulbs: THREE.Mesh<THREE.SphereGeometry, THREE.MeshStandardMaterial>[] }[] = [];
   /** Procedural stand-ins for the traffic, shown until the batched sedans are built. */
   private readonly traffic = new Map<string, THREE.Group>();
@@ -120,6 +123,8 @@ export class DrivingView {
       slot.position.set(x, 0, z); slot.rotation.y = heading;
       const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.12, 7, 7), metal); pole.position.y = 3.5; slot.add(pole); scene.add(slot);
       loads.push(this.models.place(slot, 'lamp', { y: 7.5 }, [pole]));
+      // The post and the reach of its curved arm, for the camera.
+      this.blockers.push(blocker(x - Math.sin(heading) * 0.5, z - Math.cos(heading) * 0.5, 0.4, 0.4, 8, 0.9));
       const lens = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.08, 0.45), lampMaterial); lens.position.set(0, 7.32, -1.03); slot.add(lens);
       const pool = new THREE.Mesh(new THREE.CircleGeometry(7, 18), new THREE.MeshBasicMaterial({ color: 0xffce8a, transparent: true, opacity: 0.035, depthWrite: false }));
       pool.rotation.x = -Math.PI / 2; pool.position.set(x - Math.sin(heading) * 3, 0.03, z - Math.cos(heading) * 3); scene.add(pool);
@@ -136,6 +141,7 @@ export class DrivingView {
     }
     for (const building of CITY_BUILDINGS) {
       const { x, z, width, depth, height, variant } = building, index = this.buildingCount++;
+      this.blockers.push(blocker(x, z, width, depth, height, 0.7));
       const slot = new THREE.Group(); slot.name = 'city-building'; slot.userData.keep = true; slot.position.set(x, 0, z);
       const fallback = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), standard(index % 2 ? 0x47515c : 0x5e605e, 0.9));
       fallback.position.y = height / 2; slot.add(fallback); scene.add(slot);
@@ -171,6 +177,7 @@ export class DrivingView {
       root.position.set(signal.x - tx * 7 - tz * 8.4, 0, signal.z - tz * 7 + tx * 8.4); root.rotation.y = heading - Math.PI / 2;
       const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 4.6, 8), metal); pole.position.y = 2.3; root.add(pole);
       loads.push(this.models.place(root, 'signal', { y: 5.2 }, [pole]));
+      this.blockers.push(blocker(root.position.x, root.position.z, 1.2, 1.2, 5.6, 0.6));
       const housing = new THREE.Mesh(new THREE.BoxGeometry(0.72, 1.8, 0.42), standard(0x172329, 0.8)); housing.position.set(-0.34, 4.45, 0.22); root.add(housing);
       const bulbs = [0xff3326, 0xffbd36, 0x55f295].map((color, n) => {
         const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.05 }));
@@ -388,6 +395,9 @@ export class DrivingView {
     const target = new THREE.Vector3(p.x + p.tx * 10, 1.2, p.z + p.tz * 10);
     const follow = !this.snapped ? 1 : 1 - Math.exp(-dt * 5);
     this.camera.position.lerp(chase, follow); this.look.lerp(target, follow);
+    // Never inside the scenery: a corner cut used to put the camera in a building, and a kerb-side pass through a lamp post.
+    // The line runs from the roof, so a pulled-in camera still looks over the truck at the road, and stops 3.5 m out.
+    pullClear(new THREE.Vector3(p.x, 3.6, p.z), this.camera.position, this.blockers, 0.4, 3.5);
     this.camera.lookAt(this.look); this.snapped = true;
     this.jolting = model.paused ? this.jolting : this.jolting * Math.exp(-dt * 6);
     if (this.jolting > 0.005 && !this.reducedMotion && !model.paused) {

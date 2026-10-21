@@ -677,7 +677,9 @@ export function faceToward(character: Character, target: number, dt: number, mov
   const { root } = character;
   const motion = character.motion;
   const turn = motion?.turn ?? null;
-  if (turn) {
+  // Setting off part way through a turn on the spot: the feet are walking now, so the quick twist takes over.
+  if (turn && moving && motion) motion.turn = null;
+  else if (turn) {
     const progress = Math.min(1, (now - turn.start) / TURN_SECONDS);
     // Ease in and out, the way a step round does.
     const eased = progress * progress * (3 - 2 * progress);

@@ -89,6 +89,43 @@ and replay starts a fresh drive. The regular briefing also links to practice.
 arrow, and `drivingModels.ts` owns imported art. `main3d.ts` connects them
 to the existing story. The shared story scripts and mall rules are preserved.
 
+## Black frames and the bloom
+
+On the high-quality renderer the scene draws into a multisampled half-float
+buffer and then through ambient occlusion, bloom and the output pass. At some
+views a sub-sample of a sliver of geometry resolves to not-a-number: one wrong
+pixel (a single-sample render of the same view has none). The bloom blurs its
+input down a chain of ever smaller mip levels, so that one value reached every
+pixel of the bloom and the frame came out fully black. `guardBloom`
+(`bloomGuard.ts`) makes the bloom's input filter treat a not-a-number or
+infinite texel as no light; `tests/bloom-guard-model.mjs` checks the shader.
+The software renderer draws without the composer and never showed it.
+
+## The chase camera and the scenery
+
+The camera follows a point nine metres behind the truck on an exponential lag.
+Through a corner the lag swings it wide, and the city's blocks begin only
+12.5 m from each street's centreline, so the camera used to spend a run of
+frames inside a building, and a pass along the kerb could put it through a lamp
+post for one frame: each a frame of the inside of a mesh, black or near black,
+which the owner saw as the screen flashing. `DrivingView` keeps a list of
+padded boxes (the buildings, the lamp posts with the reach of their arms, the
+signals) and after each frame's lag `pullClear` (`cameraClear.ts`) slides the
+camera along its line of sight toward the truck until that line is clear of all
+of them. `tests/camera-clear-model.mjs` checks the geometry; the driving
+browser suite drives three hard turns and asserts the camera never ends a frame
+inside a box and no frame is presented empty.
+
+## The five-ton everywhere
+
+The drive fits a downloaded delivery truck (`cars/delivery`) over the
+procedural five-ton (`DrivingModels.place`). The lot and the road stage now do
+the same through `dressFiveTon` in `story.ts`, fitted to the procedural
+truck's own length so the lot's stall and the road's layout keep their
+clearances, with the procedural body as the fallback until the model lands. The
+mall's dock truck keeps its cutaway body: its open tailgate is where the cart
+runs load.
+
 ## Weather on the road
 
 The snow over the road (`Snowfall`, a box that follows the truck) is blown by

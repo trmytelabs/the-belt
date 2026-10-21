@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 
-import { BODY, bendElbows, bendKnees, createCharacter, mergeCharacter, type Character } from './characters';
+import { BODY, bendElbows, bendKnees, createCharacter, mergeCharacter, type Character, type CharacterMotion } from './characters';
 import { placeProp } from './propModels';
 import { shadowed, standard, textPlane } from './space';
 
@@ -103,7 +103,11 @@ export class MesaDream {
     this.skanky.body.add(this.guitar);
     mergeCharacter(this.skanky);
     scene.add(this.skanky.root);
-    for (const c of [this.trmyte, this.skanky]) c.nameTag.visible = false;
+    for (const c of [this.trmyte, this.skanky]) {
+      c.nameTag.visible = false;
+      // Seated and holding something (the controller, the guitar): an imported model plays a seated idle under the figure's arms and legs.
+      c.motion = { time: 0, moving: false, carrying: false, holding: true, reduced: false, pose: 'none', seated: true, stairs: false, hands: false, turn: null } satisfies CharacterMotion;
+    }
     // The guitar cable runs across the rug to the amp's input.
     const cable = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([
       new THREE.Vector3(-1.05, 0.6, 0.0), new THREE.Vector3(-0.8, 0.02, 0.6), new THREE.Vector3(0.6, 0.02, 1.25),
@@ -450,6 +454,7 @@ export class MesaDream {
     this.fade.style.background = t < DREAM_MS ? '#fff6d2' : '#120c08';
     this.fade.style.opacity = String(t < 260 ? 1 - t / 260 : t < DREAM_MS ? 0 : Math.min(1, (t - DREAM_MS) / DREAM_FADE_MS));
     this.drawLumines(dt);
+    for (const c of [this.trmyte, this.skanky]) if (c.motion) { c.motion.time = t / 1000; c.motion.reduced = reducedMotion; }
     if (!reducedMotion) {
       // Strumming, controller taps and a little head-banging.
       const s = t / 1000;

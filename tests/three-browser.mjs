@@ -459,6 +459,18 @@ try {
     return words.length;
   });
   assert.ok(dreamCopy >= 6, 'posters, monitor, Lumines and amp labels are drawn in the room');
+  // The two figures carry a motion record (seated, holding the guitar and the controller), so a crew model plays a seated idle under the hand-set arms.
+  await page.waitForTimeout(700);
+  const dreamMotion = await read(() => {
+    const app = window.fixtureApp, d = app.dream;
+    const report = c => ({ seated: c.motion?.seated, holding: c.motion?.holding, time: c.motion?.time, model: Boolean(c.root.getObjectByName('character-model')), role: app.clipRoleOf(c) });
+    return { quality: app.quality, skanky: report(d.skanky), trmyte: report(d.trmyte) };
+  });
+  for (const who of ['skanky', 'trmyte']) {
+    const m = dreamMotion[who];
+    assert.ok(m.seated === true && m.holding === true && m.time > 0, `${who} in the dream is seated and holding, with a running clock: ${JSON.stringify(m)}`);
+    if (m.model) assert.ok(['sitIdle', 'sitIdleAlt', 'sitLookAround'].includes(m.role), `${who}'s model plays a seated idle in the dream: ${JSON.stringify(m)}`);
+  }
   if (process.env.BELT_SCREENSHOT_DIR) {
     await page.waitForTimeout(1200);
     await page.screenshot({ path: join(process.env.BELT_SCREENSHOT_DIR, 'after-3d-dream.png') });
