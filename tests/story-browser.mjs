@@ -460,6 +460,8 @@ try {
   // The first finished shift earns its medal, named on the results and kept with the record.
   assert.match(results, /MEDAL · FIRST SHIFT · Finish a shift/);
   assert.ok(stored.medals.includes('first-shift'), `the medal is kept: ${JSON.stringify(stored.medals)}`);
+  // And the first finished night promotes the new hire.
+  assert.match(results, /PROMOTED · PART-TIMER · 1 finished night/);
   assert.deepEqual(await read(() => window.fixtureApp.story.visited.slice(-9)),
     ['shift', 'clockout', 'assignment', 'to-mall', 'mall', 'to-ups', 'return', 'home', 'results']);
   assert.deepEqual(errors, []);
@@ -530,10 +532,22 @@ try {
   await wait(() => window.fixtureApp.state === 'briefing' && !window.fixtureApp.model.endless);
   // A finished night unlocks the peak night beside the ordinary one; Enter still starts the ordinary night.
   assert.match(await page.locator('.b3d-panel').innerText(), /PEAK NIGHT UNLOCKED/);
+  assert.match(await page.locator('.b3d-panel').innerText(), /SENIORITY · PART-TIMER · NEXT: LOADER AT 3 FINISHED NIGHTS/);
   assert.ok(await page.locator('button[data-action="peak"]').isVisible(), 'the PEAK NIGHT button shows');
   // A finished night also offers three perks; 1 picks the first (Roomy recovery, on the third night's offer), and the night starts with it.
   assert.equal(await page.locator('.b3d-perk').count(), 3);
   await page.keyboard.press('Digit1');
+  await wait(() => document.querySelector('.b3d-perk.picked')?.textContent.includes('ROOMY RECOVERY'));
+  // The keys a controller's bumpers press step along the offer, and through no perk at either end.
+  await page.keyboard.press('BracketRight');
+  await wait(() => document.querySelectorAll('.b3d-perk')[1].classList.contains('picked'));
+  await page.keyboard.press('BracketLeft');
+  await page.keyboard.press('BracketLeft');
+  await wait(() => window.fixtureApp.perk === null && !document.querySelector('.b3d-perk.picked'));
+  await page.keyboard.press('BracketLeft');
+  await wait(() => document.querySelectorAll('.b3d-perk')[2].classList.contains('picked'));
+  await page.keyboard.press('BracketRight');
+  await page.keyboard.press('BracketRight');
   await wait(() => document.querySelector('.b3d-perk.picked')?.textContent.includes('ROOMY RECOVERY'));
   await page.keyboard.press('Enter');
   assert.deepEqual(await read(() => [window.fixtureApp.perkInPlay?.id, window.fixtureApp.model.capacity]), ['roomy-recovery', 8], 'the perk is in play for the night');

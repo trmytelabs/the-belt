@@ -4,6 +4,7 @@ import { createPriorityMarker, updatePriorityMarker, type PriorityMarker } from 
 import { GOAL_BONUS, judgeGoals, nightGoals, type NightGoal } from './nightGoals';
 import { MEDALS, awardMedals, type NightFacts } from './medals';
 import { perkById, perkOffer, type Perk } from './perks';
+import { rankNeeds, seniority } from './seniority';
 import { sortingGuide } from './sortingGuide';
 import { pathLength, platformWalkPath, walkPath, type WalkPoint } from './walking';
 import * as THREE from 'three';
@@ -45,9 +46,9 @@ import { DECISION, HOME_DECISION, LEAVE_HOUSE, QUIT_ENDING, QUIT_NIGHT, type Hom
 import { DrivingView } from './driving';
 import { BELT_SOLID_WIDTH, HEAD_DRIVE, clearReceiving } from './receivingCollision';
 import { TouchControls } from './touch';
-import { GamepadInput, IDLE_PAD, padKey, type PadFrame } from './gamepad';
+import { GamepadInput, IDLE_PAD, padKey, type PadButton, type PadFrame } from './gamepad';
 import { Overlay } from './overlay';
-import { loadSettings, saveSettings, type GameSettings } from './settings';
+import { MIN_RESOLUTION, loadSettings, saveSettings, type GameSettings } from './settings';
 import { OPENER_COUNT, browserStorage, formatTotal, loadRecord, recordEndless, recordNight, saveRecord, type NightRecord } from './nightRecord';
 import { alignParcelToSurface, createParcelView, setParcelCarried, setParcelModels, type ParcelView } from './parcels';
 import { disposeObject3D } from './resources';
@@ -229,7 +230,7 @@ export class Belt3d {
     const debug = gl.getExtension('WEBGL_debug_renderer_info');
     const rendererName = debug ? String(gl.getParameter(debug.UNMASKED_RENDERER_WEBGL)) : '';
     this.quality = /swiftshader|llvmpipe|software|basic render/i.test(rendererName) ? 'low' : 'high';
-    this.renderer.setPixelRatio(this.quality === 'high' ? Math.min(window.devicePixelRatio, 2) : 0.6);
+    this.renderer.setPixelRatio(this.pixelRatio());
     // Software renderers keep the lighter procedural people and cartons and download no models.
     if (this.quality === 'low') void useCharacterModels([]);
     // Motion-captured clips move the crew models on GPU renderers; software renderers keep the figures' poses.
@@ -504,6 +505,8 @@ export class Belt3d {
         this.startEndless();
       } else if (this.state === 'briefing' && /^Digit[123]$/.test(event.code)) {
         this.pickPerk(Number(event.code.slice(5)) - 1);
+      } else if (this.state === 'briefing' && (event.code === 'BracketLeft' || event.code === 'BracketRight')) {
+        this.stepPerk(event.code === 'BracketRight' ? 1 : -1);
       } else if (event.code === 'KeyV') {
         this.overview = !this.overview;
       } else if (this.state === 'playing') {
@@ -566,6 +569,7 @@ export class Belt3d {
       <p>Story scenes: SPACE next line, ENTER skips the scene, ESC pauses.</p>`}
       <p>The night starts at home: go in to work, or quit UPS. After the shift, drive the five-ton to Southgate Mall and finish the deliveries. Driving controls appear when you get there.</p>
       ${this.recordLine()}
+      ${this.seniorityLine()}
       ${this.goalsLine()}
       ${this.perkLine()}
       ${this.record.completed > 0 ? `<p class="b3d-record">PEAK NIGHT UNLOCKED · in the flow and the rush freight comes a fifth sooner, the belt runs faster and recovery holds ${PEAK_NIGHT.capacity}. ${this.touch.enabled ? 'Tap PEAK NIGHT.' : 'Press P or click PEAK NIGHT.'} ENDLESS SHIFT${this.touch.enabled ? '' : ' (N)'} has no clock: the belt speeds up every minute until recovery overflows.</p>` : ''}
@@ -855,21 +859,41 @@ export class Belt3d {
   }
 
   private showPausePanel(kicker: string): void {
-    this.overlay.showPanel(`<div class="kicker">${kicker}</div><h1>GAME PAUSED.</h1><p>Click RESUME or press ENTER to keep playing.</p><p>Your packages and timers are safe while paused.</p><button type="button" data-action="resume">RESUME  ↵</button><button type="button" class="b3d-secondary" data-action="settings">SETTINGS</button><button type="button" class="b3d-secondary" data-action="help">HOW TO PLAY</button>`,
-      { resume: () => this.resume(), settings: () => this.showSettings(kicker), help: () => this.showHelp(kicker) });
+    this.overlay.showPanel(`<div class="kicker">${kicker}</div><h1>GAME PAUSED.</h1><p>Click RESUME or press ENTER to keep playing.</p><p>Your packages and timers are safe while paused.</p><button type="button" data-action="resume">RESUME  ↵</button><button type="button" class="b3d-secondary" data-action="settings">SETTINGS</button><button type="button" class="b3d-secondary" data-action="help">HOW TO PLAY</button><button type="button" class="b3d-secondary" data-action="end">END ${this.runName()}</button>`,
+      { resume: () => this.resume(), settings: () => this.showSettings(kicker), help: () => this.showHelp(kicker), end: () => this.confirmEnd(kicker) });
+  }
+
+  /** What END on the pause screen drops: the practice drive, the endless shift or the night. */
+  private runName(): string {
+    return this.practiceDestination ? 'DRIVE' : this.model.endless ? 'SHIFT' : 'NIGHT';
+  }
+
+  /** Asks before dropping the run; ENTER still resumes. */
+  private confirmEnd(kicker: string): void {
+    const run = this.runName();
+    this.overlay.showPanel(`<div class="kicker">${kicker} · END ${run}</div><h1>END THIS ${run}?</h1>
+      <p>${this.practiceDestination ? 'The drive starts over from its briefing.' : 'Nothing from it is recorded: no night played, no best and no medals. You go back to the briefing.'}</p>
+      <button type="button" data-action="back">BACK</button><button type="button" class="b3d-secondary" data-action="end">END ${run}</button>`,
+    { back: () => this.showPausePanel(kicker), end: () => { if (this.state === 'paused') this.restart(); } });
   }
 
   /** The rules and controls in one place, from the pause screen. */
   private showHelp(kicker: string): void {
-    const touch = this.touch.enabled;
+    const touch = this.touch.enabled, pad = this.pad.connected && !touch, m = this.model;
+    const stops = ['no', 'once', 'twice', 'three times', 'four times', 'five times'][m.beltStopsLimit] ?? `${m.beltStopsLimit} times`;
     const rows: [string, string][] = [
-      ['SORT', `${touch ? 'Tap GRAB' : 'SPACE grabs'} a parcel at the belt. Its street number names the truck: carry it through that truck's rear door and load it. Oversize goes to bulk at the back; floor freight goes down the side stairs.`],
+      ['SORT', `${touch ? 'Tap GRAB' : pad ? 'A grabs' : 'SPACE grabs'} a parcel at the belt. Its street number names the truck: carry it through that truck's rear door and load it. Oversize goes to bulk at the back; floor freight goes down the side stairs.`],
       ['RECOVERY', `A parcel that reaches the belt end piles up in recovery; pick it up again for half points. ${this.model.capacity} in recovery ends the shift.`],
-      ['STOP THE BELT', `${touch ? 'STOP THE BELT' : 'E'} holds the belt for two seconds, three times a night, with 15 seconds between.`],
-      ['THROW', `${touch ? 'THROW' : 'F'} throws to the nearest drop to save the walk. Fragile freight can break, and a throw down the stairs risks more.`],
+      ['STOP THE BELT', `${touch ? 'STOP THE BELT' : pad ? 'X' : 'E'} holds the belt for two seconds, ${stops} a night, with 15 seconds between.`],
+      ['THROW', `${touch ? 'THROW' : pad ? 'B' : 'F'} throws to the nearest drop to save the walk. Fragile freight can break, and a throw down the stairs risks more.`],
       ['PRIORITY', `A gold ring marks urgent freight. Load it yourself before the ring runs out for +${PRIORITY_3D.bonus}.`],
+      ['INSPECTIONS', `Twice a night a supervisor watches for ${INSPECTION_3D.durationMs / 1000} seconds. Each clean load while they watch pays +${m.inspectionPay}; a wrong drop costs ${INSPECTION_3D.penalty} more than usual.`],
       ['STREAKS', 'Each clean load in a row adds 15 more points, up to +150. A wrong drop or a miss ends the streak.'],
+      ['GOALS', `Each night sets three goals, shown on the briefing and as chips on the HUD. Each one met pays +${GOAL_BONUS}.`],
+      ['PERKS', `Once you finish a night, the briefing offers three perks: pick one${touch ? '' : pad ? ' with LB / RB' : ' with 1, 2 or 3'} to bend that night's rules.`],
+      ['ENDLESS SHIFT', 'Also unlocked by a finished night: no clock. From the rush on, freight comes sooner and the belt runs faster every minute until recovery overflows. It keeps its own best.'],
       ['CONTROLS', touch ? 'The stick moves; SWITCH changes worker; GRAB / DELIVER, THROW and STOP THE BELT do what they say; VIEW shows the whole warehouse.'
+        : pad ? 'Left stick or d-pad moves · A grabs and delivers · B throws · X stops the belt · Y switches worker · BACK overview · START pause. On menus the d-pad or stick picks, A presses and B goes back.'
         : 'WASD or arrows move · TAB or right-click switches worker · SPACE grabs and delivers · F throws · E stops the belt · V overview · ESC pause · M sound.'],
     ];
     this.overlay.showPanel(`<div class="kicker">${kicker} · HOW TO PLAY</div><h1>HOW TO PLAY</h1>
@@ -878,15 +902,16 @@ export class Belt3d {
     { back: () => this.showPausePanel(kicker), resume: () => this.resume() });
   }
 
-  /** Music and effects levels and the camera shake, changed live and kept on this device. */
+  /** Music and effects levels, the camera shake and the resolution, changed live and kept on this device. */
   private showSettings(kicker: string): void {
     const percent = (value: number): number => Math.round(value * 100);
     const s = this.settings;
     this.overlay.showPanel(`<div class="kicker">${kicker} · SETTINGS</div><h1>SOUND AND CAMERA</h1>
       <label class="b3d-setting">MUSIC <input type="range" min="0" max="100" step="5" data-setting="music" value="${percent(s.music)}"><output>${percent(s.music)}%</output></label>
       <label class="b3d-setting">EFFECTS <input type="range" min="0" max="100" step="5" data-setting="effects" value="${percent(s.effects)}"><output>${percent(s.effects)}%</output></label>
+      <label class="b3d-setting">RESOLUTION <input type="range" min="${percent(MIN_RESOLUTION)}" max="100" step="5" data-setting="resolution" value="${percent(s.resolution)}"><output>${percent(s.resolution)}%</output></label>
       <label class="b3d-setting check"><input type="checkbox" data-setting="shake"${s.shake ? ' checked' : ''}> CAMERA SHAKE WHEN FREIGHT BREAKS</label>
-      <p>Saved on this device. M still mutes everything; reduced motion always stills the camera.</p>
+      <p>Saved on this device. M still mutes everything; reduced motion always stills the camera. A lower resolution draws fewer pixels, for a smoother game on a slow or very sharp screen.</p>
       <button type="button" data-action="back">BACK</button><button type="button" class="b3d-secondary" data-action="resume">RESUME  ↵</button>`,
     { back: () => this.showPausePanel(kicker), resume: () => this.resume() });
     for (const input of document.querySelectorAll<HTMLInputElement>('.b3d-panel [data-setting]')) {
@@ -906,6 +931,18 @@ export class Belt3d {
 
   private applySettings(): void {
     audioSystem.setLevels(this.settings.music, this.settings.effects);
+    // The constructor sets the levels before the renderer exists, and gives it its first pixel ratio itself.
+    if (!this.renderer) return;
+    const ratio = this.pixelRatio();
+    if (this.renderer.getPixelRatio() === ratio) return;
+    this.renderer.setPixelRatio(ratio);
+    this.composer?.setPixelRatio(ratio);
+    this.resize();
+  }
+
+  /** The screen's pixel ratio (up to 2) on a GPU, 0.6 on a software renderer, scaled by the RESOLUTION setting. */
+  private pixelRatio(): number {
+    return (this.quality === 'high' ? Math.min(window.devicePixelRatio, 2) : 0.6) * this.settings.resolution;
   }
 
   private resume(): void {
@@ -1057,12 +1094,50 @@ export class Belt3d {
     if (frame.connected !== this.pad.connected) this.showPadHints(frame.connected);
     this.pad = frame;
     for (const button of frame.pressed) {
+      if (this.padMenu(button)) continue;
       const code = padKey(this.state, button);
       if (!code) continue;
       // The same path as a key press, so every screen behaves exactly as it does for the keyboard.
       window.dispatchEvent(new KeyboardEvent('keydown', { code }));
       window.dispatchEvent(new KeyboardEvent('keyup', { code }));
     }
+  }
+
+  /**
+   * On the briefing, pause and results panels the d-pad or stick steps a highlight
+   * through the panel's buttons, links and settings, left and right move a
+   * highlighted slider, A presses the highlighted control and B presses BACK.
+   * Until a direction is pushed, A keeps its usual meaning. True when the press was used here.
+   */
+  private padMenu(button: PadButton): boolean {
+    if (this.state !== 'briefing' && this.state !== 'paused' && this.state !== 'ended') return false;
+    const controls = [...this.overlay.root.querySelectorAll<HTMLElement>('.b3d-panel button, .b3d-panel a[href], .b3d-panel input')]
+      .filter((control) => control.offsetParent !== null);
+    const at = controls.findIndex((control) => control.classList.contains('pad-focus'));
+    const current = controls[at];
+    if (button === 'up' || button === 'down') {
+      if (!controls.length) return false;
+      const step = button === 'down' ? 1 : -1;
+      const next = at < 0 ? (step > 0 ? 0 : controls.length - 1) : (at + step + controls.length) % controls.length;
+      current?.classList.remove('pad-focus');
+      controls[next].classList.add('pad-focus');
+      controls[next].focus({ preventScroll: true });
+      controls[next].scrollIntoView({ block: 'nearest' });
+      return true;
+    }
+    if (button === 'b') {
+      const back = controls.find((control) => control.dataset.action === 'back');
+      back?.click();
+      return back !== undefined;
+    }
+    if (!current) return false;
+    if ((button === 'left' || button === 'right') && current instanceof HTMLInputElement && current.type === 'range') {
+      if (button === 'right') current.stepUp(); else current.stepDown();
+      current.dispatchEvent(new Event('input', { bubbles: true }));
+      return true;
+    }
+    if (button === 'a') { current.click(); return true; }
+    return false;
   }
 
   private tick(): void {
@@ -1929,15 +2004,31 @@ export class Belt3d {
     if (this.record.completed === 0 || this.practiceDestination) return '';
     const offer = perkOffer(this.record.played);
     const buttons = offer.map((perk, index) => `<button type="button" class="b3d-perk${this.perk === perk.id ? ' picked' : ''}" data-action="perk-${index}" aria-pressed="${this.perk === perk.id}"><b>${index + 1} · ${escapeHtml(perk.title)}</b><span>${escapeHtml(perk.detail)}</span></button>`).join('');
-    return `<p class="b3d-record"><b>TONIGHT’S PERK · PICK ONE${this.touch.enabled ? '' : ' (1, 2 OR 3)'}:</b></p><div class="b3d-perks">${buttons}</div>`;
+    const keys = this.touch.enabled ? '' : this.pad.connected ? ' (LB / RB)' : ' (1, 2 OR 3)';
+    return `<p class="b3d-record"><b>TONIGHT’S PERK · PICK ONE${keys}:</b></p><div class="b3d-perks">${buttons}</div>`;
   }
 
-  /** Picks the offer's `index`th perk for tonight (again to drop it), marked in place so a scrolled briefing stays put. */
+  /** Picks the offer's `index`th perk for tonight (again to drop it). */
   private pickPerk(index: number): void {
     if (this.state !== 'briefing' || this.record.completed === 0) return;
-    const offer = perkOffer(this.record.played), perk = offer[index];
-    if (!perk) return;
-    this.perk = this.perk === perk.id ? null : perk.id;
+    const perk = perkOffer(this.record.played)[index];
+    if (perk) this.setPerk(this.perk === perk.id ? null : perk.id);
+  }
+
+  /** A controller's bumpers: steps the pick along the offer, `step` places, and through no perk at either end. */
+  private stepPerk(step: number): void {
+    if (this.state !== 'briefing' || this.record.completed === 0) return;
+    const offer = perkOffer(this.record.played), places = offer.length + 1;
+    // Place 0 is no perk; places 1 to 3 are the offer.
+    const place = (offer.findIndex((perk) => perk.id === this.perk) + 1 + step + places) % places;
+    this.setPerk(place === 0 ? null : offer[place - 1].id);
+    document.querySelector('.b3d-perk.picked')?.scrollIntoView({ block: 'nearest' });
+  }
+
+  /** Makes `id` tonight's perk (null for none), marked in place so a scrolled briefing stays put. */
+  private setPerk(id: string | null): void {
+    this.perk = id;
+    const offer = perkOffer(this.record.played);
     document.querySelectorAll<HTMLButtonElement>('.b3d-perk').forEach((button, i) => {
       const picked = offer[i]?.id === this.perk;
       button.classList.toggle('picked', picked);
@@ -1969,15 +2060,24 @@ export class Belt3d {
     return `<p class="b3d-record"><b>YOUR RECORD · ${completed} OF ${played} ${played === 1 ? 'NIGHT' : 'NIGHTS'} FINISHED · ${bestText} · ${openers.length} OF ${OPENER_COUNT} OPENERS SEEN · ${this.record.medals.length} OF ${MEDALS.length} MEDALS</b></p>`;
   }
 
-  /** Adds this night to the record and says how it compares with the best. */
+  /** The briefing's line naming the player's seniority and what the next title takes. */
+  private seniorityLine(): string {
+    const { rank, next } = seniority(this.record);
+    return `<p class="b3d-record">SENIORITY · <b>${rank.title}</b> · ${next ? `NEXT: ${next.title} AT ${rankNeeds(next)}` : 'THE TOP OF THE BELT'}</p>`;
+  }
+
+  /** Adds this night to the record and says how it compares with the best, and any promotion or medal it earned. */
   private recordResults(won: boolean, total: number, grade: string, night: Omit<NightFacts, 'openersSeen' | 'nightsPlayed'>): string {
+    const before = seniority(this.record).level;
     const result = recordNight(this.record, { won, total, grade, sorted: this.model.sorted, opener: this.story.opener.id, date: new Date().toISOString().slice(0, 10) });
     const awarded = awardMedals(result.record.medals, { ...night, openersSeen: result.record.openers.length, nightsPlayed: result.record.played });
     this.record = { ...result.record, medals: awarded.medals };
     this.medalsEarned = awarded.fresh.map((medal) => medal.id);
     saveRecord(browserStorage(), this.record);
     const nightLabel = `NIGHT ${this.record.played}`;
-    const medals = awarded.fresh.map((medal) => `<p class="b3d-medal"><b>MEDAL · ${medal.title}</b> · ${escapeHtml(medal.detail)}</p>`).join('');
+    const now = seniority(this.record);
+    const promoted = now.level > before ? `<p class="b3d-medal"><b>PROMOTED · ${now.rank.title}</b> · ${rankNeeds(now.rank).toLowerCase()}</p>` : '';
+    const medals = promoted + awarded.fresh.map((medal) => `<p class="b3d-medal"><b>MEDAL · ${medal.title}</b> · ${escapeHtml(medal.detail)}</p>`).join('');
     if (result.newBest) return `<p class="b3d-best"><b>NEW PERSONAL BEST · ${nightLabel}</b>${result.previous ? ` · beat ${formatTotal(result.previous.total)}` : ''}</p>${medals}`;
     const best = this.record.best;
     return `<p class="b3d-best">${best ? `BEST NIGHT ${formatTotal(best.total)} · GRADE ${escapeHtml(best.grade)}` : 'NO SHIFT FINISHED YET'} · ${nightLabel} · ${this.record.completed} finished</p>${medals}`;

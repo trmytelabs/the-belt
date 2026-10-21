@@ -104,11 +104,17 @@ try {
   await page.locator('[data-setting="music"]').focus();
   const workerBefore = await read(() => ({ x: window.fixtureApp.model.activeWorker.x, y: window.fixtureApp.model.activeWorker.y }));
   for (let i = 0; i < 12; i++) await page.keyboard.press('ArrowLeft');
+  // The resolution slider redraws at a share of the usual pixel ratio, down to half.
+  const ratioBefore = await read(() => window.fixtureApp.renderer.getPixelRatio());
+  await page.locator('[data-setting="resolution"]').focus();
+  for (let i = 0; i < 12; i++) await page.keyboard.press('ArrowLeft');
+  const ratioAfter = await read(() => window.fixtureApp.renderer.getPixelRatio());
+  assert.ok(Math.abs(ratioAfter - ratioBefore / 2) < 1e-9, `half resolution halves the pixel ratio: ${ratioBefore} to ${ratioAfter}`);
   await page.locator('[data-setting="shake"]').click();
   const saved = await read(() => ({ settings: window.fixtureApp.settings, stored: JSON.parse(localStorage.getItem('the-belt:3d-settings:v1')),
     output: document.querySelector('[data-setting="music"]').nextElementSibling.textContent, state: window.fixtureApp.state,
     worker: { x: window.fixtureApp.model.activeWorker.x, y: window.fixtureApp.model.activeWorker.y } }));
-  assert.deepEqual(saved.settings, { music: 0.4, effects: 1, shake: false });
+  assert.deepEqual(saved.settings, { music: 0.4, effects: 1, shake: false, resolution: 0.5 });
   assert.deepEqual(saved.stored, saved.settings, 'kept on this device');
   assert.equal(saved.output, '40%');
   assert.equal(saved.state, 'paused', 'arrow keys on a slider do not resume');
@@ -116,17 +122,43 @@ try {
   await page.getByRole('button', { name: 'BACK' }).click();
   // HOW TO PLAY lists the rules and controls, and BACK returns to the pause screen.
   await page.getByRole('button', { name: 'HOW TO PLAY' }).click();
-  const help = await read(() => [...document.querySelectorAll('.b3d-help dt')].map((term) => term.textContent));
-  assert.deepEqual(help, ['SORT', 'RECOVERY', 'STOP THE BELT', 'THROW', 'PRIORITY', 'STREAKS', 'CONTROLS']);
+  const help = await read(() => [...document.querySelectorAll('.b3d-help dt')].map((term) => [term.textContent, term.nextElementSibling.textContent]));
+  assert.deepEqual(help.map(([term]) => term), ['SORT', 'RECOVERY', 'STOP THE BELT', 'THROW', 'PRIORITY', 'INSPECTIONS', 'STREAKS', 'GOALS', 'PERKS', 'ENDLESS SHIFT', 'CONTROLS']);
+  assert.match(help[2][1], /^E holds the belt for two seconds, three times a night/);
+  assert.match(help.at(-1)[1], /^WASD or arrows move/);
   await page.getByRole('button', { name: 'BACK' }).click();
+  // END NIGHT asks first; BACK returns to the pause screen with the night intact.
+  await page.getByRole('button', { name: 'END NIGHT' }).click();
+  assert.match(await page.locator('.b3d-panel h1').innerText(), /END THIS NIGHT\?/);
+  await page.getByRole('button', { name: 'BACK' }).click();
+  assert.match(await page.locator('.b3d-panel h1').innerText(), /GAME PAUSED/);
   await page.getByRole('button', { name: /RESUME/ }).click();
   await wait(() => window.fixtureApp.state === 'playing');
   // With the switch off, a breakage shake is dropped at once instead of decaying over half a second.
   await read(() => { window.fixtureApp.shake = 0.3; });
   await page.waitForTimeout(120);
   assert.equal(await read(() => window.fixtureApp.shake), 0, 'no camera shake with the switch off');
-  await read(() => { const app = window.fixtureApp; app.settings = { music: 1, effects: 1, shake: true }; app.applySettings(); localStorage.removeItem('the-belt:3d-settings:v1'); });
-  console.log('PASS settings from the pause screen: a real-key music slider and a shake switch apply at once, are kept on this device, and never move the worker; HOW TO PLAY lists the rules and controls');
+  await read(() => { const app = window.fixtureApp; app.settings = { music: 1, effects: 1, shake: true, resolution: 1 }; app.applySettings(); localStorage.removeItem('the-belt:3d-settings:v1'); });
+  console.log('PASS settings from the pause screen: real-key music and resolution sliders and a shake switch apply at once, are kept on this device, and never move the worker; HOW TO PLAY lists the rules and controls');
+
+  // END NIGHT from the pause screen drops the night unrecorded and brings back the briefing.
+  const recordBefore = await read(() => {
+    const app = window.fixtureApp; app.restart(); app.forceStory({ breakAtMs: 1e12 }); app.benStarted = true;
+    app.model.autonomousCoworker = false; app.model.eventStopped = true; app.overlay.clearCenter(); app.state = 'playing';
+    app.model.elapsedMs = 60_000; app.model.score = 420;
+    return localStorage.getItem('the-belt:3d-record:v1');
+  });
+  await page.keyboard.press('Escape');
+  await wait(() => window.fixtureApp.state === 'paused');
+  await page.getByRole('button', { name: 'END NIGHT' }).click();
+  await page.locator('.b3d-panel').getByRole('button', { name: 'END NIGHT' }).click();
+  await wait(() => window.fixtureApp.state === 'briefing');
+  const ended = await read(() => ({ elapsed: window.fixtureApp.model.elapsedMs, score: window.fixtureApp.model.score,
+    record: localStorage.getItem('the-belt:3d-record:v1'), briefing: document.querySelector('.b3d-panel').innerText }));
+  assert.deepEqual([ended.elapsed, ended.score], [0, 0], 'a fresh shift waits');
+  assert.equal(ended.record, recordBefore, 'the dropped night is not recorded');
+  assert.match(ended.briefing, /ANOTHER NIGHT ON THE BELT/);
+  console.log('PASS END NIGHT on the pause screen asks first, then drops the night unrecorded and returns to the briefing');
 
   const patrols = await read(() => {
     const app = window.fixtureApp; app.restart(); app.state = 'paused';
@@ -413,6 +445,23 @@ try {
     await page.waitForTimeout(60);
   };
   await tap(9, () => window.fixtureApp.state === 'paused');
+  // While it is connected, HOW TO PLAY names the controller's buttons.
+  const padHelp = await read(() => { window.fixtureApp.showHelp('PAUSED'); return [...document.querySelectorAll('.b3d-help dd')].map((row) => row.textContent); });
+  assert.match(padHelp[2], /^X holds the belt/);
+  assert.match(padHelp.at(-1), /^Left stick or d-pad moves · A grabs and delivers/);
+  await read(() => window.fixtureApp.showPausePanel('PAUSED'));
+  // On a panel the d-pad steps a highlight through the buttons and A presses it; left and right move a
+  // highlighted slider, and B presses BACK.
+  const padFocus = () => document.querySelector('.b3d-panel .pad-focus');
+  await tap(13, () => document.querySelector('.b3d-panel .pad-focus')?.textContent.includes('RESUME'));
+  await tap(13, () => document.querySelector('.b3d-panel .pad-focus')?.textContent.includes('SETTINGS'));
+  await tap(0, () => document.querySelector('.b3d-panel h1')?.textContent.includes('SOUND AND CAMERA'));
+  assert.equal(await read(padFocus), null, 'a new panel starts with nothing highlighted');
+  await tap(13, () => document.querySelector('.b3d-panel .pad-focus')?.dataset.setting === 'music');
+  const musicBefore = await read(() => window.fixtureApp.settings.music);
+  await tap(14, (before) => Math.abs(window.fixtureApp.settings.music - (before - 0.05)) < 1e-9, musicBefore);
+  await tap(1, () => document.querySelector('.b3d-panel h1')?.textContent.includes('GAME PAUSED'));
+  await read(() => { const app = window.fixtureApp; app.settings = { ...app.settings, music: 1 }; app.applySettings(); localStorage.removeItem('the-belt:3d-settings:v1'); });
   await tap(0, () => window.fixtureApp.state === 'playing');
   const startY = await read(() => window.fixtureApp.model.activeWorker.y);
   await read(() => window.padSet({ axes: [0, 1] }));
@@ -431,7 +480,7 @@ try {
   await read(() => { window.padSet(); window.fakePads = []; window.fixtureApp.restart(); });
   await wait(() => !window.fixtureApp.pad.connected);
   assert.equal(await read(() => document.querySelector('[data-f=keyhints]').hidden), false, 'and the keyboard keys again once it is gone');
-  console.log('PASS a controller pauses and resumes, walks the worker, switches workers, stops the belt, and drives and brakes the five-ton with its triggers; the HUD names its buttons while it is connected');
+  console.log('PASS a controller pauses and resumes, walks the worker, switches workers, stops the belt, and drives and brakes the five-ton with its triggers; the HUD and HOW TO PLAY name its buttons while it is connected, and the d-pad, A and B work the pause and settings panels');
 
   await read(async list=>{
     const app=window.fixtureApp;app.state='paused';app.pausedFrom='playing';app.stage.end();app.overlay.setMode('shift');app.overlay.clearSpeech();app.overlay.setLunchAlert(false);app.overlay.clearCenter();

@@ -2,6 +2,25 @@
 
 ## 0.1.0 — development snapshot
 
+- Let a controller work the 3D menus: on the briefing, pause and results
+  screens the d-pad or stick steps a highlight through the buttons, links and
+  settings, A presses the highlighted one, left and right move a slider and B
+  presses BACK. Until a direction is pushed, A keeps its usual meaning.
+- Add END NIGHT to the 3D pause screen (END SHIFT in the endless shift, END
+  DRIVE in the practice drive): after a confirmation it drops the run without
+  recording it and goes back to the briefing. ENTER still resumes.
+- Add a RESOLUTION slider to the 3D settings: 50 to 100% of the renderer's
+  usual pixel ratio, applied at once and kept on this device, for a smoother
+  game on a slow or very sharp screen.
+- Add seniority to the 3D depot: six titles from NEW HIRE to BELT LEGEND,
+  climbed with finished nights and medals and worked out from the existing
+  record. The briefing names the player's title and what the next one takes,
+  and the results announce a promotion beside any new medals.
+- Let a controller pick tonight's perk: on the 3D briefing LB and RB step
+  along the three offered perks and through none. HOW TO PLAY on the pause
+  screen now covers inspections, night goals, perks and the endless shift,
+  counts belt stops with tonight's perk, and names a connected controller's
+  buttons.
 - Run CI on the owner's own Windows PC, a self-hosted GitHub Actions runner
   labelled `belt-pc`, after the account's hosted minutes ran out. Both required
   checks keep their names and suites; the browser suites use Edge with software

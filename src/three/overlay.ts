@@ -144,6 +144,7 @@ const CSS = `
 .b3d-setting output { text-align: right; font-variant-numeric: tabular-nums; color: #edb765; }
 .b3d-setting.check { display: flex; gap: 10px; }
 .b3d-setting.check input { width: 18px; height: 18px; accent-color: #edb765; }
+.b3d-panel .pad-focus { outline: 3px solid #fff3c4; outline-offset: 3px; }
 .b3d-panel button.b3d-secondary { margin-top: 10px; padding: 10px; background: transparent; border: 1px solid #3b5a62; color: #c9dcdc; font-size: 13px; }
 .b3d-help { display: grid; grid-template-columns: 130px 1fr; gap: 6px 14px; margin: 4px 0 8px; font-size: 13px; }
 .b3d-help dt { font-weight: 800; letter-spacing: 1.5px; color: #edb765; font-size: 12px; padding-top: 2px; }
