@@ -17,6 +17,8 @@ export interface GoalShift {
   missed: number;
   bulkSorted: number;
   beltStopsRemaining: number;
+  /** The night's belt stops (3, or 4 with a perk); missing means 3. */
+  beltStopsLimit?: number;
 }
 
 /** A goal's short form for the HUD: met, still open, or already out of reach tonight. */
@@ -60,7 +62,7 @@ export const NIGHT_GOALS: readonly NightGoal[] = [
   clean('clean', 'Finish with no wrong drops', 'NO WRONG DROPS', (s) => s.wrongDrops === 0),
   count('priority', 'Make 3 priority parcels on time', 'PRIORITY', 3, (s) => s.priorityOnTime),
   count('thrower', 'Throw 3 in clean', 'CLEAN THROWS', 3, (s) => s.thrownDeliveries),
-  clean('no-stop', 'Finish without stopping the belt', 'NO BELT STOPS', (s) => s.beltStopsRemaining >= BELT_STOPS),
+  clean('no-stop', 'Finish without stopping the belt', 'NO BELT STOPS', (s) => s.beltStopsRemaining >= (s.beltStopsLimit ?? BELT_STOPS)),
   count('bulk', 'Send 8 to bulk', 'BULK', 8, (s) => s.bulkSorted),
   count('long-streak', 'Load 15 in a row', 'STREAK', 15, (s) => s.bestCombo),
   clean('unbroken', 'Finish with nothing broken', 'NOTHING BROKEN', (s) => s.damaged === 0),

@@ -87,6 +87,13 @@ const CSS = `
 .b3d-panel button { display: block; width: 100%; margin-top: 18px; padding: 14px; border: 0; border-radius: 6px; background: #edb765;
   color: #1a2226; font: 800 16px "Segoe UI", Arial, sans-serif; letter-spacing: 1px; cursor: pointer; }
 .b3d-panel button.b3d-medals-link { margin-top: 10px; padding: 10px; background: transparent; border: 1px solid #edb76588; color: #edb765; font-size: 13px; }
+.b3d-perks { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 6px 0 4px; }
+.b3d-panel button.b3d-perk { margin: 0; padding: 8px 10px; text-align: left; background: #0b171c; border: 1px solid #3b5a62; color: #c9dcdc; font-size: 12px; letter-spacing: 0; display: flex; flex-direction: column; gap: 4px; }
+.b3d-panel button.b3d-perk b { font-size: 12px; letter-spacing: 1px; color: #edb765; }
+.b3d-panel button.b3d-perk span { font-weight: 500; font-size: 11px; color: #9fb4b4; }
+.b3d-panel button.b3d-perk.picked { border-color: #edb765; background: #edb76526; }
+.b3d-panel button.b3d-perk.picked b::before { content: '✓ '; }
+@media (max-width: 560px) { .b3d-perks { grid-template-columns: 1fr; } }
 .b3d-medal-list { list-style: none; margin: 8px 0 4px; padding: 0; display: grid; gap: 6px; }
 .b3d-medal-list li { display: flex; flex-direction: column; padding: 6px 10px; border-radius: 6px; border: 1px solid #3b5a62; }
 .b3d-medal-list li b { font-size: 13px; letter-spacing: 1px; }

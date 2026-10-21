@@ -3,6 +3,7 @@ import { ARRIVALS_3D, INSPECTION_3D, PEAK_NIGHT, PRIORITY_3D, ShiftModel3D } fro
 import { createPriorityMarker, updatePriorityMarker, type PriorityMarker } from './priorityMarker';
 import { GOAL_BONUS, judgeGoals, nightGoals, type NightGoal } from './nightGoals';
 import { MEDALS, awardMedals, type NightFacts } from './medals';
+import { perkById, perkOffer, type Perk } from './perks';
 import { sortingGuide } from './sortingGuide';
 import { pathLength, platformWalkPath, walkPath, type WalkPoint } from './walking';
 import * as THREE from 'three';
@@ -143,6 +144,9 @@ export class Belt3d {
   public goalBonus = 0;
   /** The medals the last results awarded for the first time. */
   public medalsEarned: string[] = [];
+  /** The perk picked on the briefing for tonight, and the one tonight's shift runs with. */
+  public perk: string | null = null;
+  public perkInPlay: Perk | null = null;
   private depotShot: { position: THREE.Vector3; look: THREE.Vector3 } | null = null;
   private readonly stolen = new Set<number>();
   private readonly parcels = new Map<number, ParcelView>();
@@ -486,6 +490,8 @@ export class Belt3d {
         if (this.record.completed > 0) this.startNight(true);
       } else if (this.state === 'briefing' && event.code === 'KeyN') {
         this.startEndless();
+      } else if (this.state === 'briefing' && /^Digit[123]$/.test(event.code)) {
+        this.pickPerk(Number(event.code.slice(5)) - 1);
       } else if (event.code === 'KeyV') {
         this.overview = !this.overview;
       } else if (this.state === 'playing') {
@@ -549,12 +555,14 @@ export class Belt3d {
       <p>The night starts at home: go in to work, or quit UPS. After the shift, drive the five-ton to Southgate Mall and finish the deliveries. Driving controls appear when you get there.</p>
       ${this.recordLine()}
       ${this.goalsLine()}
+      ${this.perkLine()}
       ${this.record.completed > 0 ? `<p class="b3d-record">PEAK NIGHT UNLOCKED · in the flow and the rush freight comes a fifth sooner, the belt runs faster and recovery holds ${PEAK_NIGHT.capacity}. ${this.touch.enabled ? 'Tap PEAK NIGHT.' : 'Press P or click PEAK NIGHT.'} ENDLESS SHIFT${this.touch.enabled ? '' : ' (N)'} has no clock: the belt speeds up every minute until recovery overflows.</p>` : ''}
       <button type="button" data-action="night">START THE NIGHT  ↵</button>
       ${this.record.completed > 0 ? '<button type="button" data-action="peak">PEAK NIGHT  P</button><button type="button" data-action="endless">ENDLESS SHIFT  N</button>' : ''}
       ${this.record.played > 0 ? `<button type="button" class="b3d-medals-link" data-action="medals">MEDALS · ${this.record.medals.length} OF ${MEDALS.length}</button>` : ''}
       <a href="${window.location.pathname}?mode=3d&amp;drive=mall">TRY JUST THE DRIVE · EXPLORE THE CITY</a>
-      <a href="${window.location.pathname}?mode=classic">PLAY THE ORIGINAL FULL SHIFT</a>`, { night: () => this.startNight(), peak: () => this.startNight(true), medals: () => this.showMedals(), endless: () => this.startEndless() });
+      <a href="${window.location.pathname}?mode=classic">PLAY THE ORIGINAL FULL SHIFT</a>`, { night: () => this.startNight(), peak: () => this.startNight(true), medals: () => this.showMedals(), endless: () => this.startEndless(),
+        'perk-0': () => this.pickPerk(0), 'perk-1': () => this.pickPerk(1), 'perk-2': () => this.pickPerk(2) });
   }
 
   // ---------------------------------------------------------------- story flow
@@ -563,6 +571,9 @@ export class Belt3d {
     if (this.state !== 'briefing') return;
     // A peak night, once a night has been finished: a fresh shift with the peak rules (nothing has read the briefing's yet).
     if (peak && this.record.completed > 0 && !this.practiceDestination) this.model = new ShiftModel3D({ peak: true });
+    // Tonight's perk changes the shift's rules before it starts.
+    this.perkInPlay = this.record.completed > 0 && !this.practiceDestination ? perkById(this.perk) : null;
+    this.perkInPlay?.apply(this.model);
     this.renderer.domElement.focus({ preventScroll: true });
     void audioSystem.unlock();
     audioSystem.play('ui-start');
@@ -919,6 +930,8 @@ export class Belt3d {
     this.goals = nightGoals(this.record.played);
     this.goalsAnnounced.clear();
     this.goalBonus = 0;
+    this.perk = null;
+    this.perkInPlay = null;
     this.story = new StoryRun(Math.random, this.forcedStory);
     this.cutscene = null;
     this.mall = null;
@@ -1806,6 +1819,27 @@ export class Belt3d {
       <button type="button" data-action="back">BACK</button>`, { back: () => this.showBriefing() });
   }
 
+  /** Once a night is finished, the briefing offers three perks for tonight; 1, 2 or 3 (or a click) picks one. */
+  private perkLine(): string {
+    if (this.record.completed === 0 || this.practiceDestination) return '';
+    const offer = perkOffer(this.record.played);
+    const buttons = offer.map((perk, index) => `<button type="button" class="b3d-perk${this.perk === perk.id ? ' picked' : ''}" data-action="perk-${index}" aria-pressed="${this.perk === perk.id}"><b>${index + 1} · ${escapeHtml(perk.title)}</b><span>${escapeHtml(perk.detail)}</span></button>`).join('');
+    return `<p class="b3d-record"><b>TONIGHT’S PERK · PICK ONE${this.touch.enabled ? '' : ' (1, 2 OR 3)'}:</b></p><div class="b3d-perks">${buttons}</div>`;
+  }
+
+  /** Picks the offer's `index`th perk for tonight (again to drop it), marked in place so a scrolled briefing stays put. */
+  private pickPerk(index: number): void {
+    if (this.state !== 'briefing' || this.record.completed === 0) return;
+    const offer = perkOffer(this.record.played), perk = offer[index];
+    if (!perk) return;
+    this.perk = this.perk === perk.id ? null : perk.id;
+    document.querySelectorAll<HTMLButtonElement>('.b3d-perk').forEach((button, i) => {
+      const picked = offer[i]?.id === this.perk;
+      button.classList.toggle('picked', picked);
+      button.setAttribute('aria-pressed', String(picked));
+    });
+  }
+
   /** The briefing's line naming tonight's goals. */
   private goalsLine(): string {
     return `<p class="b3d-goals"><b>TONIGHT’S GOALS · +${GOAL_BONUS} EACH:</b> ${this.goals.map((goal) => escapeHtml(goal.label)).join(' · ')}</p>`;
@@ -1904,6 +1938,7 @@ export class Belt3d {
       <p>${m.unshipped} left behind · ${m.wrongDrops} wrong drops · GRADE ${m.accuracy.toFixed(1)}% (S: 95%+)</p>
       <p>${escapeHtml(routes)}</p>
       ${m.priorityCount ? `<p>${m.priorityOnTime} of ${m.priorityCount} priority parcels on time · +${m.priorityOnTime * PRIORITY_3D.bonus}</p>` : ''}
+      ${this.perkInPlay ? `<p class="b3d-goals">PERK · ${escapeHtml(this.perkInPlay.title)} · ${escapeHtml(this.perkInPlay.detail)}</p>` : ''}
       <p class="b3d-goals">NIGHT GOALS · ${judged.met.length} OF ${this.goals.length} · ${goals} · +${judged.bonus}</p>
       ${m.inspectionsHeld ? `<p>INSPECTIONS · ${m.inspectionLoads} clean ${m.inspectionLoads === 1 ? 'load' : 'loads'} watched · +${m.inspectionBonus}</p>` : ''}
       <p>${m.thrownDeliveries} thrown in clean · ${m.damaged} broken (−${m.breakagePenalty} points${m.damaged > THROWING.gradeForgivenBreaks ? `, ${m.gradedBreaks} counted against the grade` : ''})</p>

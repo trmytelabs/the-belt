@@ -63,6 +63,12 @@ export class ShiftModel3D extends ShiftModel {
   private levelShown = 1;
   public override readonly cleanupMs = 25_000;
   public beltStopsRemaining: number = BELT_STOPS_3D.limit;
+  /** Tonight's rules a perk can change (`perks.ts`): belt stops, the priority window, walking pace, the rush's pace and the inspection bonus. */
+  public beltStopsLimit: number = BELT_STOPS_3D.limit;
+  public priorityWindowMs: number = PRIORITY_3D.windowMs;
+  public walkPace = 1;
+  public rushPace = 1;
+  public inspectionPay: number = INSPECTION_3D.bonus;
   /** Priority parcels marked this shift, and those the player delivered in time. */
   public priorityCount = 0;
   public priorityOnTime = 0;
@@ -91,7 +97,10 @@ export class ShiftModel3D extends ShiftModel {
       const gap = Math.max(ENDLESS_3D.soonest, 1 - ENDLESS_3D.sooner * Math.max(0, this.endlessLevel - 2));
       return { ...ARRIVALS_3D, rushMs: ARRIVALS_3D.rushMs * gap };
     }
-    return this.peak ? { ...ARRIVALS_3D, flowMs: ARRIVALS_3D.flowMs * PEAK_NIGHT.arrivals, rushMs: ARRIVALS_3D.rushMs * PEAK_NIGHT.arrivals } : ARRIVALS_3D;
+    // `rushPace` is read in the base constructor too, before it is set: the first parcel is the lesson's either way.
+    const rush = this.rushPace ?? 1;
+    const flow = this.peak ? { ...ARRIVALS_3D, flowMs: ARRIVALS_3D.flowMs * PEAK_NIGHT.arrivals, rushMs: ARRIVALS_3D.rushMs * PEAK_NIGHT.arrivals } : ARRIVALS_3D;
+    return rush === 1 ? flow : { ...flow, rushMs: flow.rushMs * rush };
   }
   protected override speedAt(elapsedMs: number): number {
     const base = 50 + (super.speedAt(elapsedMs) - 50) * 0.55;
@@ -133,7 +142,7 @@ export class ShiftModel3D extends ShiftModel {
   public override brake(): void {
     if (!this.canAct()) return;
     if (this.beltStopsRemaining <= 0) {
-      this.emit('wrong', `No belt stops left · ${BELT_STOPS_3D.limit} per run`, this.activeWorker);
+      this.emit('wrong', `No belt stops left · ${this.beltStopsLimit} per run`, this.activeWorker);
       return;
     }
     if (this.eventStopped) {
@@ -183,7 +192,7 @@ export class ShiftModel3D extends ShiftModel {
     const inspection = this.inspection;
     if (inspection && this.elapsedMs >= inspection.untilMs) {
       this.inspection = null;
-      const paid = inspection.loads * INSPECTION_3D.bonus;
+      const paid = inspection.loads * this.inspectionPay;
       this.emit('inspection', `INSPECTION OVER · ${inspection.loads} clean ${inspection.loads === 1 ? 'load' : 'loads'}${inspection.slips ? ` · ${inspection.slips} wrong` : ''} · +${paid}`, this.activeWorker, undefined, paid);
       return;
     }
@@ -192,7 +201,7 @@ export class ShiftModel3D extends ShiftModel {
     this.inspectionsHeld += 1;
     if (this.phase !== 'flow' && this.phase !== 'rush') return;
     this.inspection = { untilMs: this.elapsedMs + INSPECTION_3D.durationMs, loads: 0, slips: 0 };
-    this.emit('inspection', `INSPECTION · ${INSPECTION_3D.durationMs / 1000} SECONDS · clean loads +${INSPECTION_3D.bonus}, wrong drops −${WRONG_DROP_PENALTY + INSPECTION_3D.penalty}`, this.activeWorker);
+    this.emit('inspection', `INSPECTION · ${INSPECTION_3D.durationMs / 1000} SECONDS · clean loads +${this.inspectionPay}, wrong drops −${WRONG_DROP_PENALTY + INSPECTION_3D.penalty}`, this.activeWorker);
   }
 
   /** Time left on a live priority parcel, or null when the parcel is not one (or no longer). */
@@ -210,9 +219,9 @@ export class ShiftModel3D extends ShiftModel {
       if (ROUTE_INFO[parcel.route].side !== this.activeWorker.side) continue;
       this.priorityEligible += 1;
       if (this.priorityDue.size > 0 || this.priorityEligible % PRIORITY_3D.every !== 0) continue;
-      this.priorityDue.set(parcel.id, this.elapsedMs + PRIORITY_3D.windowMs);
+      this.priorityDue.set(parcel.id, this.elapsedMs + this.priorityWindowMs);
       this.priorityCount += 1;
-      this.emit('priority', `PRIORITY · ${ROUTE_INFO[parcel.route].name} · ${PRIORITY_3D.windowMs / 1000} SECONDS FOR +${PRIORITY_3D.bonus}`, parcel, parcel);
+      this.emit('priority', `PRIORITY · ${ROUTE_INFO[parcel.route].name} · ${this.priorityWindowMs / 1000} SECONDS FOR +${PRIORITY_3D.bonus}`, parcel, parcel);
     }
     for (const [id, due] of this.priorityDue) {
       const parcel = this.packages.find(item => item.id === id);
@@ -370,7 +379,7 @@ export class ShiftModel3D extends ShiftModel {
       const dx = point.x - worker.x, dy = point.y - worker.y;
       return Math.hypot(dx, dy) < 32 && dx * x + dy * y > 0 && Math.abs(dx * y - dy * x) / magnitude < 22;
     });
-    const speed = WORKER_SPEED_3D * (held ? Math.max(MIN_CARRY_SPEED_3D, CARRY_MULTIPLIER[held.kind]) : 1)
+    const speed = WORKER_SPEED_3D * this.walkPace * (held ? Math.max(MIN_CARRY_SPEED_3D, CARRY_MULTIPLIER[held.kind]) : 1)
       * deltaMs / 1000 * requestedSpeed / magnitude * (squeezed ? 0.75 : 1);
     const previousX = worker.x, previousY = worker.y;
     const maxY = held ? this.layout.stairs.maxY - this.layout.carriedClearance : this.layout.workerMaxY;
@@ -528,9 +537,9 @@ export class ShiftModel3D extends ShiftModel {
     if (this.inspection && !assisted) {
       this.inspection.loads += 1;
       this.inspectionLoads += 1;
-      this.inspectionBonus += INSPECTION_3D.bonus;
-      this.score += INSPECTION_3D.bonus;
-      this.emit('inspection', `WATCHED · +${INSPECTION_3D.bonus}`, parcel, parcel, INSPECTION_3D.bonus);
+      this.inspectionBonus += this.inspectionPay;
+      this.score += this.inspectionPay;
+      this.emit('inspection', `WATCHED · +${this.inspectionPay}`, parcel, parcel, this.inspectionPay);
     }
     // The partner's deliveries never score, so a priority parcel only pays in the player's hands.
     if (due !== undefined && !assisted && this.elapsedMs <= due) {

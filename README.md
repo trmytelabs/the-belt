@@ -143,6 +143,9 @@ SORT!** countdown starts the shift.
 - Inspections: twice a night the supervisor on your side (Vic or Shan) watches
   you for 20 seconds. Each load meanwhile earns 50 points; a wrong drop costs
   30 more.
+- Perks: once a night is finished, the briefing offers three perks for the
+  night (1, 2 or 3 picks one), such as a fourth belt stop, more time on
+  priority freight or quicker feet. They last that night only.
 - Endless shift: once a night is finished, N (or ENDLESS SHIFT) starts a shift
   with no clock and no story. Each minute from the rush the freight comes
   sooner and the belt runs faster, until recovery overflows. It keeps its own

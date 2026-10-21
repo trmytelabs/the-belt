@@ -2,6 +2,14 @@
 
 ## 0.1.0 — development snapshot
 
+- Add night perks to the 3D game (`perks.ts`). Once a night is finished, the
+  briefing offers three of six perks (1, 2 or 3, or a click, picks one; again
+  drops it), rotating with the nights on record: one more belt stop, 20
+  seconds on priority freight, one more parcel in recovery, both workers 6%
+  faster, a rush that sends freight a tenth less often, or watched loads
+  paying 75. The pick changes that night's rules only and the results name it;
+  the peak night takes one too, the endless shift does not. The no-stop goal
+  counts a fourth stop as a stop.
 - Add an endless shift to the 3D game, unlocked beside the peak night once a
   night is finished (N, or ENDLESS SHIFT on the briefing). It starts straight
   into the countdown with no story around it and no lunch break, and has no

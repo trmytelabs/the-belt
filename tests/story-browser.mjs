@@ -531,7 +531,12 @@ try {
   // A finished night unlocks the peak night beside the ordinary one; Enter still starts the ordinary night.
   assert.match(await page.locator('.b3d-panel').innerText(), /PEAK NIGHT UNLOCKED/);
   assert.ok(await page.locator('button[data-action="peak"]').isVisible(), 'the PEAK NIGHT button shows');
+  // A finished night also offers three perks; 1 picks the first (Roomy recovery, on the third night's offer), and the night starts with it.
+  assert.equal(await page.locator('.b3d-perk').count(), 3);
+  await page.keyboard.press('Digit1');
+  await wait(() => document.querySelector('.b3d-perk.picked')?.textContent.includes('ROOMY RECOVERY'));
   await page.keyboard.press('Enter');
+  assert.deepEqual(await read(() => [window.fixtureApp.perkInPlay?.id, window.fixtureApp.model.capacity]), ['roomy-recovery', 8], 'the perk is in play for the night');
   await wait(() => window.fixtureApp.state === 'story' && window.fixtureApp.story.chapter === 'arrival');
   await page.keyboard.press('Enter');
   await wait(() => window.fixtureApp.cutscene?.scene.id === 'scrum');
