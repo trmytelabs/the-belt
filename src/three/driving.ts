@@ -14,6 +14,7 @@ import { PAVING_TILE, scaleUVs, surfaceMaterial } from './textures';
 import { DrivingModels } from './drivingModels';
 import { DrivingNavigation } from './drivingNavigation';
 import { snowMaterial, Snowfall } from './snow';
+import { windAt } from './wind';
 import { TRAFFIC_VARIANTS, TrafficBatch } from './trafficBatch';
 import { createCityWindows } from './cityWindows';
 
@@ -45,6 +46,9 @@ export class DrivingView {
   private disposed = false;
   /** Christmas snow falling round the vehicle wherever it drives. */
   private readonly snow: Snowfall;
+  /** Denser, brighter flakes a few metres ahead of the truck: the snow its headlights catch. */
+  private readonly beam: Snowfall;
+  private weatherClock = 0;
   private readonly reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   /** A decaying knock to the chase camera after a bump, in metres. */
   private jolting = 0;
@@ -219,7 +223,10 @@ export class DrivingView {
     scene.add(this.pool);
     this.snow = new Snowfall(new THREE.Box3(new THREE.Vector3(-35, 0, -35), new THREE.Vector3(35, 16, 35)), { count: quality === 'high' ? 5000 : 1400, size: 0.14, fall: 1.1 });
     scene.add(this.snow.points);
-    const objects = new Set<THREE.Object3D>([this.truck, this.car, this.pool, this.snow.points]);
+    this.beam = new Snowfall(new THREE.Box3(new THREE.Vector3(-6, 0, -6), new THREE.Vector3(6, 4.5, 6)), { count: quality === 'high' ? 600 : 180, size: 0.11, fall: 1.3, color: 0xfff6e0, opacity: 1 });
+    this.beam.points.name = 'snowfall-beam';
+    scene.add(this.beam.points);
+    const objects = new Set<THREE.Object3D>([this.truck, this.car, this.pool, this.snow.points, this.beam.points]);
     mergeStatic(scene, object => objects.has(object) || object.userData.keep === true || (object as THREE.Light).isLight === true);
     this.ready = Promise.all(loads).then(() => {
       if (this.disposed) return;
@@ -388,7 +395,11 @@ export class DrivingView {
       this.camera.position.y += (Math.random() - 0.5) * this.jolting * 0.6;
     } else if (this.jolting <= 0.005) this.jolting = 0;
     this.snow.follow(this.vehicle.position);
-    this.snow.update(model.paused ? 0 : dt, this.reducedMotion);
+    this.beam.follow(new THREE.Vector3(p.x + p.tx * 7, 0, p.z + p.tz * 7));
+    if (!model.paused) this.weatherClock += dt;
+    const wind = windAt(this.weatherClock);
+    this.snow.update(model.paused ? 0 : dt, this.reducedMotion, wind.x, wind.z);
+    this.beam.update(model.paused ? 0 : dt, this.reducedMotion, wind.x, wind.z);
     this.navigation.update(model, this.camera);
   }
 

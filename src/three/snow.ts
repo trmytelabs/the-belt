@@ -106,6 +106,9 @@ export interface SnowfallOptions {
   size?: number;
   /** Fall speed in metres per second. */
   fall?: number;
+  /** The flakes' colour and opacity; brighter for snow caught in a headlight beam. */
+  color?: THREE.ColorRepresentation;
+  opacity?: number;
 }
 
 /**
@@ -140,7 +143,7 @@ export class Snowfall {
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     const material = new THREE.PointsMaterial({
-      color: 0xf4f8ff, size: options.size ?? 0.09, map: flake(), transparent: true, opacity: 0.9,
+      color: options.color ?? 0xf4f8ff, size: options.size ?? 0.09, map: flake(), transparent: true, opacity: options.opacity ?? 0.9,
       depthWrite: false, sizeAttenuation: true, fog: true,
     });
     this.points = new THREE.Points(geometry, material);
@@ -158,8 +161,8 @@ export class Snowfall {
     this.box.min.z = z; this.box.max.z = z + this.size.z;
   }
 
-  /** Flakes fall and sway, carried along X by `windX` m/s; with reduced motion they stay still. */
-  public update(dt: number, reducedMotion = false, windX = 0): void {
+  /** Flakes fall and sway, carried along x and z by the wind in m/s; with reduced motion they stay still. */
+  public update(dt: number, reducedMotion = false, windX = 0, windZ = 0): void {
     if (dt <= 0) return;
     const attribute = this.points.geometry.getAttribute('position') as THREE.BufferAttribute;
     const positions = attribute.array as Float32Array;
@@ -173,7 +176,7 @@ export class Snowfall {
       if (!still) {
         y -= this.fall * this.speeds[i] * dt;
         x += (Math.sin(sway) * 0.25 + windX) * dt;
-        z += Math.cos(sway * 0.8) * 0.18 * dt;
+        z += (Math.cos(sway * 0.8) * 0.18 + windZ) * dt;
       }
       positions[i * 3] = wrap(x, min.x, this.size.x);
       positions[i * 3 + 1] = wrap(y, min.y, this.size.y);

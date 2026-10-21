@@ -89,6 +89,16 @@ and replay starts a fresh drive. The regular briefing also links to practice.
 arrow, and `drivingModels.ts` owns imported art. `main3d.ts` connects them
 to the existing story. The shared story scripts and mall rules are preserved.
 
+## Weather on the road
+
+The snow over the road (`Snowfall`, a box that follows the truck) is blown by
+the game's one wind (`wind.ts`: a steady breeze toward −x with slow swells and a
+gust every two minutes or so), added to the road's own headwind. A second,
+smaller box of denser, brighter flakes follows a point seven metres ahead of
+the truck along its heading (`snowfall-beam`): the snow the headlights catch.
+The driving browser suite checks that it falls ahead of the truck and reads
+brighter than the rest.
+
 ## Verification
 
 `tests/driving-model.mjs` checks both longer journey durations, braking, shoulders,

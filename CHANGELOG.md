@@ -2,6 +2,15 @@
 
 ## 0.1.0 — development snapshot
 
+- Make the 3D night colder and livelier. One wind blows through every
+  snowfall in the game (the depot yards, the lot and the other stages, the
+  drive), a steady breeze toward the west with slow swells and a gust every two
+  minutes or so (`wind.ts`; `Snowfall.update` takes a crosswind). On the drive
+  a denser, brighter fall a few metres ahead of the truck is the snow its
+  headlights catch. Out in the cold at the lot and on the road the standing
+  cast breathe out faint clouds every few seconds, carried off by the wind. The
+  plowed lot is wet enough for the lamps and headlights to lie in it, as the
+  road already was.
 - Give the whole 3D crew eye contact and the depot its footsteps. Every
   unposed character turns its head to the nearest person speaking within
   earshot, else to a worker passing close by, and eases back when nothing holds

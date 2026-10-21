@@ -84,6 +84,17 @@ try {
     return pointer.geometry.type === 'ExtrudeGeometry' && pointer.geometry.boundingBox.max.y - pointer.geometry.boundingBox.min.y > 0.35
       && view.scene.children.filter(c => c.name === 'city-building').length >= 120;
   }), 'the larger city has a solid three-dimensional navigation arrow');
+  // Snow caught in the headlights: a brighter, denser fall a few metres ahead of the truck, blown by the same wind as the rest.
+  const beam = await page.evaluate(() => {
+    const view = window.fixtureApp.drivingView, d = window.fixtureApp.driving;
+    const points = view.scene.getObjectByName('snowfall-beam'), rest = view.scene.getObjectByName('snowfall');
+    points.geometry.computeBoundingBox();
+    const centre = points.geometry.boundingBox.getCenter(points.position.clone());
+    const ahead = (centre.x - d.x) * d.pose.tx + (centre.z - d.z) * d.pose.tz;
+    const beamMaterial = points.material, restMaterial = rest.material;
+    return { count: points.geometry.getAttribute('position').count, ahead, brighter: beamMaterial.opacity > restMaterial.opacity && beamMaterial.color.getHex() !== restMaterial.color.getHex() };
+  });
+  assert.ok(beam.count >= 180 && beam.ahead > 3 && beam.ahead < 11 && beam.brighter, `the headlight snow falls ahead of the truck: ${JSON.stringify(beam)}`);
   assert.match(await page.locator('.b3d-drive-nav').innerText(), /SOUTHGATE MALL/);
   await page.keyboard.press('Enter');
   assert.equal(await page.evaluate(() => window.fixtureApp.state), 'driving', 'Enter cannot skip driving');

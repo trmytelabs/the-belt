@@ -7,6 +7,7 @@ import type { Cutscene } from '../game/slice/StoryModel';
 import type { StoryScene } from '../game/slice/StoryScript';
 import { animateCharacter, blendPose, createCharacter, faceToward, lookToward, mergeCharacter, snapshotPose, type Character, type CharacterSpec } from './characters';
 import { eyeHeight, gazeInFigureFrame, lookTargetFor, type Gaze } from './attention';
+import { windAt, type Wind } from './wind';
 import { applyPose, type CrewLife, type Pose } from './crew';
 import { placeProp, upgradeCar } from './propModels';
 import { poseSeated, seatRootPosition, type SeatTargetPoints } from './seating';
@@ -207,7 +208,12 @@ interface Stage {
   puffs: PuffField;
   /** Snow falling outside, wherever this stage shows the outdoors. */
   snow: Snowfall[];
+  /** When each person next breathes out, by actor id (outdoor stages only). */
+  breaths: Map<string, number>;
 }
+
+/** Stages set outdoors, where breath shows in the cold. */
+const OUTDOORS = new Set<StageId>(['lot', 'road']);
 
 /** Model pixels in the lot's key-return area map onto the lot stage's metres. */
 const lotX = (x: number): number => (x - 480) / 32;
@@ -260,6 +266,8 @@ export class StoryStage {
   private roadTravel = 0;
   /** The road scrolls past a parked truck, so its snow is carried backwards at the truck's speed. */
   private roadWind = 0;
+  /** Seconds of weather so far, for the wind. */
+  private weatherClock = 0;
   private mallStoreText = new Map<string, string>();
   private southgate: SouthgateMall | null = null;
   private mallIntroBeat = -1;
@@ -346,7 +354,7 @@ export class StoryStage {
       scene.environment = this.environment.texture;
       scene.environmentIntensity = this.environment.intensity;
     }
-    stage = { scene, actors: new Map(), props: {}, puffs: new PuffField(scene), snow: [] };
+    stage = { scene, actors: new Map(), props: {}, puffs: new PuffField(scene), snow: [], breaths: new Map() };
     this.stages[id] = stage;
     if (id === 'lot') this.buildLot(stage);
     else if (id === 'store') this.buildStore(stage);
@@ -398,7 +406,8 @@ export class StoryStage {
     scene.add(snowField(90, 70, 0, 0, -0.01));
     // Plowed asphalt with snow worked into the grain: a CC0 photo set, tinted to the old wet colour.
     const paved = surfacesLoaded();
-    const wet = surfaceMaterial('asphalt', { color: 0x262c30, roughness: 0.7 });
+    // Wet enough that the lamps and headlights lie in it, as they do in the road.
+    const wet = surfaceMaterial('asphalt', { color: 0x262c30, roughness: 0.45 });
     for (const [x0, x1, z0, z1] of [[-45, 45, 2.2, 13.5], [-3.6, 3.6, -0.3, 2.2], [-24, 24, -13.9, -0.3]] as const) {
       const geometry = new THREE.PlaneGeometry(x1 - x0, z1 - z0);
       if (paved) scaleUVs(geometry, (x1 - x0) / PAVING_TILE, (z1 - z0) / PAVING_TILE);
@@ -1682,7 +1691,30 @@ export class StoryStage {
     // Cars that moved this beat roll and steer their wheels to match.
     for (const prop of Object.values(stage.props)) if (prop.visible && prop.userData.wheels) followWheels(prop.userData.wheels as WheelRig, prop, dt);
     stage.puffs.update(dt);
-    for (const flakes of stage.snow) flakes.update(dt, this.reducedMotion, this.active === 'road' ? this.roadWind : 0);
+    this.weatherClock += dt;
+    const wind = windAt(this.weatherClock);
+    for (const flakes of stage.snow) flakes.update(dt, this.reducedMotion, (this.active === 'road' ? this.roadWind : 0) + wind.x, wind.z);
+    if (OUTDOORS.has(this.active) && !this.reducedMotion) this.breathe(stage, time, wind);
+  }
+
+  /** Out in the cold, everyone standing breathes out a faint cloud every few seconds, carried off by the wind. */
+  private breathe(stage: Stage, time: number, wind: Wind): void {
+    for (const [id, actor] of stage.actors) {
+      if (!actor.root.visible || actor.seatedIn) continue;
+      const next = stage.breaths.get(id);
+      // A first breath soon after someone steps out, then one every few seconds, each on their own time.
+      if (next === undefined) { stage.breaths.set(id, time + 0.4 + Math.random()); continue; }
+      if (time < next) continue;
+      stage.breaths.set(id, time + 2.4 + Math.random() * 1.8);
+      const { root, headHeight } = actor.character;
+      const scale = root.scale.x;
+      const forward = new THREE.Vector3(Math.sin(root.rotation.y), 0, Math.cos(root.rotation.y));
+      const mouth = root.position.clone().add(new THREE.Vector3(0, eyeHeight(headHeight) - 0.1 * scale, 0)).addScaledVector(forward, 0.14 * scale);
+      stage.puffs.emit(mouth, {
+        color: 0xdde3ea, size: 0.09 * scale, life: 1.2, opacity: 0.2, grow: 2.4, spread: 0.02,
+        velocity: forward.multiplyScalar(0.4).add(new THREE.Vector3(wind.x * 0.25, 0.3, wind.z * 0.25)),
+      });
+    }
   }
 
   /** In a scene the cast look at whoever is speaking, and the speaker at the nearest of the others. */
