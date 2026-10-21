@@ -2,6 +2,10 @@
 
 ## 0.1.0 — development snapshot
 
+- Add seniority to the 3D depot: six titles from NEW HIRE to BELT LEGEND,
+  climbed with finished nights and medals and worked out from the existing
+  record. The briefing names the player's title and what the next one takes,
+  and the results announce a promotion beside any new medals.
 - Let a controller pick tonight's perk: on the 3D briefing LB and RB step
   along the three offered perks and through none. HOW TO PLAY on the pause
   screen now covers inspections, night goals, perks and the endless shift,

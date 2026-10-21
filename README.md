@@ -140,6 +140,10 @@ SORT!** countdown starts the shift.
   device (for example an S, a peak night, all three goals in one night, 20 in
   a row, or bringing the five-ton home with no bumps or red lights). The
   results name new ones; the briefing counts them and MEDALS lists them all.
+- Seniority: finished nights and medals climb six titles, from NEW HIRE through
+  PART-TIMER, LOADER, SENIOR LOADER and PRELOAD LEAD to BELT LEGEND (15
+  finished nights and every medal). The briefing names yours and what the next
+  takes; the results announce a promotion.
 - Inspections: twice a night the supervisor on your side (Vic or Shan) watches
   you for 20 seconds. Each load meanwhile earns 50 points; a wrong drop costs
   30 more.

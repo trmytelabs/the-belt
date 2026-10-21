@@ -4,6 +4,7 @@ import { createPriorityMarker, updatePriorityMarker, type PriorityMarker } from 
 import { GOAL_BONUS, judgeGoals, nightGoals, type NightGoal } from './nightGoals';
 import { MEDALS, awardMedals, type NightFacts } from './medals';
 import { perkById, perkOffer, type Perk } from './perks';
+import { rankNeeds, seniority } from './seniority';
 import { sortingGuide } from './sortingGuide';
 import { pathLength, platformWalkPath, walkPath, type WalkPoint } from './walking';
 import * as THREE from 'three';
@@ -568,6 +569,7 @@ export class Belt3d {
       <p>Story scenes: SPACE next line, ENTER skips the scene, ESC pauses.</p>`}
       <p>The night starts at home: go in to work, or quit UPS. After the shift, drive the five-ton to Southgate Mall and finish the deliveries. Driving controls appear when you get there.</p>
       ${this.recordLine()}
+      ${this.seniorityLine()}
       ${this.goalsLine()}
       ${this.perkLine()}
       ${this.record.completed > 0 ? `<p class="b3d-record">PEAK NIGHT UNLOCKED · in the flow and the rush freight comes a fifth sooner, the belt runs faster and recovery holds ${PEAK_NIGHT.capacity}. ${this.touch.enabled ? 'Tap PEAK NIGHT.' : 'Press P or click PEAK NIGHT.'} ENDLESS SHIFT${this.touch.enabled ? '' : ' (N)'} has no clock: the belt speeds up every minute until recovery overflows.</p>` : ''}
@@ -1993,15 +1995,24 @@ export class Belt3d {
     return `<p class="b3d-record"><b>YOUR RECORD · ${completed} OF ${played} ${played === 1 ? 'NIGHT' : 'NIGHTS'} FINISHED · ${bestText} · ${openers.length} OF ${OPENER_COUNT} OPENERS SEEN · ${this.record.medals.length} OF ${MEDALS.length} MEDALS</b></p>`;
   }
 
-  /** Adds this night to the record and says how it compares with the best. */
+  /** The briefing's line naming the player's seniority and what the next title takes. */
+  private seniorityLine(): string {
+    const { rank, next } = seniority(this.record);
+    return `<p class="b3d-record">SENIORITY · <b>${rank.title}</b> · ${next ? `NEXT: ${next.title} AT ${rankNeeds(next)}` : 'THE TOP OF THE BELT'}</p>`;
+  }
+
+  /** Adds this night to the record and says how it compares with the best, and any promotion or medal it earned. */
   private recordResults(won: boolean, total: number, grade: string, night: Omit<NightFacts, 'openersSeen' | 'nightsPlayed'>): string {
+    const before = seniority(this.record).level;
     const result = recordNight(this.record, { won, total, grade, sorted: this.model.sorted, opener: this.story.opener.id, date: new Date().toISOString().slice(0, 10) });
     const awarded = awardMedals(result.record.medals, { ...night, openersSeen: result.record.openers.length, nightsPlayed: result.record.played });
     this.record = { ...result.record, medals: awarded.medals };
     this.medalsEarned = awarded.fresh.map((medal) => medal.id);
     saveRecord(browserStorage(), this.record);
     const nightLabel = `NIGHT ${this.record.played}`;
-    const medals = awarded.fresh.map((medal) => `<p class="b3d-medal"><b>MEDAL · ${medal.title}</b> · ${escapeHtml(medal.detail)}</p>`).join('');
+    const now = seniority(this.record);
+    const promoted = now.level > before ? `<p class="b3d-medal"><b>PROMOTED · ${now.rank.title}</b> · ${rankNeeds(now.rank).toLowerCase()}</p>` : '';
+    const medals = promoted + awarded.fresh.map((medal) => `<p class="b3d-medal"><b>MEDAL · ${medal.title}</b> · ${escapeHtml(medal.detail)}</p>`).join('');
     if (result.newBest) return `<p class="b3d-best"><b>NEW PERSONAL BEST · ${nightLabel}</b>${result.previous ? ` · beat ${formatTotal(result.previous.total)}` : ''}</p>${medals}`;
     const best = this.record.best;
     return `<p class="b3d-best">${best ? `BEST NIGHT ${formatTotal(best.total)} · GRADE ${escapeHtml(best.grade)}` : 'NO SHIFT FINISHED YET'} · ${nightLabel} · ${this.record.completed} finished</p>${medals}`;
