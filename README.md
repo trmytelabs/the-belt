@@ -196,6 +196,8 @@ SORT!** countdown starts the shift.
   Escape / PAUSE and M / MUTE work on the road too. Try just the driving at
   `?mode=3d&drive=mall` (or `drive=ups`); parking offers the trip back.
   See [the 3D driving mini-game](docs/3d-driving.md).
+- Each delivery drive is timed against par: parked within a minute pays 200
+  points, within 1:20 pays 100. Bumps and red lights still cost 100 each.
 
 Touch devices have a movement stick and Switch, Grab / Deliver, and Stop the
 Belt buttons. Landscape gives a closer view; portrait reserves room below the game

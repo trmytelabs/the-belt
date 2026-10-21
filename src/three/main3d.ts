@@ -39,7 +39,7 @@ import { MesaEncounter } from './mesa';
 import { BEN_CAST, BEN_END, BEN_START, SetPieces } from './setpieces';
 import { StoryStage, directDepot } from './story';
 import { breakScene3d } from './breakScenes3d';
-import { DrivingModel, type DriveDestination, type DriveOrigin } from './DrivingModel';
+import { DRIVE_PAR, DrivingModel, driveClock, parBonus, type DriveDestination, type DriveOrigin } from './DrivingModel';
 import { DECISION, HOME_DECISION, LEAVE_HOUSE, QUIT_ENDING, QUIT_NIGHT, type HomeBeat } from './homeScript';
 import { DrivingView } from './driving';
 import { BELT_SOLID_WIDTH, HEAD_DRIVE, clearReceiving } from './receivingCollision';
@@ -177,6 +177,9 @@ export class Belt3d {
   private readonly pileVisible: Record<'T' | 'S', number> = { T: 0, S: 0 };
   private fumeTimer = 0;
   private mallBonus = 0;
+  /** What tonight's delivery drives earned against par, and their times in seconds. */
+  public driveBonus = 0;
+  public driveTimes: number[] = [];
   private breakAlertMs = 0;
   /** Each worker's smoothed velocity in world metres per second, for the camera's look-ahead. */
   private readonly motion: Record<WorkerId, { previous: THREE.Vector3 | null; velocity: THREE.Vector3 }> = {
@@ -762,6 +765,14 @@ export class Belt3d {
         <a href="${window.location.pathname}?mode=3d">PLAY THE FULL NIGHT</a>`, () => this.beginDriving(this.practiceDestination!));
       return;
     }
+    if (this.driving && this.driving.origin !== 'home') {
+      // A delivery drive between the yards pays for beating par.
+      const seconds = this.driving.elapsed, bonus = parBonus(seconds);
+      this.driveBonus += bonus;
+      this.driveTimes.push(seconds);
+      this.overlay.showToast(bonus ? `PARKED IN ${driveClock(seconds)} · UNDER ${seconds <= DRIVE_PAR.fast ? 'PAR' : 'TIME'} · +${bonus}` : `PARKED IN ${driveClock(seconds)} · over par`, 2600);
+      if (bonus) audioSystem.play('register');
+    }
     if (this.driving?.origin === 'home') {
       // Parked at work: the night continues with the original arrival scenes.
       this.story.go('arrival');
@@ -894,6 +905,7 @@ export class Belt3d {
     this.lot = null;
     this.driving = null;
     this.drivingPenalty = this.drivingCollisions = this.drivingRedLights = 0;
+    this.driveBonus = 0; this.driveTimes = [];
     this.mallBonus = 0;
     this.breakAlertMs = 0;
     this.overlay.setLunchAlert(false);
@@ -1117,7 +1129,8 @@ export class Belt3d {
         .replace('SPACE to park', 'Tap PARK').replace('S / ↓ brake', 'BRAKE').replace('A / D to steer', 'Steer with the stick') : objective;
       this.overlay.chapterHud([
         ['SPEED', `${Math.round(Math.abs(drive.speed) * 3.6)} km/h`], ['TO BAY', `${Math.ceil(drive.remaining)} m`],
-        [this.practiceDestination ? 'PENALTY' : 'NIGHT SCORE', this.practiceDestination ? `−${drive.penalty} PTS` : String(Math.max(0, m.score + this.mallBonus - this.drivingPenalty))],
+        [this.practiceDestination ? 'PENALTY' : 'NIGHT SCORE', this.practiceDestination ? `−${drive.penalty} PTS` : String(Math.max(0, m.score + this.mallBonus - this.drivingPenalty + this.driveBonus))],
+        ...(drive.origin === 'home' ? [] : [['TIME', `${driveClock(drive.elapsed)} · PAR ${driveClock(DRIVE_PAR.fast)}`] as [string, string]]),
         drive.origin === 'home' ? ['IN THE CAR', 'TERMITE + SKANKY']
           : ['CARGO', this.practiceDestination ? 'PRACTICE · SAFE' : drive.destination === 'mall' ? '6 BUNDLES · SAFE' : '6 / 6 SIGNED'],
       ], hint,
@@ -1788,7 +1801,7 @@ export class Belt3d {
     const routes = (['A', 'D', 'T', 'B', 'E', 'S', 'C'] as const).map((route) => `${ROUTE_INFO[route].name} ${m.routeSorted[route]}`).join(' · ');
     const judged = judgeGoals(this.goals, m);
     this.goalBonus = judged.bonus;
-    const total = Math.max(0, m.score + this.mallBonus - this.drivingPenalty + judged.bonus);
+    const total = Math.max(0, m.score + this.mallBonus - this.drivingPenalty + this.driveBonus + judged.bonus);
     const goals = this.goals.map((goal) => `${judged.met.includes(goal) ? '✓' : '✗'} ${escapeHtml(goal.label)}`).join(' · ');
     const record = this.recordResults(m.won, total, m.won ? m.grade : 'F', {
       won: m.won, grade: m.won ? m.grade : 'F', peak: m.peak, goalsMet: judged.met.length, goalsTotal: this.goals.length,
@@ -1808,7 +1821,7 @@ export class Belt3d {
       <p class="b3d-goals">NIGHT GOALS · ${judged.met.length} OF ${this.goals.length} · ${goals} · +${judged.bonus}</p>
       <p>${m.thrownDeliveries} thrown in clean · ${m.damaged} broken (−${m.breakagePenalty} points${m.damaged > THROWING.gradeForgivenBreaks ? `, ${m.gradedBreaks} counted against the grade` : ''})</p>
       ${mall ? `<p>MALL RUN · ${mall.delivered}/6 delivered · ${mall.signatures}/6 signed · five-ton ${home ? 'returned' : 'not returned'} · +${this.mallBonus}</p>
-      <p>DRIVING · ${this.drivingCollisions} bumps${this.drivingRedLights ? ` · ${this.drivingRedLights} red lights` : ''} · −${this.drivingPenalty} points · cargo safe</p>
+      <p>DRIVING · ${this.drivingCollisions} bumps${this.drivingRedLights ? ` · ${this.drivingRedLights} red lights` : ''} · −${this.drivingPenalty} points · cargo safe${this.driveTimes.length ? ` · ${this.driveTimes.map(driveClock).join(' and ')}${this.driveBonus ? ` · against par +${this.driveBonus}` : ''}` : ''}</p>
       <p><b>NIGHT TOTAL ${String(total).padStart(5, '0')}</b> · ${m.gradeQuote}</p>` : ''}
       <button type="button">ANOTHER NIGHT  ↵</button>
       <a href="${window.location.pathname}?mode=classic">PLAY THE ORIGINAL FULL SHIFT</a>`, () => this.restart());

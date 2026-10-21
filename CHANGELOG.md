@@ -2,6 +2,13 @@
 
 ## 0.1.0 — development snapshot
 
+- Time the 3D delivery drives against par. Parking at Southgate Mall, and back
+  at UPS, within a minute pays 200 points and within 1:20 pays 100; the drive in
+  from home and the practice drives are untimed for points, and there is still
+  no time limit. The drive HUD shows the clock against par, a toast gives the
+  time on parking, and the results list both drive times and what they earned,
+  inside the night total. Bumps and red lights still cost 100 each, so speed
+  is a trade.
 - Add medals to the 3D game (`medals.ts`): ten achievements kept with the
   night record on this device, each earned once (finish a shift, an S, a peak
   night, all three night goals, every priority parcel on time, 20 in a row, a

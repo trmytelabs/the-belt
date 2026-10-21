@@ -481,8 +481,8 @@ try {
   const driveTotals = await read(() => ({ penalty: window.fixtureApp.drivingPenalty,
     bumps: window.fixtureApp.drivingCollisions, redLights: window.fixtureApp.drivingRedLights }));
   assert.equal(driveTotals.penalty, (driveTotals.bumps + driveTotals.redLights) * 100, 'road incidents retain their separate 100-point deduction');
-  const goalBonus = await read(() => window.fixtureApp.goalBonus);
-  const expectedNightTotal = String(Math.max(0, 6250 - driveTotals.penalty + goalBonus)).padStart(5, '0');
+  const goalBonus = await read(() => window.fixtureApp.goalBonus), driveBonus = await read(() => window.fixtureApp.driveBonus);
+  const expectedNightTotal = String(Math.max(0, 6250 - driveTotals.penalty + goalBonus + driveBonus)).padStart(5, '0');
   assert.match(recovered, new RegExp(`NIGHT TOTAL ${expectedNightTotal}.*OUTSTANDING SHIFT`));
   await shot('recovered-s-rank');
   console.log(`PASS 56 of 57 dispatched, recovered freight and the completed mall run render S rank, an explicit grade breakdown and the correct ${expectedNightTotal} night total after driving deductions`);
