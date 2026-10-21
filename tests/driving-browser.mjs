@@ -202,8 +202,9 @@ try {
   await page.keyboard.down('KeyW');
   await page.waitForFunction(n => window.fixtureApp.driving.collisions > n, bumpsBefore, { polling: 10 });
   await page.keyboard.up('KeyW');
-  const bumped = await page.evaluate(() => ({ collisions: window.fixtureApp.driving.collisions, penalty: window.fixtureApp.drivingPenalty }));
-  assert.ok(bumped.collisions >= 1 && bumped.penalty === bumped.collisions * 100, `every bump costs 100 points: ${JSON.stringify(bumped)}`);
+  // Every bump and every red light costs 100 points; the earlier checks' turns can cross a red light as well as clip a kerb.
+  const bumped = await page.evaluate(() => { const app = window.fixtureApp; return { collisions: app.driving.collisions, bumps: app.drivingCollisions, redLights: app.drivingRedLights, penalty: app.drivingPenalty }; });
+  assert.ok(bumped.collisions >= 1 && bumped.bumps === bumped.collisions && bumped.penalty === (bumped.bumps + bumped.redLights) * 100, `every bump and red light costs 100 points: ${JSON.stringify(bumped)}`);
   assert.match(await page.locator('.b3d-chapterhud').innerText(), /900|SAFE/);
   const beforePause = await page.evaluate(() => ({ elapsed: window.fixtureApp.driving.elapsed, distance: window.fixtureApp.driving.distance }));
   await page.keyboard.press('Escape');
