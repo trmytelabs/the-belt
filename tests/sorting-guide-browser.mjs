@@ -22,6 +22,7 @@ try {
     const wait = (fn, arg) => page.waitForFunction(fn, arg, { polling: 10, timeout: 90000 });
     await wait(() => window.fixtureApp?.state === 'briefing');
     assert.equal(await page.locator('.b3d-steps li').count(), 3);
+    assert.equal(await page.evaluate(() => document.querySelector('.b3d-howto').open), true, 'a first briefing shows HOW TO PLAY open');
     assert.match(await page.locator('.b3d-panel').innerText(), /ends at 7 packages in recovery/);
     if (shots) await page.screenshot({ path: join(shots, `briefing-${viewport.width}.png`) });
     await page.evaluate(() => window.fixtureApp.forceStory({ breakAtMs: 1e12 }));

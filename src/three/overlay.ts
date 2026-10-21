@@ -135,6 +135,10 @@ const CSS = `
 .b3d-medal-list li.earned b { color: #edb765; }
 .b3d-medal-list li.earned b::before { content: '✓ '; }
 .b3d-medal-list li.locked { opacity: .55; }
+.b3d-howto summary { cursor: pointer; margin: 6px 0; color: #cfd8cc; font-size: 15px; list-style: none; }
+.b3d-howto summary::-webkit-details-marker { display: none; }
+.b3d-howto summary::before { content: '▸ '; color: #edb765; }
+.b3d-howto[open] summary::before { content: '▾ '; }
 .b3d-trend { display: flex; align-items: flex-end; gap: 4px; height: 48px; margin: 4px 0 8px; border-bottom: 1px solid #3b5a62; }
 .b3d-trend span { flex: 1; min-width: 6px; border-radius: 2px 2px 0 0; background: #edb765; }
 .b3d-trend span.failed { background: #5d7173; }

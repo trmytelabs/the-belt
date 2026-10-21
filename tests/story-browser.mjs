@@ -505,6 +505,10 @@ try {
   // Two nights on record: the third night's goals are the rotation's third set.
   assert.match(await page.locator('.b3d-panel').innerText(), /TONIGHT’S GOALS · [+]150 EACH: Finish with 2 or fewer missed · Load 8 in a row · Finish with no wrong drops/);
   assert.match(await page.locator('.b3d-panel').innerText(), /YOUR RECORD · 2 OF 2 NIGHTS FINISHED · BEST NIGHT \d{5} · GRADE [SABCDF] · 1 OF 3 OPENERS SEEN · \d+ OF 10 MEDALS/);
+  // A returning player's briefing folds HOW TO PLAY into its one line, which opens on a click.
+  assert.equal(await read(() => document.querySelector('.b3d-howto').open), false, 'folded once a night is finished');
+  await page.locator('.b3d-howto summary').click();
+  assert.equal(await read(() => document.querySelector('.b3d-howto').open), true);
   // The briefing's MEDALS button lists all ten, the first finished shift's ticked, and BACK returns to the briefing.
   await page.getByRole('button', { name: /^MEDALS/ }).click();
   const medalList = await read(() => [...document.querySelectorAll('.b3d-medal-list li')].map((item) => ({ title: item.querySelector('b').textContent, earned: item.classList.contains('earned') })));

@@ -553,7 +553,7 @@ export class Belt3d {
     this.overlay.showPanel(`
       <div class="kicker">TERMITE &amp; SKANKY  /  ONE MORE OVERNIGHT</div>
       <h1>ANOTHER NIGHT ON THE BELT.</h1>
-      <p><b>HOW TO PLAY · Dispatch ${this.model.goal} packages together in three minutes.</b></p>
+      <details class="b3d-howto"${this.record.completed > 0 ? '' : ' open'}><summary><b>HOW TO PLAY · Dispatch ${this.model.goal} packages together in three minutes.</b></summary>
       <ol class="b3d-steps">
         <li><b>Move beside a package.</b> ${this.touch.enabled ? 'Use the stick. Tap GRAB / DELIVER' : 'Use WASD / arrows. Press SPACE'} to grab the glowing parcel.</li>
         <li><b>Follow its destination.</b> The big street number chooses the truck: <b>27 ST → MILL WOODS (10–49 ST)</b>. The guide and gold marker show where to go.</li>
@@ -568,6 +568,7 @@ export class Belt3d {
       <p>F throws toward the nearest drop. At the top of the stairs, throw down with a 30% break risk. E stops the belt. V overview.</p>
       <p>Story scenes: SPACE next line, ENTER skips the scene, ESC pauses.</p>`}
       <p>The night starts at home: go in to work, or quit UPS. After the shift, drive the five-ton to Southgate Mall and finish the deliveries. Driving controls appear when you get there.</p>
+      </details>
       ${this.recordLine()}
       ${this.seniorityLine()}
       ${this.goalsLine()}
@@ -1111,7 +1112,7 @@ export class Belt3d {
    */
   private padMenu(button: PadButton): boolean {
     if (this.state !== 'briefing' && this.state !== 'paused' && this.state !== 'ended') return false;
-    const controls = [...this.overlay.root.querySelectorAll<HTMLElement>('.b3d-panel button, .b3d-panel a[href], .b3d-panel input')]
+    const controls = [...this.overlay.root.querySelectorAll<HTMLElement>('.b3d-panel button, .b3d-panel summary, .b3d-panel a[href], .b3d-panel input')]
       .filter((control) => control.offsetParent !== null);
     const at = controls.findIndex((control) => control.classList.contains('pad-focus'));
     const current = controls[at];

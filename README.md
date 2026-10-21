@@ -141,7 +141,9 @@ SORT!** countdown starts the shift.
   a row, or bringing the five-ton home with no bumps or red lights). The
   results name new ones; the briefing counts them and MEDALS lists them all,
   with your last eight nights below (a bar for each total, then grade, total
-  and freight dispatched).
+  and freight dispatched). Once a night is finished, the briefing folds its
+  HOW TO PLAY section into one line (click it to open), so the record, goals
+  and perks come first.
 - Seniority: finished nights and medals climb six titles, from NEW HIRE through
   PART-TIMER, LOADER, SENIOR LOADER and PRELOAD LEAD to BELT LEGEND (15
   finished nights and every medal). The briefing names yours and what the next
