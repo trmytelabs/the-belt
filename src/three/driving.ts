@@ -415,7 +415,10 @@ export class DrivingView {
       character.head.rotation.set(0, 0, 0);
       applyPose(character, 'sit', model.elapsed, this.reducedMotion);
       const points: SeatTargetPoints = {};
-      if (targets.hands) points.hands = { left: targets.hands.left.getWorldPosition(new THREE.Vector3()), right: targets.hands.right.getWorldPosition(new THREE.Vector3()) };
+      if (targets.hands) {
+        points.hands = { left: targets.hands.left.getWorldPosition(new THREE.Vector3()), right: targets.hands.right.getWorldPosition(new THREE.Vector3()) };
+        if (character.motion && seat === 'driver') character.motion.hands = true;
+      }
       if (targets.feet) points.feet = { left: targets.feet.left.getWorldPosition(new THREE.Vector3()), right: targets.feet.right.getWorldPosition(new THREE.Vector3()) };
       poseSeated(character, points);
     }

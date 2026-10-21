@@ -6,7 +6,7 @@ import {
 import { DRIVERS, SHAN_BREAKAGE_LINES } from '../game/slice/StoryScript';
 import type { Parcel, ShiftEvent, ShiftModel } from '../game/slice/ShiftModel';
 import { audioSystem } from './audio';
-import { animateCharacter, bendElbows, bendKnees, createCharacter, mergeCharacter, type Character } from './characters';
+import { animateCharacter, bendElbows, bendKnees, blendPose, createCharacter, faceToward, mergeCharacter, snapshotPose, type Character } from './characters';
 import { plantFeet } from './footing';
 import { SEATED_BODY_DROP } from './figure';
 
@@ -57,9 +57,9 @@ export class Actor {
 
   public get root(): THREE.Group { return this.character.root; }
 
-  /** Changes pose, restarting its animation only when it actually changes. */
+  /** Changes pose, restarting its animation only when it actually changes; the joints blend in from where they were. */
   public setPoseAt(pose: Pose, time: number): void {
-    if (this.pose !== pose) { this.pose = pose; this.poseStart = time; }
+    if (this.pose !== pose) { snapshotPose(this.character, time); this.pose = pose; this.poseStart = time; }
   }
 
   public place(x: number, y: number): void {
@@ -73,16 +73,15 @@ export class Actor {
 
   public animate(dt: number, time: number, reducedMotion: boolean): void {
     const c = this.character;
-    const target = this.faceAngle ?? this.heading;
-    let delta = target - c.root.rotation.y;
-    delta = Math.atan2(Math.sin(delta), Math.cos(delta));
-    c.root.rotation.y += delta * Math.min(1, dt * 10);
     animateCharacter(c, dt, { moving: this.moved, carrying: this.carrying, time, reducedMotion });
+    // A big change of facing while standing is a turn on the spot; a small one a quick twist.
+    faceToward(c, this.faceAngle ?? this.heading, dt, this.moved, time);
     if (c.motion) { c.motion.pose = this.pose; c.motion.holding = this.holding; }
     // A posed figure owns its torso; a plain walk keeps the walk cycle's lean and sway.
     if (this.pose !== 'none') c.body.rotation.set(0, 0, 0);
     c.head.rotation.set(0, 0, 0);
     applyPose(c, this.pose, time - this.poseStart, reducedMotion);
+    blendPose(c, time);
     // Walking the stairs or an aisle's steps, each foot stands on its own tread; a gag keeps its pose.
     if (this.pose === 'none') plantFeet(c, surfaceUnder);
     this.moved = false;

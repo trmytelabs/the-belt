@@ -266,7 +266,10 @@ plays them over the figure's reaching arms, `characterModels.ts`), and the
 Quaternius clips were not downloaded, so carrying and throwing stay
 procedural. Feet plant on the stair treads by the same two-bone solver that
 seats the drivers (`footing.ts`), on the figure's pivots, which a model's legs
-follow on a flight.
+follow on a flight. A fifth pass loosened what still looked stiff: seated idles for
+passengers (legs from the figure; a driver keeps the whole figure), fidgets between idles, an angry gesture for
+shouting, turn clips with the root turned by the game over the same span, and a
+0.22 s blend into every hand-built pose (`characters.ts`).
 
 | Phase | Objective | Files | Actions | Depends on | Effort | Risks | Tests affected and replacement | Done when |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |

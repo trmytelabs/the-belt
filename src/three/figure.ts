@@ -19,3 +19,7 @@ export const BODY = {
 
 /** How far the body pivot drops for the `sit` pose: a seated figure's hips sit this much under their standing height. */
 export const SEATED_BODY_DROP = 0.41;
+
+/** Seconds a turn on the spot takes, and the facing change (radians) that calls for one rather than a quick twist. */
+export const TURN_SECONDS = 0.7;
+export const TURN_MIN = 0.7;
