@@ -276,13 +276,17 @@ try {
   await touch.waitForFunction(() => window.fixtureApp.driving.speed > 8, null, { polling: 10 });
   const stick = await touch.getByLabel('Steer truck', { exact: true }).boundingBox();
   const steerPoint = { x: stick.x + 15, y: stick.y + stick.height / 2, id: 2 };
+  const startHeading = await touch.evaluate(() => window.fixtureApp.driving.heading);
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [gasPoint, steerPoint] });
-  // Steer until the truck has turned: a quarter second of wall time was enough on a GPU but not on CI's
-  // software renderer, where the same time covers fewer simulated frames.
-  await touch.waitForFunction(() => window.fixtureApp.driving.heading > Math.PI / 2 + 0.1, null, { polling: 10, timeout: 30_000 });
+  // Steer until the truck has turned left by a tenth of a radian: a quarter second of wall time was enough on
+  // a GPU but not on CI's software renderer, where the same time covers fewer simulated frames. The turn is
+  // measured from where it started, wrapped, so a truck that swings past due west still counts.
+  await touch.waitForFunction((h0) => {
+    const d = window.fixtureApp.driving.heading - h0;
+    return Math.atan2(Math.sin(d), Math.cos(d)) > 0.1;
+  }, startHeading, { polling: 10, timeout: 30_000 });
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [steerPoint] });
   assert.equal(await touch.evaluate(() => window.fixtureApp.touch.pedals.throttle), 1, 'releasing steering keeps the held gas pedal');
-  assert.ok(await touch.evaluate(() => window.fixtureApp.driving.heading > Math.PI / 2 + 0.1));
   const brake = await touch.getByRole('button', { name: 'Brake truck', exact: true }).boundingBox();
   const brakePoint = { x: brake.x + brake.width / 2, y: brake.y + brake.height / 2, id: 3 };
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [gasPoint, brakePoint] });
