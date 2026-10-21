@@ -209,6 +209,8 @@ try {
     Object.assign(app.model.packages[0], { y: 400, beltOffset: 400, route: 'A', state: 'belt' });
     Object.assign(app.model.activeWorker, { x: 400, y: 400 });
     window.interactionSounds = [];
+    // The depot's distant sounds (a forklift's beeper, the PA chime) would mix into these checks; hold them off.
+    app.audio.ambienceIn = Infinity;
     for (const [method, kind] of [['createOscillator', 'oscillator'], ['createBufferSource', 'recording']]) {
       const original = AudioContext.prototype[method];
       AudioContext.prototype[method] = function (...args) {
@@ -243,6 +245,7 @@ try {
   await wait(() => window.interactionSounds.some(sound => sound.kind === 'recording' && !sound.loop && sound.duration > 0 && sound.duration < 2));
   assert.equal(await read(() => window.interactionSounds.some(sound => sound.kind === 'oscillator')), false, 'wrong drops use the recorded cue');
   console.log('PASS the pickable package has a halo and Space prompt; empty grabs stay quiet, while the wrong truck deducts ten points and plays the short recorded error cue');
+  await read(() => { window.fixtureApp.audio.ambienceIn = 6; });
 
   // Priority freight: a gold ring and countdown label ride the parcel, run down to red, hide while carried,
   // and a real Space load inside the window pays the bonus with its own pop and a results line.
@@ -350,6 +353,8 @@ try {
   });
   await page.keyboard.press('Space');
   await wait(() => window.fixtureApp.model.inspectionLoads === 1);
+  // The load's events reach the overlay on the next frame, which can take a while without a GPU.
+  await wait(() => window.inspectionPops.length > 0);
   const watched = await read(() => ({ score: window.fixtureApp.model.score, pops: window.inspectionPops, bonus: window.fixtureApp.model.inspectionBonus }));
   assert.equal(watched.bonus, 50);
   assert.ok(watched.score - watchedBefore >= 150 && watched.pops.includes('WATCHED +50'), `a watched load pays its points and +50: ${JSON.stringify({ watchedBefore, watched })}`);

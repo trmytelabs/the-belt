@@ -146,6 +146,8 @@ export class Belt3d {
   public goalBonus = 0;
   /** The medals the last results awarded for the first time. */
   public medalsEarned: string[] = [];
+  /** The shared sound system, reachable like the rest of the app (the browser checks use it). */
+  public readonly audio = audioSystem;
   /** The perk picked on the briefing for tonight, and the one tonight's shift runs with. */
   public perk: string | null = null;
   public perkInPlay: Perk | null = null;
