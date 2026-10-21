@@ -2,6 +2,11 @@
 
 ## 0.1.0 — development snapshot
 
+- Add settings to the 3D game (`settings.ts`): SETTINGS on the pause screen
+  opens music and effects sliders and a camera shake switch. Changes apply at
+  once and are kept in local storage on this device; M still mutes
+  everything and reduced motion still stills the camera. A focused slider
+  keeps its arrow keys instead of walking the worker.
 - Give the 3D conveyor its sound. While sorting goes on, a low motor hum whose
   pitch follows the belt's speed and a band of roller rattle that clacks at
   the rollers' rate and grows with the freight riding it play under the

@@ -89,6 +89,37 @@ try {
   assert.ok(await read(()=>window.fixtureApp.state==='story'&&window.fixtureApp.cutscene!==null),'the alert finishes before starting the existing lunch destination');
   console.log('PASS lunch has a multi-second 15 MINUTE LUNCH BREAK alert; pause/resume preserves the alert, shift clock and held freight');
 
+  // Settings: from the pause screen, the music slider takes real arrow keys and the shake switch a real click;
+  // each change applies at once and is kept on this device, and the arrows never reach the game.
+  await read(() => {
+    const app = window.fixtureApp; app.restart(); app.forceStory({ breakAtMs: 1e12 }); app.benStarted = true;
+    app.model.autonomousCoworker = false; app.model.eventStopped = true; app.overlay.clearCenter(); app.state = 'playing';
+  });
+  await page.keyboard.press('Escape');
+  await wait(() => window.fixtureApp.state === 'paused');
+  await page.getByRole('button', { name: 'SETTINGS' }).click();
+  await page.locator('[data-setting="music"]').focus();
+  const workerBefore = await read(() => ({ x: window.fixtureApp.model.activeWorker.x, y: window.fixtureApp.model.activeWorker.y }));
+  for (let i = 0; i < 12; i++) await page.keyboard.press('ArrowLeft');
+  await page.locator('[data-setting="shake"]').click();
+  const saved = await read(() => ({ settings: window.fixtureApp.settings, stored: JSON.parse(localStorage.getItem('the-belt:3d-settings:v1')),
+    output: document.querySelector('[data-setting="music"]').nextElementSibling.textContent, state: window.fixtureApp.state,
+    worker: { x: window.fixtureApp.model.activeWorker.x, y: window.fixtureApp.model.activeWorker.y } }));
+  assert.deepEqual(saved.settings, { music: 0.4, effects: 1, shake: false });
+  assert.deepEqual(saved.stored, saved.settings, 'kept on this device');
+  assert.equal(saved.output, '40%');
+  assert.equal(saved.state, 'paused', 'arrow keys on a slider do not resume');
+  assert.deepEqual(saved.worker, workerBefore, 'arrow keys on a slider do not walk the worker');
+  await page.getByRole('button', { name: 'BACK' }).click();
+  await page.getByRole('button', { name: /RESUME/ }).click();
+  await wait(() => window.fixtureApp.state === 'playing');
+  // With the switch off, a breakage shake is dropped at once instead of decaying over half a second.
+  await read(() => { window.fixtureApp.shake = 0.3; });
+  await page.waitForTimeout(120);
+  assert.equal(await read(() => window.fixtureApp.shake), 0, 'no camera shake with the switch off');
+  await read(() => { const app = window.fixtureApp; app.settings = { music: 1, effects: 1, shake: true }; app.applySettings(); localStorage.removeItem('the-belt:3d-settings:v1'); });
+  console.log('PASS settings from the pause screen: a real-key music slider and a shake switch apply at once, are kept on this device, and never move the worker');
+
   const patrols = await read(() => {
     const app = window.fixtureApp; app.restart(); app.state = 'paused';
     const crew = app.crew, samples = { left: 0, right: 0, squats: 0, shanMin: 2000, shanMax: 0, vicMin: 2000, vicMax: 0, crossings: 0 };

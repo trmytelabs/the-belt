@@ -139,7 +139,9 @@ SORT!** countdown starts the shift.
 - E / STOP THE BELT stops it for two seconds. You get three stops per 3D run,
   with a 15-second cooldown starting on each use. The controls show stops left
   and cooldown time; starting another night restores all three.
-- Escape pauses; M toggles sound. Losing focus pauses the preview automatically.
+- Escape pauses; M toggles sound. SETTINGS on the pause screen sets the music
+  and effects levels and turns the breakage camera shake on or off; they are
+  kept on this device. Losing focus pauses the preview automatically.
 - The closer camera follows your worker up and down the belt, leads them a
   little as they walk, and reframes when you switch workers. At the back of
   the depot the terminal wall fades out so the view stays oblique over the

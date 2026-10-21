@@ -52,6 +52,27 @@ export class DepotAudio extends AudioSystem {
   private stepIndex = 0;
   /** The conveyor: its motor, the roller rattle and the pulse that clacks the rattle, while the belt runs. */
   private belt: { motor: OscillatorNode; rollers: AudioBufferSourceNode; pulse: OscillatorNode; motorGain: GainNode; rattleGain: GainNode; pulseDepth: GainNode; nodes: AudioNode[] } | null = null;
+  /** The player's music and effects levels, 0 to 1, from the settings. */
+  private musicLevel = 1;
+  private effectsLevel = 1;
+
+  /** Sets the music and effects levels (0 to 1); mute still silences both. */
+  public setLevels(music: number, effects: number): void {
+    this.musicLevel = Math.min(1, Math.max(0, music));
+    this.effectsLevel = Math.min(1, Math.max(0, effects));
+    this.updateMusicVolume();
+    this.fade(this.sfxGain, 0.85 * this.effectsLevel, 0.05);
+  }
+
+  public get levels(): { music: number; effects: number } { return { music: this.musicLevel, effects: this.effectsLevel }; }
+
+  protected override getContext(): AudioContext | null {
+    const fresh = this.context === null;
+    const context = super.getContext();
+    // The effects bus starts at the player's level, not the default.
+    if (fresh && context && this.sfxGain) this.sfxGain.gain.value = 0.85 * this.effectsLevel;
+    return context;
+  }
 
   public override async unlock(): Promise<void> {
     await super.unlock();
@@ -244,7 +265,7 @@ export class DepotAudio extends AudioSystem {
   protected override updateMusicVolume(): void {
     const volume = this.trackMode === 'title' || this.trackMode === 'results' ? 0.3 : 0.23;
     const ducked = (this.context?.currentTime ?? 0) < this.duckUntil;
-    this.fade(this.musicGain, this.muted || !this.trackWanted ? 0 : volume * (ducked ? 0.45 : 1), 0.22);
+    this.fade(this.musicGain, this.muted || !this.trackWanted ? 0 : volume * (ducked ? 0.45 : 1) * this.musicLevel, 0.22);
   }
 
   private stopRecordings(): void {
