@@ -1126,6 +1126,8 @@ export class Belt3d {
       this.updateBanter();
       this.crew.update(dispersed ? 0 : dt, m, this.time);
       this.setPieces.update(dt, m, this.time);
+      // The far end of the building, while sorting goes on.
+      audioSystem.updateAmbience(dt, !m.paused && !m.ended);
       if (m.ended && m.won) {
         this.state = 'celebrating';
         this.story.go('clockout');

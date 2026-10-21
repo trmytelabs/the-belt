@@ -2,6 +2,10 @@
 
 ## 0.1.0 — development snapshot
 
+- Give the 3D depot some distant life: while sorting goes on, every 11 to 19
+  seconds a far-off sound plays, quiet and low-passed: a forklift's reversing
+  beeper, the PA's two-tone chime or a pallet set down. They stop with the
+  belt's work (pause, story stops, the end of the shift) and with mute.
 - Add controller support to the 3D game (`gamepad.ts`), for pads with the
   browser's standard layout. The left stick or d-pad walks and steers; the
   right and left triggers are the five-ton's gas and brake; A grabs and
