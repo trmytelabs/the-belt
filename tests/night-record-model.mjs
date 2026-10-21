@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { OPENER_COUNT, RECORD_KEY, emptyRecord, formatTotal, loadRecord, recordEndless, recordNight, saveRecord } from '../src/three/nightRecord.ts';
+import { OPENER_COUNT, RECENT_NIGHTS, RECORD_KEY, emptyRecord, formatTotal, loadRecord, recordEndless, recordNight, saveRecord } from '../src/three/nightRecord.ts';
 
 // The player's record between nights.
 
@@ -14,7 +14,8 @@ test('a first finished night is recorded as the best, with its opener', () => {
   const { record, newBest, previous } = recordNight(emptyRecord(), night());
   assert.equal(newBest, true);
   assert.equal(previous, null);
-  assert.deepEqual(record, { played: 1, completed: 1, best: { total: 5000, grade: 'A', sorted: 50, date: '2026-10-21' }, openers: ['opener-1'], medals: [], endless: null });
+  assert.deepEqual(record, { played: 1, completed: 1, best: { total: 5000, grade: 'A', sorted: 50, date: '2026-10-21' }, openers: ['opener-1'], medals: [], endless: null,
+    recent: [{ night: 1, won: true, total: 5000, grade: 'A', sorted: 50, peak: false, date: '2026-10-21' }] });
 });
 
 test('only a higher total from a finished shift beats the best; a failed night still counts as played', () => {
@@ -45,7 +46,7 @@ test('the record round-trips through storage and a bad or missing one reads as e
   assert.equal(saveRecord(null, record), false);
   // Tampered values are cleaned rather than trusted.
   const odd = loadRecord(memory({ [RECORD_KEY]: JSON.stringify({ played: -4, completed: 9, best: { total: 1e3, grade: 'SSS', sorted: 'x' }, openers: ['opener-2', 'opener-2', '<script>', 7], medals: ['s-rank', 's-rank', 'bogus', 3], endless: { sorted: 3.7, seconds: -2, score: 'x' } }) }));
-  assert.deepEqual(odd, { played: 0, completed: 0, best: { total: 1000, grade: 'SS', sorted: 0, date: '' }, openers: ['opener-2'], medals: ['s-rank'], endless: { sorted: 3, seconds: 0, score: 0, date: '' } });
+  assert.deepEqual(odd, { played: 0, completed: 0, best: { total: 1000, grade: 'SS', sorted: 0, date: '' }, openers: ['opener-2'], medals: ['s-rank'], endless: { sorted: 3, seconds: 0, score: 0, date: '' }, recent: [] });
 });
 
 test('a storage that throws keeps the game going without a record', () => {
@@ -75,4 +76,22 @@ test('an endless shift keeps its own best, ranked by freight dispatched and then
   saveRecord(store, longer.record);
   assert.deepEqual(loadRecord(store).endless, run(40, 301));
   assert.deepEqual(recordNight(longer.record, night()).record.endless, run(40, 301), 'a night carries the endless best');
+});
+
+test('the recent list keeps the last eight nights, finished or failed, newest first', () => {
+  let record = emptyRecord();
+  for (let i = 1; i <= 10; i += 1) record = recordNight(record, night({ total: i * 100, won: i !== 9, grade: i === 9 ? 'F' : 'B', peak: i === 10 })).record;
+  assert.equal(RECENT_NIGHTS, 8);
+  assert.deepEqual(record.recent.map((entry) => entry.night), [10, 9, 8, 7, 6, 5, 4, 3]);
+  assert.deepEqual(record.recent[0], { night: 10, won: true, total: 1000, grade: 'B', sorted: 50, peak: true, date: '2026-10-21' });
+  assert.deepEqual([record.recent[1].won, record.recent[1].grade], [false, 'F'], 'a failed night is listed too');
+  const store = memory();
+  saveRecord(store, record);
+  assert.deepEqual(loadRecord(store).recent, record.recent);
+  // A record from before the list existed reads with an empty one; tampered entries are cleaned and capped.
+  assert.deepEqual(loadRecord(memory({ [RECORD_KEY]: JSON.stringify({ played: 3, completed: 2 }) })).recent, []);
+  const tampered = loadRecord(memory({ [RECORD_KEY]: JSON.stringify({ played: 1, recent: [null, 'x', { night: -1, won: 'yes', total: 12.9, grade: '<b>', peak: 1 }, ...Array(12).fill({ night: 2 })] }) }));
+  assert.equal(tampered.recent.length, RECENT_NIGHTS);
+  assert.deepEqual(tampered.recent[0], { night: 0, won: false, total: 12, grade: '<b', sorted: 0, peak: false, date: '' });
+  assert.deepEqual(recordEndless(record, { sorted: 1, seconds: 1, score: 1, date: '' }).record.recent, record.recent, 'an endless shift is not a night');
 });

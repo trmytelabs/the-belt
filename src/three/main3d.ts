@@ -575,7 +575,7 @@ export class Belt3d {
       ${this.record.completed > 0 ? `<p class="b3d-record">PEAK NIGHT UNLOCKED · in the flow and the rush freight comes a fifth sooner, the belt runs faster and recovery holds ${PEAK_NIGHT.capacity}. ${this.touch.enabled ? 'Tap PEAK NIGHT.' : 'Press P or click PEAK NIGHT.'} ENDLESS SHIFT${this.touch.enabled ? '' : ' (N)'} has no clock: the belt speeds up every minute until recovery overflows.</p>` : ''}
       <button type="button" data-action="night">START THE NIGHT  ↵</button>
       ${this.record.completed > 0 ? '<button type="button" data-action="peak">PEAK NIGHT  P</button><button type="button" data-action="endless">ENDLESS SHIFT  N</button>' : ''}
-      ${this.record.played > 0 ? `<button type="button" class="b3d-medals-link" data-action="medals">MEDALS · ${this.record.medals.length} OF ${MEDALS.length}</button>` : ''}
+      ${this.record.played > 0 ? `<button type="button" class="b3d-medals-link" data-action="medals">MEDALS · ${this.record.medals.length} OF ${MEDALS.length} · RECENT NIGHTS</button>` : ''}
       <a href="${window.location.pathname}?mode=3d&amp;drive=mall">TRY JUST THE DRIVE · EXPLORE THE CITY</a>
       <a href="${window.location.pathname}?mode=classic">PLAY THE ORIGINAL FULL SHIFT</a>`, { night: () => this.startNight(), peak: () => this.startNight(true), medals: () => this.showMedals(), endless: () => this.startEndless(),
         'perk-0': () => this.pickPerk(0), 'perk-1': () => this.pickPerk(1), 'perk-2': () => this.pickPerk(2) });
@@ -1995,8 +1995,20 @@ export class Belt3d {
     const held = new Set(this.record.medals);
     const rows = MEDALS.map((medal) => `<li class="${held.has(medal.id) ? 'earned' : 'locked'}"><b>${medal.title}</b><span>${escapeHtml(medal.detail)}</span></li>`).join('');
     this.overlay.showPanel(`<div class="kicker">YOUR RECORD · MEDALS</div><h1>${held.size} OF ${MEDALS.length} EARNED</h1>
-      <ul class="b3d-medal-list">${rows}</ul><p>Kept on this device with your record.</p>
+      <ul class="b3d-medal-list">${rows}</ul>${this.recentNights()}<p>Kept on this device with your record.</p>
       <button type="button" data-action="back">BACK</button>`, { back: () => this.showBriefing() });
+  }
+
+  /** The record panel's last few nights: a bar for each night's total, oldest to newest, then the list, newest first. */
+  private recentNights(): string {
+    const recent = this.record.recent;
+    if (!recent.length) return '';
+    const top = Math.max(1, ...recent.map((night) => night.total));
+    const bars = [...recent].reverse().map((night) =>
+      `<span class="${night.won ? 'won' : 'failed'}" style="height:${Math.max(4, Math.round(night.total / top * 100))}%"></span>`).join('');
+    const rows = recent.map((night) => `<li class="${night.won ? 'won' : 'failed'}"><b>NIGHT ${night.night} · GRADE ${escapeHtml(night.grade)}${night.peak ? ' · PEAK' : ''}</b>`
+      + `<span>${formatTotal(night.total)} · ${night.sorted} dispatched${night.won ? '' : ' · shift failed'}${night.date ? ` · ${escapeHtml(night.date)}` : ''}</span></li>`).join('');
+    return `<p class="b3d-record"><b>RECENT NIGHTS</b></p><div class="b3d-trend" aria-hidden="true">${bars}</div><ol class="b3d-recent">${rows}</ol>`;
   }
 
   /** Once a night is finished, the briefing offers three perks for tonight; 1, 2 or 3 (or a click) picks one. */
@@ -2069,7 +2081,7 @@ export class Belt3d {
   /** Adds this night to the record and says how it compares with the best, and any promotion or medal it earned. */
   private recordResults(won: boolean, total: number, grade: string, night: Omit<NightFacts, 'openersSeen' | 'nightsPlayed'>): string {
     const before = seniority(this.record).level;
-    const result = recordNight(this.record, { won, total, grade, sorted: this.model.sorted, opener: this.story.opener.id, date: new Date().toISOString().slice(0, 10) });
+    const result = recordNight(this.record, { won, total, grade, sorted: this.model.sorted, opener: this.story.opener.id, date: new Date().toISOString().slice(0, 10), peak: this.model.peak });
     const awarded = awardMedals(result.record.medals, { ...night, openersSeen: result.record.openers.length, nightsPlayed: result.record.played });
     this.record = { ...result.record, medals: awarded.medals };
     this.medalsEarned = awarded.fresh.map((medal) => medal.id);

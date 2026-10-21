@@ -139,7 +139,9 @@ SORT!** countdown starts the shift.
 - Medals: ten achievements, each earned once and kept with the record on this
   device (for example an S, a peak night, all three goals in one night, 20 in
   a row, or bringing the five-ton home with no bumps or red lights). The
-  results name new ones; the briefing counts them and MEDALS lists them all.
+  results name new ones; the briefing counts them and MEDALS lists them all,
+  with your last eight nights below (a bar for each total, then grade, total
+  and freight dispatched).
 - Seniority: finished nights and medals climb six titles, from NEW HIRE through
   PART-TIMER, LOADER, SENIOR LOADER and PRELOAD LEAD to BELT LEGEND (15
   finished nights and every medal). The briefing names yours and what the next

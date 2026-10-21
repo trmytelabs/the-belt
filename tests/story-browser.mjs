@@ -510,6 +510,12 @@ try {
   const medalList = await read(() => [...document.querySelectorAll('.b3d-medal-list li')].map((item) => ({ title: item.querySelector('b').textContent, earned: item.classList.contains('earned') })));
   assert.equal(medalList.length, 10);
   assert.ok(medalList.find((medal) => medal.title === 'FIRST SHIFT')?.earned, JSON.stringify(medalList));
+  // Below the medals, the two nights so far: a bar each, and the list newest first.
+  const recent = await read(() => ({ bars: document.querySelectorAll('.b3d-trend span').length, rows: [...document.querySelectorAll('.b3d-recent li')].map((row) => row.innerText) }));
+  assert.equal(recent.bars, 2);
+  assert.equal(recent.rows.length, 2);
+  assert.match(recent.rows[0], /^NIGHT 2 · GRADE S/);
+  assert.match(recent.rows[1], /^NIGHT 1 · GRADE [SABCD]/);
   await page.getByRole('button', { name: /BACK/ }).click();
   await page.getByRole('button', { name: /START THE NIGHT/ }).waitFor();
   // The endless shift, unlocked by a finished night: N starts it straight into the countdown with a clock that counts up,

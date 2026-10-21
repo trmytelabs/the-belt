@@ -135,6 +135,15 @@ const CSS = `
 .b3d-medal-list li.earned b { color: #edb765; }
 .b3d-medal-list li.earned b::before { content: '✓ '; }
 .b3d-medal-list li.locked { opacity: .55; }
+.b3d-trend { display: flex; align-items: flex-end; gap: 4px; height: 48px; margin: 4px 0 8px; border-bottom: 1px solid #3b5a62; }
+.b3d-trend span { flex: 1; min-width: 6px; border-radius: 2px 2px 0 0; background: #edb765; }
+.b3d-trend span.failed { background: #5d7173; }
+.b3d-recent { list-style: none; margin: 0 0 6px; padding: 0; display: grid; gap: 4px; }
+.b3d-recent li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 10px; padding: 4px 8px; border-left: 3px solid #edb765; background: #0b171c; font-size: 12px; }
+.b3d-recent li.failed { border-left-color: #5d7173; }
+.b3d-recent li b { letter-spacing: 1px; color: #f3e6c6; }
+.b3d-recent li.failed b { color: #9fb4b4; }
+.b3d-recent li span { color: #9fb4b4; }
 .b3d-panel p.b3d-medal { color: #f3e6c6; border-left: 3px solid #edb765; padding-left: 10px; }
 .b3d-panel p.b3d-medal b { color: #edb765; letter-spacing: 1px; }
 /* A long briefing scrolls, but START THE NIGHT stays in view at the bottom of the panel. */

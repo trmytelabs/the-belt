@@ -2,6 +2,11 @@
 
 ## 0.1.0 — development snapshot
 
+- Keep the last eight 3D nights in the record (finished or failed, with grade,
+  total, freight dispatched and whether it was a peak night). The MEDALS panel
+  from the briefing shows them below the medals: a bar for each night's total,
+  then the list, newest first. Records saved before this read with an empty
+  list.
 - Let a controller work the 3D menus: on the briefing, pause and results
   screens the d-pad or stick steps a highlight through the buttons, links and
   settings, A presses the highlighted one, left and right move a slider and B
