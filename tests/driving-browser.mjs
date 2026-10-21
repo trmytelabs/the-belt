@@ -102,6 +102,9 @@ try {
   await page.waitForFunction(() => window.fixtureApp.driving.speed > 10, null, { polling: 10 });
   await page.keyboard.down('KeyA'); await page.waitForTimeout(220); await page.keyboard.up('KeyA');
   assert.ok(await page.evaluate(() => window.fixtureApp.driving.heading > Math.PI / 2 + 0.1), 'A changes actual world heading to the left');
+  // The camera and cab checks below steer the truck about; it goes back where it was after them, so the checks that follow
+  // (the synthetic cone five metres ahead) start from the same place as before, not beside a building.
+  const beforeTurns = await page.evaluate(() => { const d = window.fixtureApp.driving; return { x: d.x, z: d.z, heading: d.heading, speed: d.speed, steer: d.steer }; });
   // A hard turn at speed: the chase camera lags through the corner, and must never end a frame inside a building or a lamp post
   // (that showed as the screen flashing black), nor present a frame with nothing in it.
   await page.evaluate(() => {
@@ -180,6 +183,7 @@ try {
   await page.keyboard.press('KeyV');
   const behind = await cabView();
   assert.ok(behind.view === 'chase' && !behind.cab && behind.body !== false, `V again goes back behind the truck: ${JSON.stringify(behind)}`);
+  await page.evaluate(pose => Object.assign(window.fixtureApp.driving, pose), beforeTurns);
   await page.keyboard.down('KeyD'); await page.waitForTimeout(220); await page.keyboard.up('KeyD');
   if (process.env.BELT_SCREENSHOT_DIR) await page.screenshot({ path: join(process.env.BELT_SCREENSHOT_DIR, 'driving-road.png') });
   await page.keyboard.up('KeyW');
