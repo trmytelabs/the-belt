@@ -275,7 +275,8 @@ try {
       for (let i = 0; i < seconds * 30; i++) {
         time += 1 / 30;
         setup(actor);
-        actor.animate(1 / 30, time, false); app.lastRender = -Infinity; app.draw();
+        // The models advance without a render: a software renderer takes about a second per frame.
+        actor.animate(1 / 30, time, false); app.syncModels();
         roles.add(app.clipRoleOf(c));
       }
       return [...roles];
@@ -323,7 +324,7 @@ try {
     const app = window.fixtureApp;
     app.playScene(scene);
     const stage = app.stage.stages.lot;
-    for (let i = 0; i < 60; i++) { app.cutscene.index = 0; app.cutscene.elapsedMs = 500 + i * 30; app.stage.direct(app.cutscene, 1 / 30, 300 + i / 30); app.lastRender = -Infinity; app.draw(); }
+    for (let i = 0; i < 60; i++) { app.cutscene.index = 0; app.cutscene.elapsedMs = 500 + i * 30; app.stage.direct(app.cutscene, 1 / 30, 300 + i / 30); app.syncModels(); }
     const report = id => { const actor = stage.actors.get(id); return { seat: actor.seat, role: app.clipRoleOf(actor.character), hands: actor.character.motion.hands, model: Boolean(actor.root.getObjectByName('character-model')) }; };
     return { driver: report('skanky'), passenger: report('termite') };
   }, OPENERS[0]);

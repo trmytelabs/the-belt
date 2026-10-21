@@ -373,6 +373,12 @@ export class Belt3d {
     return clipRoleOf(character);
   }
 
+  /** Advances the imported models to their figures without drawing; the browser suites step time by hand. */
+  public syncModels(): void {
+    const stageScene = this.usesDriving() ? this.drivingView!.scene : this.usesStage() ? this.stage.scene : null;
+    syncCharacterModels(this.state === 'dream' ? this.dream.scene : stageScene ?? this.world.scene);
+  }
+
   /** Fixes the next run's random choices (opener, break place, variant, time). For checks and rehearsal. */
   public forceStory(choices: Partial<StoryChoices>): void {
     this.forcedStory = { ...choices };

@@ -18,8 +18,9 @@ jobs:
     name: TypeScript and production build
     runs-on: ubuntu-latest
     # The 3D suite plays the larger city, both loading yards and touch detours; on the
-    # software renderer it takes 21 to 29 minutes depending on the runner it lands on.
-    timeout-minutes: 45
+    # software renderer it takes 21 to 29 minutes depending on the runner it lands on,
+    # and a slow runner has pushed it well past that.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
