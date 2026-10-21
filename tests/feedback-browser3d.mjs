@@ -114,6 +114,58 @@ try {
   assert.ok(patrols.shanMin < 260 && patrols.shanMax > 980 && patrols.vicMin < 250 && patrols.vicMax > 980);
   console.log('PASS John visibly patrols both belt lanes and performs squat sets; Shan and Vic walk up and down between their scenes');
 
+  // HUD feedback: the score rolls up to a gain with a jump, a streak warms up and catches fire,
+  // a broken streak says so, a loss shakes, and the last half minute ticks red.
+  await read(() => {
+    const app = window.fixtureApp; app.restart(); app.forceStory({ breakAtMs: 1e12 }); app.benStarted = true;
+    app.model.autonomousCoworker = false; app.model.eventStopped = true; app.overlay.clearCenter(); app.state = 'playing';
+  });
+  const hud = () => read(() => {
+    const score = document.querySelector('[data-f="score"]'), combo = document.querySelector('[data-f="combo"]'), time = document.querySelector('[data-f="time"]');
+    return { score: score.textContent, scoreClass: score.className, combo: combo.textContent, comboClass: combo.className, urgent: time.parentElement.classList.contains('urgent') };
+  });
+  await wait(() => document.querySelector('[data-f="score"]').textContent === '00000');
+  // Every number the HUD shows on the way is recorded as it changes, however slowly frames come.
+  await read(() => {
+    const m = window.fixtureApp.model, score = document.querySelector('[data-f="score"]');
+    window.scoreSeen = [];
+    window.scoreWatch = new MutationObserver(() => window.scoreSeen.push(score.textContent));
+    window.scoreWatch.observe(score, { childList: true, characterData: true, subtree: true });
+    Object.assign(m, { score: 450, combo: 6, sorted: 6 });
+  });
+  await wait(() => document.querySelector('[data-f="score"]').textContent === '00450');
+  const rolling = await read(() => {
+    window.scoreWatch.disconnect();
+    return { final: document.querySelector('[data-f="score"]').textContent, steps: window.scoreSeen.filter((text) => text !== '00000' && text !== '00450').length };
+  });
+  assert.equal(rolling.final, '00450', `the score reaches the real one: ${JSON.stringify(rolling)}`);
+  assert.ok(rolling.steps >= 1, `it rolls up through numbers on the way: ${JSON.stringify(rolling)}`);
+  await wait(() => document.querySelector('[data-f="combo"]').classList.contains('hot'));
+  assert.match((await hud()).combo, /^ON A ROLL · 6 IN A ROW/);
+  await read(() => Object.assign(window.fixtureApp.model, { combo: 12, sorted: 12 }));
+  await wait(() => document.querySelector('[data-f="combo"]').classList.contains('blazing'));
+  assert.match((await hud()).combo, /^ON FIRE · 12 IN A ROW/);
+  await read(() => Object.assign(window.fixtureApp.model, { combo: 0, score: 440 }));
+  await wait(() => document.querySelector('[data-f="combo"]').classList.contains('lost'));
+  const lost = await hud();
+  assert.ok(lost.combo.startsWith('STREAK LOST') && lost.combo.includes('12 IN A ROW') && lost.score === '00440' && lost.scoreClass.includes('loss'), `a broken streak and a loss show at once: ${JSON.stringify(lost)}`);
+  await wait(() => !document.querySelector('[data-f="combo"]').classList.contains('lost') && document.querySelector('[data-f="combo"]').textContent.startsWith('TARGET'));
+  assert.equal((await hud()).urgent, false);
+  await read(() => { const m = window.fixtureApp.model; m.elapsedMs = m.durationMs - 20_000; });
+  await wait(() => document.querySelector('[data-f="time"]').parentElement.classList.contains('urgent'));
+  // A results panel stamps its grade and raises its lines in turn, with every line's text there from the start.
+  const resultsMotion = await read(() => {
+    window.fixtureApp.overlay.showPanel('<div class="grade">S</div><div class="kicker">K</div><h1>H</h1><p>first</p><p>second</p><button type="button">B</button>');
+    const panel = document.querySelector('.b3d-panel'), lines = [...panel.querySelectorAll('p')];
+    const motion = { grade: getComputedStyle(panel.querySelector('.grade')).animationName, delays: lines.map((line) => getComputedStyle(line).animationDelay), text: panel.innerText };
+    window.fixtureApp.overlay.clearCenter();
+    return motion;
+  });
+  assert.equal(resultsMotion.grade, 'b3d-stamp');
+  assert.ok(parseFloat(resultsMotion.delays[1]) > parseFloat(resultsMotion.delays[0]), `the lines rise in turn: ${JSON.stringify(resultsMotion)}`);
+  assert.ok(resultsMotion.text.includes('first') && resultsMotion.text.includes('second'), 'the text is readable from the start');
+  console.log('PASS the HUD score rolls up to a gain and shakes on a loss; a streak goes ON A ROLL then ON FIRE, a broken one says STREAK LOST, and the last 30 seconds tick red; the results stamp the grade and raise their lines in turn');
+
   await read(() => {
     const app = window.fixtureApp; app.restart(); app.forceStory({ breakAtMs: 1e12 }); app.benStarted = true;
     app.model.autonomousCoworker = false; app.model.eventStopped = true;
