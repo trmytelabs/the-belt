@@ -495,12 +495,22 @@ try {
   assert.deepEqual(clean, { cutscene: null, mall: null, lot: null, stage: null, speech: 0, elapsed: 0, breakTaken: false, chapter: 'briefing', damaged: 0, piles: 0, shan: 0 });
   // The briefing shows the record so far: two nights reached the results (the finale and the synthetic regression), both finished.
   assert.match(await page.locator('.b3d-panel').innerText(), /YOUR RECORD · 2 OF 2 NIGHTS FINISHED · BEST NIGHT \d{5} · GRADE [SABCDF] · 1 OF 3 OPENERS SEEN/);
+  // A finished night unlocks the peak night beside the ordinary one; Enter still starts the ordinary night.
+  assert.match(await page.locator('.b3d-panel').innerText(), /PEAK NIGHT UNLOCKED/);
+  assert.ok(await page.locator('button[data-action="peak"]').isVisible(), 'the PEAK NIGHT button shows');
   await page.keyboard.press('Enter');
   await wait(() => window.fixtureApp.state === 'story' && window.fixtureApp.story.chapter === 'arrival');
   await page.keyboard.press('Enter');
   await wait(() => window.fixtureApp.cutscene?.scene.id === 'scrum');
+  assert.equal(await read(() => window.fixtureApp.model.peak), false, 'Enter starts an ordinary night');
+  // And P from the briefing starts a peak night: its own faster, tighter shift.
+  await read(() => window.fixtureApp.restart());
+  await wait(() => window.fixtureApp.state === 'briefing');
+  await page.keyboard.press('KeyP');
+  await wait(() => window.fixtureApp.state === 'story');
+  assert.deepEqual(await read(() => ({ peak: window.fixtureApp.model.peak, capacity: window.fixtureApp.model.capacity })), { peak: true, capacity: 6 });
   assert.deepEqual(errors, []);
-  console.log('PASS 3D replay: restart clears scenes, mall, lot, speech, piles and once-only flags, and the next night starts normally; no script errors');
+  console.log('PASS 3D replay: restart clears scenes, mall, lot, speech, piles and once-only flags, and the next night starts normally; a finished night unlocks the peak night; no script errors');
 } finally {
   await browser.close();
   await server.close();

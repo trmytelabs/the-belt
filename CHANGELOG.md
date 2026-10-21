@@ -2,6 +2,14 @@
 
 ## 0.1.0 — development snapshot
 
+- Add a peak night to the 3D game, unlocked once a night has been finished.
+  The briefing then offers PEAK NIGHT beside the ordinary night (P, or the
+  button): in the flow and the rush freight comes a fifth sooner, the belt runs
+  an eighth faster and recovery holds six parcels instead of seven
+  (`PEAK_NIGHT` in `ShiftModel3D.ts`). The opening lesson and Brian's
+  incident keep their pace, the story is the same night, and the start toast
+  and the results say it was a peak night. The ordinary simulated player that
+  wins the normal shift in the model tests still wins a peak one.
 - Keep the player's record between nights in the 3D game. Each night that
   reaches the results adds to a record kept in the browser's local storage on
   this device (`nightRecord.ts`): nights worked and finished, the best night
