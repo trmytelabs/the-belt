@@ -64,6 +64,18 @@ try {
     ensure(full.rms>empty.rms*1.15 && full.peak<.35,`freight on a faster belt rattles louder: ${JSON.stringify({empty,full})}`);
     ensure(quiet.peak<.000001,'a stopped belt falls silent');
     cues.push({effect:'belt',...full});
+    // The depot's distant sounds: each audible, quiet and clean, and the scheduler spaces them out.
+    for(const kind of ['forklift','chime','clank']){
+      const f=make(3);f.system.ambience(kind);
+      const rendered=await f.offline.startRendering(),level=metrics(rendered);
+      ensure(level.rms>.00005 && level.peak<.12,`ambience ${kind}: distant and clean: ${JSON.stringify(level)}`);
+      ensure(metrics(rendered,2.6).peak<.000001,`ambience ${kind}: no hanging voice`);cues.push({effect:`ambience-${kind}`,...level});
+    }
+    const far=make(1).system;let seconds=0;
+    while(seconds<60){far.updateAmbience(.1,true);seconds+=.1;}
+    ensure(far.ambiencePlayed>=3 && far.ambiencePlayed<=6,`a distant sound every 11 to 19 seconds: ${far.ambiencePlayed} in a minute`);
+    const before=far.ambiencePlayed;for(let i=0;i<600;i++)far.updateAmbience(.1,false);
+    ensure(far.ambiencePlayed===before,'none while sorting is stopped');
     const mute=make(6),m=mute.system;m.startMusic('game');await m.trackLoad;window.clearInterval(m.trackTimer);
     // Advance the audio renderer itself before holding an in-progress gain ramp.
     // A future-only fake clock cannot report an AudioParam's live value correctly.
@@ -94,5 +106,5 @@ try {
   await page.route('**/audio/music/after-hours.mp3',route=>route.abort());
   const fallback=await page.evaluate(async compiled=>{const {DepotAudio}=await import(`data:text/javascript;base64,${btoa(compiled)}`);const s=new DepotAudio();s.startMusic('game');await s.trackLoad;s.stopMusic();return{recordings:s.recordings.size,timer:s.trackTimer,buffer:s.trackBuffer,oldTimer:s.musicTimer};},depot);
   assert.deepEqual(fallback,{recordings:0,timer:null,buffer:null,oldTimer:null});
-  console.log('PASS actual lo-fi decode, crossfade, soft foley, belt hum and rattle, driving engine/brake/bump headroom, mute/resume, pause/replay cleanup and failed-download fallback');
+  console.log('PASS actual lo-fi decode, crossfade, soft foley, belt hum and rattle, distant depot ambience, driving engine/brake/bump headroom, mute/resume, pause/replay cleanup and failed-download fallback');
 }finally{await browser.close();await server.httpServer.close();}

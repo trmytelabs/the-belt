@@ -2,6 +2,10 @@
 
 ## 0.1.0 — development snapshot
 
+- Give the 3D depot some distant life: while sorting goes on, every 11 to 19
+  seconds a far-off sound plays, quiet and low-passed: a forklift's reversing
+  beeper, the PA's two-tone chime or a pallet set down. They stop with the
+  belt's work (pause, story stops, the end of the shift) and with mute.
 - Give the 3D conveyor its sound. While sorting goes on, a low motor hum whose
   pitch follows the belt's speed and a band of roller rattle that clacks at
   the rollers' rate and grows with the freight riding it play under the
