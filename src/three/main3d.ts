@@ -504,6 +504,8 @@ export class Belt3d {
         this.startEndless();
       } else if (this.state === 'briefing' && /^Digit[123]$/.test(event.code)) {
         this.pickPerk(Number(event.code.slice(5)) - 1);
+      } else if (this.state === 'briefing' && (event.code === 'BracketLeft' || event.code === 'BracketRight')) {
+        this.stepPerk(event.code === 'BracketRight' ? 1 : -1);
       } else if (event.code === 'KeyV') {
         this.overview = !this.overview;
       } else if (this.state === 'playing') {
@@ -861,15 +863,21 @@ export class Belt3d {
 
   /** The rules and controls in one place, from the pause screen. */
   private showHelp(kicker: string): void {
-    const touch = this.touch.enabled;
+    const touch = this.touch.enabled, pad = this.pad.connected && !touch, m = this.model;
+    const stops = ['no', 'once', 'twice', 'three times', 'four times', 'five times'][m.beltStopsLimit] ?? `${m.beltStopsLimit} times`;
     const rows: [string, string][] = [
-      ['SORT', `${touch ? 'Tap GRAB' : 'SPACE grabs'} a parcel at the belt. Its street number names the truck: carry it through that truck's rear door and load it. Oversize goes to bulk at the back; floor freight goes down the side stairs.`],
+      ['SORT', `${touch ? 'Tap GRAB' : pad ? 'A grabs' : 'SPACE grabs'} a parcel at the belt. Its street number names the truck: carry it through that truck's rear door and load it. Oversize goes to bulk at the back; floor freight goes down the side stairs.`],
       ['RECOVERY', `A parcel that reaches the belt end piles up in recovery; pick it up again for half points. ${this.model.capacity} in recovery ends the shift.`],
-      ['STOP THE BELT', `${touch ? 'STOP THE BELT' : 'E'} holds the belt for two seconds, three times a night, with 15 seconds between.`],
-      ['THROW', `${touch ? 'THROW' : 'F'} throws to the nearest drop to save the walk. Fragile freight can break, and a throw down the stairs risks more.`],
+      ['STOP THE BELT', `${touch ? 'STOP THE BELT' : pad ? 'X' : 'E'} holds the belt for two seconds, ${stops} a night, with 15 seconds between.`],
+      ['THROW', `${touch ? 'THROW' : pad ? 'B' : 'F'} throws to the nearest drop to save the walk. Fragile freight can break, and a throw down the stairs risks more.`],
       ['PRIORITY', `A gold ring marks urgent freight. Load it yourself before the ring runs out for +${PRIORITY_3D.bonus}.`],
+      ['INSPECTIONS', `Twice a night a supervisor watches for ${INSPECTION_3D.durationMs / 1000} seconds. Each clean load while they watch pays +${m.inspectionPay}; a wrong drop costs ${INSPECTION_3D.penalty} more than usual.`],
       ['STREAKS', 'Each clean load in a row adds 15 more points, up to +150. A wrong drop or a miss ends the streak.'],
+      ['GOALS', `Each night sets three goals, shown on the briefing and as chips on the HUD. Each one met pays +${GOAL_BONUS}.`],
+      ['PERKS', `Once you finish a night, the briefing offers three perks: pick one${touch ? '' : pad ? ' with LB / RB' : ' with 1, 2 or 3'} to bend that night's rules.`],
+      ['ENDLESS SHIFT', 'Also unlocked by a finished night: no clock. From the rush on, freight comes sooner and the belt runs faster every minute until recovery overflows. It keeps its own best.'],
       ['CONTROLS', touch ? 'The stick moves; SWITCH changes worker; GRAB / DELIVER, THROW and STOP THE BELT do what they say; VIEW shows the whole warehouse.'
+        : pad ? 'Left stick or d-pad moves · A grabs and delivers · B throws · X stops the belt · Y switches worker · BACK overview · START pause.'
         : 'WASD or arrows move · TAB or right-click switches worker · SPACE grabs and delivers · F throws · E stops the belt · V overview · ESC pause · M sound.'],
     ];
     this.overlay.showPanel(`<div class="kicker">${kicker} · HOW TO PLAY</div><h1>HOW TO PLAY</h1>
@@ -1929,15 +1937,31 @@ export class Belt3d {
     if (this.record.completed === 0 || this.practiceDestination) return '';
     const offer = perkOffer(this.record.played);
     const buttons = offer.map((perk, index) => `<button type="button" class="b3d-perk${this.perk === perk.id ? ' picked' : ''}" data-action="perk-${index}" aria-pressed="${this.perk === perk.id}"><b>${index + 1} · ${escapeHtml(perk.title)}</b><span>${escapeHtml(perk.detail)}</span></button>`).join('');
-    return `<p class="b3d-record"><b>TONIGHT’S PERK · PICK ONE${this.touch.enabled ? '' : ' (1, 2 OR 3)'}:</b></p><div class="b3d-perks">${buttons}</div>`;
+    const keys = this.touch.enabled ? '' : this.pad.connected ? ' (LB / RB)' : ' (1, 2 OR 3)';
+    return `<p class="b3d-record"><b>TONIGHT’S PERK · PICK ONE${keys}:</b></p><div class="b3d-perks">${buttons}</div>`;
   }
 
-  /** Picks the offer's `index`th perk for tonight (again to drop it), marked in place so a scrolled briefing stays put. */
+  /** Picks the offer's `index`th perk for tonight (again to drop it). */
   private pickPerk(index: number): void {
     if (this.state !== 'briefing' || this.record.completed === 0) return;
-    const offer = perkOffer(this.record.played), perk = offer[index];
-    if (!perk) return;
-    this.perk = this.perk === perk.id ? null : perk.id;
+    const perk = perkOffer(this.record.played)[index];
+    if (perk) this.setPerk(this.perk === perk.id ? null : perk.id);
+  }
+
+  /** A controller's bumpers: steps the pick along the offer, `step` places, and through no perk at either end. */
+  private stepPerk(step: number): void {
+    if (this.state !== 'briefing' || this.record.completed === 0) return;
+    const offer = perkOffer(this.record.played), places = offer.length + 1;
+    // Place 0 is no perk; places 1 to 3 are the offer.
+    const place = (offer.findIndex((perk) => perk.id === this.perk) + 1 + step + places) % places;
+    this.setPerk(place === 0 ? null : offer[place - 1].id);
+    document.querySelector('.b3d-perk.picked')?.scrollIntoView({ block: 'nearest' });
+  }
+
+  /** Makes `id` tonight's perk (null for none), marked in place so a scrolled briefing stays put. */
+  private setPerk(id: string | null): void {
+    this.perk = id;
+    const offer = perkOffer(this.record.played);
     document.querySelectorAll<HTMLButtonElement>('.b3d-perk').forEach((button, i) => {
       const picked = offer[i]?.id === this.perk;
       button.classList.toggle('picked', picked);

@@ -52,7 +52,8 @@ test('each screen maps the buttons to its own keys, and Start always pauses', ()
   assert.deepEqual(['a', 'b', 'x', 'y', 'back', 'lb'].map((button) => padKey('playing', button)), ['Space', 'KeyF', 'KeyE', 'Tab', 'KeyV', null]);
   assert.deepEqual(['a', 'b'].map((button) => padKey('decision', button)), ['KeyG', 'KeyQ']);
   assert.deepEqual(['a', 'b', 'y'].map((button) => padKey('mesa', button)), ['KeyN', 'KeyN', 'KeyY'], 'only Y steals the Mesa');
-  assert.deepEqual(['a', 'y', 'x'].map((button) => padKey('briefing', button)), ['Enter', 'KeyP', 'KeyN'], 'start the night, the peak night or the endless shift');
+  assert.deepEqual(['a', 'y', 'x', 'lb', 'rb'].map((button) => padKey('briefing', button)), ['Enter', 'KeyP', 'KeyN', 'BracketLeft', 'BracketRight'],
+    'start the night, the peak night or the endless shift, or step through the perks');
   assert.deepEqual(['a', 'b'].map((button) => padKey('story', button)), ['Space', 'Enter']);
   assert.deepEqual(['a', 'back', 'rb'].map((button) => padKey('driving', button)), ['Space', 'KeyV', 'KeyV']);
   assert.deepEqual(['a', 'x'].map((button) => padKey('mall', button)), ['Space', 'KeyE']);

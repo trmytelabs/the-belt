@@ -2,6 +2,11 @@
 
 ## 0.1.0 — development snapshot
 
+- Let a controller pick tonight's perk: on the 3D briefing LB and RB step
+  along the three offered perks and through none. HOW TO PLAY on the pause
+  screen now covers inspections, night goals, perks and the endless shift,
+  counts belt stops with tonight's perk, and names a connected controller's
+  buttons.
 - Run CI on the owner's own Windows PC, a self-hosted GitHub Actions runner
   labelled `belt-pc`, after the account's hosted minutes ran out. Both required
   checks keep their names and suites; the browser suites use Edge with software

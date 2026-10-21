@@ -116,8 +116,10 @@ try {
   await page.getByRole('button', { name: 'BACK' }).click();
   // HOW TO PLAY lists the rules and controls, and BACK returns to the pause screen.
   await page.getByRole('button', { name: 'HOW TO PLAY' }).click();
-  const help = await read(() => [...document.querySelectorAll('.b3d-help dt')].map((term) => term.textContent));
-  assert.deepEqual(help, ['SORT', 'RECOVERY', 'STOP THE BELT', 'THROW', 'PRIORITY', 'STREAKS', 'CONTROLS']);
+  const help = await read(() => [...document.querySelectorAll('.b3d-help dt')].map((term) => [term.textContent, term.nextElementSibling.textContent]));
+  assert.deepEqual(help.map(([term]) => term), ['SORT', 'RECOVERY', 'STOP THE BELT', 'THROW', 'PRIORITY', 'INSPECTIONS', 'STREAKS', 'GOALS', 'PERKS', 'ENDLESS SHIFT', 'CONTROLS']);
+  assert.match(help[2][1], /^E holds the belt for two seconds, three times a night/);
+  assert.match(help.at(-1)[1], /^WASD or arrows move/);
   await page.getByRole('button', { name: 'BACK' }).click();
   await page.getByRole('button', { name: /RESUME/ }).click();
   await wait(() => window.fixtureApp.state === 'playing');
@@ -413,6 +415,11 @@ try {
     await page.waitForTimeout(60);
   };
   await tap(9, () => window.fixtureApp.state === 'paused');
+  // While it is connected, HOW TO PLAY names the controller's buttons.
+  const padHelp = await read(() => { window.fixtureApp.showHelp('PAUSED'); return [...document.querySelectorAll('.b3d-help dd')].map((row) => row.textContent); });
+  assert.match(padHelp[2], /^X holds the belt/);
+  assert.match(padHelp.at(-1), /^Left stick or d-pad moves · A grabs and delivers/);
+  await read(() => window.fixtureApp.showPausePanel('PAUSED'));
   await tap(0, () => window.fixtureApp.state === 'playing');
   const startY = await read(() => window.fixtureApp.model.activeWorker.y);
   await read(() => window.padSet({ axes: [0, 1] }));
@@ -431,7 +438,7 @@ try {
   await read(() => { window.padSet(); window.fakePads = []; window.fixtureApp.restart(); });
   await wait(() => !window.fixtureApp.pad.connected);
   assert.equal(await read(() => document.querySelector('[data-f=keyhints]').hidden), false, 'and the keyboard keys again once it is gone');
-  console.log('PASS a controller pauses and resumes, walks the worker, switches workers, stops the belt, and drives and brakes the five-ton with its triggers; the HUD names its buttons while it is connected');
+  console.log('PASS a controller pauses and resumes, walks the worker, switches workers, stops the belt, and drives and brakes the five-ton with its triggers; the HUD and HOW TO PLAY name its buttons while it is connected');
 
   await read(async list=>{
     const app=window.fixtureApp;app.state='paused';app.pausedFrom='playing';app.stage.end();app.overlay.setMode('shift');app.overlay.clearSpeech();app.overlay.setLunchAlert(false);app.overlay.clearCenter();

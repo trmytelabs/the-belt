@@ -535,6 +535,17 @@ try {
   assert.equal(await page.locator('.b3d-perk').count(), 3);
   await page.keyboard.press('Digit1');
   await wait(() => document.querySelector('.b3d-perk.picked')?.textContent.includes('ROOMY RECOVERY'));
+  // The keys a controller's bumpers press step along the offer, and through no perk at either end.
+  await page.keyboard.press('BracketRight');
+  await wait(() => document.querySelectorAll('.b3d-perk')[1].classList.contains('picked'));
+  await page.keyboard.press('BracketLeft');
+  await page.keyboard.press('BracketLeft');
+  await wait(() => window.fixtureApp.perk === null && !document.querySelector('.b3d-perk.picked'));
+  await page.keyboard.press('BracketLeft');
+  await wait(() => document.querySelectorAll('.b3d-perk')[2].classList.contains('picked'));
+  await page.keyboard.press('BracketRight');
+  await page.keyboard.press('BracketRight');
+  await wait(() => document.querySelector('.b3d-perk.picked')?.textContent.includes('ROOMY RECOVERY'));
   await page.keyboard.press('Enter');
   assert.deepEqual(await read(() => [window.fixtureApp.perkInPlay?.id, window.fixtureApp.model.capacity]), ['roomy-recovery', 8], 'the perk is in play for the night');
   await wait(() => window.fixtureApp.state === 'story' && window.fixtureApp.story.chapter === 'arrival');

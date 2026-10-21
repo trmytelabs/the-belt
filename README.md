@@ -144,7 +144,7 @@ SORT!** countdown starts the shift.
   you for 20 seconds. Each load meanwhile earns 50 points; a wrong drop costs
   30 more.
 - Perks: once a night is finished, the briefing offers three perks for the
-  night (1, 2 or 3 picks one), such as a fourth belt stop, more time on
+  night (1, 2 or 3 picks one; LB / RB on a controller), such as a fourth belt stop, more time on
   priority freight or quicker feet. They last that night only.
 - Endless shift: once a night is finished, N (or ENDLESS SHIFT) starts a shift
   with no clock and no story. Each minute from the rush the freight comes
@@ -160,10 +160,14 @@ SORT!** countdown starts the shift.
   and cooldown time; starting another night restores all three.
 - Controllers with the standard layout work too: stick or d-pad to move, A to
   grab and deliver, B to throw, X to stop the belt, Y to switch, Back for the
-  overview, Start to pause; on the road the triggers are gas and brake.
+  overview, Start to pause; on the road the triggers are gas and brake. On the
+  briefing Y starts a peak night, X the endless shift, and LB / RB step through
+  the perks.
 - Escape pauses; M toggles sound. SETTINGS on the pause screen sets the music
   and effects levels and turns the breakage camera shake on or off; they are
-  kept on this device. Losing focus pauses the preview automatically.
+  kept on this device. HOW TO PLAY there sums up the rules (goals,
+  inspections, perks and the endless shift included) and names a connected
+  controller's buttons. Losing focus pauses the preview automatically.
 - The closer camera follows your worker up and down the belt, leads them a
   little as they walk, and reframes when you switch workers. At the back of
   the depot the terminal wall fades out so the view stays oblique over the

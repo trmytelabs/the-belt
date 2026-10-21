@@ -86,7 +86,8 @@ export class GamepadInput {
  * Start always pauses and resumes; A is the confirm or action button; B throws on
  * the belt and skips a story scene; X stops the belt or moves the mall cart; Y
  * switches workers; Back is the overview or the cab view; on the briefing Y and X
- * pick the peak night and the endless shift.
+ * pick the peak night and the endless shift, and the bumpers step through
+ * tonight's perks.
  */
 export function padKey(state: string, button: PadButton): string | null {
   if (button === 'start') return 'Escape';
@@ -94,7 +95,7 @@ export function padKey(state: string, button: PadButton): string | null {
     case 'decision': return button === 'a' ? 'KeyG' : button === 'b' ? 'KeyQ' : null;
     // The Mesa: Y steals it, as the Y key does; A or B leaves it.
     case 'mesa': return button === 'y' ? 'KeyY' : button === 'a' || button === 'b' ? 'KeyN' : null;
-    case 'briefing': return button === 'a' ? 'Enter' : button === 'y' ? 'KeyP' : button === 'x' ? 'KeyN' : null;
+    case 'briefing': return ({ a: 'Enter', y: 'KeyP', x: 'KeyN', lb: 'BracketLeft', rb: 'BracketRight' } as Partial<Record<PadButton, string>>)[button] ?? null;
     case 'ended': case 'paused': case 'interlude': return button === 'a' ? 'Enter' : null;
     case 'story': return button === 'a' ? 'Space' : button === 'b' ? 'Enter' : null;
     case 'driving': return button === 'a' ? 'Space' : button === 'back' || button === 'rb' ? 'KeyV' : null;
