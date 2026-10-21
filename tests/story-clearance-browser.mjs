@@ -22,11 +22,16 @@ try {
   // The seated checks need the cars' models and their contracts, which download after the stage is built.
   await page.evaluate(() => { window.fixtureApp.stage.stage('lot'); });
   await page.waitForFunction(() => Object.entries(window.fixtureApp.stage.stages.lot.props).filter(([name]) => /^(car-|park-)/.test(name)).every(([, car]) => car.userData.contract), null, { timeout: 90_000 });
+  let totalBreaths = 0;
   for (const scene of OPENERS) {
     const result = await page.evaluate(scene => {
       const app = window.fixtureApp;
       app.renderer.setAnimationLoop(null); window.clearInterval(app.tickTimer);
       app.playScene(scene);
+      // Out in the cold the standing cast breathe out; count the clouds.
+      let breaths = 0;
+      const puffs = app.stage.stages.lot.puffs, emit = puffs.emit.bind(puffs);
+      puffs.emit = (position, options) => { if (options.color === 0xdde3ea) breaths += 1; emit(position, options); };
       const stage = app.stage.stages.lot;
       const failures = [];
       let samples = 0;
@@ -110,13 +115,17 @@ try {
           for (const solid of [...vehicles, ...walls]) check(people[i], solid);
         }
       }
-      return { failures, samples, vehiclePairs, standingSamples, passengerSamples, contractSamples };
+      puffs.emit = emit;
+      return { failures, samples, vehiclePairs, standingSamples, passengerSamples, contractSamples, breaths };
     }, scene);
     assert.ok(result.vehiclePairs > 500 && result.standingSamples > 20, `${scene.id}: sample real vehicle pairs and standing people`);
     assert.ok(result.contractSamples > 20, `${scene.id}: seated samples against the loaded cars' contracts (${result.contractSamples})`);
     assert.deepEqual(result.failures, []);
+    totalBreaths += result.breaths;
     console.log(`PASS ${scene.id}: ${result.samples} oriented solid checks, ${result.standingSamples} standing and ${result.passengerSamples} seated actor samples (${result.contractSamples} on the cars' contracts)`);
   }
+  // Out in the cold the standing cast breathe out; the openers between them show it several times (a late arrival may barely have time for one).
+  assert.ok(totalBreaths >= 4, `the cast standing in the cold breathe out: ${totalBreaths} clouds over three openers`);
   assert.deepEqual(errors, []);
 } finally {
   await browser?.close();

@@ -18,6 +18,7 @@ import { DEPOT_DRESSING } from './depotDressing';
 import { DevilModel, placeProp } from './propModels';
 import { SURFACE_MEANS, boxUVs, cardboardMaterial, getSurface, scaleUVs, surfaceMaterial, surfacesLoaded } from './textures';
 import { snowBank, snowField, snowMaterial, snowfall, type Snowfall } from './snow';
+import { windAt } from './wind';
 import { WallPiles } from './wallPiles';
 
 const rounded = (w: number, h: number, d: number, material: THREE.Material, r = 0.05): THREE.Mesh =>
@@ -152,6 +153,8 @@ export class DepotWorld {
   private readonly beltMaps: { texture: THREE.Texture; tile: number }[] = [];
   private readonly warcraft: THREE.CanvasTexture;
   private warcraftClock = 0;
+  /** Seconds of weather so far, for the wind. */
+  private weatherClock = 0;
   /** Actual rendered surfaces retained for collision/height regression checks. */
   public platformDeck!: THREE.Mesh;
   public beltSurface!: THREE.Mesh;
@@ -475,7 +478,9 @@ export class DepotWorld {
 
   /** The Christmas layer: snow falls whenever the depot is shown; the wall piles follow the shift clock. */
   public updateChristmas(dt: number, shiftElapsedMs: number, shiftDurationMs: number, reducedMotion: boolean): void {
-    for (const flakes of this.snow) flakes.update(dt, reducedMotion);
+    this.weatherClock += dt;
+    const wind = windAt(this.weatherClock);
+    for (const flakes of this.snow) flakes.update(dt, reducedMotion, wind.x, wind.z);
     this.wallPiles.update(Math.min(1, shiftElapsedMs / shiftDurationMs), shiftDurationMs, reducedMotion);
   }
 
