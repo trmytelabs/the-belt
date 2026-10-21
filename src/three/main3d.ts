@@ -859,8 +859,22 @@ export class Belt3d {
   }
 
   private showPausePanel(kicker: string): void {
-    this.overlay.showPanel(`<div class="kicker">${kicker}</div><h1>GAME PAUSED.</h1><p>Click RESUME or press ENTER to keep playing.</p><p>Your packages and timers are safe while paused.</p><button type="button" data-action="resume">RESUME  ↵</button><button type="button" class="b3d-secondary" data-action="settings">SETTINGS</button><button type="button" class="b3d-secondary" data-action="help">HOW TO PLAY</button>`,
-      { resume: () => this.resume(), settings: () => this.showSettings(kicker), help: () => this.showHelp(kicker) });
+    this.overlay.showPanel(`<div class="kicker">${kicker}</div><h1>GAME PAUSED.</h1><p>Click RESUME or press ENTER to keep playing.</p><p>Your packages and timers are safe while paused.</p><button type="button" data-action="resume">RESUME  ↵</button><button type="button" class="b3d-secondary" data-action="settings">SETTINGS</button><button type="button" class="b3d-secondary" data-action="help">HOW TO PLAY</button><button type="button" class="b3d-secondary" data-action="end">END ${this.runName()}</button>`,
+      { resume: () => this.resume(), settings: () => this.showSettings(kicker), help: () => this.showHelp(kicker), end: () => this.confirmEnd(kicker) });
+  }
+
+  /** What END on the pause screen drops: the practice drive, the endless shift or the night. */
+  private runName(): string {
+    return this.practiceDestination ? 'DRIVE' : this.model.endless ? 'SHIFT' : 'NIGHT';
+  }
+
+  /** Asks before dropping the run; ENTER still resumes. */
+  private confirmEnd(kicker: string): void {
+    const run = this.runName();
+    this.overlay.showPanel(`<div class="kicker">${kicker} · END ${run}</div><h1>END THIS ${run}?</h1>
+      <p>${this.practiceDestination ? 'The drive starts over from its briefing.' : 'Nothing from it is recorded: no night played, no best and no medals. You go back to the briefing.'}</p>
+      <button type="button" data-action="back">BACK</button><button type="button" class="b3d-secondary" data-action="end">END ${run}</button>`,
+    { back: () => this.showPausePanel(kicker), end: () => { if (this.state === 'paused') this.restart(); } });
   }
 
   /** The rules and controls in one place, from the pause screen. */

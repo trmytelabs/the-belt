@@ -170,7 +170,8 @@ SORT!** countdown starts the shift.
 - Escape pauses; M toggles sound. SETTINGS on the pause screen sets the music
   and effects levels and the resolution (down to half, for a smoother game on a
   slow or very sharp screen) and turns the breakage camera shake on or off; they are
-  kept on this device. HOW TO PLAY there sums up the rules (goals,
+  kept on this device. END NIGHT there drops the night without recording it
+  and goes back to the briefing. HOW TO PLAY sums up the rules (goals,
   inspections, perks and the endless shift included) and names a connected
   controller's buttons. Losing focus pauses the preview automatically.
 - The closer camera follows your worker up and down the belt, leads them a

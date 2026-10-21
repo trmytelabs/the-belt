@@ -127,6 +127,11 @@ try {
   assert.match(help[2][1], /^E holds the belt for two seconds, three times a night/);
   assert.match(help.at(-1)[1], /^WASD or arrows move/);
   await page.getByRole('button', { name: 'BACK' }).click();
+  // END NIGHT asks first; BACK returns to the pause screen with the night intact.
+  await page.getByRole('button', { name: 'END NIGHT' }).click();
+  assert.match(await page.locator('.b3d-panel h1').innerText(), /END THIS NIGHT\?/);
+  await page.getByRole('button', { name: 'BACK' }).click();
+  assert.match(await page.locator('.b3d-panel h1').innerText(), /GAME PAUSED/);
   await page.getByRole('button', { name: /RESUME/ }).click();
   await wait(() => window.fixtureApp.state === 'playing');
   // With the switch off, a breakage shake is dropped at once instead of decaying over half a second.
@@ -135,6 +140,25 @@ try {
   assert.equal(await read(() => window.fixtureApp.shake), 0, 'no camera shake with the switch off');
   await read(() => { const app = window.fixtureApp; app.settings = { music: 1, effects: 1, shake: true, resolution: 1 }; app.applySettings(); localStorage.removeItem('the-belt:3d-settings:v1'); });
   console.log('PASS settings from the pause screen: real-key music and resolution sliders and a shake switch apply at once, are kept on this device, and never move the worker; HOW TO PLAY lists the rules and controls');
+
+  // END NIGHT from the pause screen drops the night unrecorded and brings back the briefing.
+  const recordBefore = await read(() => {
+    const app = window.fixtureApp; app.restart(); app.forceStory({ breakAtMs: 1e12 }); app.benStarted = true;
+    app.model.autonomousCoworker = false; app.model.eventStopped = true; app.overlay.clearCenter(); app.state = 'playing';
+    app.model.elapsedMs = 60_000; app.model.score = 420;
+    return localStorage.getItem('the-belt:3d-record:v1');
+  });
+  await page.keyboard.press('Escape');
+  await wait(() => window.fixtureApp.state === 'paused');
+  await page.getByRole('button', { name: 'END NIGHT' }).click();
+  await page.locator('.b3d-panel').getByRole('button', { name: 'END NIGHT' }).click();
+  await wait(() => window.fixtureApp.state === 'briefing');
+  const ended = await read(() => ({ elapsed: window.fixtureApp.model.elapsedMs, score: window.fixtureApp.model.score,
+    record: localStorage.getItem('the-belt:3d-record:v1'), briefing: document.querySelector('.b3d-panel').innerText }));
+  assert.deepEqual([ended.elapsed, ended.score], [0, 0], 'a fresh shift waits');
+  assert.equal(ended.record, recordBefore, 'the dropped night is not recorded');
+  assert.match(ended.briefing, /ANOTHER NIGHT ON THE BELT/);
+  console.log('PASS END NIGHT on the pause screen asks first, then drops the night unrecorded and returns to the briefing');
 
   const patrols = await read(() => {
     const app = window.fixtureApp; app.restart(); app.state = 'paused';

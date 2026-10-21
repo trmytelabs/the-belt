@@ -2,6 +2,9 @@
 
 ## 0.1.0 — development snapshot
 
+- Add END NIGHT to the 3D pause screen (END SHIFT in the endless shift, END
+  DRIVE in the practice drive): after a confirmation it drops the run without
+  recording it and goes back to the briefing. ENTER still resumes.
 - Add a RESOLUTION slider to the 3D settings: 50 to 100% of the renderer's
   usual pixel ratio, applied at once and kept on this device, for a smoother
   game on a slow or very sharp screen.
