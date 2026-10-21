@@ -108,6 +108,9 @@ try {
     const app = window.fixtureApp, view = app.drivingView, gl = app.renderer.getContext(), draw = app.draw.bind(app), px = new Uint8Array(4);
     // The camera's place is checked on every game tick (a software renderer spaces its draws out); the picture on every draw.
     window.cameraFrames = { ticks: 0, inside: 0, draws: 0, black: 0 };
+    // Restored straight after the turns: reading pixels back on every draw stalls a software renderer, and left in place
+    // it slowed the rest of the drive on CI until the driver ran out of time.
+    window.restoreCameraCheck = () => { view.update = update; app.draw = draw; };
     const update = view.update.bind(view);
     view.update = (model, dt) => {
       update(model, dt);
@@ -123,7 +126,7 @@ try {
     };
   });
   for (const key of ['KeyA', 'KeyD', 'KeyA']) { await page.keyboard.down(key); await page.waitForTimeout(900); await page.keyboard.up(key); await page.waitForTimeout(500); }
-  const cameraFrames = await page.evaluate(() => window.cameraFrames);
+  const cameraFrames = await page.evaluate(() => { window.restoreCameraCheck(); return window.cameraFrames; });
   // A software renderer runs only a handful of ticks in those seconds; a real GPU runs dozens.
   const minimumTicks = await page.evaluate(() => window.fixtureApp.quality === 'high' ? 21 : 1);
   assert.ok(cameraFrames.ticks >= minimumTicks && cameraFrames.draws >= 1 && cameraFrames.inside === 0 && cameraFrames.black === 0, `the chase camera stays out of the scenery through hard turns: ${JSON.stringify(cameraFrames)}`);
