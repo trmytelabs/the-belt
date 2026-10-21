@@ -5,10 +5,12 @@
  * press the same keys the keyboard does, chosen by what is on screen.
  */
 
-export type PadButton = 'a' | 'b' | 'x' | 'y' | 'lb' | 'rb' | 'back' | 'start';
+/** A push of the stick or d-pad, for stepping through menus. */
+export type PadDirection = 'up' | 'down' | 'left' | 'right';
+export type PadButton = 'a' | 'b' | 'x' | 'y' | 'lb' | 'rb' | 'back' | 'start' | PadDirection;
 
 /** Standard-mapping button indexes. */
-const BUTTON_INDEX: Readonly<Record<PadButton, number>> = { a: 0, b: 1, x: 2, y: 3, lb: 4, rb: 5, back: 8, start: 9 };
+const BUTTON_INDEX: Readonly<Record<Exclude<PadButton, PadDirection>, number>> = { a: 0, b: 1, x: 2, y: 3, lb: 4, rb: 5, back: 8, start: 9 };
 const DPAD = { up: 12, down: 13, left: 14, right: 15 } as const;
 const TRIGGER = { left: 6, right: 7 } as const;
 
@@ -27,12 +29,14 @@ export interface PadFrame {
   /** Right and left triggers, 0 to 1. */
   throttle: number;
   brake: number;
-  /** Buttons pressed since the last poll. */
+  /** Buttons pressed since the last poll; a push of the stick or d-pad past `NAV_THRESHOLD` presses its direction. */
   pressed: PadButton[];
 }
 
 /** Stick travel ignored around the centre, so a resting stick never drifts the worker. */
 export const STICK_DEADZONE = 0.2;
+/** How far the stick or d-pad must go (after the dead zone) to count as one step through a menu. */
+export const NAV_THRESHOLD = 0.6;
 
 export const IDLE_PAD: Readonly<PadFrame> = { connected: false, move: { x: 0, y: 0 }, throttle: 0, brake: 0, pressed: [] };
 
@@ -71,8 +75,12 @@ export class GamepadInput {
       y: clamp(ay * scale + (down(DPAD.down) ? 1 : 0) - (down(DPAD.up) ? 1 : 0)),
     };
     const pressed: PadButton[] = [];
-    for (const [name, index] of Object.entries(BUTTON_INDEX) as [PadButton, number][]) {
-      if (!down(index)) { this.held.delete(name); continue; }
+    const states: [PadButton, boolean][] = [
+      ...(Object.entries(BUTTON_INDEX) as [PadButton, number][]).map(([name, index]): [PadButton, boolean] => [name, down(index)]),
+      ['up', move.y <= -NAV_THRESHOLD], ['down', move.y >= NAV_THRESHOLD], ['left', move.x <= -NAV_THRESHOLD], ['right', move.x >= NAV_THRESHOLD],
+    ];
+    for (const [name, isDown] of states) {
+      if (!isDown) { this.held.delete(name); continue; }
       if (!this.held.has(name) && !fresh) pressed.push(name);
       this.held.add(name);
     }
@@ -87,7 +95,8 @@ export class GamepadInput {
  * the belt and skips a story scene; X stops the belt or moves the mall cart; Y
  * switches workers; Back is the overview or the cab view; on the briefing Y and X
  * pick the peak night and the endless shift, and the bumpers step through
- * tonight's perks.
+ * tonight's perks. The four directions press no key: they move, and on a panel
+ * the game steps through its buttons with them.
  */
 export function padKey(state: string, button: PadButton): string | null {
   if (button === 'start') return 'Escape';

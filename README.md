@@ -166,7 +166,9 @@ SORT!** countdown starts the shift.
   grab and deliver, B to throw, X to stop the belt, Y to switch, Back for the
   overview, Start to pause; on the road the triggers are gas and brake. On the
   briefing Y starts a peak night, X the endless shift, and LB / RB step through
-  the perks.
+  the perks. On the briefing, pause and results screens the d-pad or stick
+  highlights a button or setting, A presses it, left and right move a slider,
+  and B goes back.
 - Escape pauses; M toggles sound. SETTINGS on the pause screen sets the music
   and effects levels and the resolution (down to half, for a smoother game on a
   slow or very sharp screen) and turns the breakage camera shake on or off; they are

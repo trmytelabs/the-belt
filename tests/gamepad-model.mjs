@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { GamepadInput, STICK_DEADZONE, padKey } from '../src/three/gamepad.ts';
+import { GamepadInput, NAV_THRESHOLD, STICK_DEADZONE, padKey } from '../src/three/gamepad.ts';
 
 // A controller with the browser's standard layout.
 
@@ -46,6 +46,22 @@ test('a button counts once per press, and one already held when the pad appears 
   assert.deepEqual(input.poll([pad({ buttons: { 9: 1 } })]).pressed, ['start']);
   input.poll([]);
   assert.deepEqual(input.poll([pad({ buttons: { 9: 1 } })]).pressed, [], 'a reconnected pad starts fresh');
+});
+
+test('a push of the d-pad or stick presses its direction once, for menus, and presses no key', () => {
+  const input = new GamepadInput();
+  input.poll([pad()]);
+  assert.deepEqual(input.poll([pad({ buttons: { 13: 1 } })]).pressed, ['down']);
+  assert.deepEqual(input.poll([pad({ buttons: { 13: 1 } })]).pressed, [], 'held');
+  assert.deepEqual(input.poll([pad()]).pressed, []);
+  assert.deepEqual(input.poll([pad({ axes: [0, -0.9] })]).pressed, ['up'], 'a stick push');
+  assert.deepEqual(input.poll([pad({ axes: [0, -0.95] })]).pressed, [], 'still pushed');
+  assert.deepEqual(input.poll([pad({ axes: [0.9, 0] })]).pressed, ['right']);
+  assert.deepEqual(input.poll([pad({ axes: [-0.3, 0] })]).pressed, [], 'short of the threshold');
+  assert.ok(NAV_THRESHOLD > STICK_DEADZONE);
+  for (const state of ['playing', 'briefing', 'paused', 'ended', 'driving', 'mall']) {
+    assert.deepEqual(['up', 'down', 'left', 'right'].map((button) => padKey(state, button)), [null, null, null, null], state);
+  }
 });
 
 test('each screen maps the buttons to its own keys, and Start always pauses', () => {

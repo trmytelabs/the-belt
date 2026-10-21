@@ -2,6 +2,10 @@
 
 ## 0.1.0 — development snapshot
 
+- Let a controller work the 3D menus: on the briefing, pause and results
+  screens the d-pad or stick steps a highlight through the buttons, links and
+  settings, A presses the highlighted one, left and right move a slider and B
+  presses BACK. Until a direction is pushed, A keeps its usual meaning.
 - Add END NIGHT to the 3D pause screen (END SHIFT in the endless shift, END
   DRIVE in the practice drive): after a confirmation it drops the run without
   recording it and goes back to the briefing. ENTER still resumes.

@@ -450,6 +450,18 @@ try {
   assert.match(padHelp[2], /^X holds the belt/);
   assert.match(padHelp.at(-1), /^Left stick or d-pad moves · A grabs and delivers/);
   await read(() => window.fixtureApp.showPausePanel('PAUSED'));
+  // On a panel the d-pad steps a highlight through the buttons and A presses it; left and right move a
+  // highlighted slider, and B presses BACK.
+  const padFocus = () => document.querySelector('.b3d-panel .pad-focus');
+  await tap(13, () => document.querySelector('.b3d-panel .pad-focus')?.textContent.includes('RESUME'));
+  await tap(13, () => document.querySelector('.b3d-panel .pad-focus')?.textContent.includes('SETTINGS'));
+  await tap(0, () => document.querySelector('.b3d-panel h1')?.textContent.includes('SOUND AND CAMERA'));
+  assert.equal(await read(padFocus), null, 'a new panel starts with nothing highlighted');
+  await tap(13, () => document.querySelector('.b3d-panel .pad-focus')?.dataset.setting === 'music');
+  const musicBefore = await read(() => window.fixtureApp.settings.music);
+  await tap(14, (before) => Math.abs(window.fixtureApp.settings.music - (before - 0.05)) < 1e-9, musicBefore);
+  await tap(1, () => document.querySelector('.b3d-panel h1')?.textContent.includes('GAME PAUSED'));
+  await read(() => { const app = window.fixtureApp; app.settings = { ...app.settings, music: 1 }; app.applySettings(); localStorage.removeItem('the-belt:3d-settings:v1'); });
   await tap(0, () => window.fixtureApp.state === 'playing');
   const startY = await read(() => window.fixtureApp.model.activeWorker.y);
   await read(() => window.padSet({ axes: [0, 1] }));
@@ -468,7 +480,7 @@ try {
   await read(() => { window.padSet(); window.fakePads = []; window.fixtureApp.restart(); });
   await wait(() => !window.fixtureApp.pad.connected);
   assert.equal(await read(() => document.querySelector('[data-f=keyhints]').hidden), false, 'and the keyboard keys again once it is gone');
-  console.log('PASS a controller pauses and resumes, walks the worker, switches workers, stops the belt, and drives and brakes the five-ton with its triggers; the HUD and HOW TO PLAY name its buttons while it is connected');
+  console.log('PASS a controller pauses and resumes, walks the worker, switches workers, stops the belt, and drives and brakes the five-ton with its triggers; the HUD and HOW TO PLAY name its buttons while it is connected, and the d-pad, A and B work the pause and settings panels');
 
   await read(async list=>{
     const app=window.fixtureApp;app.state='paused';app.pausedFrom='playing';app.stage.end();app.overlay.setMode('shift');app.overlay.clearSpeech();app.overlay.setLunchAlert(false);app.overlay.clearCenter();

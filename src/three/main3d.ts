@@ -46,7 +46,7 @@ import { DECISION, HOME_DECISION, LEAVE_HOUSE, QUIT_ENDING, QUIT_NIGHT, type Hom
 import { DrivingView } from './driving';
 import { BELT_SOLID_WIDTH, HEAD_DRIVE, clearReceiving } from './receivingCollision';
 import { TouchControls } from './touch';
-import { GamepadInput, IDLE_PAD, padKey, type PadFrame } from './gamepad';
+import { GamepadInput, IDLE_PAD, padKey, type PadButton, type PadFrame } from './gamepad';
 import { Overlay } from './overlay';
 import { MIN_RESOLUTION, loadSettings, saveSettings, type GameSettings } from './settings';
 import { OPENER_COUNT, browserStorage, formatTotal, loadRecord, recordEndless, recordNight, saveRecord, type NightRecord } from './nightRecord';
@@ -893,7 +893,7 @@ export class Belt3d {
       ['PERKS', `Once you finish a night, the briefing offers three perks: pick one${touch ? '' : pad ? ' with LB / RB' : ' with 1, 2 or 3'} to bend that night's rules.`],
       ['ENDLESS SHIFT', 'Also unlocked by a finished night: no clock. From the rush on, freight comes sooner and the belt runs faster every minute until recovery overflows. It keeps its own best.'],
       ['CONTROLS', touch ? 'The stick moves; SWITCH changes worker; GRAB / DELIVER, THROW and STOP THE BELT do what they say; VIEW shows the whole warehouse.'
-        : pad ? 'Left stick or d-pad moves · A grabs and delivers · B throws · X stops the belt · Y switches worker · BACK overview · START pause.'
+        : pad ? 'Left stick or d-pad moves · A grabs and delivers · B throws · X stops the belt · Y switches worker · BACK overview · START pause. On menus the d-pad or stick picks, A presses and B goes back.'
         : 'WASD or arrows move · TAB or right-click switches worker · SPACE grabs and delivers · F throws · E stops the belt · V overview · ESC pause · M sound.'],
     ];
     this.overlay.showPanel(`<div class="kicker">${kicker} · HOW TO PLAY</div><h1>HOW TO PLAY</h1>
@@ -1094,12 +1094,50 @@ export class Belt3d {
     if (frame.connected !== this.pad.connected) this.showPadHints(frame.connected);
     this.pad = frame;
     for (const button of frame.pressed) {
+      if (this.padMenu(button)) continue;
       const code = padKey(this.state, button);
       if (!code) continue;
       // The same path as a key press, so every screen behaves exactly as it does for the keyboard.
       window.dispatchEvent(new KeyboardEvent('keydown', { code }));
       window.dispatchEvent(new KeyboardEvent('keyup', { code }));
     }
+  }
+
+  /**
+   * On the briefing, pause and results panels the d-pad or stick steps a highlight
+   * through the panel's buttons, links and settings, left and right move a
+   * highlighted slider, A presses the highlighted control and B presses BACK.
+   * Until a direction is pushed, A keeps its usual meaning. True when the press was used here.
+   */
+  private padMenu(button: PadButton): boolean {
+    if (this.state !== 'briefing' && this.state !== 'paused' && this.state !== 'ended') return false;
+    const controls = [...this.overlay.root.querySelectorAll<HTMLElement>('.b3d-panel button, .b3d-panel a[href], .b3d-panel input')]
+      .filter((control) => control.offsetParent !== null);
+    const at = controls.findIndex((control) => control.classList.contains('pad-focus'));
+    const current = controls[at];
+    if (button === 'up' || button === 'down') {
+      if (!controls.length) return false;
+      const step = button === 'down' ? 1 : -1;
+      const next = at < 0 ? (step > 0 ? 0 : controls.length - 1) : (at + step + controls.length) % controls.length;
+      current?.classList.remove('pad-focus');
+      controls[next].classList.add('pad-focus');
+      controls[next].focus({ preventScroll: true });
+      controls[next].scrollIntoView({ block: 'nearest' });
+      return true;
+    }
+    if (button === 'b') {
+      const back = controls.find((control) => control.dataset.action === 'back');
+      back?.click();
+      return back !== undefined;
+    }
+    if (!current) return false;
+    if ((button === 'left' || button === 'right') && current instanceof HTMLInputElement && current.type === 'range') {
+      if (button === 'right') current.stepUp(); else current.stepDown();
+      current.dispatchEvent(new Event('input', { bubbles: true }));
+      return true;
+    }
+    if (button === 'a') { current.click(); return true; }
+    return false;
   }
 
   private tick(): void {
