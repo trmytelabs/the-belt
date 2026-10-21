@@ -42,6 +42,7 @@ import { DrivingView } from './driving';
 import { BELT_SOLID_WIDTH, HEAD_DRIVE, clearReceiving } from './receivingCollision';
 import { TouchControls } from './touch';
 import { Overlay } from './overlay';
+import { OPENER_COUNT, browserStorage, formatTotal, loadRecord, recordNight, saveRecord, type NightRecord } from './nightRecord';
 import { alignParcelToSurface, createParcelView, setParcelCarried, setParcelModels, type ParcelView } from './parcels';
 import { disposeObject3D } from './resources';
 import { loadSurfaces } from './textures';
@@ -130,6 +131,8 @@ export class Belt3d {
   private benStarted = false;
   private pausedFrom: Resumable = 'playing';
   private forcedStory: Partial<StoryChoices> = {};
+  /** The player's record between nights, kept in this browser's local storage (nightRecord.ts). */
+  public record: NightRecord = loadRecord(browserStorage());
   private depotShot: { position: THREE.Vector3; look: THREE.Vector3 } | null = null;
   private readonly stolen = new Set<number>();
   private readonly parcels = new Map<number, ParcelView>();
@@ -525,6 +528,7 @@ export class Belt3d {
       <p>F throws toward the nearest drop. At the top of the stairs, throw down with a 30% break risk. E stops the belt. V overview.</p>
       <p>Story scenes: SPACE next line, ENTER skips the scene, ESC pauses.</p>`}
       <p>The night starts at home: go in to work, or quit UPS. After the shift, drive the five-ton to Southgate Mall and finish the deliveries. Driving controls appear when you get there.</p>
+      ${this.recordLine()}
       <button type="button">START THE NIGHT  ↵</button>
       <a href="${window.location.pathname}?mode=3d&amp;drive=mall">TRY JUST THE DRIVE · EXPLORE THE CITY</a>
       <a href="${window.location.pathname}?mode=classic">PLAY THE ORIGINAL FULL SHIFT</a>`, () => this.startNight());
@@ -1665,6 +1669,25 @@ export class Belt3d {
     }
   }
 
+  /** The briefing's line about the player's record, once there is one. */
+  private recordLine(): string {
+    const { played, completed, best, openers } = this.record;
+    if (played === 0) return '';
+    const bestText = best ? `BEST NIGHT ${formatTotal(best.total)} · GRADE ${escapeHtml(best.grade)}` : 'NO SHIFT FINISHED YET';
+    return `<p class="b3d-record"><b>YOUR RECORD · ${completed} OF ${played} ${played === 1 ? 'NIGHT' : 'NIGHTS'} FINISHED · ${bestText} · ${openers.length} OF ${OPENER_COUNT} OPENERS SEEN</b></p>`;
+  }
+
+  /** Adds this night to the record and says how it compares with the best. */
+  private recordResults(won: boolean, total: number, grade: string): string {
+    const result = recordNight(this.record, { won, total, grade, sorted: this.model.sorted, opener: this.story.opener.id, date: new Date().toISOString().slice(0, 10) });
+    this.record = result.record;
+    saveRecord(browserStorage(), this.record);
+    const night = `NIGHT ${this.record.played}`;
+    if (result.newBest) return `<p class="b3d-best"><b>NEW PERSONAL BEST · ${night}</b>${result.previous ? ` · beat ${formatTotal(result.previous.total)}` : ''}</p>`;
+    const best = this.record.best;
+    return `<p class="b3d-best">${best ? `BEST NIGHT ${formatTotal(best.total)} · GRADE ${escapeHtml(best.grade)}` : 'NO SHIFT FINISHED YET'} · ${night} · ${this.record.completed} finished</p>`;
+  }
+
   private showResults(): void {
     if (this.state === 'ended') return;
     this.state = 'ended';
@@ -1679,10 +1702,12 @@ export class Belt3d {
     const mall = this.mall;
     const routes = (['A', 'D', 'T', 'B', 'E', 'S', 'C'] as const).map((route) => `${ROUTE_INFO[route].name} ${m.routeSorted[route]}`).join(' · ');
     const total = Math.max(0, m.score + this.mallBonus - this.drivingPenalty);
+    const record = this.recordResults(m.won, total, m.won ? m.grade : 'F');
     this.overlay.showPanel(`
       <div class="grade">${m.won ? m.grade : 'F'}</div>
       <div class="kicker">${m.won ? `SHIFT COMPLETE / GRADE ${m.grade}` : 'SHIFT TERMINATED / YOU FAILED THE SORT'}</div>
       <h1>${overflow ? 'PILE-UP OVERFLOW' : home ? 'HOME. FINALLY.' : m.gradeQuote}</h1>
+      ${record}
       <p><b>${m.sorted} DISPATCHED · ${String(m.score).padStart(5, '0')} POINTS · ${m.bestCombo} BEST STREAK</b></p>
       <p>${rate}% of freight dispatched · ${m.recoveredDeliveries} recovered and dispatched · ${m.bulkSorted} to bulk</p>
       <p>${m.unshipped} left behind · ${m.wrongDrops} wrong drops · GRADE ${m.accuracy.toFixed(1)}% (S: 95%+)</p>

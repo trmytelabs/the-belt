@@ -2,6 +2,13 @@
 
 ## 0.1.0 — development snapshot
 
+- Keep the player's record between nights in the 3D game. Each night that
+  reaches the results adds to a record kept in the browser's local storage on
+  this device (`nightRecord.ts`): nights worked and finished, the best night
+  total with its grade, and which of the three openers have been seen. The
+  results say whether the night was a new personal best, or show the best to
+  beat; the briefing shows the record. Only a finished shift can set the best.
+  A blocked or full storage (a private window) just means no record.
 - Add a cab view to the five-ton's drives and put the cars' drivers on the
   left. V (or VIEW on a touch screen) puts the camera at Skanky's eyes in the
   cab: the green hood and wipers, a dashboard with two lit gauges, a broad

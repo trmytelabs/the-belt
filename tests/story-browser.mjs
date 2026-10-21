@@ -449,6 +449,12 @@ try {
   assert.match(results, /MALL RUN · 6\/6 delivered · 6\/6 signed · five-ton returned · \+300/);
   assert.match(results, /1 broken \(−150 points\)/);
   assert.match(results, /NIGHT TOTAL/);
+  // The first night in a fresh browser is a personal best, and the record is kept for the next.
+  assert.match(results, /NEW PERSONAL BEST · NIGHT 1/);
+  const stored = await read(() => JSON.parse(window.localStorage.getItem('the-belt:3d-record:v1')));
+  assert.equal(stored.played, 1);
+  assert.equal(stored.completed, 1);
+  assert.ok(stored.best.total > 0 && /^opener-\d$/.test(stored.openers[0]), `the night is recorded: ${JSON.stringify(stored)}`);
   assert.deepEqual(await read(() => window.fixtureApp.story.visited.slice(-9)),
     ['shift', 'clockout', 'assignment', 'to-mall', 'mall', 'to-ups', 'return', 'home', 'results']);
   assert.deepEqual(errors, []);
@@ -487,6 +493,8 @@ try {
     };
   });
   assert.deepEqual(clean, { cutscene: null, mall: null, lot: null, stage: null, speech: 0, elapsed: 0, breakTaken: false, chapter: 'briefing', damaged: 0, piles: 0, shan: 0 });
+  // The briefing shows the record so far: two nights reached the results (the finale and the synthetic regression), both finished.
+  assert.match(await page.locator('.b3d-panel').innerText(), /YOUR RECORD · 2 OF 2 NIGHTS FINISHED · BEST NIGHT \d{5} · GRADE [SABCDF] · 1 OF 3 OPENERS SEEN/);
   await page.keyboard.press('Enter');
   await wait(() => window.fixtureApp.state === 'story' && window.fixtureApp.story.chapter === 'arrival');
   await page.keyboard.press('Enter');
