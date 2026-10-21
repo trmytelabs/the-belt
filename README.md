@@ -77,6 +77,7 @@ blends in rather than snapping.
 
 One wind blows through every snowfall, gusting now and then; the headlights
 catch the snow ahead of the truck; and out in the cold the cast's breath shows.
+Your record (nights finished, your best night total and grade, the openers you have seen) is kept in this browser and shown on the briefing and the results.
 The 3D game plays a whole snowy Christmas night: it starts at home, where Termite and Skanky decide whether
 to go in or quit UPS (quitting ends the night on the couch with a Wii; going in
 means driving Skanky's car to work), then one of three random
