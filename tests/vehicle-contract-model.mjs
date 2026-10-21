@@ -36,8 +36,10 @@ test('the sedan interior carries every contract node, inside the cabin', () => {
       assert.ok(p.x > world(targets.seat).x + 0.3, `${foot.name} ahead of the seat`);
     }
   }
-  // The driver's wrists sit on the wheel rim, the left on the door side (+z: the figure's left pivots hang at its −x).
+  // Left-hand drive, as the city's traffic keeps right: the driver and the wheel on the car's left (−z; the nose is +x).
   const wheel = world(contract.steeringWheel), driver = contract.seats.driver;
+  assert.ok(world(driver.seat).z < -0.2 && wheel.z < -0.2 && world(contract.seats.passenger.seat).z > 0.2, 'the driver sits on the left, the passenger on the right');
+  // The driver's wrists sit on the wheel rim, the figure's left pivot (+z: it hangs at the figure's −x) toward the console.
   for (const [hand, side] of [[driver.hands.left, 1], [driver.hands.right, -1]]) {
     const p = world(hand);
     assert.ok(Math.abs(p.distanceTo(wheel) - SEDAN_LAYOUT.wheel.radius) < 0.005, `${hand.name} on the rim`);

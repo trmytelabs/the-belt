@@ -16,6 +16,7 @@ import { DrivingNavigation } from './drivingNavigation';
 import { snowMaterial, Snowfall } from './snow';
 import { windAt } from './wind';
 import { blocker, pullClear } from './cameraClear';
+import { TRUCK_CAB, createTruckCab } from './vehicleInterior';
 import { TRAFFIC_VARIANTS, TrafficBatch } from './trafficBatch';
 import { createCityWindows } from './cityWindows';
 
@@ -34,6 +35,12 @@ export class DrivingView {
   private readonly models: DrivingModels;
   /** Padded boxes the chase camera stays out of: the buildings, the lamp posts and the signals. */
   public readonly blockers: THREE.Box3[] = [];
+  /** The camera: behind the vehicle, or in the five-ton's cab at the driver's eyes. */
+  public view: 'chase' | 'cab' = 'chase';
+  private readonly cab: THREE.Group;
+  private readonly cabWheel: THREE.Object3D;
+  /** The procedural five-ton's own parts, shown until the downloaded model replaces them. */
+  private readonly truckBody: THREE.Object3D[];
   private readonly signalProps: { signal: CitySignal; axis: CityAxis; root: THREE.Group; bulbs: THREE.Mesh<THREE.SphereGeometry, THREE.MeshStandardMaterial>[] }[] = [];
   /** Procedural stand-ins for the traffic, shown until the batched sedans are built. */
   private readonly traffic = new Map<string, THREE.Group>();
@@ -197,7 +204,13 @@ export class DrivingView {
       const tail = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.2, 0.28), this.tailMaterial);
       tail.position.set(-2.38, 0.8, z); this.truck.add(tail);
     }
+    this.truckBody = [...this.truck.children];
     loads.push(this.models.place(this.truck, 'truck', { x: 6.2, y: 3.5, z: 2.5 }, [...this.truck.children], Math.PI / 2));
+    // The cab as the driver sees it, shown only in the cab view (added after the model's fallbacks are listed).
+    const { cab, wheel } = createTruckCab();
+    cab.visible = false;
+    this.truck.add(cab);
+    this.cab = cab; this.cabWheel = wheel;
     // These lights and labels stay on the truck after its original body is upgraded.
     for (const z of [-0.8, 0.8]) {
       const tail = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.22, 0.3), this.tailMaterial);
@@ -291,6 +304,14 @@ export class DrivingView {
 
   /** The vehicle the player drives: the five-ton by default, or Skanky's car. */
   public get vehicle(): THREE.Group { return this.car.visible ? this.car : this.truck; }
+
+  /** Switches between the chase camera and the cab; the cab view is the five-ton's, so Skanky's car keeps the chase camera. */
+  public toggleView(): 'chase' | 'cab' {
+    this.view = this.view === 'chase' && this.vehicle === this.truck ? 'cab' : 'chase';
+    // Back behind the vehicle at once rather than swooping out of the cab.
+    this.snapped = false;
+    return this.view;
+  }
 
   /** Who is riding where, for checks. */
   public occupantReport(): { name: string; seat: SeatName; character: Character }[] {
@@ -390,15 +411,34 @@ export class DrivingView {
     this.moon.position.set(anchorX - 30, 50, anchorZ - 20);
     this.moon.target.position.set(anchorX, 0, anchorZ);
     this.moon.target.updateMatrixWorld();
-    // A lower, closer chase camera: the vehicle filled a small patch at the bottom of the old frame.
-    const chase = new THREE.Vector3(p.x - p.tx * 9, 4.5, p.z - p.tz * 9);
-    const target = new THREE.Vector3(p.x + p.tx * 10, 1.2, p.z + p.tz * 10);
-    const follow = !this.snapped ? 1 : 1 - Math.exp(-dt * 5);
-    this.camera.position.lerp(chase, follow); this.look.lerp(target, follow);
-    // Never inside the scenery: a corner cut used to put the camera in a building, and a kerb-side pass through a lamp post.
-    // The line runs from the roof, so a pulled-in camera still looks over the truck at the road, and stops 3.5 m out.
-    pullClear(new THREE.Vector3(p.x, 3.6, p.z), this.camera.position, this.blockers, 0.4, 3.5);
-    this.camera.lookAt(this.look); this.snapped = true;
+    const inCab = this.view === 'cab' && this.vehicle === this.truck;
+    this.cab.visible = inCab;
+    // From inside, the body's opaque cab would fill the view: hide it (the downloaded model, or the procedural
+    // parts until it lands) and keep the truck's lights.
+    const body = this.truck.getObjectByName('driving-model-truck');
+    if (body) body.visible = !inCab;
+    if (!this.truck.userData.modelReady) for (const part of this.truckBody) part.visible = !inCab;
+    if (inCab) {
+      // At the driver's eyes, pitching and rolling with the body on its springs; the wheel turns with the front wheels.
+      const springs = this.truck.userData.suspension as THREE.Object3D | undefined;
+      this.cab.rotation.set(springs?.rotation.x ?? 0, 0, springs?.rotation.z ?? 0);
+      this.cabWheel.rotation.z = -model.steer * 2.5;
+      this.cab.updateWorldMatrix(true, false);
+      this.camera.position.copy(this.cab.localToWorld(new THREE.Vector3(TRUCK_CAB.eye.x, TRUCK_CAB.eye.y, TRUCK_CAB.eye.z)));
+      this.look.copy(this.cab.localToWorld(new THREE.Vector3(TRUCK_CAB.ahead.x, TRUCK_CAB.ahead.y, TRUCK_CAB.eye.z)));
+      this.camera.lookAt(this.look);
+      this.snapped = false;
+    } else {
+      // A lower, closer chase camera: the vehicle filled a small patch at the bottom of the old frame.
+      const chase = new THREE.Vector3(p.x - p.tx * 9, 4.5, p.z - p.tz * 9);
+      const target = new THREE.Vector3(p.x + p.tx * 10, 1.2, p.z + p.tz * 10);
+      const follow = !this.snapped ? 1 : 1 - Math.exp(-dt * 5);
+      this.camera.position.lerp(chase, follow); this.look.lerp(target, follow);
+      // Never inside the scenery: a corner cut used to put the camera in a building, and a kerb-side pass through a lamp post.
+      // The line runs from the roof, so a pulled-in camera still looks over the truck at the road, and stops 3.5 m out.
+      pullClear(new THREE.Vector3(p.x, 3.6, p.z), this.camera.position, this.blockers, 0.4, 3.5);
+      this.camera.lookAt(this.look); this.snapped = true;
+    }
     this.jolting = model.paused ? this.jolting : this.jolting * Math.exp(-dt * 6);
     if (this.jolting > 0.005 && !this.reducedMotion && !model.paused) {
       this.camera.position.x += (Math.random() - 0.5) * this.jolting;

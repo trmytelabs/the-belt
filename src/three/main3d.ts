@@ -289,7 +289,8 @@ export class Belt3d {
         else if (this.state === 'mall') this.mall?.toggleCart();
       },
       throwParcel: () => { if (this.state === 'playing') this.model.throwHeld(); },
-      overview: () => { this.overview = !this.overview; },
+      // VIEW: the depot's overview, or on the drive the five-ton's cab.
+      overview: () => { if (this.state === 'driving') this.drivingView?.toggleView(); else this.overview = !this.overview; },
       pause: () => { if (this.canPause()) this.pause(); },
       mute: () => { audioSystem.toggleMuted(); },
     });
@@ -457,6 +458,7 @@ export class Belt3d {
         if (event.code === 'Space') this.cutscene?.userNext();
       } else if (this.state === 'driving') {
         if (event.code === 'Space') this.act();
+        else if (event.code === 'KeyV') this.drivingView?.toggleView();
       } else if (this.state === 'mall') {
         if (event.code === 'Space') this.mall?.action();
         else if (event.code === 'KeyE') this.mall?.toggleCart();
@@ -717,7 +719,7 @@ export class Belt3d {
     if (origin === 'home') this.overlay.storyTitle('HOME → UPS', 'SKANKY · DRIVING TO WORK', '12:40 AM');
     else this.overlay.storyTitle(destination === 'mall' ? 'UPS → SOUTHGATE MALL' : 'SOUTHGATE MALL → UPS',
       'SKANKY · FIVE-TON · FREE DRIVE', destination === 'mall' ? '5:05 AM' : '6:10 AM');
-    this.overlay.showToast(this.touch.enabled ? 'Green compass points to the bay · hold GAS · BRAKE / reverse' : 'Green compass points to the bay · W / ↑ GAS · A D / ← → STEER · S / ↓ BRAKE / reverse', 4500);
+    this.overlay.showToast(this.touch.enabled ? `Green compass points to the bay · hold GAS · BRAKE / reverse${origin === 'home' ? '' : ' · VIEW cab'}` : `Green compass points to the bay · W / ↑ GAS · A D / ← → STEER · S / ↓ BRAKE / reverse${origin === 'home' ? '' : ' · V cab view'}`, 4500);
     audioSystem.startMusic('game');
   }
 
@@ -1088,7 +1090,7 @@ export class Belt3d {
         drive.origin === 'home' ? ['IN THE CAR', 'TERMITE + SKANKY']
           : ['CARGO', this.practiceDestination ? 'PRACTICE · SAFE' : drive.destination === 'mall' ? '6 BUNDLES · SAFE' : '6 / 6 SIGNED'],
       ], hint,
-      'W / ↑ GAS · A D / ← → STEER · S / ↓ BRAKE · SPACE PARK · M MUTE · ESC PAUSE');
+      'W / ↑ GAS · A D / ← → STEER · S / ↓ BRAKE · SPACE PARK · V VIEW · M MUTE · ESC PAUSE');
     } else if (this.state === 'mall' && this.mall) {
       const mall = this.mall;
       this.overlay.chapterHud([

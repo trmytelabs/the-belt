@@ -89,6 +89,26 @@ and replay starts a fresh drive. The regular briefing also links to practice.
 arrow, and `drivingModels.ts` owns imported art. `main3d.ts` connects them
 to the existing story. The shared story scripts and mall rules are preserved.
 
+## The cab view
+
+V on a keyboard, or VIEW on a touch screen, switches the five-ton's drive
+between the chase camera and the cab (`DrivingView.toggleView`); Skanky's car
+keeps the chase camera. The downloaded truck's cab is a closed shell with
+opaque, painted windows, so the cab view hides the truck's body (the model, or
+the procedural parts until it lands) and shows `createTruckCab`
+(`vehicleInterior.ts`) instead: the hood in the truck's green with its wipers,
+a dashboard with two dimly lit gauges in bezels, a broad wheel that turns with
+the front wheels (2.5 times their angle), the windscreen pillars, the header,
+the roof lining, the doors, the floor, the passenger's seat and a mirror. The
+camera sits at the driver's eyes (`TRUCK_CAB.eye`, left-hand drive) and
+pitches and rolls with the body on its springs. The driving browser suite
+checks the camera's place and heading, the hidden body, the turning wheel and
+the way back, by key and by touch.
+
+The city's traffic keeps to the right, so the cars are left-hand drive: the
+sedan contract's driver seat, wheel and pedals sit on the car's left (−z; the
+nose is +x), and the plain seats of the procedural car match.
+
 ## Black frames and the bloom
 
 On the high-quality renderer the scene draws into a multisampled half-float

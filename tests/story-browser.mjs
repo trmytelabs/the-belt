@@ -237,9 +237,13 @@ try {
     Object.assign(m.workers[0], p, { heldId: parcel.id });
     return parcel.id;
   }, { r: route, k: kind, p: at });
+  // The hint follows the held freight on the next HUD refresh, which a slow software renderer can delay past a fixed sleep.
+  const expectHint = async (pattern) => {
+    await page.waitForFunction(source => new RegExp(source).test(document.querySelector('.b3d-hint')?.innerText ?? ''), pattern.source, { polling: 20, timeout: 10_000 }).catch(() => undefined);
+    assert.match(await page.locator('.b3d-hint').innerText(), pattern);
+  };
   const heavyId = await holdFor('A', 'mallwood', { x: 380, y: 400 });
-  await page.waitForTimeout(150);
-  assert.match(await page.locator('.b3d-hint').innerText(), /TOO HEAVY TO THROW/);
+  await expectHint(/TOO HEAVY TO THROW/);
   await page.keyboard.press('KeyF');
   await page.waitForTimeout(150);
   assert.equal(await read((id) => window.fixtureApp.model.heldPackage?.id, heavyId), heavyId, 'heavy freight stays in hand');
@@ -248,8 +252,7 @@ try {
   // A clean throw down the left stair; truck freight must be carried inside.
   const cleanId = await holdFor('T', 'smallbox', { x: 330, y: L.stairs.centerY });
   await read(() => { window.fixtureApp.model.random = () => 0.99; });
-  await page.waitForTimeout(150);
-  assert.match(await page.locator('.b3d-hint').innerText(), /\[F\] THROW DOWN STAIRS · 30% BREAK RISK/);
+  await expectHint(/\[F\] THROW DOWN STAIRS · 30% BREAK RISK/);
   assert.equal(await read(() => window.fixtureApp.throwArc), undefined, 'no safe aiming guide reveals the destination');
   const scoreBefore = await read(() => window.fixtureApp.model.score);
   await page.keyboard.press('KeyF');
