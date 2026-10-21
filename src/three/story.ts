@@ -54,6 +54,8 @@ export class StageActor {
   public faceAngle: number | null = null;
   /** What has this person's attention (the speaker, a listener), in world coordinates; the head turns to it while unposed. */
   public look: Gaze | null = null;
+  /** Saying the current beat's line (a model standing still talks with its hands). */
+  public speaking = false;
   public carrying = false;
   /** A seated passenger can contact their own vehicle; other solids still apply. */
   public seatedIn: THREE.Object3D | null = null;
@@ -99,7 +101,7 @@ export class StageActor {
     // A seated figure turns with its car; a standing one turns on the spot for a big change of facing.
     if (this.seatedIn) { if (c.motion) c.motion.turn = null; c.root.rotation.y = this.faceAngle ?? c.root.rotation.y; }
     else faceToward(c, this.faceAngle ?? this.heading, dt, this.moved, time);
-    if (c.motion) { c.motion.pose = this.pose; c.motion.seated = this.seatedIn !== null; }
+    if (c.motion) { c.motion.pose = this.pose; c.motion.seated = this.seatedIn !== null; c.motion.speaking = this.speaking; }
     // A posed or seated figure owns its torso; a plain walk keeps the walk cycle's lean and sway.
     if (this.pose !== 'none' || this.seatedIn) c.body.rotation.set(0, 0, 0);
     // Unposed (seated or standing), the head turns to whoever has this person's attention; a gesture owns the head.
@@ -1753,6 +1755,7 @@ export class StoryStage {
       const voice = speaker && speaker !== id ? heads.filter((head) => head.id === speaker) : [];
       const listeners = speaker === id ? heads.filter((head) => head.id !== id) : [];
       actor.look = lookTargetFor(self, time, voice, listeners, { other: 6 });
+      actor.speaking = speaker === id;
     }
   }
 

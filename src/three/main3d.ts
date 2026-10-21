@@ -1192,7 +1192,8 @@ export class Belt3d {
     // The worker whose hands did it: the event names a worker, or stands nearest the spot.
     const actor = event.workerId ? this.workers[event.workerId]
       : this.workers[[...this.model.workers].sort((a, b) => Math.hypot(a.x - event.x, a.y - event.y) - Math.hypot(b.x - event.x, b.y - event.y))[0].id];
-    if (event.type === 'grab' || event.type === 'recover') triggerAction(actor, 'lift', this.time);
+    // A grab off the belt bends at the hips to waist height; off the floor and from recovery it crouches.
+    if (event.type === 'grab' || event.type === 'recover') triggerAction(actor, 'lift', this.time, event.type === 'grab' && Math.abs(event.x - SHIFT_LAYOUT.beltX) <= 40 ? 'belt' : 'floor');
     else if (event.type === 'drop' || event.type === 'sort' || (event.type === 'wrong' && event.message.startsWith('WRONG DROP'))) triggerAction(actor, 'drop', this.time);
     else if (event.type === 'throw') triggerAction(actor, 'throw', this.time);
     if (event.type === 'sort' && event.score) {
@@ -1358,6 +1359,8 @@ export class Belt3d {
       animateCharacter(character, dt, { moving: walk ? !walk.done : worker.moving, carrying: held !== null, time: this.time, reducedMotion: this.reducedMotion, load });
       // On a stair flight each foot stands on its own tread instead of hanging over the root's.
       plantFeet(character, surfaceUnder);
+      // Saying a line, a worker standing still talks with their hands.
+      if (character.motion) character.motion.speaking = this.crew.isSpeaking(worker.id);
       // Eyes on the work: the parcel about to be grabbed, or the drop the held one is bound for.
       const focus = this.state === 'playing' ? held ? m.deliveryPoint(held, worker) : m.nearestPackage(worker) : null;
       if (focus) {

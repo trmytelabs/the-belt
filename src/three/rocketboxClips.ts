@@ -11,7 +11,8 @@ export type ClipRole =
   | 'cough' | 'cheer' | 'clap' | 'wave' | 'phone' | 'crouch' | 'dance' | 'sip' | 'shrug' | 'announce'
   | 'crouchIn' | 'crouchOut'
   | 'sitIdle' | 'sitIdleAlt' | 'sitLookAround' | 'lookAround' | 'scratchHead' | 'stretchArms' | 'angry'
-  | 'turnLeft90' | 'turnLeft180' | 'turnRight90' | 'turnRight180';
+  | 'turnLeft90' | 'turnLeft180' | 'turnRight90' | 'turnRight180'
+  | 'pickupTable' | 'interact' | 'walkFormal' | 'talking' | 'push';
 
 export interface ClipSource {
   role: ClipRole;
@@ -72,6 +73,9 @@ export const CLIP_SPEEDS: Partial<Record<string, number>> = {
   m_walk: 140.2, f_walk: 129.5,
   m_walkSlow: 82.1, f_walkSlow: 88.7,
   m_run: 307.5, f_run: 315.7,
+  // The Quaternius walks, measured by tools/rocketbox/ual.js from the pack's root-motion copy, in the crew's units.
+  m_walkFormal: 93.4, f_walkFormal: 97.2,
+  m_push: 28.7, f_push: 29.9,
 };
 
 /**
@@ -83,6 +87,25 @@ export const CLIP_SPANS: Partial<Record<string, [number, number]>> = {
   m_crouchIn: [1.35, 3.0], f_crouchIn: [0.25, 1.65],
   m_crouchOut: [1.0, 2.4], f_crouchOut: [0.2, 1.5],
 };
+
+/**
+ * Clips retargeted from Quaternius's Universal Animation Library (CC0; the free
+ * Standard pack, a manual download from quaternius.itch.io) onto the crew's
+ * skeleton by `tools/rocketbox/ual.js`, kept in their own GLB beside the
+ * Rocketbox library: lifting from waist height, pressing a button, a manager's
+ * walk, gesturing while talking and pushing. `clip` names the pack's clip;
+ * `speed` asks the converter to measure its ground speed from the pack's
+ * root-motion copy.
+ */
+export interface UalClipSource { role: ClipRole; clip: string; loop: boolean; speed?: boolean }
+export const UAL_CLIPS_URL = '/models/animations/crew-clips-ual.glb';
+export const UAL_CLIPS: UalClipSource[] = [
+  { role: 'pickupTable', clip: 'PickUp_Table', loop: false },
+  { role: 'interact', clip: 'Interact', loop: false },
+  { role: 'walkFormal', clip: 'Walk_Formal_Loop', loop: true, speed: true },
+  { role: 'talking', clip: 'Idle_Talking_Loop', loop: true },
+  { role: 'push', clip: 'Push_Loop', loop: true, speed: true },
+];
 
 /** The clip name in the GLB for a role and a body. */
 export const clipName = (role: ClipRole, female: boolean): string => `${female ? 'f' : 'm'}_${role}`;

@@ -204,7 +204,7 @@ try {
   // Motion-captured Rocketbox clips on the real cast (on by default on GPU renderers, forced here for software ones).
   // Under clips the spine and fingers move, which the figure's poses never do; the clip plays in place; and a
   // pose without a clip, or reduced motion, hands the whole body back to the figure.
-  const withClips = cast.map((entry, index) => ({ ...entry, clips: /Female/.test(ROCKETBOX_CAST[index].source) ? 'female' : 'male' }));
+  const withClips = cast.map((entry, index) => ({ ...entry, clips: /Female/.test(ROCKETBOX_CAST[index].source) ? 'female' : 'male', walk: ROCKETBOX_CAST[index].walk }));
   await page.evaluate(async entries => {
     const app = window.fixtureApp;
     await app.useCharacterModels(entries.map(entry => ({ ...entry, skinMaterial: /head/i })));
@@ -318,6 +318,44 @@ try {
   assert.ok(loosened.turnDone && loosened.turned < 0.02, `and arrives facing the new way: ${JSON.stringify(loosened)}`);
   // Part way, not held: a blend that held the old joints and then snapped would read zero early on.
   assert.ok(loosened.blend.early > loosened.blend.settled * 0.03 && loosened.blend.early < loosened.blend.settled * 0.7 && loosened.blend.settled > 0.2, `a hand-built pose blends in instead of snapping: ${JSON.stringify(loosened.blend)}`);
+  // The Quaternius clips: a lift off the belt bends at the hips, a button press reaches, a line spoken standing gestures,
+  // the dockhand's push pushes, and Shan walks the manager's walk.
+  const quaternius = await page.evaluate(async () => {
+    const app = window.fixtureApp;
+    await app.useCharacterClips(true);
+    const play = (id, setup, seconds) => {
+      const actor = app.crew.actor(id), c = actor.character;
+      actor.root.visible = true;
+      let time = 900 + Math.random();
+      actor.place(480, 600); actor.place(480, 600);
+      actor.pose = 'none'; actor.carrying = false; actor.speaking = false; actor.faceAngle = 0;
+      for (let i = 0; i < 20; i++) { time += 1 / 30; actor.animate(1 / 30, time, false); app.syncModels(); }
+      const roles = new Set();
+      setup(actor, time);
+      for (let i = 0; i < seconds * 30; i++) {
+        time += 1 / 30;
+        if (actor.walking) actor.place(480 + (i + 1) * 1.6, 600);
+        actor.animate(1 / 30, time, false); app.syncModels(); roles.add(app.clipRoleOf(c));
+      }
+      actor.walking = false; actor.pose = 'none'; actor.speaking = false;
+      return [...roles];
+    };
+    return {
+      belt: play('hussan', (a, t) => { a.character.action = { kind: 'lift', start: t, from: 'belt' }; }, 0.4),
+      floor: play('hussan', (a, t) => { a.character.action = { kind: 'lift', start: t, from: 'floor' }; }, 0.4),
+      press: play('hussan', (a, t) => { a.pose = 'press'; a.poseStart = t; }, 0.5),
+      push: play('hussan', (a, t) => { a.pose = 'push'; a.poseStart = t; }, 0.5),
+      talking: play('hussan', (a) => { a.speaking = true; }, 0.6),
+      femaleTalking: play('doris', (a) => { a.speaking = true; }, 0.6),
+      shan: play('shan', (a) => { a.walking = true; }, 0.8),
+      walker: play('hussan', (a) => { a.walking = true; }, 0.8),
+    };
+  });
+  assert.ok(quaternius.belt.includes('pickupTable') && !quaternius.belt.includes('crouchIn'), `a lift off the belt bends at the hips: ${JSON.stringify(quaternius)}`);
+  assert.ok(quaternius.floor.includes('crouchIn') && !quaternius.floor.includes('pickupTable'), `a lift off the floor still crouches: ${JSON.stringify(quaternius)}`);
+  assert.ok(quaternius.press.includes('interact') && quaternius.push.includes('push'), `a press reaches and a push pushes: ${JSON.stringify(quaternius)}`);
+  assert.ok(quaternius.talking.includes('talking') && quaternius.femaleTalking.includes('talking'), `speaking standing gestures, in both bodies: ${JSON.stringify(quaternius)}`);
+  assert.ok(quaternius.shan.includes('walkFormal') && !quaternius.walker.includes('walkFormal'), `Shan walks the manager's walk and the crew their own: ${JSON.stringify(quaternius)}`);
   // Seated on the lot's contract seats the driver plays a seated idle with the hands kept on the wheel.
   await page.evaluate(() => { window.fixtureApp.stage.stage('lot'); });
   await page.waitForFunction(() => Object.entries(window.fixtureApp.stage.stages.lot.props).filter(([name]) => /^car-/.test(name)).every(([, car]) => car.userData.contract), null, { timeout: 90_000 });
@@ -333,7 +371,7 @@ try {
   assert.ok(seated.driver.model && seated.driver.seat === 'driver' && seated.driver.hands, `the seated driver holds the wheel on the figure: ${JSON.stringify(seated)}`);
   assert.ok(seated.passenger.model && seated.passenger.seat === 'passenger' && !seated.passenger.hands && ['sitIdle', 'sitIdleAlt', 'sitLookAround'].includes(seated.passenger.role), `the seated passenger plays a seated idle: ${JSON.stringify(seated)}`);
   await page.evaluate(() => window.fixtureApp.useCharacterClips(false));
-  console.log('PASS the loosened motion: angry shout, fidgets, turns on the spot, pose blending and seated idles');
+  console.log('PASS the loosened motion: angry shout, fidgets, turns on the spot, pose blending and seated idles, and the Quaternius pick-up, press, push, talking and formal walk');
   assert.deepEqual(errors, [], 'no page errors');
   console.log('PASS no page errors with imported character models');
 } finally {

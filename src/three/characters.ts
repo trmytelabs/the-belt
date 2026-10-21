@@ -90,6 +90,8 @@ export interface CharacterMotion {
   stairs: boolean;
   /** Seated with the hands placed on the seat's targets (the wheel, the lap), so a model's arms follow the figure. */
   hands: boolean;
+  /** Saying a line right now, so a model standing still gestures as it talks. */
+  speaking?: boolean;
   /** A turn on the spot in progress: when it began, how far it turns (radians, positive to the left) and from which facing. */
   turn: { start: number; angle: number; from: number } | null;
 }
@@ -99,14 +101,16 @@ export interface CharacterAction {
   kind: ActionKind;
   /** Wall-clock start, in the same seconds as `animateCharacter`'s `time`. */
   start: number;
+  /** Where a lift picks up from: the waist-high belt, or the floor (a crouch). */
+  from?: 'belt' | 'floor';
 }
 
 /** How long each one-shot motion plays, in seconds. */
 export const ACTION_SECONDS: Record<ActionKind, number> = { lift: 0.42, drop: 0.36, throw: 0.34 };
 
 /** Starts a one-shot motion; a motion already playing is replaced. */
-export function triggerAction(character: Character, kind: ActionKind, time: number): void {
-  character.action = { kind, start: time };
+export function triggerAction(character: Character, kind: ActionKind, time: number, from?: 'belt' | 'floor'): void {
+  character.action = { kind, start: time, from };
 }
 
 import { BODY, TURN_MIN, TURN_SECONDS } from './figure';
@@ -611,6 +615,7 @@ export function animateCharacter(character: Character, dt: number, state: {
   motion.seated = false;
   motion.stairs = false;
   motion.hands = false;
+  motion.speaking = false;
   // Into a walk over its first steps and out of it over the last, rather than at full stride in a frame;
   // the step under way when the feet stop is finished as the stride winds down.
   const gait = state.reducedMotion ? 0 : walking ? Math.min(1, (character.gait ?? 0) + dt / GAIT_START_SECONDS) : Math.max(0, (character.gait ?? 0) - dt / GAIT_STOP_SECONDS);

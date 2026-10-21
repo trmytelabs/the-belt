@@ -130,6 +130,32 @@ bald, clothed male avatar with glasses fitted in front of the face; the glasses
 remain visible when the procedural figure is hidden. These two recasts replace
 only their own GLBs and retain their existing dialogue, props and animations.
 
+## Quaternius clips
+
+Five clips come from Quaternius's Universal Animation Library (CC0, the free
+Standard download from quaternius.itch.io; licence and source in
+`public/models/animations/QUATERNIUS-LICENSE.md`): `PickUp_Table`,
+`Interact`, `Walk_Formal_Loop`, `Idle_Talking_Loop` and `Push_Loop`, listed in
+`UAL_CLIPS` (`rocketboxClips.ts`). They are authored on a UE-style humanoid,
+so `tools/rocketbox/ual.js` retargets them onto the crew's Biped skeleton: it
+maps each source bone to its Biped bone, raises the crew's arms from their
+A-pose bind to the pack's T-pose for the reference, and then, at 30 frames a
+second, gives every mapped bone the source bone's world rotation away from
+the reference on top of the crew bone's own reference rotation; the hips follow
+the source's, scaled by leg length. Walking speeds come from the pack's
+root-motion copy. The result, `crew-clips-ual.glb` (1 MB), loads beside the
+Rocketbox library; without it the Rocketbox clips play as before.
+
+The game plays `pickupTable` for a lift off the belt (`triggerAction`'s
+`from: 'belt'`; lifts off the floor and from recovery still crouch),
+`interact` for the `press` pose, `push` for `push`, `talking` for anyone
+standing still while saying a line (`motion.speaking`), and `walkFormal` as
+Shan's walk (`walk: 'formal'` in `rocketboxCast.ts`).
+
+To convert again: download the pack, extract `UAL1_Standard.glb` and
+`UAL1_Standard_RM.glb`, and run the converter with `UAL_GLB` and `UAL_RM_GLB`
+naming them; `window.convertUalClips()` writes the library.
+
 ## Strides and seats
 
 `animateCharacter` keeps a `gait` on each figure, 0 standing to 1 striding.

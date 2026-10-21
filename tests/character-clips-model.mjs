@@ -4,7 +4,7 @@ import test from 'node:test';
 
 import { CHARACTER_MODELS } from '../src/three/characterModels.ts';
 import { ROCKETBOX_CAST } from '../src/three/rocketboxCast.ts';
-import { CLIP_SPEEDS, CREW_CLIPS_URL, ROCKETBOX_CLIPS, clipName } from '../src/three/rocketboxClips.ts';
+import { CLIP_SPEEDS, CREW_CLIPS_URL, ROCKETBOX_CLIPS, UAL_CLIPS, UAL_CLIPS_URL, clipName } from '../src/three/rocketboxClips.ts';
 
 // The crew's motion-captured clips: every role ships in both bodies, plays on
 // the crew's own skeleton without retargeting, moves bones only by rotation
@@ -113,5 +113,44 @@ test('clips play in place: the game moves the character, the clip keeps only swa
       const speed = CLIP_SPEEDS[clipName(role, female)];
       assert.ok(speed > 50 && speed < 400, `${clipName(role, female)} records its natural ground speed (${speed} cm/s)`);
     }
+  }
+});
+
+// The Quaternius clips (CC0), retargeted onto the same skeleton by tools/rocketbox/ual.js, in their own small GLB.
+const UAL_FILE = `public${UAL_CLIPS_URL}`;
+const ual = readGlb(UAL_FILE);
+const ualAnimations = new Map(ual.json.animations.map((animation) => [animation.name, animation]));
+
+test('the Quaternius library holds every retargeted role for both bodies, with its licence beside it', () => {
+  const size = statSync(UAL_FILE).size;
+  assert.ok(size < 1.5 * 1024 * 1024, `${UAL_FILE} is ${size} bytes`);
+  assert.equal(ual.json.meshes, undefined, 'animation only: no meshes');
+  assert.deepEqual([...ualAnimations.keys()].sort(), UAL_CLIPS.flatMap(({ role }) => [clipName(role, false), clipName(role, true)]).sort());
+  assert.match(readFileSync('public/models/animations/QUATERNIUS-LICENSE.md', 'utf8'), /CC0 1\.0 Universal/);
+  for (const role of ['walkFormal', 'push']) for (const female of [false, true]) {
+    const speed = CLIP_SPEEDS[clipName(role, female)];
+    assert.ok(speed > 10 && speed < 200, `${clipName(role, female)} has a measured ground speed: ${speed}`);
+  }
+});
+
+test('the retargeted clips turn the crew bones by name and lift only the root, staying in place at the crew hip height', () => {
+  const name = (index) => ual.json.nodes[index].name;
+  const crewBones = new Set(readGlb('public/models/characters/termite.glb').json.nodes.map((node) => node.name));
+  const femaleBones = new Set(readGlb('public/models/characters/doris.glb').json.nodes.map((node) => node.name));
+  for (const [clipNameText, animation] of ualAnimations) {
+    const translations = animation.channels.filter((c) => c.target.path === 'translation');
+    assert.deepEqual(translations.map((c) => name(c.target.node)), ['Bip01'], `${clipNameText} moves only the root's position`);
+    const rotations = animation.channels.filter((c) => c.target.path === 'rotation').map((c) => name(c.target.node));
+    assert.ok(rotations.length >= 50, `${clipNameText} turns the body, arms, legs and fingers: ${rotations.length}`);
+    const bones = clipNameText.startsWith('f_') ? femaleBones : crewBones;
+    assert.deepEqual(rotations.filter((bone) => !bones.has(bone)), [], `${clipNameText} names only bones the crew carry`);
+    const keys = floats(ual, animation.samplers[translations[0].sampler].output);
+    const female = clipNameText.startsWith('f_');
+    const idleHeight = rootKeys(animations.get(clipName('idle', female)))[0][1];
+    const travel = Math.hypot(keys.at(-1)[0] - keys[0][0], keys.at(-1)[2] - keys[0][2]);
+    assert.ok(travel < 15, `${clipNameText} plays in place: ${travel.toFixed(1)} cm`);
+    // Upright clips keep the hips near the crew's own idle height; the push leans in on bent knees and the pick-up bends.
+    const bent = /_(push|pickupTable)$/.test(clipNameText);
+    assert.ok(Math.abs(keys[0][1] - idleHeight) < (bent ? 30 : 12), `${clipNameText} starts at the crew's hip height: ${keys[0][1].toFixed(1)} vs ${idleHeight.toFixed(1)}`);
   }
 });

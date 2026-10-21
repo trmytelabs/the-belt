@@ -3,7 +3,7 @@ import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
 import type { Character, CharacterSpec } from './characters';
 import { ROCKETBOX_CAST } from './rocketboxCast.ts';
-import { CLIP_SPANS, CLIP_SPEEDS, CREW_CLIPS_URL, ROCKETBOX_CLIPS, clipName, type ClipRole } from './rocketboxClips.ts';
+import { CLIP_SPANS, CLIP_SPEEDS, CREW_CLIPS_URL, ROCKETBOX_CLIPS, UAL_CLIPS, UAL_CLIPS_URL, clipName, type ClipRole } from './rocketboxClips.ts';
 import { TURN_SECONDS } from './figure.ts';
 
 /**
@@ -32,6 +32,8 @@ export interface CharacterModelEntry {
   skinMaterial?: RegExp;
   /** Which set of Rocketbox clips (rocketboxClips.ts) moves this model; without one, the figure's poses always do. */
   clips?: 'male' | 'female';
+  /** A walk other than the ordinary one (rocketboxCast.ts). */
+  walk?: 'formal';
 }
 
 /**
@@ -39,8 +41,8 @@ export interface CharacterModelEntry {
  * crew are Rocketbox people, whose head material holds the face and whose
  * body material includes the clothes, so only the head reddens.
  */
-export const CHARACTER_MODELS: CharacterModelEntry[] = ROCKETBOX_CAST.map(({ file, names, source }) => ({
-  names, url: `/models/characters/${file}.glb`, skinMaterial: /head/i, clips: /Female/.test(source) ? 'female' : 'male',
+export const CHARACTER_MODELS: CharacterModelEntry[] = ROCKETBOX_CAST.map(({ file, names, source, walk }) => ({
+  names, url: `/models/characters/${file}.glb`, skinMaterial: /head/i, clips: /Female/.test(source) ? 'female' : 'male', walk,
 }));
 
 const FIGURE_HEIGHT = 1.78;
@@ -87,6 +89,8 @@ interface ModelRig {
   figureSkin: THREE.Color;
   /** The clip set the entry names, or none. */
   clipSet: 'male' | 'female' | null;
+  /** The entry's walk (`formal` for Shan). */
+  walk: 'formal' | null;
   /** Built once the clip library has loaded; null while it has not, or when the model cannot play it. */
   clips: ClipRig | null;
   /** True once a clip rig was tried, so a model that cannot play the clips is not retried every frame. */
@@ -112,7 +116,7 @@ interface ClipRig {
   /** The same for the legs alone, raised on a stair flight where the figure plants its feet on the treads. */
   legs: number;
   /** The lift or put-down the crouch clips are playing, by the figure action's start time. */
-  lift: { start: number } | null;
+  lift: { start: number; belt: boolean } | null;
   /** The fidget breaking the idle, and when it ends; when the next may start. */
   fidget: { role: ClipRole; until: number } | null;
   fidgetAt: number;
@@ -134,6 +138,8 @@ interface ClipRig {
 const POSE_CLIPS: Partial<Record<string, ClipRole>> = {
   cheer: 'cheer', cough: 'cough', phone: 'phone', dance: 'dance', sip: 'sip', shrug: 'shrug', announce: 'announce', crouch: 'crouch',
   shout: 'angry', swear: 'angry', handup: 'wave',
+  // From the Quaternius library: a button press and pushing.
+  press: 'interact', push: 'push',
 };
 /** Seconds a lift or put-down takes on a model: down on the crouch-in clip, up on the crouch-out. */
 export const LIFT_SECONDS = 0.84;
@@ -148,7 +154,7 @@ const FIDGET_MAX = 6;
 const TURN_SPLIT = 2.35;
 // Two long, lively standing idles; Rocketbox's "breathe" clips are nearly still and read as a statue.
 const IDLE_ROLES: ClipRole[] = ['idle', 'idleAlt'];
-const LOOPING = new Set(ROCKETBOX_CLIPS.filter((source) => source.loop).map((source) => source.role));
+const LOOPING = new Set([...ROCKETBOX_CLIPS, ...UAL_CLIPS].filter((source) => source.loop).map((source) => source.role));
 /** Seconds to cross-fade between clips, and the rate (per second) the figure's weight eases. */
 const CROSS_FADE = 0.25;
 const BLEND_RATE = 10;
@@ -169,8 +175,13 @@ export function useCharacterClips(enabled: boolean): Promise<void> {
   if (!enabled) return Promise.resolve();
   clipLoad ??= (async () => {
     const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js');
-    const gltf = await new GLTFLoader().loadAsync(CREW_CLIPS_URL);
-    clipLibrary = new Map(gltf.animations.map((clip) => [clip.name, clip]));
+    const loader = new GLTFLoader();
+    // The Quaternius library is a bonus: without it the Rocketbox clips play as before.
+    const [crew, extra] = await Promise.all([loader.loadAsync(CREW_CLIPS_URL), loader.loadAsync(UAL_CLIPS_URL).catch((error: unknown) => {
+      console.warn('The extra crew clips could not be loaded', error);
+      return null;
+    })]);
+    clipLibrary = new Map([...crew.animations, ...(extra?.animations ?? [])].map((clip) => [clip.name, clip]));
   })().catch((error: unknown) => {
     // Every model keeps following its figure.
     console.warn('Crew animation clips could not be loaded', error);
@@ -287,7 +298,7 @@ function setFigureVisible(character: Character, visible: boolean): void {
  * procedural figure. Returns null, leaving the figure, if the skeleton lacks
  * the head, arms and legs.
  */
-export function attachModel(character: Character, source: THREE.Object3D, entry: Pick<CharacterModelEntry, 'rotationY' | 'height' | 'skinMaterial' | 'clips'>, figureSkin: number): ModelRig | null {
+export function attachModel(character: Character, source: THREE.Object3D, entry: Pick<CharacterModelEntry, 'rotationY' | 'height' | 'skinMaterial' | 'clips' | 'walk'>, figureSkin: number): ModelRig | null {
   const model = cloneSkinned(source);
   // The container follows the figure's body (bob, lean, lying down); the
   // inner turn faces the model along the figure's +Z.
@@ -379,6 +390,7 @@ export function attachModel(character: Character, source: THREE.Object3D, entry:
     hands: [{ pivot: character.leftHand, bone: hand.neg }, { pivot: character.rightHand, bone: hand.pos }],
     figureSkin: new THREE.Color(figureSkin),
     clipSet: entry.clips ?? null,
+    walk: entry.walk ?? null,
     clips: null,
     clipsTried: false,
     feet: [foot.neg, foot.pos],
@@ -509,7 +521,10 @@ function advanceClips(character: Character, rig: ModelRig, clips: ClipRig): void
   // A lift or put-down starts the crouch clips on their own clock: down for the first half, back up for
   // the second, a little longer than the figure's quick dip so the mocap reads. A throw keeps the figure's swing.
   const action = character.action;
-  if (action && action.kind !== 'throw' && action.start !== clips.lift?.start && clipLibrary?.has(clipName('crouchIn', clips.female))) clips.lift = { start: action.start };
+  if (action && action.kind !== 'throw' && action.start !== clips.lift?.start && clipLibrary?.has(clipName('crouchIn', clips.female))) {
+    // Off the waist-high belt the lift bends at the hips (the Quaternius table pick-up); off the floor it crouches.
+    clips.lift = { start: action.start, belt: action.kind === 'lift' && action.from === 'belt' && clipLibrary.has(clipName('pickupTable', clips.female)) };
+  }
   const lift = clips.lift && now - clips.lift.start < LIFT_SECONDS && now >= clips.lift.start ? clips.lift : null;
   if (!lift) clips.lift = null;
   // The figure's pose wins whenever a clip would be wrong: reduced motion, a throw, a gesture made in a seat,
@@ -522,14 +537,14 @@ function advanceClips(character: Character, rig: ModelRig, clips: ClipRig): void
   // A driver holding the wheel keeps the whole figure, so the hands stay exactly on the rim; a seated idle's swaying
   // torso would carry the model's wrists off it. Other seats play the seated idle.
   if (!clipsWanted || !motion || motion.reduced || (action && !lift) || (seated && !seatedPlain) || (seatedPlain && (motion.hands || !has('sitIdle')))) figure = 1;
-  else if (lift) role = now - lift.start < LIFT_SECONDS / 2 ? 'crouchIn' : 'crouchOut';
+  else if (lift) role = lift.belt ? 'pickupTable' : now - lift.start < LIFT_SECONDS / 2 ? 'crouchIn' : 'crouchOut';
   else if (seatedPlain) role = null;
   else if (motion.turn && has('turnLeft90')) {
     const { angle } = motion.turn;
     role = angle > 0 ? (angle > TURN_SPLIT ? 'turnLeft180' : 'turnLeft90') : (angle < -TURN_SPLIT ? 'turnRight180' : 'turnRight90');
   } else if (motion.pose !== 'none') {
     role = POSE_CLIPS[motion.pose] ?? null;
-    if (!role) figure = 1;
+    if (!role || !has(role)) { role = null; figure = 1; }
   }
   // The arms reach for the parcel from the figure while carrying, holding or lifting; the legs follow the
   // figure's steps (and their planted feet) on a stair flight and its folded legs in a seat.
@@ -538,11 +553,15 @@ function advanceClips(character: Character, rig: ModelRig, clips: ClipRig): void
   // Underneath, the walk or idle keeps playing, so a pose ends back in motion; an idle is broken every so
   // often by a fidget, standing or seated.
   if (!role && motion && !figure) {
+    // Shan's walk is the manager's upright stride; someone standing while saying a line talks with their hands.
+    const formal = rig.walk === 'formal' && has('walkFormal');
+    const talking = !seatedPlain && !motion.moving && motion.speaking === true && has('talking');
     const idle = seatedPlain ? SEATED_IDLES[Math.floor(clips.phase * SEATED_IDLES.length)]
-      : motion.moving ? (clips.speed > 2.4 ? 'run' : clips.speed < 0.9 ? 'walkSlow' : 'walk') : IDLE_ROLES[Math.floor(clips.phase * IDLE_ROLES.length)];
+      : motion.moving ? (clips.speed > 2.4 ? 'run' : formal ? 'walkFormal' : clips.speed < 0.9 ? 'walkSlow' : 'walk')
+      : talking ? 'talking' : IDLE_ROLES[Math.floor(clips.phase * IDLE_ROLES.length)];
     const still = seatedPlain || !motion.moving;
-    if (clips.fidget && (now >= clips.fidget.until || !still)) { clips.fidget = null; clips.fidgetAt = now + FIDGET_EVERY * (0.7 + clips.phase * 0.6); }
-    if (!clips.fidget && still && now >= clips.fidgetAt) {
+    if (clips.fidget && (now >= clips.fidget.until || !still || talking)) { clips.fidget = null; clips.fidgetAt = now + FIDGET_EVERY * (0.7 + clips.phase * 0.6); }
+    if (!clips.fidget && still && !talking && now >= clips.fidgetAt) {
       const options = (seatedPlain ? SEATED_FIDGETS : STANDING_FIDGETS).filter(has);
       if (options.length) {
         const pick = options[Math.floor(((now * 7.31 + clips.phase * 13) % 1 + 1) % 1 * options.length) % options.length];
@@ -577,6 +596,9 @@ function advanceClips(character: Character, rig: ModelRig, clips: ClipRig): void
     // World metres per clip unit: the model's fit to the figure's height and the character's own scale.
     const metres = natural * rig.model.scale.x * character.root.scale.x;
     playing.timeScale = THREE.MathUtils.clamp(clips.speed / metres, 0.5, 2);
+  } else if (playing && clip && role === 'pickupTable') {
+    // The whole bend to the belt and back up in the lift's time.
+    playing.timeScale = clip.duration / LIFT_SECONDS;
   } else if (playing && clip && (role === 'crouchIn' || role === 'crouchOut')) {
     // Each half of the lift plays its clip's movement in half the lift's time.
     const span = CLIP_SPANS[name];
