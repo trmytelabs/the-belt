@@ -1341,7 +1341,7 @@ export class Belt3d {
       clockLabel: m.endless ? 'SURVIVED' : undefined,
       pace: this.paceGap(),
       phase: this.state === 'interlude' ? 'BEN  /  DODGE TRAINING'
-        : m.endless ? `ENDLESS  /  LEVEL ${m.endlessLevel}${m.inspection ? `  /  ${this.watcherName} WATCHING ${Math.ceil(m.inspectionRemainingMs / 1000)}s` : ''}`
+        : m.endless ? `ENDLESS  /  LEVEL ${m.endlessLevel}${this.record.endless ? `  /  BEST ${this.record.endless.sorted}` : ''}${m.inspection ? `  /  ${this.watcherName} WATCHING ${Math.ceil(m.inspectionRemainingMs / 1000)}s` : ''}`
         : `${PHASE_LABELS[m.phase] ?? ''}${m.inspection ? `  /  ${this.watcherName} WATCHING ${Math.ceil(m.inspectionRemainingMs / 1000)}s` : ''}`, combo: m.combo, worker: m.activeWorker.id,
       hint: this.state === 'interlude' ? 'Belt held · your freight is safe' : this.state === 'mesa' ? 'Y steals the Mesa · N leaves it'
         : scannerSelected ? `${this.touch.enabled ? 'RESET SCANNER' : 'SPACE resets scanner'} · carried freight stays in hand`

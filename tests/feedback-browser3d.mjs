@@ -236,6 +236,15 @@ try {
   await wait(() => document.querySelector('[data-f="pace"]').textContent === '−50 VS BEST' && document.querySelector('[data-f="pace"]').classList.contains('behind'));
   await read((kept) => { const app = window.fixtureApp; app.record = kept; app.model.paused = false; }, recordKept);
   await wait(() => document.querySelector('[data-f="pace"]').hidden === (window.fixtureApp.record.best?.pace === undefined));
+  // An endless shift names the endless best to beat.
+  const endlessKept = await read(() => {
+    const app = window.fixtureApp, kept = app.record, Model = app.model.constructor;
+    app.record = { ...kept, endless: { sorted: 42, seconds: 300, score: 4000, date: '' } };
+    app.model = new Model({ endless: true }); app.model.paused = true; app.state = 'playing';
+    return kept;
+  });
+  await wait(() => document.querySelector('[data-f=phase]').textContent.startsWith('ENDLESS  /  LEVEL 1  /  BEST 42'));
+  await read((kept) => { const app = window.fixtureApp; app.record = kept; app.restart(); app.forceStory({ breakAtMs: 1e12 }); app.benStarted = true; app.model.autonomousCoworker = false; app.model.eventStopped = true; app.overlay.clearCenter(); app.state = 'playing'; }, endlessKept);
   // A results panel stamps its grade and raises its lines in turn, with every line's text there from the start.
   const resultsMotion = await read(() => {
     window.fixtureApp.overlay.showPanel('<div class="grade">S</div><div class="kicker">K</div><h1>H</h1><p>first</p><p>second</p><button type="button">B</button>');

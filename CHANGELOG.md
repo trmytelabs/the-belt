@@ -2,6 +2,8 @@
 
 ## 0.1.0 — development snapshot
 
+- Name the endless best to beat on the 3D endless shift’s HUD (ENDLESS /
+  LEVEL 3 / BEST 42).
 - Race your best 3D night: the best night now keeps its shift score every five
   seconds (`pace.ts`), and later nights show the gap to that pace under YOUR
   SCORE (+340 VS BEST in green, −120 VS BEST in red). A best set before this
