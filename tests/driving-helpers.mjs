@@ -50,6 +50,16 @@ const readDrive = page => page.evaluate(() => {
     touch: { x: t.move.x, y: t.move.y, throttle: t.pedals.throttle, brake: t.pedals.brake } };
 });
 
+/**
+ * The touch driver's top speed in m/s. Its steering is full lock or nothing and
+ * every correction lands late on a slow software-rendered runner, so at full
+ * speed it overshot turns and circled one junction until its budget ran out
+ * (CI, 2026-10-21). A steadier pace still parks in well under a minute and a half.
+ */
+const TOUCH_SPEED_CAP = 9;
+/** Simulated seconds a held contact may go unreported before it counts as lost: a lagging page is not a lost contact. */
+const LOST_AFTER_S = 1;
+
 /** The keyboard driver's thresholds: a key is held for any steer past 0.08, throttle or brake past zero. */
 const STEER_THRESHOLD = 0.08;
 
@@ -115,26 +125,27 @@ export async function touchDriveToBay(page, cdp) {
   };
   // What the page registered for each contact, so a contact the page has lost is pressed again,
   // and a trace of the drive for the failure message.
-  const lost = { gas: 0, brake: 0, steer: 0 }, repressed = { gas: 0, brake: 0, steer: 0 }, trace = [];
-  let settled = 0;
+  const repressed = { gas: 0, brake: 0, steer: 0 }, trace = [];
+  let changedAt = initial.elapsed;
   const deadline = Date.now() + WALL_CAP_MS;
   try {
     for (let d = initial; withinBudget(initial, d, deadline);) {
       d = await readDrive(page);
       if (d.canPark) return;
       const input = driver(d);
-      const wantGas = input.throttle > 0 && !input.reverse, wantBrake = input.brake > 0;
+      const wantGas = input.throttle > 0 && !input.reverse && d.speed < TOUCH_SPEED_CAP, wantBrake = input.brake > 0;
       const wantLock = Math.abs(input.steer) > STEER_THRESHOLD ? Math.sign(input.steer) : 0;
-      // A held contact the page still fails to report after the contacts have been
-      // steady for several reads is pressed again (a late page is not a lost contact).
-      const steady = wantGas === gasHeld && wantBrake === braking && wantLock === lock;
-      settled = steady ? settled + 1 : 0;
-      lost.gas = settled > 3 && gasHeld && d.touch.throttle !== 1 ? lost.gas + 1 : 0;
-      lost.brake = settled > 3 && braking && d.touch.brake !== 1 ? lost.brake + 1 : 0;
-      lost.steer = settled > 3 && lock && Math.sign(d.touch.x) !== lock ? lost.steer + 1 : 0;
-      if (lost.gas > 3) { gasHeld = false; lost.gas = 0; repressed.gas++; touch('touchEnd', [gasPoint]); }
-      if (lost.brake > 3) { braking = false; lost.brake = 0; repressed.brake++; touch('touchEnd', [brakePoint]); }
-      if (lost.steer > 3) { lock = 0; lost.steer = 0; repressed.steer++; touch('touchEnd', [steerPoint]); }
+      // A held contact the page still fails to report a full simulated second after the
+      // last change is pressed again. The page's clock only runs in its frames, after it
+      // has handled the touches sent before them, so a slow page is never mistaken for a lost contact.
+      if (d.elapsed - changedAt > LOST_AFTER_S) {
+        const lostGas = gasHeld && d.touch.throttle !== 1, lostBrake = braking && d.touch.brake !== 1, lostSteer = lock && Math.sign(d.touch.x) !== lock;
+        if (lostGas) { gasHeld = false; repressed.gas++; touch('touchEnd', [gasPoint]); }
+        if (lostBrake) { braking = false; repressed.brake++; touch('touchEnd', [brakePoint]); }
+        if (lostSteer) { lock = 0; repressed.steer++; touch('touchEnd', [steerPoint]); }
+        if (lostGas || lostBrake || lostSteer) changedAt = d.elapsed;
+      }
+      if (wantGas !== gasHeld || wantBrake !== braking || wantLock !== lock) changedAt = d.elapsed;
       if (wantGas !== gasHeld) {
         gasHeld = wantGas;
         touch(wantGas ? 'touchStart' : 'touchEnd', wantGas ? active() : [gasPoint]);
