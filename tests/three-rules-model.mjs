@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { ShiftModel, SHIFT_LAYOUT } from '../src/game/slice/ShiftModel.ts';
-import { ShiftModel3D, WRONG_DROP_PENALTY, WORKER_SPEED_3D } from '../src/three/ShiftModel3D.ts';
+import { PEAK_NIGHT, ShiftModel3D, WRONG_DROP_PENALTY, WORKER_SPEED_3D } from '../src/three/ShiftModel3D.ts';
 import { DEPOT_3D_LAYOUT as L, platformLevelAt, onLowerFloor, truckInteriorAt } from '../src/three/layout.ts';
 import { platformWalkPath, pathLength, walkPath } from '../src/three/walking.ts';
 import { RECEIVING_CROSSING_Y, RECEIVING_FEEDERS, receivingBlocked, clearReceiving } from '../src/three/receivingCollision.ts';
@@ -487,4 +487,45 @@ test('the coworker waits quietly for a clear handoff and returns wrong-side frei
   assert.equal(parcel.state, 'belt');
   assert.equal(parcel.workerId, null);
   assert.equal(model.drainEvents().filter(event => event.type === 'drop').length, 1);
+});
+
+/** The same ordinary player as the winning-shift check: nearest freight on its own side, the right door, ordinary movement. */
+function playShift(m) {
+  let peakSpeed = 0;
+  for (let tick = 0; tick < 10000 && !m.ended; tick++) {
+    let target;
+    const held = m.heldPackage;
+    if (held) {
+      target = held.route === 'C' ? m.activeIndex === 0 ? L.bulkLeft : L.bulkRight
+        : L[{ A:'dockA', B:'dockB', D:'dockD', E:'dockE', T:'floorT', S:'floorS' }[held.route]];
+      if (m.currentDock() === held.route) m.action();
+    } else {
+      const parcel = m.packages.filter(p => ['belt', 'floor', 'missed'].includes(p.state)).sort((a,b) => b.y-a.y)[0];
+      if (parcel) {
+        const intended = parcel.route === 'C' ? m.activeIndex : ['B', 'E', 'S'].includes(parcel.route) ? 1 : 0;
+        if (m.activeIndex !== intended) m.switchWorker();
+        if (m.nearestPackage()) m.action();
+        target = { x: m.activeIndex === 0 ? 400 : 560, y: parcel.y };
+      }
+    }
+    if (target) target = m.navigationTarget(target);
+    const dx = target ? target.x-m.activeWorker.x : 0, dy = target ? target.y-m.activeWorker.y : 0;
+    const length = Math.hypot(dx,dy);
+    m.update(20, { x: length>3 ? dx/length : 0, y: length>3 ? dy/length : 0 });
+    peakSpeed = Math.max(peakSpeed, m.beltSpeed);
+  }
+  return peakSpeed;
+}
+
+test('a peak night brings more freight on a faster belt with less room in recovery, and the same player can still finish it', () => {
+  const normal = new ShiftModel3D({ freightRandom: () => 0 }), peak = new ShiftModel3D({ freightRandom: () => 0, peak: true });
+  assert.equal(normal.peak, false);
+  assert.equal(normal.capacity, 7, 'the normal night keeps seven in recovery');
+  assert.equal(peak.capacity, PEAK_NIGHT.capacity);
+  const normalSpeed = playShift(normal), peakSpeed = playShift(peak);
+  assert.ok(peakSpeed > normalSpeed * 1.08, `the peak belt runs faster: ${peakSpeed.toFixed(1)} vs ${normalSpeed.toFixed(1)}`);
+  assert.ok(peak.packages.length > normal.packages.length + 4, `more freight arrives: ${peak.packages.length} vs ${normal.packages.length}`);
+  assert.equal(peak.ended, true);
+  assert.equal(peak.won, true, `the ordinary player still finishes a peak night: sorted ${peak.sorted}/${peak.packages.length}, recovery ${peak.pileup}`);
+  assert.ok(peak.sorted >= peak.goal);
 });

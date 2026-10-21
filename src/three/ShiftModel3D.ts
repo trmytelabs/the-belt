@@ -1,6 +1,6 @@
 import {
   ShiftModel, CARRY_MULTIPLIER, WORKER_ROUTES, THROWING,
-  type Parcel, type ParcelKind, type Route, type Worker, type ThrowTarget, type ShiftGrade,
+  type Parcel, type ParcelKind, type Route, type Worker, type ThrowTarget, type ShiftGrade, type ShiftOptions,
 } from '../game/slice/ShiftModel.ts';
 import { ROUTE_INFO, PARCEL_LABELS, PARCEL_SEQUENCE, EVERYDAY_FREIGHT, parcelAddress, MESA_CATCH_PENALTY } from './addresses.ts';
 import { DEPOT_3D_LAYOUT, platformLevelAt, onLowerFloor, floorPileSlot, stairAt, truckInteriorAt, TRUCK_ROUTES, type TruckRoute } from './layout.ts';
@@ -11,6 +11,14 @@ export const ARRIVALS_3D = { lessonMs: 4_800, flowMs: 3_600, rushMs: 2_800, bria
 export const WORKER_SPEED_3D = 265;
 export const MIN_CARRY_SPEED_3D = 0.82;
 export const BELT_STOPS_3D = { limit: 3, durationMs: 2_000, cooldownMs: 15_000 } as const;
+/**
+ * The peak night, unlocked once a night is finished: in the flow and the rush
+ * freight comes a fifth sooner, the belt runs an eighth faster and recovery
+ * holds six parcels instead of seven. The opening lesson and Brian's incident
+ * keep their pace, so the night starts the same way.
+ */
+export const PEAK_NIGHT = { arrivals: 0.8, belt: 1.125, capacity: 6 } as const;
+export interface Shift3DOptions extends ShiftOptions { peak?: boolean }
 export interface TruckLoad { route: TruckRoute; x: number; y: number; height: number; layer: number; column: number; row: number; cells: number; parcelHeight: number; overflow: boolean }
 // Conservative dimensions in model pixels for the actual parcel forms at their
 // normal render scale. Long boxes lie along the cargo bay, occupying two slots.
@@ -22,12 +30,23 @@ const distance = (a: { x: number; y: number }, b: { x: number; y: number }): num
 /** Current 3D rules. The legacy depots retain the base model's layout and behavior. */
 export class ShiftModel3D extends ShiftModel {
   public override readonly layout = DEPOT_3D_LAYOUT;
-  public override readonly capacity = 7;
+  public override readonly capacity: number;
+  /** A peak night: faster freight, a quicker belt and less room in recovery (`PEAK_NIGHT`). */
+  public readonly peak: boolean;
   public override readonly cleanupMs = 25_000;
   public beltStopsRemaining: number = BELT_STOPS_3D.limit;
-  protected override get freightFlow() { return ARRIVALS_3D; }
+  constructor(options: Shift3DOptions = {}) {
+    super(options);
+    this.peak = options.peak === true;
+    this.capacity = this.peak ? PEAK_NIGHT.capacity : 7;
+  }
+  // Read during the base constructor too, before `peak` is set: the first parcel keeps the lesson's pace either way.
+  protected override get freightFlow() {
+    return this.peak ? { ...ARRIVALS_3D, flowMs: ARRIVALS_3D.flowMs * PEAK_NIGHT.arrivals, rushMs: ARRIVALS_3D.rushMs * PEAK_NIGHT.arrivals } : ARRIVALS_3D;
+  }
   protected override speedAt(elapsedMs: number): number {
-    return 50 + (super.speedAt(elapsedMs) - 50) * 0.55;
+    const speed = 50 + (super.speedAt(elapsedMs) - 50) * 0.55;
+    return this.peak ? speed * PEAK_NIGHT.belt : speed;
   }
   private placement: { x: number; row: number } | null = null;
   public readonly truckLoads = new Map<number, TruckLoad>();

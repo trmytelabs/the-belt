@@ -1,5 +1,5 @@
 import { DEPOT_3D_LAYOUT as SHIFT_LAYOUT, floorPileSlot, truckInteriorAt } from './layout';
-import { ARRIVALS_3D, ShiftModel3D } from './ShiftModel3D';
+import { ARRIVALS_3D, PEAK_NIGHT, ShiftModel3D } from './ShiftModel3D';
 import { sortingGuide } from './sortingGuide';
 import { pathLength, platformWalkPath, walkPath, type WalkPoint } from './walking';
 import * as THREE from 'three';
@@ -467,6 +467,8 @@ export class Belt3d {
         else if (event.code === 'KeyE') this.mall?.toggleCart();
       } else if (this.state === 'lot') {
         if (event.code === 'Space') this.lot?.action();
+      } else if (this.state === 'briefing' && event.code === 'KeyP') {
+        if (this.record.completed > 0) this.startNight(true);
       } else if (event.code === 'KeyV') {
         this.overview = !this.overview;
       } else if (this.state === 'playing') {
@@ -529,15 +531,19 @@ export class Belt3d {
       <p>Story scenes: SPACE next line, ENTER skips the scene, ESC pauses.</p>`}
       <p>The night starts at home: go in to work, or quit UPS. After the shift, drive the five-ton to Southgate Mall and finish the deliveries. Driving controls appear when you get there.</p>
       ${this.recordLine()}
-      <button type="button">START THE NIGHT  ↵</button>
+      ${this.record.completed > 0 ? `<p class="b3d-record">PEAK NIGHT UNLOCKED · in the flow and the rush freight comes a fifth sooner, the belt runs faster and recovery holds ${PEAK_NIGHT.capacity}. ${this.touch.enabled ? 'Tap PEAK NIGHT.' : 'Press P or click PEAK NIGHT.'}</p>` : ''}
+      <button type="button" data-action="night">START THE NIGHT  ↵</button>
+      ${this.record.completed > 0 ? '<button type="button" data-action="peak">PEAK NIGHT  P</button>' : ''}
       <a href="${window.location.pathname}?mode=3d&amp;drive=mall">TRY JUST THE DRIVE · EXPLORE THE CITY</a>
-      <a href="${window.location.pathname}?mode=classic">PLAY THE ORIGINAL FULL SHIFT</a>`, () => this.startNight());
+      <a href="${window.location.pathname}?mode=classic">PLAY THE ORIGINAL FULL SHIFT</a>`, { night: () => this.startNight(), peak: () => this.startNight(true) });
   }
 
   // ---------------------------------------------------------------- story flow
 
-  private startNight(): void {
+  private startNight(peak = false): void {
     if (this.state !== 'briefing') return;
+    // A peak night, once a night has been finished: a fresh shift with the peak rules (nothing has read the briefing's yet).
+    if (peak && this.record.completed > 0 && !this.practiceDestination) this.model = new ShiftModel3D({ peak: true });
     this.renderer.domElement.focus({ preventScroll: true });
     void audioSystem.unlock();
     audioSystem.play('ui-start');
@@ -946,7 +952,7 @@ export class Belt3d {
         m.paused = false;
         this.renderer.domElement.focus({ preventScroll: true });
         this.story.go('shift');
-        this.overlay.showToast(`You are ${m.activeWorker.id.toUpperCase()} · ${this.touch.enabled ? 'SWITCH' : 'TAB'} changes worker · follow the package guide`, 3200);
+        this.overlay.showToast(`${m.peak ? 'PEAK NIGHT · ' : ''}You are ${m.activeWorker.id.toUpperCase()} · ${this.touch.enabled ? 'SWITCH' : 'TAB'} changes worker · follow the package guide`, 3200);
         audioSystem.startMusic('game');
       }
     }
@@ -1705,7 +1711,7 @@ export class Belt3d {
     const record = this.recordResults(m.won, total, m.won ? m.grade : 'F');
     this.overlay.showPanel(`
       <div class="grade">${m.won ? m.grade : 'F'}</div>
-      <div class="kicker">${m.won ? `SHIFT COMPLETE / GRADE ${m.grade}` : 'SHIFT TERMINATED / YOU FAILED THE SORT'}</div>
+      <div class="kicker">${m.won ? `SHIFT COMPLETE / GRADE ${m.grade}` : 'SHIFT TERMINATED / YOU FAILED THE SORT'}${m.peak ? ' · PEAK NIGHT' : ''}</div>
       <h1>${overflow ? 'PILE-UP OVERFLOW' : home ? 'HOME. FINALLY.' : m.gradeQuote}</h1>
       ${record}
       <p><b>${m.sorted} DISPATCHED · ${String(m.score).padStart(5, '0')} POINTS · ${m.bestCombo} BEST STREAK</b></p>
