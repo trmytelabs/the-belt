@@ -147,8 +147,8 @@ function alongPath(points: [number, number][], t: number): { x: number; z: numbe
   return { x: points[0][0], z: points[0][1], h: heading(0) };
 }
 
-/** A small car whose nose points along local +X. */
-export function createCar(color: number): THREE.Group {
+/** A small car whose nose points along local +X. With `detailed` off it stays procedural: the road's traffic draws its sedans in batches instead. */
+export function createCar(color: number, detailed = true): THREE.Group {
   const car = new THREE.Group();
   const paint = standard(color, 0.45, 0.35);
   const body = rounded(4.2, 0.72, 1.8, paint, 0.2);
@@ -176,7 +176,7 @@ export function createCar(color: number): THREE.Group {
     rear.position.set(-2.11, 0.72, z);
     car.add(light, rear);
   }
-  void upgradeCar(car, color);
+  if (detailed) void upgradeCar(car, color);
   return shadowed(car);
 }
 

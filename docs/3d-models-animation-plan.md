@@ -253,7 +253,12 @@ pose under the solver rather than a `steer_idle` clip, since the figure's
 pivots already drive the imported models and the software fallback alike;
 seated clips remain with the deferred turn and sit-down clips. The five-ton
 carries no occupant because the Kenney cab's windows are opaque in its
-single palette material.
+single palette material. Phase 3 is done: the traffic draws as three batched
+meshes with a distance shell (`trafficBatch.ts`), every facade has lit windows
+from one instanced draw (`cityWindows.ts`) and the road is wet asphalt. The
+road already drew 60 fps on the reference GPU before batching, at about 330
+draw calls and 450k triangles a frame; batching the traffic is for lower-end
+machines and the draw-call budget the browser check now holds.
 
 | Phase | Objective | Files | Actions | Depends on | Effort | Risks | Tests affected and replacement | Done when |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |

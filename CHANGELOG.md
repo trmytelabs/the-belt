@@ -2,6 +2,15 @@
 
 ## 0.1.0 — development snapshot
 
+- Light and batch the 3D city (phase 3 of the models and animation plan). The
+  28 traffic sedans draw as three batched meshes (paint tinted per car, trim
+  and wheels by vertex colour, unlit lamps) with each car switching to a
+  600-triangle shell beyond 45 m, in place of 28 full models; the player's
+  car and the lot's cars keep theirs, and software renderers keep the
+  procedural stand-ins and download nothing for traffic. Every building gets
+  lit windows on all four faces as one instanced draw, about half of them lit
+  in warm, cool or dim light under the bloom. The plowed road and the loading
+  aprons are wet: low roughness reflects the sky, the lamps and the headlights.
 - Seat the 3D crew properly in their cars (phase 2 of the models and
   animation plan). The sedans' generated interior now carries a vehicle
   contract of named empties: four seats, the steering wheel, the driver's

@@ -14,6 +14,8 @@ import { PAVING_TILE, scaleUVs, surfaceMaterial } from './textures';
 import { DrivingModels } from './drivingModels';
 import { DrivingNavigation } from './drivingNavigation';
 import { snowMaterial, Snowfall } from './snow';
+import { TRAFFIC_VARIANTS, TrafficBatch } from './trafficBatch';
+import { createCityWindows } from './cityWindows';
 
 /** A reusable city with real connected intersections and free player movement. */
 export class DrivingView {
@@ -29,7 +31,10 @@ export class DrivingView {
   public readonly navigation: DrivingNavigation;
   private readonly models: DrivingModels;
   private readonly signalProps: { signal: CitySignal; axis: CityAxis; root: THREE.Group; bulbs: THREE.Mesh<THREE.SphereGeometry, THREE.MeshStandardMaterial>[] }[] = [];
+  /** Procedural stand-ins for the traffic, shown until the batched sedans are built. */
   private readonly traffic = new Map<string, THREE.Group>();
+  /** The 28 sedans as three batched draws with distance-based detail; null on renderers that keep the stand-ins. */
+  private trafficBatch: TrafficBatch | null = null;
   private readonly cones = new Map<string, THREE.Group>();
   private readonly tailMaterial = new THREE.MeshStandardMaterial({ color: 0xa52216, emissive: 0xff3422, emissiveIntensity: 0.6 });
   private readonly goalBeacons = new Map<DriveDestination, THREE.Group>();
@@ -81,7 +86,8 @@ export class DrivingView {
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(CITY.groundWidth, CITY.groundDepth), snowMaterial(CITY.groundWidth, CITY.groundDepth, 8));
     ground.rotation.x = -Math.PI / 2; ground.position.set(30, -0.04, -100); ground.receiveShadow = true; scene.add(ground);
     // Photo asphalt and packed snow (CC0), tinted to the street's old flat colours; markings stay flat paint.
-    const asphalt = surfaceMaterial('asphalt', { color: 0x343e47, roughness: 0.8 });
+    // The plowed road is wet: low roughness lets the night sky, the lamps and the headlights reflect in it.
+    const asphalt = surfaceMaterial('asphalt', { color: 0x2f3841, roughness: 0.38 });
     const sidewalk = surfaceMaterial('snowpack', { color: 0xc6ced6, roughness: 0.95 });
     const stripe = standard(0xe9e5ce, 0.9), yellow = standard(0xe9bd64, 0.9);
     for (const x of CITY.streetsX) {
@@ -140,6 +146,8 @@ export class DrivingView {
         sign.position.set(0, 3.3, depth / 2 + 0.03); slot.add(sign);
       }
     }
+    // Lit windows on every block, one draw call; the facades themselves carry none.
+    scene.add(createCityWindows(CITY_BUILDINGS));
     this.terminal(TERMINALS.ups, 'UPS', 'DEPOT 07', 0x443b32, 1);
     this.terminal(TERMINALS.mall, 'SOUTHGATE MALL', 'LOADING DOCK', 0x4d5354, -1);
     for (const destination of ['mall', 'ups'] as const) {
@@ -218,6 +226,8 @@ export class DrivingView {
       for (const slot of scene.children) if (['city-building', 'streetlight', 'traffic-signal'].includes(slot.name)) slot.userData.keep = false;
       mergeStatic(scene, object => objects.has(object) || object.userData.keep === true || (object as THREE.Light).isLight === true);
     });
+    // GPU renderers draw the traffic as batched sedans; software renderers keep the procedural cars and download nothing for them.
+    if (quality === 'high') void this.enableTrafficBatch();
   }
 
   private pavement(x: number, z: number, width: number, depth: number, material: THREE.Material, height: number): void {
@@ -230,7 +240,7 @@ export class DrivingView {
 
   private terminal(p: CityPoint, name: string, subtitle: string, color: number, end: 1 | -1): void {
     const apronGeometry = new THREE.PlaneGeometry(42, 26);
-    const apronMaterial = surfaceMaterial('asphalt', { color: 0x454d50, roughness: 0.95 });
+    const apronMaterial = surfaceMaterial('asphalt', { color: 0x3d4549, roughness: 0.5 });
     if (apronMaterial.map) scaleUVs(apronGeometry, 42 / PAVING_TILE, 26 / PAVING_TILE);
     const apron = new THREE.Mesh(apronGeometry, apronMaterial);
     apron.rotation.x = -Math.PI / 2; apron.position.set(p.x, -0.02, p.z + end * 12); apron.receiveShadow = true;
@@ -273,17 +283,41 @@ export class DrivingView {
     return this.occupants.map(({ name, seat, character }) => ({ name, seat, character }));
   }
 
+  /**
+   * Draws the traffic as batched sedans (GPU renderers do this from the
+   * start; checks can turn it on elsewhere). Resolves true once the sedans
+   * have downloaded and the batches replace the stand-ins.
+   */
+  public enableTrafficBatch(): Promise<boolean> {
+    if (!this.trafficBatch) {
+      const batch = new TrafficBatch(28, async () => {
+        const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js');
+        const loader = new GLTFLoader();
+        return Promise.all(TRAFFIC_VARIANTS.map((variant) => loader.loadAsync(`/models/vehicles/${variant}.glb`).then((gltf) => gltf.scene)));
+      });
+      this.trafficBatch = batch;
+      this.scene.add(batch.root);
+    }
+    return this.trafficBatch.ready;
+  }
+
+  /** Which detail each batched car draws, or an empty list while the stand-ins show. */
+  public trafficReport(): { id: string; far: boolean; variant: number }[] {
+    return this.trafficBatch?.built ? this.trafficBatch.report() : [];
+  }
+
   public begin(model: DrivingModel, vehicle: 'truck' | 'car' = 'truck'): void {
     this.truck.visible = vehicle === 'truck';
     this.car.visible = vehicle === 'car';
     // The beam follows whichever nose is in front of the player.
     this.vehicle.add(this.headlight, this.headlight.target);
     this.headlight.position.set(vehicle === 'car' ? 2.2 : 3.2, vehicle === 'car' ? 0.8 : 1.1, 0);
-    // Reuse owned props on both legs and replays, including asynchronously upgraded cars.
+    // Reuse owned props on both legs and replays. The traffic's stand-ins stay procedural: the
+    // batched sedans replace them once built.
     for (const obstacle of model.obstacles) {
       if (obstacle.kind === 'car') {
         if (this.traffic.has(obstacle.id)) continue;
-        const car = createCar([0xa74132, 0x7a7a70, 0xc6b58c, 0x467b91, 0x698560, 0xd8d4c8][this.traffic.size % 6]);
+        const car = createCar([0xa74132, 0x7a7a70, 0xc6b58c, 0x467b91, 0x698560, 0xd8d4c8][this.traffic.size % 6], false);
         car.userData.keep = true;
         this.traffic.set(obstacle.id, car); this.scene.add(car);
       } else {
@@ -318,8 +352,16 @@ export class DrivingView {
       const color = signalColor(signal, model.elapsed, axis);
       bulbs.forEach((bulb, i) => { bulb.material.emissiveIntensity = i === ['red', 'amber', 'green'].indexOf(color) ? 4 : 0.04; });
     }
+    const batched = this.trafficBatch?.built ? this.trafficBatch : null;
+    let carIndex = 0;
     for (const obstacle of model.obstacles) {
       const object = this.traffic.get(obstacle.id) ?? this.cones.get(obstacle.id)!;
+      if (obstacle.kind === 'car' && batched) {
+        // The batch draws this car; its stand-in stays hidden.
+        object.visible = false;
+        batched.place(obstacle.id, carIndex++, obstacle, this.camera);
+        continue;
+      }
       object.visible = true; object.position.set(obstacle.x, obstacle.kind === 'cone' && obstacle.hit ? 0.15 : 0, obstacle.z);
       object.rotation.set(0, obstacle.heading, obstacle.kind === 'cone' && obstacle.hit ? Math.PI / 2 : 0);
       if (object.userData.wheels) followWheels(object.userData.wheels as WheelRig, object, dt);
@@ -379,5 +421,5 @@ export class DrivingView {
     }
   }
 
-  public dispose(): void { this.disposed = true; this.models.dispose(); disposeObject3D(this.scene); this.traffic.clear(); this.cones.clear(); }
+  public dispose(): void { this.disposed = true; this.models.dispose(); this.trafficBatch?.dispose(); disposeObject3D(this.scene); this.traffic.clear(); this.cones.clear(); }
 }

@@ -25,6 +25,16 @@ five-ton settle on springs: the nose rises under power and dips under braking,
 the body leans out of a bend and a bump kicks it. The five-ton carries no
 visible driver because its Kenney cab is opaque.
 
+The traffic is drawn in batches (`src/three/trafficBatch.ts`): each sedan
+variant is baked once into paint (tinted per car), trim with its wheels, and
+unlit lamps, three batched meshes for all 28 cars, and a car beyond 45 m of the
+camera draws a 600-triangle shell with no trim or lamps. Software renderers
+keep the procedural cars and download nothing for traffic. Every building has
+lit windows on its four faces from one instanced mesh
+(`src/three/cityWindows.ts`), seeded so the same windows light every night, and
+the plowed road is wet asphalt that reflects the sky, the lamps and the
+headlights.
+
 - W / up arrow accelerates; S / down arrow brakes; A/D / left/right steers.
   Holding BRAKE after stopping reverses slowly, so the truck can back out.
 - Every intersection offers real turns. The player moves freely in the city;

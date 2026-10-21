@@ -64,7 +64,9 @@ the front wheels, hand and foot targets and a suspension pivot, so the
 drivers and passengers in the lot and on the drive in from home sit on
 their seats with their hands on the wheel or their lap and their feet on
 the pedals or the floor, and the body pitches under power and braking and
-leans out of a bend.
+leans out of a bend. On the road the 28 traffic sedans draw as three batched
+meshes that switch to a small shell at a distance, every building shows lit
+windows from one instanced draw, and the wet asphalt reflects the night.
 
 The 3D game plays a whole snowy Christmas night: it starts at home, where Termite and Skanky decide whether
 to go in or quit UPS (quitting ends the night on the couch with a Wii; going in
