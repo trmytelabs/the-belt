@@ -2,6 +2,12 @@
 
 ## 0.1.0 — development snapshot
 
+- Tidy two labels over the 3D belt's freight, found in a QA pass: the priority
+  countdown now hangs in front of the parcel, below it on screen, instead of
+  over its address tag; and the SPACE · GRAB prompt sits clear above the tag on
+  tall freight instead of overlapping its top. On a long briefing, START THE
+  NIGHT stays pinned in view at the bottom of the panel while the text scrolls.
+  tall freight instead of overlapping its top.
 - Add night perks to the 3D game (`perks.ts`). Once a night is finished, the
   briefing offers three of six perks (1, 2 or 3, or a click, picks one; again
   drops it), rotating with the nights on record: one more belt stop, 20

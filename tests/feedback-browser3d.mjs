@@ -18,6 +18,9 @@ try {
   await page.goto(process.env.BELT_TEST_BASE_URL ?? server.resolvedUrls.local[0]);
   const read=(fn,arg)=>page.evaluate(fn,arg), wait=(fn,arg)=>page.waitForFunction(fn,arg,{polling:10,timeout:90_000});
   await wait(()=>window.fixtureApp?.state==='briefing');
+  // However long the briefing, START THE NIGHT stays in view.
+  const startButton = await page.getByRole('button', { name: /START THE NIGHT/ }).boundingBox();
+  assert.ok(startButton && startButton.y >= 0 && startButton.y + startButton.height <= 800, `START THE NIGHT is on screen: ${JSON.stringify(startButton)}`);
   await read(()=>{const app=window.fixtureApp;app.forceStory({breakAtMs:1e12});app.benStarted=true;app.model.autonomousCoworker=false;app.overlay.clearCenter();app.state='playing';app.model.eventStopped=true;});
 
   for(const side of [0,1]) {
@@ -172,6 +175,14 @@ try {
   await wait(() => { const app = window.fixtureApp; return app.priorityMarkers.get(app.model.packages[0].id)?.seconds >= 14; });
   const fresh = await priorityMarker();
   assert.ok(fresh.attached && fresh.draw >= 46 * 6 && fresh.color === 'ffc23a' && fresh.seconds >= 14 && fresh.ring && fresh.label, `a nearly full gold ring and a label on a fresh priority parcel: ${JSON.stringify(fresh)}`);
+  // The countdown hangs in front of the parcel, below it on screen, clear of its address tag and the grab prompt.
+  const placement = await read(() => {
+    const app = window.fixtureApp, id = app.model.packages[0].id, view = app.parcels.get(id), marker = app.priorityMarkers.get(id);
+    const Vec = app.camera.position.constructor, label = marker.label.getWorldPosition(new Vec()), parcel = view.root.getWorldPosition(new Vec()), tag = view.tag.getWorldPosition(new Vec());
+    for (const point of [label, parcel, tag]) point.project(app.camera);
+    return { label: label.y, parcel: parcel.y, tag: tag.y };
+  });
+  assert.ok(placement.label < placement.parcel && placement.parcel < placement.tag, `label below the parcel, tag above: ${JSON.stringify(placement)}`);
   await read(() => { window.fixtureApp.model.elapsedMs += 11_000; });
   await wait(() => { const app = window.fixtureApp; const seconds = app.priorityMarkers.get(app.model.packages[0].id)?.seconds; return seconds > 0 && seconds <= 4; });
   const urgent = await priorityMarker();

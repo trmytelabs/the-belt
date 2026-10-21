@@ -1355,8 +1355,11 @@ export class Belt3d {
       this.priorityMarkers.set(parcel.id, marker);
     }
     if (marker.root.parent !== view.root) view.root.add(marker.root);
+    // The countdown sits on the floor side of the ring nearest the camera (+z in the world), where
+    // nothing else is drawn; the parcel's own turn is undone so it stays there when the parcel turns.
+    const reach = view.highlight.scale.x * 0.84 + 0.12, turn = view.root.rotation.y;
     updatePriorityMarker(marker, remaining, PRIORITY_3D.windowMs, this.time, {
-      labelY: view.tag.position.y + view.tag.scale.y + 0.06,
+      label: { x: -reach * Math.sin(turn), y: 0.05, z: reach * Math.cos(turn) },
       carried: parcel.state === 'held' || parcel.state === 'thrown',
       reducedMotion: this.reducedMotion,
     });
@@ -1490,7 +1493,8 @@ export class Belt3d {
       this.marker.rotation.y += dt * 3;
       this.pickupHalo.position.copy(view.root.position).y += 0.025;
       this.pickupHalo.scale.setScalar(Math.max(0.8, view.width, view.depth) + 0.2);
-      this.pickupPrompt.position.copy(view.root.position).y += view.height + 1.75;
+      // Above the address tag, never over it: the tag stands taller than the parcel on tall freight.
+      this.pickupPrompt.position.copy(view.root.position).y += Math.max(view.height + 1.75, view.tag.position.y + view.tag.scale.y + 0.55);
     }
     const held = m.heldPackage;
     this.deliveryHalo.visible = this.state === 'playing' && held !== null;

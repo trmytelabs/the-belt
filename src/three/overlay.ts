@@ -104,6 +104,8 @@ const CSS = `
 .b3d-medal-list li.locked { opacity: .55; }
 .b3d-panel p.b3d-medal { color: #f3e6c6; border-left: 3px solid #edb765; padding-left: 10px; }
 .b3d-panel p.b3d-medal b { color: #edb765; letter-spacing: 1px; }
+/* A long briefing scrolls, but START THE NIGHT stays in view at the bottom of the panel. */
+.b3d-panel button[data-action="night"] { position: sticky; bottom: 0; z-index: 1; box-shadow: 0 -10px 18px #142a31; }
 .b3d-panel a { display: block; margin-top: 12px; text-align: center; color: #9fb4b4; font-size: 12px; letter-spacing: 1.5px; }
 .b3d-count { font: 900 120px "Segoe UI", Arial, sans-serif; color: #f0dfb3; text-shadow: 0 8px 30px #000; }
 .b3d-toast { position: absolute; top: 92px; left: 50%; transform: translateX(-50%); background: #10232ae6; border: 1px solid #3b5a62;
