@@ -23,6 +23,24 @@ const CSS = `
 .b3d-pips i.on { background: #ef7d68; box-shadow: 0 0 8px #ef7d68; }
 .b3d-phase { margin-left: auto; text-align: right; font-size: 12px; letter-spacing: 1.5px; color: #76cbd1; }
 .b3d-phase em { display: block; font-style: normal; color: #edb765; margin-top: 4px; }
+.b3d-goal-chips { display: flex; gap: 5px; justify-content: flex-end; margin-top: 6px; }
+.b3d-goal-chips span { font-size: 10px; letter-spacing: 1px; padding: 2px 6px; border-radius: 4px; border: 1px solid #76cbd155; color: #a9c7ca; background: #0b171c99; white-space: nowrap; }
+.b3d-goal-chips span.met { background: #2f6b46; border-color: #63c58a; color: #e6ffef; }
+.b3d-goal-chips span.met::before { content: '✓ '; }
+.b3d-goal-chips span.lost { opacity: .45; text-decoration: line-through; }
+/* HUD feedback: the score rolls up and jumps on a gain, shakes on a loss; a streak warms up and catches fire; the last half minute ticks red. */
+.b3d-stat b { transition: color .25s; transform-origin: left center; }
+.b3d-stat b.gain { color: #ffd98a; animation: b3d-bump .35s ease-out; }
+.b3d-stat b.loss { color: #ff7a5c; animation: b3d-shake .3s ease-out; }
+@keyframes b3d-bump { 0% { transform: scale(1.18); } 100% { transform: scale(1); } }
+@keyframes b3d-shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-3px); } 75% { transform: translateX(3px); } }
+.b3d-phase em.hot { color: #ffb347; text-shadow: 0 0 8px #ff9a3c88; }
+.b3d-phase em.blazing { color: #ffd36b; text-shadow: 0 0 10px #ff7a2c, 0 0 18px #ff5a1c99; animation: b3d-flicker 1.2s ease-in-out infinite; }
+.b3d-phase em.lost { color: #ff7a5c; }
+@keyframes b3d-flicker { 0%, 100% { opacity: 1; } 50% { opacity: .8; } }
+.b3d-stat.time.urgent b { color: #ff7a5c; animation: b3d-tick 1s ease-out infinite; }
+@keyframes b3d-tick { 0% { transform: scale(1.1); } 40%, 100% { transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) { .b3d-stat b.gain, .b3d-stat b.loss, .b3d-phase em.blazing, .b3d-stat.time.urgent b { animation: none; } }
 .b3d-bottom { position: absolute; left: 0; right: 0; bottom: 0; display: flex; align-items: center; gap: 24px; padding: 12px 22px;
   background: linear-gradient(#0b171c00, #0b171ce8); font-size: 13px; }
 .b3d-worker { font-weight: 800; letter-spacing: 1px; min-width: 120px; }
@@ -79,8 +97,58 @@ const CSS = `
 .b3d-panel .kicker { font-size: 12px; letter-spacing: 2px; color: #edb765; }
 .b3d-panel p { margin: 6px 0; color: #cfd8cc; font-size: 15px; }
 .b3d-panel .grade { font: 900 64px/1 "Segoe UI", Arial, sans-serif; color: #edb765; float: right; margin-left: 16px; }
+/* The results: the grade stamps down, then the lines rise in one after another (opacity and movement only, so every line is there to read at once). */
+.b3d-panel .grade { animation: b3d-stamp .55s cubic-bezier(.2, 1.5, .4, 1) .15s both; }
+.b3d-panel .grade ~ * { animation: b3d-rise .4s ease-out both; }
+.b3d-panel .grade ~ :nth-child(2) { animation-delay: 0.35s; }
+.b3d-panel .grade ~ :nth-child(3) { animation-delay: 0.42s; }
+.b3d-panel .grade ~ :nth-child(4) { animation-delay: 0.49s; }
+.b3d-panel .grade ~ :nth-child(5) { animation-delay: 0.56s; }
+.b3d-panel .grade ~ :nth-child(6) { animation-delay: 0.63s; }
+.b3d-panel .grade ~ :nth-child(7) { animation-delay: 0.70s; }
+.b3d-panel .grade ~ :nth-child(8) { animation-delay: 0.77s; }
+.b3d-panel .grade ~ :nth-child(9) { animation-delay: 0.84s; }
+.b3d-panel .grade ~ :nth-child(10) { animation-delay: 0.91s; }
+.b3d-panel .grade ~ :nth-child(11) { animation-delay: 0.98s; }
+.b3d-panel .grade ~ :nth-child(12) { animation-delay: 1.05s; }
+.b3d-panel .grade ~ :nth-child(13) { animation-delay: 1.12s; }
+.b3d-panel .grade ~ :nth-child(14) { animation-delay: 1.19s; }
+.b3d-panel .grade ~ :nth-child(15) { animation-delay: 1.26s; }
+@keyframes b3d-stamp { 0% { transform: scale(2.6) rotate(-14deg); opacity: 0; } 60% { transform: scale(.92) rotate(2deg); opacity: 1; } 100% { transform: none; opacity: 1; } }
+@keyframes b3d-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .b3d-panel .grade, .b3d-panel .grade ~ * { animation: none; } }
 .b3d-panel button { display: block; width: 100%; margin-top: 18px; padding: 14px; border: 0; border-radius: 6px; background: #edb765;
   color: #1a2226; font: 800 16px "Segoe UI", Arial, sans-serif; letter-spacing: 1px; cursor: pointer; }
+.b3d-panel button.b3d-medals-link { margin-top: 10px; padding: 10px; background: transparent; border: 1px solid #edb76588; color: #edb765; font-size: 13px; }
+.b3d-perks { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 6px 0 4px; }
+.b3d-panel button.b3d-perk { margin: 0; padding: 8px 10px; text-align: left; background: #0b171c; border: 1px solid #3b5a62; color: #c9dcdc; font-size: 12px; letter-spacing: 0; display: flex; flex-direction: column; gap: 4px; }
+.b3d-panel button.b3d-perk b { font-size: 12px; letter-spacing: 1px; color: #edb765; }
+.b3d-panel button.b3d-perk span { font-weight: 500; font-size: 11px; color: #9fb4b4; }
+.b3d-panel button.b3d-perk.picked { border-color: #edb765; background: #edb76526; }
+.b3d-panel button.b3d-perk.picked b::before { content: '✓ '; }
+@media (max-width: 560px) { .b3d-perks { grid-template-columns: 1fr; } }
+.b3d-medal-list { list-style: none; margin: 8px 0 4px; padding: 0; display: grid; gap: 6px; }
+.b3d-medal-list li { display: flex; flex-direction: column; padding: 6px 10px; border-radius: 6px; border: 1px solid #3b5a62; }
+.b3d-medal-list li b { font-size: 13px; letter-spacing: 1px; }
+.b3d-medal-list li span { font-size: 12px; color: #9fb4b4; }
+.b3d-medal-list li.earned { border-color: #edb765; background: #edb7651a; }
+.b3d-medal-list li.earned b { color: #edb765; }
+.b3d-medal-list li.earned b::before { content: '✓ '; }
+.b3d-medal-list li.locked { opacity: .55; }
+.b3d-panel p.b3d-medal { color: #f3e6c6; border-left: 3px solid #edb765; padding-left: 10px; }
+.b3d-panel p.b3d-medal b { color: #edb765; letter-spacing: 1px; }
+/* A long briefing scrolls, but START THE NIGHT stays in view at the bottom of the panel. */
+.b3d-panel button[data-action="night"] { position: sticky; bottom: 0; z-index: 1; box-shadow: 0 -10px 18px #142a31; }
+.b3d-setting { display: grid; grid-template-columns: 90px 1fr 48px; align-items: center; gap: 12px; margin: 12px 0; font-size: 13px; letter-spacing: 1.5px; color: #c9dcdc; }
+.b3d-setting input[type=range] { width: 100%; accent-color: #edb765; }
+.b3d-setting output { text-align: right; font-variant-numeric: tabular-nums; color: #edb765; }
+.b3d-setting.check { display: flex; gap: 10px; }
+.b3d-setting.check input { width: 18px; height: 18px; accent-color: #edb765; }
+.b3d-panel button.b3d-secondary { margin-top: 10px; padding: 10px; background: transparent; border: 1px solid #3b5a62; color: #c9dcdc; font-size: 13px; }
+.b3d-help { display: grid; grid-template-columns: 130px 1fr; gap: 6px 14px; margin: 4px 0 8px; font-size: 13px; }
+.b3d-help dt { font-weight: 800; letter-spacing: 1.5px; color: #edb765; font-size: 12px; padding-top: 2px; }
+.b3d-help dd { margin: 0; color: #d9e6e6; line-height: 1.35; }
+@media (max-width: 560px) { .b3d-help { grid-template-columns: 1fr; } .b3d-help dd { margin-bottom: 6px; } }
 .b3d-panel a { display: block; margin-top: 12px; text-align: center; color: #9fb4b4; font-size: 12px; letter-spacing: 1.5px; }
 .b3d-count { font: 900 120px "Segoe UI", Arial, sans-serif; color: #f0dfb3; text-shadow: 0 8px 30px #000; }
 .b3d-toast { position: absolute; top: 92px; left: 50%; transform: translateX(-50%); background: #10232ae6; border: 1px solid #3b5a62;
@@ -157,6 +225,10 @@ const CSS = `
 export interface HudState {
   sorted: number; goal: number; score: number; timeLeftMs: number; backlog: number; capacity: number;
   phase: string; combo: number; worker: 'termite' | 'skanky'; hint: string; brake: string; overview: boolean; routes?: string; scanner?: string;
+  /** The clock's label when it shows something other than the time left (the endless shift's time survived). */
+  clockLabel?: string;
+  /** Tonight's goals as HUD chips. */
+  goals?: { text: string; state: 'met' | 'open' | 'lost' }[];
 }
 
 interface Bubble {
@@ -177,6 +249,14 @@ export class Overlay {
   private readonly speech = new Map<string, Bubble>();
   private readonly popups: { element: HTMLDivElement; world: THREE.Vector3; age: number }[] = [];
   private toastMs = 0;
+  /** The score as the HUD shows it, rolling up to the real one; how long its gain or loss flash lasts. */
+  private shownScore = 0;
+  private targetScore = 0;
+  private scoreFlashMs = 0;
+  /** The streak at the last update, and how long a lost streak stays on show. */
+  private lastCombo = 0;
+  private lostStreak = 0;
+  private lostStreakMs = 0;
   private serial = 0;
   /** While set, only matching bubbles are shown and count down (story holds). */
   public hold: ((key: string) => boolean) | null = null;
@@ -200,9 +280,9 @@ export class Overlay {
         <div class="b3d-brand"><b>THE BELT</b><small>NIGHT SORT SIMULATOR</small></div>
         <div class="b3d-stat"><small>DISPATCHED</small><b data-f="sorted">00</b><div class="b3d-progress"><i data-f="bar"></i></div></div>
         <div class="b3d-stat"><small>YOUR SCORE</small><b data-f="score">00000</b></div>
-        <div class="b3d-stat time"><small>TIME LEFT</small><b data-f="time">03:00</b></div>
+        <div class="b3d-stat time"><small data-f="timelabel">TIME LEFT</small><b data-f="time">03:00</b></div>
         <div class="b3d-stat"><small>RECOVERY</small><div class="b3d-pips" data-f="pips"></div><span class="b3d-backlog" data-f="backlog"></span></div>
-        <div class="b3d-phase"><span data-f="phase"></span><em data-f="combo"></em></div>
+        <div class="b3d-phase"><span data-f="phase"></span><em data-f="combo"></em><div class="b3d-goal-chips" data-f="goals" aria-label="Tonight's goals"></div></div>
       </div>
       <div class="b3d-scanner" data-f="scanner" role="status" aria-live="polite" hidden></div>
       <div class="b3d-guide" data-f="guide" hidden><b data-f="guide-title"></b><span data-f="guide-detail"></span></div>
@@ -211,7 +291,7 @@ export class Overlay {
         <div class="b3d-hint" data-f="hint"></div>
         <div class="b3d-brake" data-f="brake"></div>
         <div class="b3d-routes" data-f="routes"></div>
-        <div class="b3d-keys">WASD MOVE · TAB SWITCH · SPACE GRAB/DELIVER · F THROW · E STOP THE BELT · V <span data-f="view"></span> · ESC PAUSE · M SOUND</div>
+        <div class="b3d-keys"><span data-f="keyhints">WASD MOVE · TAB SWITCH · SPACE GRAB/DELIVER · F THROW · E STOP THE BELT · V <span data-f="view"></span> · ESC PAUSE · M SOUND</span><span data-f="padhints" hidden>STICK MOVE · Y SWITCH · A GRAB/DELIVER · B THROW · X STOP THE BELT · BACK <span data-f="padview"></span> · START PAUSE</span></div>
       </div>`;
     this.hud.querySelectorAll<HTMLElement>('[data-f]').forEach((element) => { this.fields[element.dataset.f!] = element; });
     this.bubbles = this.div('b3d-bubbles', this.root);
@@ -372,9 +452,12 @@ export class Overlay {
 
   public updateHud(state: HudState): void {
     const f = this.fields;
-    f.sorted.textContent = `${String(state.sorted).padStart(2, '0')} / ${state.goal}`;
-    f.bar.style.width = `${Math.min(100, state.sorted / state.goal * 100)}%`;
-    f.score.textContent = String(state.score).padStart(5, '0');
+    // A goal of 0 is the endless shift's: no target, so no fraction and no progress bar.
+    f.sorted.textContent = state.goal > 0 ? `${String(state.sorted).padStart(2, '0')} / ${state.goal}` : String(state.sorted).padStart(2, '0');
+    f.bar.style.width = state.goal > 0 ? `${Math.min(100, state.sorted / state.goal * 100)}%` : '0%';
+    const label = state.clockLabel ?? 'TIME LEFT';
+    if (f.timelabel.textContent !== label) f.timelabel.textContent = label;
+    this.scoreTo(state.score);
     const seconds = Math.ceil(state.timeLeftMs / 1000);
     f.time.textContent = `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
     if (f.pips.childElementCount !== state.capacity) f.pips.innerHTML = '<i></i>'.repeat(state.capacity);
@@ -384,17 +467,52 @@ export class Overlay {
     f.backlog.title = `${state.capacity} packages in recovery ends the shift`;
     f.backlog.classList.toggle('urgent', state.backlog >= state.capacity - 2);
     f.phase.textContent = state.phase;
-    f.combo.textContent = state.combo > 1 ? `${state.combo} IN A ROW  /  +${Math.min(state.combo, 10) * 15} NEXT` : `TARGET  /  ${state.goal} CLEAN DISPATCHES`;
+    // A streak of three or more that breaks mid-shift says so for a moment.
+    if (state.combo === 0 && this.lastCombo >= 3 && state.sorted > 0) { this.lostStreak = this.lastCombo; this.lostStreakMs = 1600; }
+    if (state.combo > 0 || state.sorted === 0) this.lostStreakMs = 0;
+    this.lastCombo = state.combo;
+    const heat = state.combo >= 10 ? 'blazing' : state.combo >= 5 ? 'hot' : '';
+    f.combo.className = this.lostStreakMs > 0 ? 'lost' : heat;
+    f.combo.textContent = this.lostStreakMs > 0 ? `STREAK LOST  /  ${this.lostStreak} IN A ROW`
+      : state.combo > 1 ? `${heat === 'blazing' ? 'ON FIRE · ' : heat === 'hot' ? 'ON A ROLL · ' : ''}${state.combo} IN A ROW  /  +${Math.min(state.combo, 10) * 15} NEXT`
+        : state.goal > 0 ? `TARGET  /  ${state.goal} CLEAN DISPATCHES` : 'NO TARGET  /  LAST AS LONG AS YOU CAN';
+    // Only a clock counting down can run out; the endless shift's counts up.
+    f.time.parentElement?.classList.toggle('urgent', !state.clockLabel && state.timeLeftMs > 0 && state.timeLeftMs <= 30_000);
     f.worker.textContent = `● ${state.worker.toUpperCase()}`;
     f.worker.className = `b3d-worker ${state.worker}`;
     f.hint.textContent = state.hint;
     f.brake.textContent = state.brake;
-    f.view.textContent = state.overview ? 'CLOSE VIEW' : 'OVERVIEW';
+    f.view.textContent = f.padview.textContent = state.overview ? 'CLOSE VIEW' : 'OVERVIEW';
     const scanner = state.scanner ?? '';
     if (f.scanner.textContent !== scanner) f.scanner.textContent = scanner;
     f.scanner.hidden = !scanner;
     this.root.classList.toggle('scanner-pending', !!scanner);
     if (state.routes !== undefined && f.routes.innerHTML !== state.routes) f.routes.innerHTML = state.routes;
+    const goals = (state.goals ?? []).map((goal) => `<span class="${goal.state}">${goal.text}</span>`).join('');
+    if (f.goals.innerHTML !== goals) f.goals.innerHTML = goals;
+  }
+
+  /** Sets the score the HUD rolls towards: a gain rolls up with a jump, a loss or a new night shows at once. */
+  private scoreTo(score: number): void {
+    if (score === this.targetScore) return;
+    const element = this.fields.score;
+    const flash = score > this.targetScore ? 'gain' : score > 0 || this.targetScore - score <= 500 ? 'loss' : '';
+    this.targetScore = score;
+    if (score < this.shownScore) {
+      this.shownScore = score;
+      element.textContent = String(score).padStart(5, '0');
+    }
+    element.classList.remove('gain', 'loss');
+    if (!flash) return;
+    void element.offsetWidth;
+    element.classList.add(flash);
+    this.scoreFlashMs = 400;
+  }
+
+  /** Shows the controller's buttons in the HUD's key line instead of the keyboard's. */
+  public setPadHints(pad: boolean): void {
+    this.fields.keyhints.hidden = pad;
+    this.fields.padhints.hidden = !pad;
   }
 
   public sortingGuide(guide: { title: string; detail: string } | null): void {
@@ -440,6 +558,15 @@ export class Overlay {
 
   /** Projects anchored UI. Off-screen speakers keep a bubble at the nearest edge. */
   public update(dtMs: number, clockRunning: boolean, camera: THREE.Camera, width: number, height: number): void {
+    if (this.shownScore < this.targetScore) {
+      // About a third of a second to catch up, whatever the size of the gain, and never in a single
+      // frame, so even a slow renderer shows the count passing through on its way.
+      const gap = this.targetScore - this.shownScore;
+      this.shownScore += Math.min(gap, Math.max(1, Math.ceil(gap * Math.min(0.7, dtMs / 120))));
+      this.fields.score.textContent = String(this.shownScore).padStart(5, '0');
+    }
+    if (this.scoreFlashMs > 0 && (this.scoreFlashMs -= dtMs) <= 0) this.fields.score.classList.remove('gain', 'loss');
+    if (this.lostStreakMs > 0) this.lostStreakMs -= dtMs;
     const v = new THREE.Vector3();
     const placed: { x: number; y: number; w: number; h: number }[] = [];
     const entries = [...this.speech.entries()].sort((a, b) => a[1].anchor().z - b[1].anchor().z);

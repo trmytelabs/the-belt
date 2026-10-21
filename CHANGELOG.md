@@ -6,6 +6,92 @@
   labelled `belt-pc`, after the account's hosted minutes ran out. Both required
   checks keep their names and suites; the browser suites use Edge with software
   WebGL, as on the hosted runners, instead of Playwright's Chromium.
+- Give the 3D depot some distant life: while sorting goes on, every 11 to 19
+  seconds a far-off sound plays, quiet and low-passed: a forklift's reversing
+  beeper, the PA's two-tone chime or a pallet set down. They stop with the
+  belt's work (pause, story stops, the end of the shift) and with mute.
+- Add controller support to the 3D game (`gamepad.ts`), for pads with the
+  browser's standard layout. The left stick or d-pad walks and steers; the
+  right and left triggers are the five-ton's gas and brake; A grabs and
+  delivers, confirms and parks; B throws (and skips a story scene); X stops the
+  belt (and moves the mall cart); Y switches workers (and on the Mesa, steals
+  it); Back is the overview or the cab view; Start pauses. Buttons press the
+  same keys the keyboard does, so every screen behaves the same. A toast
+  confirms the controller when it connects, and while it is connected the
+  HUD's key line and the grab prompt name its buttons. Pads that can rumble do
+  so for a breakage, a bump on the road and a wrong drop.
+- Add HOW TO PLAY to the 3D pause screen: sorting, recovery, stopping the belt,
+  throwing, priority freight, streaks and the controls (keyboard or touch, as
+  the device uses) on one page, with BACK to the pause screen.
+- Add settings to the 3D game (`settings.ts`): SETTINGS on the pause screen
+  opens music and effects sliders and a camera shake switch. Changes apply at
+  once and are kept in local storage on this device; M still mutes
+  everything and reduced motion still stills the camera. A focused slider
+  keeps its arrow keys instead of walking the worker.
+- Give the 3D shift HUD some life. The score rolls up to each gain in about a
+  third of a second with a gold jump, and shakes red on a loss; a streak of
+  five reads ON A ROLL and warms to amber, ten reads ON FIRE and flickers; a
+  streak of three or more that breaks shows STREAK LOST for a moment; and the
+  clock turns red and ticks through the last 30 seconds. With reduced motion
+  the colours change but nothing jumps, shakes or ticks. The results screen
+  stamps its grade down and raises its lines in one after another, every line
+  readable from the start.
+- Tidy two labels over the 3D belt's freight, found in a QA pass: the priority
+  countdown now hangs in front of the parcel, below it on screen, instead of
+  over its address tag; and the SPACE · GRAB prompt sits clear above the tag on
+  tall freight instead of overlapping its top. On a long briefing, START THE
+  NIGHT stays pinned in view at the bottom of the panel while the text scrolls.
+  tall freight instead of overlapping its top.
+- Add night perks to the 3D game (`perks.ts`). Once a night is finished, the
+  briefing offers three of six perks (1, 2 or 3, or a click, picks one; again
+  drops it), rotating with the nights on record: one more belt stop, 20
+  seconds on priority freight, one more parcel in recovery, both workers 6%
+  faster, a rush that sends freight a tenth less often, or watched loads
+  paying 75. The pick changes that night's rules only and the results name it;
+  the peak night takes one too, the endless shift does not. The no-stop goal
+  counts a fourth stop as a stop.
+- Add an endless shift to the 3D game, unlocked beside the peak night once a
+  night is finished (N, or ENDLESS SHIFT on the briefing). It starts straight
+  into the countdown with no story around it and no lunch break, and has no
+  clock: from the rush on each minute is a level, with freight 8% sooner (to
+  half the rush's gap) and the belt 5% faster (to half as fast again), until
+  recovery overflows. The HUD counts the time survived and the level; the
+  trucks never start their engines. Its results keep their own best (most
+  dispatched, then longest) in the record without counting as a night.
+- Add inspections to the 3D shift. Twice a night, at 0:58 in the flow and at
+  2:28 in the rush, the supervisor on the player's side (Vic on Termite's,
+  Shan on Skanky's) watches for 20 seconds, looking at the player's worker
+  with a WATCHING tag overhead while the HUD counts down. Each load the player
+  makes meanwhile earns 50 points; a wrong drop costs 30 more than its usual
+  ten. A toast opens and closes each inspection with what it paid, and the
+  results total the watched loads.
+- Time the 3D delivery drives against par. Parking at Southgate Mall, and back
+  at UPS, within a minute pays 200 points and within 1:20 pays 100; the drive in
+  from home and the practice drives are untimed for points, and there is still
+  no time limit. The drive HUD shows the clock against par, a toast gives the
+  time on parking, and the results list both drive times and what they earned,
+  inside the night total. Bumps and red lights still cost 100 each, so speed
+  is a trade.
+- Add medals to the 3D game (`medals.ts`): ten achievements kept with the
+  night record on this device, each earned once (finish a shift, an S, a peak
+  night, all three night goals, every priority parcel on time, 20 in a row, a
+  clean sheet, a safe drive home, all three openers, ten nights). The results
+  name any medal the night earned; the briefing's record counts them, and its
+  MEDALS button lists all ten, earned or still to earn.
+- Add night goals to the 3D game (`nightGoals.ts`). Each night sets three of
+  nine optional goals, chosen by the nights on record so nine nights see nine
+  different sets, mixing goals reached mid-shift (load 8 or 15 in a row, make 3
+  priority parcels on time, throw 3 in clean, send 8 to bulk) with goals judged
+  on a finished shift (no wrong drops, the belt never stopped, nothing broken, 2
+  or fewer missed). The briefing names them; the HUD shows a chip for each,
+  counting towards it or struck out once it is out of reach; a live goal is
+  announced with a toast the moment it is reached; the results tick or cross each one and add
+  150 points per goal met to the night total.
+- Sharpen the 3D main cast. Shan, Vic, Kylie, John, Hussan, Doris, Brian and
+  Fruit Loop are reconverted from their Rocketbox sources with 1024-pixel
+  textures, as Termite and Skanky already were; the other crew keep 512. The
+  eight models grow from 7.4 MB to 12.6 MB together, each still under the
+  2 MB per-model budget.
 - Give the 3D conveyor its sound. While sorting goes on, a low motor hum whose
   pitch follows the belt's speed and a band of roller rattle that clacks at
   the rollers' rate and grows with the freight riding it play under the

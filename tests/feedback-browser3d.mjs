@@ -18,6 +18,9 @@ try {
   await page.goto(process.env.BELT_TEST_BASE_URL ?? server.resolvedUrls.local[0]);
   const read=(fn,arg)=>page.evaluate(fn,arg), wait=(fn,arg)=>page.waitForFunction(fn,arg,{polling:10,timeout:90_000});
   await wait(()=>window.fixtureApp?.state==='briefing');
+  // However long the briefing, START THE NIGHT stays in view.
+  const startButton = await page.getByRole('button', { name: /START THE NIGHT/ }).boundingBox();
+  assert.ok(startButton && startButton.y >= 0 && startButton.y + startButton.height <= 800, `START THE NIGHT is on screen: ${JSON.stringify(startButton)}`);
   await read(()=>{const app=window.fixtureApp;app.forceStory({breakAtMs:1e12});app.benStarted=true;app.model.autonomousCoworker=false;app.overlay.clearCenter();app.state='playing';app.model.eventStopped=true;});
 
   for(const side of [0,1]) {
@@ -89,6 +92,42 @@ try {
   assert.ok(await read(()=>window.fixtureApp.state==='story'&&window.fixtureApp.cutscene!==null),'the alert finishes before starting the existing lunch destination');
   console.log('PASS lunch has a multi-second 15 MINUTE LUNCH BREAK alert; pause/resume preserves the alert, shift clock and held freight');
 
+  // Settings: from the pause screen, the music slider takes real arrow keys and the shake switch a real click;
+  // each change applies at once and is kept on this device, and the arrows never reach the game.
+  await read(() => {
+    const app = window.fixtureApp; app.restart(); app.forceStory({ breakAtMs: 1e12 }); app.benStarted = true;
+    app.model.autonomousCoworker = false; app.model.eventStopped = true; app.overlay.clearCenter(); app.state = 'playing';
+  });
+  await page.keyboard.press('Escape');
+  await wait(() => window.fixtureApp.state === 'paused');
+  await page.getByRole('button', { name: 'SETTINGS' }).click();
+  await page.locator('[data-setting="music"]').focus();
+  const workerBefore = await read(() => ({ x: window.fixtureApp.model.activeWorker.x, y: window.fixtureApp.model.activeWorker.y }));
+  for (let i = 0; i < 12; i++) await page.keyboard.press('ArrowLeft');
+  await page.locator('[data-setting="shake"]').click();
+  const saved = await read(() => ({ settings: window.fixtureApp.settings, stored: JSON.parse(localStorage.getItem('the-belt:3d-settings:v1')),
+    output: document.querySelector('[data-setting="music"]').nextElementSibling.textContent, state: window.fixtureApp.state,
+    worker: { x: window.fixtureApp.model.activeWorker.x, y: window.fixtureApp.model.activeWorker.y } }));
+  assert.deepEqual(saved.settings, { music: 0.4, effects: 1, shake: false });
+  assert.deepEqual(saved.stored, saved.settings, 'kept on this device');
+  assert.equal(saved.output, '40%');
+  assert.equal(saved.state, 'paused', 'arrow keys on a slider do not resume');
+  assert.deepEqual(saved.worker, workerBefore, 'arrow keys on a slider do not walk the worker');
+  await page.getByRole('button', { name: 'BACK' }).click();
+  // HOW TO PLAY lists the rules and controls, and BACK returns to the pause screen.
+  await page.getByRole('button', { name: 'HOW TO PLAY' }).click();
+  const help = await read(() => [...document.querySelectorAll('.b3d-help dt')].map((term) => term.textContent));
+  assert.deepEqual(help, ['SORT', 'RECOVERY', 'STOP THE BELT', 'THROW', 'PRIORITY', 'STREAKS', 'CONTROLS']);
+  await page.getByRole('button', { name: 'BACK' }).click();
+  await page.getByRole('button', { name: /RESUME/ }).click();
+  await wait(() => window.fixtureApp.state === 'playing');
+  // With the switch off, a breakage shake is dropped at once instead of decaying over half a second.
+  await read(() => { window.fixtureApp.shake = 0.3; });
+  await page.waitForTimeout(120);
+  assert.equal(await read(() => window.fixtureApp.shake), 0, 'no camera shake with the switch off');
+  await read(() => { const app = window.fixtureApp; app.settings = { music: 1, effects: 1, shake: true }; app.applySettings(); localStorage.removeItem('the-belt:3d-settings:v1'); });
+  console.log('PASS settings from the pause screen: a real-key music slider and a shake switch apply at once, are kept on this device, and never move the worker; HOW TO PLAY lists the rules and controls');
+
   const patrols = await read(() => {
     const app = window.fixtureApp; app.restart(); app.state = 'paused';
     const crew = app.crew, samples = { left: 0, right: 0, squats: 0, shanMin: 2000, shanMax: 0, vicMin: 2000, vicMax: 0, crossings: 0 };
@@ -111,6 +150,58 @@ try {
   assert.ok(patrols.shanMin < 260 && patrols.shanMax > 980 && patrols.vicMin < 250 && patrols.vicMax > 980);
   console.log('PASS John visibly patrols both belt lanes and performs squat sets; Shan and Vic walk up and down between their scenes');
 
+  // HUD feedback: the score rolls up to a gain with a jump, a streak warms up and catches fire,
+  // a broken streak says so, a loss shakes, and the last half minute ticks red.
+  await read(() => {
+    const app = window.fixtureApp; app.restart(); app.forceStory({ breakAtMs: 1e12 }); app.benStarted = true;
+    app.model.autonomousCoworker = false; app.model.eventStopped = true; app.overlay.clearCenter(); app.state = 'playing';
+  });
+  const hud = () => read(() => {
+    const score = document.querySelector('[data-f="score"]'), combo = document.querySelector('[data-f="combo"]'), time = document.querySelector('[data-f="time"]');
+    return { score: score.textContent, scoreClass: score.className, combo: combo.textContent, comboClass: combo.className, urgent: time.parentElement.classList.contains('urgent') };
+  });
+  await wait(() => document.querySelector('[data-f="score"]').textContent === '00000');
+  // Every number the HUD shows on the way is recorded as it changes, however slowly frames come.
+  await read(() => {
+    const m = window.fixtureApp.model, score = document.querySelector('[data-f="score"]');
+    window.scoreSeen = [];
+    window.scoreWatch = new MutationObserver(() => window.scoreSeen.push(score.textContent));
+    window.scoreWatch.observe(score, { childList: true, characterData: true, subtree: true });
+    Object.assign(m, { score: 450, combo: 6, sorted: 6 });
+  });
+  await wait(() => document.querySelector('[data-f="score"]').textContent === '00450');
+  const rolling = await read(() => {
+    window.scoreWatch.disconnect();
+    return { final: document.querySelector('[data-f="score"]').textContent, steps: window.scoreSeen.filter((text) => text !== '00000' && text !== '00450').length };
+  });
+  assert.equal(rolling.final, '00450', `the score reaches the real one: ${JSON.stringify(rolling)}`);
+  assert.ok(rolling.steps >= 1, `it rolls up through numbers on the way: ${JSON.stringify(rolling)}`);
+  await wait(() => document.querySelector('[data-f="combo"]').classList.contains('hot'));
+  assert.match((await hud()).combo, /^ON A ROLL · 6 IN A ROW/);
+  await read(() => Object.assign(window.fixtureApp.model, { combo: 12, sorted: 12 }));
+  await wait(() => document.querySelector('[data-f="combo"]').classList.contains('blazing'));
+  assert.match((await hud()).combo, /^ON FIRE · 12 IN A ROW/);
+  await read(() => Object.assign(window.fixtureApp.model, { combo: 0, score: 440 }));
+  await wait(() => document.querySelector('[data-f="combo"]').classList.contains('lost'));
+  const lost = await hud();
+  assert.ok(lost.combo.startsWith('STREAK LOST') && lost.combo.includes('12 IN A ROW') && lost.score === '00440' && lost.scoreClass.includes('loss'), `a broken streak and a loss show at once: ${JSON.stringify(lost)}`);
+  await wait(() => !document.querySelector('[data-f="combo"]').classList.contains('lost') && document.querySelector('[data-f="combo"]').textContent.startsWith('TARGET'));
+  assert.equal((await hud()).urgent, false);
+  await read(() => { const m = window.fixtureApp.model; m.elapsedMs = m.durationMs - 20_000; });
+  await wait(() => document.querySelector('[data-f="time"]').parentElement.classList.contains('urgent'));
+  // A results panel stamps its grade and raises its lines in turn, with every line's text there from the start.
+  const resultsMotion = await read(() => {
+    window.fixtureApp.overlay.showPanel('<div class="grade">S</div><div class="kicker">K</div><h1>H</h1><p>first</p><p>second</p><button type="button">B</button>');
+    const panel = document.querySelector('.b3d-panel'), lines = [...panel.querySelectorAll('p')];
+    const motion = { grade: getComputedStyle(panel.querySelector('.grade')).animationName, delays: lines.map((line) => getComputedStyle(line).animationDelay), text: panel.innerText };
+    window.fixtureApp.overlay.clearCenter();
+    return motion;
+  });
+  assert.equal(resultsMotion.grade, 'b3d-stamp');
+  assert.ok(parseFloat(resultsMotion.delays[1]) > parseFloat(resultsMotion.delays[0]), `the lines rise in turn: ${JSON.stringify(resultsMotion)}`);
+  assert.ok(resultsMotion.text.includes('first') && resultsMotion.text.includes('second'), 'the text is readable from the start');
+  console.log('PASS the HUD score rolls up to a gain and shakes on a loss; a streak goes ON A ROLL then ON FIRE, a broken one says STREAK LOST, and the last 30 seconds tick red; the results stamp the grade and raise their lines in turn');
+
   await read(() => {
     const app = window.fixtureApp; app.restart(); app.forceStory({ breakAtMs: 1e12 }); app.benStarted = true;
     app.model.autonomousCoworker = false; app.model.eventStopped = true;
@@ -118,6 +209,8 @@ try {
     Object.assign(app.model.packages[0], { y: 400, beltOffset: 400, route: 'A', state: 'belt' });
     Object.assign(app.model.activeWorker, { x: 400, y: 400 });
     window.interactionSounds = [];
+    // The depot's distant sounds (a forklift's beeper, the PA chime) would mix into these checks; hold them off.
+    app.audio.ambienceIn = Infinity;
     for (const [method, kind] of [['createOscillator', 'oscillator'], ['createBufferSource', 'recording']]) {
       const original = AudioContext.prototype[method];
       AudioContext.prototype[method] = function (...args) {
@@ -152,6 +245,7 @@ try {
   await wait(() => window.interactionSounds.some(sound => sound.kind === 'recording' && !sound.loop && sound.duration > 0 && sound.duration < 2));
   assert.equal(await read(() => window.interactionSounds.some(sound => sound.kind === 'oscillator')), false, 'wrong drops use the recorded cue');
   console.log('PASS the pickable package has a halo and Space prompt; empty grabs stay quiet, while the wrong truck deducts ten points and plays the short recorded error cue');
+  await read(() => { window.fixtureApp.audio.ambienceIn = 6; });
 
   // Priority freight: a gold ring and countdown label ride the parcel, run down to red, hide while carried,
   // and a real Space load inside the window pays the bonus with its own pop and a results line.
@@ -172,6 +266,14 @@ try {
   await wait(() => { const app = window.fixtureApp; return app.priorityMarkers.get(app.model.packages[0].id)?.seconds >= 14; });
   const fresh = await priorityMarker();
   assert.ok(fresh.attached && fresh.draw >= 46 * 6 && fresh.color === 'ffc23a' && fresh.seconds >= 14 && fresh.ring && fresh.label, `a nearly full gold ring and a label on a fresh priority parcel: ${JSON.stringify(fresh)}`);
+  // The countdown hangs in front of the parcel, below it on screen, clear of its address tag and the grab prompt.
+  const placement = await read(() => {
+    const app = window.fixtureApp, id = app.model.packages[0].id, view = app.parcels.get(id), marker = app.priorityMarkers.get(id);
+    const Vec = app.camera.position.constructor, label = marker.label.getWorldPosition(new Vec()), parcel = view.root.getWorldPosition(new Vec()), tag = view.tag.getWorldPosition(new Vec());
+    for (const point of [label, parcel, tag]) point.project(app.camera);
+    return { label: label.y, parcel: parcel.y, tag: tag.y };
+  });
+  assert.ok(placement.label < placement.parcel && placement.parcel < placement.tag, `label below the parcel, tag above: ${JSON.stringify(placement)}`);
   await read(() => { window.fixtureApp.model.elapsedMs += 11_000; });
   await wait(() => { const app = window.fixtureApp; const seconds = app.priorityMarkers.get(app.model.packages[0].id)?.seconds; return seconds > 0 && seconds <= 4; });
   const urgent = await priorityMarker();
@@ -197,6 +299,69 @@ try {
   await read(() => { const app = window.fixtureApp; Object.assign(app.model, { ended: true, won: true }); app.state = 'celebrating'; app.showResults(); });
   { const results = await page.locator('.b3d-panel').innerText(); assert.ok(results.includes('1 of 1 priority parcels on time · +100'), results); }
   console.log('PASS a priority parcel wears a gold countdown ring and label that run down to red and hide while carried; a real Space load in time pays +100 with its own pop and a results line');
+
+  // Night goals: tonight's are named in the briefing; a goal reached mid-shift is announced once with a toast,
+  // and the results tick what was met and pay it into the night total.
+  await read(() => { const app = window.fixtureApp; app.restart(); });
+  await wait(() => window.fixtureApp.state === 'briefing');
+  const briefingGoals = await read(() => ({ text: document.querySelector('.b3d-panel').innerText, goals: window.fixtureApp.goals.map((goal) => ({ label: goal.label, live: goal.live })) }));
+  assert.ok(briefingGoals.goals.length === 3 && briefingGoals.goals.every((goal) => briefingGoals.text.includes(goal.label)), `the briefing names tonight's goals: ${JSON.stringify(briefingGoals)}`);
+  await read(() => {
+    const app = window.fixtureApp; app.forceStory({ breakAtMs: 1e12 }); app.benStarted = true;
+    app.model.autonomousCoworker = false; app.model.eventStopped = true; app.overlay.clearCenter(); app.state = 'playing';
+    window.goalToasts = [];
+    const toast = app.overlay.showToast.bind(app.overlay);
+    app.overlay.showToast = (text, ms) => { window.goalToasts.push(text); return toast(text, ms); };
+    // Every live goal's figure reached at once; the end-of-shift goals wait for the results.
+    Object.assign(app.model, { bestCombo: 15, priorityOnTime: 3, thrownDeliveries: 3, bulkSorted: 8 });
+  });
+  const liveGoals = briefingGoals.goals.filter((goal) => goal.live);
+  await wait((count) => window.goalToasts.filter((text) => text.startsWith('NIGHT GOAL MET')).length >= count, liveGoals.length);
+  await page.waitForTimeout(300);
+  const toasts = await read(() => window.goalToasts.filter((text) => text.startsWith('NIGHT GOAL MET')));
+  assert.equal(toasts.length, liveGoals.length, `each live goal is announced once: ${JSON.stringify(toasts)}`);
+  for (const goal of liveGoals) assert.ok(toasts.some((text) => text.includes(goal.label.toUpperCase())), `${goal.label} is announced`);
+  // The HUD carries a chip per goal: the live ones ticked now, the clean-shift ones still open until the end.
+  await wait((count) => document.querySelectorAll('.b3d-goal-chips span.met').length === count, liveGoals.length);
+  const chips = await read(() => [...document.querySelectorAll('.b3d-goal-chips span')].map((chip) => ({ text: chip.textContent, state: chip.className })));
+  assert.equal(chips.length, 3, `three goal chips: ${JSON.stringify(chips)}`);
+  assert.equal(chips.filter((chip) => chip.state === 'open').length, 3 - liveGoals.length, `clean-shift goals stay open mid-shift: ${JSON.stringify(chips)}`);
+  await read(() => { const app = window.fixtureApp; Object.assign(app.model, { ended: true, won: true }); app.state = 'celebrating'; app.showResults(); });
+  const goalResults = await read(() => ({ text: document.querySelector('.b3d-panel').innerText, bonus: window.fixtureApp.goalBonus }));
+  // A clean, finished synthetic shift with every live figure reached meets all three.
+  assert.equal(goalResults.bonus, 450, goalResults.text);
+  assert.ok(goalResults.text.includes('NIGHT GOALS · 3 OF 3') && goalResults.text.includes('+450'), goalResults.text);
+  console.log('PASS the briefing names the three goals for the night; live goals are announced once as they are reached; the results tick all three and pay +450');
+
+  // Inspections: Vic watches Termite's side with a WATCHING tag and a HUD countdown, and a real Space load pays +50.
+  await read(() => {
+    const app = window.fixtureApp; app.restart(); app.forceStory({ breakAtMs: 1e12 }); app.benStarted = true;
+    app.model.autonomousCoworker = false; app.model.eventStopped = true; app.overlay.clearCenter(); app.state = 'playing';
+    app.model.elapsedMs = 57_900;
+    window.inspectionPops = [];
+    const pop = app.overlay.pop.bind(app.overlay);
+    app.overlay.pop = (text, ...rest) => { window.inspectionPops.push(text); return pop(text, ...rest); };
+  });
+  await wait(() => window.fixtureApp.model.inspection !== null && window.fixtureApp.crew.watcher === 'vic');
+  await wait(() => window.fixtureApp.crew.actor('vic').root.getObjectByName('watching-tag')?.visible === true);
+  await wait(() => document.querySelector('[data-f="phase"]').textContent.includes('VIC WATCHING'));
+  const watchedBefore = await read(() => {
+    const m = window.fixtureApp.model, p = m.packages.find((item) => item.state !== 'delivered');
+    Object.assign(p, { route: 'A', kind: 'smallbox', size: 'normal', state: 'held', workerId: m.activeWorker.id, flight: null });
+    Object.assign(m.activeWorker, { x: m.layout.dropAreas.A.x, y: m.layout.dropAreas.A.y, heldId: p.id });
+    return m.score;
+  });
+  await page.keyboard.press('Space');
+  await wait(() => window.fixtureApp.model.inspectionLoads === 1);
+  // The load's events reach the overlay on the next frame, which can take a while without a GPU.
+  await wait(() => window.inspectionPops.length > 0);
+  const watched = await read(() => ({ score: window.fixtureApp.model.score, pops: window.inspectionPops, bonus: window.fixtureApp.model.inspectionBonus }));
+  assert.equal(watched.bonus, 50);
+  assert.ok(watched.score - watchedBefore >= 150 && watched.pops.includes('WATCHED +50'), `a watched load pays its points and +50: ${JSON.stringify({ watchedBefore, watched })}`);
+  await read(() => { window.fixtureApp.model.elapsedMs += 20_100; });
+  await wait(() => window.fixtureApp.model.inspection === null && window.fixtureApp.crew.watcher === null);
+  await wait(() => window.fixtureApp.crew.actor('vic').root.getObjectByName('watching-tag')?.visible !== true);
+  console.log('PASS an inspection puts a WATCHING tag on Vic over the left side with a HUD countdown; a real Space load pays +50, and it all clears when time is up');
 
   await read(() => { const app = window.fixtureApp; app.restart(); app.overlay.clearCenter(); app.beginMall(); });
   await page.keyboard.press('Space'); await wait(() => window.fixtureApp.mall.cart.pushed);
@@ -224,6 +389,49 @@ try {
     await page.screenshot({ path: join(process.env.BELT_SCREENSHOT_DIR, 'mall-full-cart.png') });
   }
   console.log('PASS real Space grabs and parks the cart, highlights available truck freight, skips emptied slots and loads two full bundles matching their store box counts');
+
+  // A controller (a stand-in for navigator.getGamepads): Start pauses and A resumes, the stick walks,
+  // Y switches workers, X stops the belt, and the triggers drive and brake the five-ton.
+  await read(() => {
+    window.fakePads = [{ connected: true, axes: [0, 0, 0, 0], buttons: [] }];
+    window.padSet = (over = {}) => {
+      const pad = window.fakePads[0];
+      pad.axes = over.axes ?? [0, 0, 0, 0];
+      pad.buttons = Array.from({ length: 17 }, (_, index) => { const value = over.buttons?.[index] ?? 0; return { pressed: value > 0.5, value }; });
+    };
+    window.padSet();
+    navigator.getGamepads = () => window.fakePads;
+    const app = window.fixtureApp; app.restart(); app.forceStory({ breakAtMs: 1e12 }); app.benStarted = true;
+    app.model.autonomousCoworker = false; app.model.eventStopped = true; app.overlay.clearCenter(); app.state = 'playing';
+  });
+  await wait(() => window.fixtureApp.pad.connected);
+  assert.deepEqual(await read(() => ({ pad: !document.querySelector('[data-f=padhints]').hidden, keys: !document.querySelector('[data-f=keyhints]').hidden })), { pad: true, keys: false }, 'the HUD names the controller buttons');
+  const tap = async (index, until, arg) => {
+    await read((i) => window.padSet({ buttons: { [i]: 1 } }), index);
+    await wait(until, arg);
+    await read(() => window.padSet());
+    await page.waitForTimeout(60);
+  };
+  await tap(9, () => window.fixtureApp.state === 'paused');
+  await tap(0, () => window.fixtureApp.state === 'playing');
+  const startY = await read(() => window.fixtureApp.model.activeWorker.y);
+  await read(() => window.padSet({ axes: [0, 1] }));
+  await wait((y) => window.fixtureApp.model.activeWorker.y > y + 20, startY);
+  await read(() => window.padSet());
+  const onDuty = await read(() => window.fixtureApp.model.activeWorker.id);
+  await tap(3, (id) => window.fixtureApp.model.activeWorker.id !== id, onDuty);
+  await read(() => { window.fixtureApp.model.eventStopped = false; });
+  await tap(2, () => window.fixtureApp.model.beltStopsRemaining === 2);
+  await read(() => window.fixtureApp.beginDriving('mall'));
+  await wait(() => window.fixtureApp.state === 'driving' && window.fixtureApp.driving);
+  await read(() => window.padSet({ buttons: { 7: 1 } }));
+  await wait(() => window.fixtureApp.driving.speed > 3);
+  await read(() => window.padSet({ buttons: { 6: 1 } }));
+  await wait(() => Math.abs(window.fixtureApp.driving.speed) < 0.5);
+  await read(() => { window.padSet(); window.fakePads = []; window.fixtureApp.restart(); });
+  await wait(() => !window.fixtureApp.pad.connected);
+  assert.equal(await read(() => document.querySelector('[data-f=keyhints]').hidden), false, 'and the keyboard keys again once it is gone');
+  console.log('PASS a controller pauses and resumes, walks the worker, switches workers, stops the belt, and drives and brakes the five-ton with its triggers; the HUD names its buttons while it is connected');
 
   await read(async list=>{
     const app=window.fixtureApp;app.state='paused';app.pausedFrom='playing';app.stage.end();app.overlay.setMode('shift');app.overlay.clearSpeech();app.overlay.setLunchAlert(false);app.overlay.clearCenter();

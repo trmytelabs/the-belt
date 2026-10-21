@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import * as THREE from 'three';
 import { DrivingNavigation } from '../src/three/drivingNavigation.ts';
-import { DrivingModel, DRIVING } from '../src/three/DrivingModel.ts';
+import { DrivingModel, DRIVING, DRIVE_PAR, driveClock, parBonus } from '../src/three/DrivingModel.ts';
 import { CITY, DESTINATIONS, HOME_SPAWN, SPAWNS, TERMINALS, CITY_SIGNALS, cityRoute, signalColor, nearestRoad, separation, angleDelta, trafficPose, inLoadingYard } from '../src/three/drivingCity.ts';
 import { makeDriver, driverState } from './driving-input.mjs';
 const gas = { steer: 0, throttle: 1, brake: 0 };
@@ -172,4 +172,19 @@ test('slow-frame substeps retain similar free-drive journey timing', () => {
   const fast = finish(new DrivingModel('mall'), undefined, 1 / 120), slow = finish(new DrivingModel('mall'), undefined, 0.1);
   assert.ok(Math.abs(fast.elapsed - slow.elapsed) < 0.8);
   assert.ok(slow.canPark && fast.canPark);
+});
+
+test('a delivery drive pays for beating par, a little for a fair time, and nothing slower; the clock reads m:ss', () => {
+  assert.deepEqual(DRIVE_PAR, { fast: 60, fair: 80, fastBonus: 200, fairBonus: 100 });
+  assert.equal(parBonus(40), 200);
+  assert.equal(parBonus(60), 200);
+  assert.equal(parBonus(60.1), 100);
+  assert.equal(parBonus(80), 100);
+  assert.equal(parBonus(80.1), 0);
+  assert.equal(parBonus(Number.NaN), 0);
+  assert.equal(parBonus(-1), 0);
+  assert.equal(driveClock(0), '0:00');
+  assert.equal(driveClock(75), '1:15');
+  assert.equal(driveClock(64.9), '1:04');
+  assert.equal(driveClock(-3), '0:00');
 });

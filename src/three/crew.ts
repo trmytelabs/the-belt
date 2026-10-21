@@ -388,7 +388,32 @@ export class CrewLife {
     return [...this.actors, ...this.unloaders.map((actor, index): [string, Actor] => [`unloader-${index}`, actor]), ['dockhand', this.dockhand]];
   }
 
+  /** The supervisor watching the player during an inspection (`ShiftModel3D.inspection`), or null. */
+  public watcher: 'vic' | 'shan' | null = null;
+  private watchTag: THREE.Sprite | null = null;
+
+  /** The watcher looks at the player's worker and wears a WATCHING tag while they can be seen. */
+  private updateWatcher(model: ShiftModel): void {
+    const id = this.watcher;
+    const actor = id ? this.actor(id) : null;
+    const watching = !!actor && actor.root.visible && !this.staged.has(id!);
+    if (!this.watchTag && watching) {
+      this.watchTag = textSprite(['WATCHING'], 0.24, { width: 120, height: 30, background: '#2f6b46', color: '#e6ffef', radius: 6 });
+      this.watchTag.name = 'watching-tag';
+      this.watchTag.center.set(0.5, 0);
+    }
+    if (!this.watchTag) return;
+    this.watchTag.visible = watching;
+    if (!watching) return;
+    if (this.watchTag.parent !== actor!.root) actor!.root.add(this.watchTag);
+    this.watchTag.position.set(0, actor!.character.headHeight + 0.45, 0);
+    const worker = model.activeWorker, at = toWorld(worker, actorSurfaceAt(worker.x, worker.y));
+    actor!.look = { x: at.x, z: at.z, y: at.y + 1.6 };
+  }
+
   public reset(): void {
+    this.watcher = null;
+    if (this.watchTag) this.watchTag.visible = false;
     this.cues = new Set();
     this.johnUntil = -1;
     this.johnSpoken = true;
@@ -554,6 +579,7 @@ export class CrewLife {
       actor.look = lookTargetFor({ id, x: actor.root.position.x, z: actor.root.position.z, facing: actor.root.rotation.y }, wallTime, speakers, workers);
       actor.speaking = this.isSpeaking(id);
     }
+    this.updateWatcher(model);
   }
 
   public update(dt: number, model: ShiftModel, wallTime: number): void {
@@ -656,7 +682,7 @@ export class CrewLife {
         crate.position.copy(toWorld({ x: mix(start.x, end.x, transfer), y: mix(start.y, end.y, transfer) }, BELT_HEIGHT + 0.06));
       }
       crate.visible = cycle < 0.85;
-      const coughClock = model.elapsedMs - ENGINES_3D.firstAt - 9000 - index * 6500;
+      const coughClock = Number.isFinite(model.durationMs) ? model.elapsedMs - ENGINES_3D.firstAt - 9000 - index * 6500 : -1;
       const coughing = coughClock >= 0 && coughClock % 19_000 < 1000 && !carrying;
       worker.setPoseAt(coughing ? 'cough' : 'none', wallTime);
       if (coughing) this.once(`unloader-cough-${index}-${Math.floor(coughClock / 19_000)}`, model.elapsedMs, 0, () => audioSystem.play('cough'));
@@ -823,6 +849,8 @@ export class CrewLife {
   }
 
   private updateExhaust(t: number, dt: number, wallTime: number, model: ShiftModel): void {
+    // An endless shift has no last minute: the trucks never start.
+    if (!Number.isFinite(model.durationMs)) return;
     // Near the end of the shift the drivers bring their keys while the belt keeps running.
     this.once('drivers', t, ENGINES_3D.driversAt, () => audioSystem.play('truck'));
     const driversVisible = t >= ENGINES_3D.driversAt && t < ENGINES_3D.driversAt + 5200;

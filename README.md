@@ -136,10 +136,34 @@ SORT!** countdown starts the shift.
   time. A gold ring around it runs down over 15 seconds, turning red for the
   last five. Load it yourself before it empties for a 100-point bonus; late, or
   loaded by your partner, it is an ordinary parcel. Results show how many made it.
+- Medals: ten achievements, each earned once and kept with the record on this
+  device (for example an S, a peak night, all three goals in one night, 20 in
+  a row, or bringing the five-ton home with no bumps or red lights). The
+  results name new ones; the briefing counts them and MEDALS lists them all.
+- Inspections: twice a night the supervisor on your side (Vic or Shan) watches
+  you for 20 seconds. Each load meanwhile earns 50 points; a wrong drop costs
+  30 more.
+- Perks: once a night is finished, the briefing offers three perks for the
+  night (1, 2 or 3 picks one), such as a fourth belt stop, more time on
+  priority freight or quicker feet. They last that night only.
+- Endless shift: once a night is finished, N (or ENDLESS SHIFT) starts a shift
+  with no clock and no story. Each minute from the rush the freight comes
+  sooner and the belt runs faster, until recovery overflows. It keeps its own
+  best, apart from your nights.
+- Night goals: each night sets three optional goals, named in the briefing
+  (for example, load 8 in a row, finish with nothing broken, make 3 priority
+  parcels on time). They rotate with the nights recorded on this device, and the HUD tracks each one. A goal
+  you reach mid-shift is announced at once; goals about a clean shift are judged
+  when it ends. Each goal met adds 150 points to the night total.
 - E / STOP THE BELT stops it for two seconds. You get three stops per 3D run,
   with a 15-second cooldown starting on each use. The controls show stops left
   and cooldown time; starting another night restores all three.
-- Escape pauses; M toggles sound. Losing focus pauses the preview automatically.
+- Controllers with the standard layout work too: stick or d-pad to move, A to
+  grab and deliver, B to throw, X to stop the belt, Y to switch, Back for the
+  overview, Start to pause; on the road the triggers are gas and brake.
+- Escape pauses; M toggles sound. SETTINGS on the pause screen sets the music
+  and effects levels and turns the breakage camera shake on or off; they are
+  kept on this device. Losing focus pauses the preview automatically.
 - The closer camera follows your worker up and down the belt, leads them a
   little as they walk, and reframes when you switch workers. At the back of
   the depot the terminal wall fades out so the view stays oblique over the
@@ -187,6 +211,8 @@ SORT!** countdown starts the shift.
   Escape / PAUSE and M / MUTE work on the road too. Try just the driving at
   `?mode=3d&drive=mall` (or `drive=ups`); parking offers the trip back.
   See [the 3D driving mini-game](docs/3d-driving.md).
+- Each delivery drive is timed against par: parked within a minute pays 200
+  points, within 1:20 pays 100. Bumps and red lights still cost 100 each.
 
 Touch devices have a movement stick and Switch, Grab / Deliver, and Stop the
 Belt buttons. Landscape gives a closer view; portrait reserves room below the game

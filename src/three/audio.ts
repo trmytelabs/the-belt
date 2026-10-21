@@ -52,6 +52,27 @@ export class DepotAudio extends AudioSystem {
   private stepIndex = 0;
   /** The conveyor: its motor, the roller rattle and the pulse that clacks the rattle, while the belt runs. */
   private belt: { motor: OscillatorNode; rollers: AudioBufferSourceNode; pulse: OscillatorNode; motorGain: GainNode; rattleGain: GainNode; pulseDepth: GainNode; nodes: AudioNode[] } | null = null;
+  /** The player's music and effects levels, 0 to 1, from the settings. */
+  private musicLevel = 1;
+  private effectsLevel = 1;
+
+  /** Sets the music and effects levels (0 to 1); mute still silences both. */
+  public setLevels(music: number, effects: number): void {
+    this.musicLevel = Math.min(1, Math.max(0, music));
+    this.effectsLevel = Math.min(1, Math.max(0, effects));
+    this.updateMusicVolume();
+    this.fade(this.sfxGain, 0.85 * this.effectsLevel, 0.05);
+  }
+
+  public get levels(): { music: number; effects: number } { return { music: this.musicLevel, effects: this.effectsLevel }; }
+
+  protected override getContext(): AudioContext | null {
+    const fresh = this.context === null;
+    const context = super.getContext();
+    // The effects bus starts at the player's level, not the default.
+    if (fresh && context && this.sfxGain) this.sfxGain.gain.value = 0.85 * this.effectsLevel;
+    return context;
+  }
 
   public override async unlock(): Promise<void> {
     await super.unlock();
@@ -244,7 +265,7 @@ export class DepotAudio extends AudioSystem {
   protected override updateMusicVolume(): void {
     const volume = this.trackMode === 'title' || this.trackMode === 'results' ? 0.3 : 0.23;
     const ducked = (this.context?.currentTime ?? 0) < this.duckUntil;
-    this.fade(this.musicGain, this.muted || !this.trackWanted ? 0 : volume * (ducked ? 0.45 : 1), 0.22);
+    this.fade(this.musicGain, this.muted || !this.trackWanted ? 0 : volume * (ducked ? 0.45 : 1) * this.musicLevel, 0.22);
   }
 
   private stopRecordings(): void {
@@ -380,6 +401,47 @@ export class DepotAudio extends AudioSystem {
     this.belt.pulse.frequency.setTargetAtTime(4 + 5 * rate, now, 0.25);
     this.fade(this.belt.motorGain, 0.012 + 0.006 * Math.min(1.5, rate), 0.25);
     this.fade(this.belt.rattleGain, (0.008 + 0.014 * Math.min(6, load)) * Math.min(1.4, rate), 0.2);
+  }
+
+  /** The depot's distant sounds: a forklift backing up, the PA chime, a pallet set down. */
+  public static readonly AMBIENCE = ['forklift', 'chime', 'clank'] as const;
+  /** Seconds until the next distant sound, and how many have played. */
+  private ambienceIn = 6;
+  private ambienceIndex = 0;
+  public ambiencePlayed = 0;
+
+  /**
+   * While sorting goes on, a distant depot sound every 11 to 19 seconds, in a
+   * shuffled but fixed order so no two in a row are the same. `dt` is in seconds.
+   */
+  public updateAmbience(dt: number, active: boolean): void {
+    if (!active || this.muted || !(dt > 0)) return;
+    this.ambienceIn -= dt;
+    if (this.ambienceIn > 0) return;
+    const order = [0, 2, 1, 0, 1, 2, 2, 0, 1];
+    this.ambience(DepotAudio.AMBIENCE[order[this.ambienceIndex % order.length]]);
+    this.ambienceIndex += 1;
+    this.ambienceIn = 11 + (this.ambienceIndex * 5) % 9;
+  }
+
+  /** One distant depot sound: quiet and low-passed, as if from the far end of the building. */
+  public ambience(kind: (typeof DepotAudio.AMBIENCE)[number]): void {
+    const context = this.getContext();
+    if (!context || context.state !== 'running' || this.muted) return;
+    const now = context.currentTime + 0.02;
+    this.ambiencePlayed += 1;
+    if (kind === 'forklift') {
+      // A reversing beeper, four beeps.
+      for (let beep = 0; beep < 4; beep += 1) this.voice(1120, 0.2, now + beep * 0.42, 0.016, { type: 'triangle', attack: 0.01, cutoff: 1500 });
+    } else if (kind === 'chime') {
+      // The PA's two-tone chime before an announcement nobody can make out.
+      this.voice(784, 0.62, now, 0.022, { attack: 0.02, cutoff: 2000 });
+      this.voice(659, 0.9, now + 0.5, 0.022, { attack: 0.02, cutoff: 2000 });
+    } else {
+      // A pallet set down somewhere: a dull knock and a short rattle.
+      this.voice(118, 0.22, now, 0.05, { end: 70, cutoff: 420 });
+      this.noise(now + 0.01, 0.16, 700, 0.03);
+    }
   }
 
   /** Low, continuous diesel rumble, stopped with pause, lunch, results and replay. */

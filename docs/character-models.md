@@ -225,8 +225,9 @@ can call `window.convertRocketbox(files?)` instead of pressing the button. It:
   the dockhand already pointed the glTF way;
 - turns each specular map into a glTF roughness map: 0.94 on the dullest
   texels to 0.52 on the shiniest, against the map's own 95th percentile;
-- stores opaque colour and normal maps as JPEG (1024 px for Termite and
-  Skanky, 512 px for everyone else), the roughness map at half that, and hair
+- stores opaque colour and normal maps as JPEG (1024 px for Termite, Skanky
+  and the main cast: Shan, Vic, Kylie, John, Hussan, Doris, Brian and Fruit
+  Loop; 512 px for everyone else), the roughness map at half that, and hair
   cut-outs as PNG with alpha, at most 512 px, with no normal or roughness map.
 
 The same page converts the clips: `window.convertRocketboxClips()` loads each

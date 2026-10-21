@@ -147,7 +147,7 @@ try {
   await page.locator('.b3d-storykeys [data-story="pause"]').click();
   await wait(() => window.fixtureApp.state === 'paused');
   assert.match(await page.locator('.b3d-panel').innerText(), /STORY PAUSED/);
-  await page.locator('.b3d-panel button').click();
+  await page.getByRole('button', { name: /RESUME/ }).click();
   await wait(() => window.fixtureApp.state === 'story');
   await page.locator('.b3d-storykeys [data-story="skip"]').focus();
   await page.keyboard.press('Space');
@@ -449,12 +449,17 @@ try {
   assert.match(results, /MALL RUN · 6\/6 delivered · 6\/6 signed · five-ton returned · \+300/);
   assert.match(results, /1 broken \(−150 points\)/);
   assert.match(results, /NIGHT TOTAL/);
+  // Tonight's goals: named in the results with a tick or a cross each, and paid into the night total.
+  assert.match(results, /NIGHT GOALS · [0-3] OF 3 · [✓✗] Load 8 in a row · [✓✗] Finish with no wrong drops · [✓✗] Make 3 priority parcels on time · [+](0|150|300|450)/);
   // The first night in a fresh browser is a personal best, and the record is kept for the next.
   assert.match(results, /NEW PERSONAL BEST · NIGHT 1/);
   const stored = await read(() => JSON.parse(window.localStorage.getItem('the-belt:3d-record:v1')));
   assert.equal(stored.played, 1);
   assert.equal(stored.completed, 1);
   assert.ok(stored.best.total > 0 && /^opener-\d$/.test(stored.openers[0]), `the night is recorded: ${JSON.stringify(stored)}`);
+  // The first finished shift earns its medal, named on the results and kept with the record.
+  assert.match(results, /MEDAL · FIRST SHIFT · Finish a shift/);
+  assert.ok(stored.medals.includes('first-shift'), `the medal is kept: ${JSON.stringify(stored.medals)}`);
   assert.deepEqual(await read(() => window.fixtureApp.story.visited.slice(-9)),
     ['shift', 'clockout', 'assignment', 'to-mall', 'mall', 'to-ups', 'return', 'home', 'results']);
   assert.deepEqual(errors, []);
@@ -476,7 +481,8 @@ try {
   const driveTotals = await read(() => ({ penalty: window.fixtureApp.drivingPenalty,
     bumps: window.fixtureApp.drivingCollisions, redLights: window.fixtureApp.drivingRedLights }));
   assert.equal(driveTotals.penalty, (driveTotals.bumps + driveTotals.redLights) * 100, 'road incidents retain their separate 100-point deduction');
-  const expectedNightTotal = String(Math.max(0, 6250 - driveTotals.penalty)).padStart(5, '0');
+  const goalBonus = await read(() => window.fixtureApp.goalBonus), driveBonus = await read(() => window.fixtureApp.driveBonus);
+  const expectedNightTotal = String(Math.max(0, 6250 - driveTotals.penalty + goalBonus + driveBonus)).padStart(5, '0');
   assert.match(recovered, new RegExp(`NIGHT TOTAL ${expectedNightTotal}.*OUTSTANDING SHIFT`));
   await shot('recovered-s-rank');
   console.log(`PASS 56 of 57 dispatched, recovered freight and the completed mall run render S rank, an explicit grade breakdown and the correct ${expectedNightTotal} night total after driving deductions`);
@@ -494,11 +500,43 @@ try {
   });
   assert.deepEqual(clean, { cutscene: null, mall: null, lot: null, stage: null, speech: 0, elapsed: 0, breakTaken: false, chapter: 'briefing', damaged: 0, piles: 0, shan: 0 });
   // The briefing shows the record so far: two nights reached the results (the finale and the synthetic regression), both finished.
-  assert.match(await page.locator('.b3d-panel').innerText(), /YOUR RECORD · 2 OF 2 NIGHTS FINISHED · BEST NIGHT \d{5} · GRADE [SABCDF] · 1 OF 3 OPENERS SEEN/);
+  // Two nights on record: the third night's goals are the rotation's third set.
+  assert.match(await page.locator('.b3d-panel').innerText(), /TONIGHT’S GOALS · [+]150 EACH: Finish with 2 or fewer missed · Load 8 in a row · Finish with no wrong drops/);
+  assert.match(await page.locator('.b3d-panel').innerText(), /YOUR RECORD · 2 OF 2 NIGHTS FINISHED · BEST NIGHT \d{5} · GRADE [SABCDF] · 1 OF 3 OPENERS SEEN · \d+ OF 10 MEDALS/);
+  // The briefing's MEDALS button lists all ten, the first finished shift's ticked, and BACK returns to the briefing.
+  await page.getByRole('button', { name: /^MEDALS/ }).click();
+  const medalList = await read(() => [...document.querySelectorAll('.b3d-medal-list li')].map((item) => ({ title: item.querySelector('b').textContent, earned: item.classList.contains('earned') })));
+  assert.equal(medalList.length, 10);
+  assert.ok(medalList.find((medal) => medal.title === 'FIRST SHIFT')?.earned, JSON.stringify(medalList));
+  await page.getByRole('button', { name: /BACK/ }).click();
+  await page.getByRole('button', { name: /START THE NIGHT/ }).waitFor();
+  // The endless shift, unlocked by a finished night: N starts it straight into the countdown with a clock that counts up,
+  // and when recovery overflows its results keep their own best without counting a night.
+  await page.keyboard.press('KeyN');
+  await wait(() => window.fixtureApp.state === 'playing' && window.fixtureApp.model.endless);
+  await wait(() => document.querySelector('[data-f=timelabel]').textContent === 'SURVIVED' && document.querySelector('[data-f=phase]').textContent.startsWith('ENDLESS'));
+  assert.equal(await read(() => window.fixtureApp.model.durationMs), Infinity);
+  assert.deepEqual(await read(() => [document.querySelector('[data-f=sorted]').textContent.includes('/'), document.querySelector('[data-f=combo]').textContent]), [false, 'NO TARGET  /  LAST AS LONG AS YOU CAN'], 'no target on an endless shift');
+  await read(() => window.fixtureApp.model.finish(false, 'Recovery bay full'));
+  await wait(() => window.fixtureApp.state === 'ended');
+  const endless = await page.locator('.b3d-panel').innerText();
+  assert.match(endless, /ENDLESS SHIFT [/] LEVEL 1/);
+  assert.match(endless, /THE BELT WINS/);
+  assert.match(endless, /NEW ENDLESS BEST/);
+  const afterEndless = await read(() => JSON.parse(window.localStorage.getItem('the-belt:3d-record:v1')));
+  assert.equal(afterEndless.played, 2, 'an endless shift is not a night');
+  assert.ok(afterEndless.endless && afterEndless.endless.sorted >= 0, JSON.stringify(afterEndless.endless));
+  await page.keyboard.press('Enter');
+  await wait(() => window.fixtureApp.state === 'briefing' && !window.fixtureApp.model.endless);
   // A finished night unlocks the peak night beside the ordinary one; Enter still starts the ordinary night.
   assert.match(await page.locator('.b3d-panel').innerText(), /PEAK NIGHT UNLOCKED/);
   assert.ok(await page.locator('button[data-action="peak"]').isVisible(), 'the PEAK NIGHT button shows');
+  // A finished night also offers three perks; 1 picks the first (Roomy recovery, on the third night's offer), and the night starts with it.
+  assert.equal(await page.locator('.b3d-perk').count(), 3);
+  await page.keyboard.press('Digit1');
+  await wait(() => document.querySelector('.b3d-perk.picked')?.textContent.includes('ROOMY RECOVERY'));
   await page.keyboard.press('Enter');
+  assert.deepEqual(await read(() => [window.fixtureApp.perkInPlay?.id, window.fixtureApp.model.capacity]), ['roomy-recovery', 8], 'the perk is in play for the night');
   await wait(() => window.fixtureApp.state === 'story' && window.fixtureApp.story.chapter === 'arrival');
   await page.keyboard.press('Enter');
   await wait(() => window.fixtureApp.cutscene?.scene.id === 'scrum');
