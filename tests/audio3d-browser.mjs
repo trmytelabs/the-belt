@@ -64,6 +64,15 @@ try {
     ensure(full.rms>empty.rms*1.15 && full.peak<.35,`freight on a faster belt rattles louder: ${JSON.stringify({empty,full})}`);
     ensure(quiet.peak<.000001,'a stopped belt falls silent');
     cues.push({effect:'belt',...full});
+    // The player's levels: effects at a quarter play a cue about a quarter as loud; music at zero is silent.
+    const levelCue=async effects=>{const f=make(2);f.system.setLevels(1,effects);await f.system.preloadFoley();
+      const played=f.offline.suspend(.5).then(async()=>{f.clock.now=f.offline.currentTime;f.system.play('drop');await f.offline.resume();});
+      const rendered=await f.offline.startRendering();await played;return metrics(rendered,.5,2);};
+    const fullCue=await levelCue(1),quarterCue=await levelCue(.25);
+    ensure(quarterCue.rms>fullCue.rms*.15 && quarterCue.rms<fullCue.rms*.4,`effects at 25% play about a quarter as loud: ${JSON.stringify({fullCue,quarterCue})}`);
+    const hushed=make(8),h=hushed.system;h.setLevels(0,1);h.startMusic('game');await h.trackLoad;window.clearInterval(h.trackTimer);
+    ensure(metrics(await hushed.offline.startRendering(),1,7).peak<.000001,'music at zero is silent');
+    ensure(h.levels.music===0 && h.levels.effects===1,'the levels read back');
     const mute=make(6),m=mute.system;m.startMusic('game');await m.trackLoad;window.clearInterval(m.trackTimer);
     // Advance the audio renderer itself before holding an in-progress gain ramp.
     // A future-only fake clock cannot report an AudioParam's live value correctly.
@@ -94,5 +103,5 @@ try {
   await page.route('**/audio/music/after-hours.mp3',route=>route.abort());
   const fallback=await page.evaluate(async compiled=>{const {DepotAudio}=await import(`data:text/javascript;base64,${btoa(compiled)}`);const s=new DepotAudio();s.startMusic('game');await s.trackLoad;s.stopMusic();return{recordings:s.recordings.size,timer:s.trackTimer,buffer:s.trackBuffer,oldTimer:s.musicTimer};},depot);
   assert.deepEqual(fallback,{recordings:0,timer:null,buffer:null,oldTimer:null});
-  console.log('PASS actual lo-fi decode, crossfade, soft foley, belt hum and rattle, driving engine/brake/bump headroom, mute/resume, pause/replay cleanup and failed-download fallback');
+  console.log('PASS actual lo-fi decode, crossfade, soft foley, belt hum and rattle, player music and effects levels, driving engine/brake/bump headroom, mute/resume, pause/replay cleanup and failed-download fallback');
 }finally{await browser.close();await server.httpServer.close();}

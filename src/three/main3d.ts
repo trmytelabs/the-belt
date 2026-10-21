@@ -46,6 +46,7 @@ import { DrivingView } from './driving';
 import { BELT_SOLID_WIDTH, HEAD_DRIVE, clearReceiving } from './receivingCollision';
 import { TouchControls } from './touch';
 import { Overlay } from './overlay';
+import { loadSettings, saveSettings, type GameSettings } from './settings';
 import { OPENER_COUNT, browserStorage, formatTotal, loadRecord, recordEndless, recordNight, saveRecord, type NightRecord } from './nightRecord';
 import { alignParcelToSurface, createParcelView, setParcelCarried, setParcelModels, type ParcelView } from './parcels';
 import { disposeObject3D } from './resources';
@@ -166,6 +167,8 @@ export class Belt3d {
   private readonly deliveryHalo: THREE.Mesh;
   private readonly keys = new Set<string>();
   private readonly reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  /** The player's sound levels and camera shake, kept on this device. */
+  public settings: GameSettings = loadSettings(browserStorage());
   private overview = false;
   private hint = 'Approach the belt · read the street address';
   private chapterHint = '';
@@ -211,6 +214,7 @@ export class Belt3d {
     rect.x === SHIFT_LAYOUT.beltX && rect.width === 104 ? { ...rect, width: BELT_SOLID_WIDTH, height: rect.height + 16 } : rect), HEAD_DRIVE];
 
   constructor(host: HTMLElement) {
+    this.applySettings();
     this.host = host;
     this.overlay = new Overlay(host);
     void audioSystem.preloadFoley();
@@ -446,6 +450,8 @@ export class Belt3d {
 
   private bindInput(): void {
     window.addEventListener('keydown', (event) => {
+      // A focused setting (a slider or a switch) keeps its own arrows, Space and Tab.
+      if (event.target instanceof HTMLInputElement && (event.code.startsWith('Arrow') || event.code === 'Space' || event.code === 'Tab')) return;
       if (event.code === 'Tab') event.preventDefault();
       if (event.code === 'Space' || event.code.startsWith('Arrow')) event.preventDefault();
       this.keys.add(event.code);
@@ -839,7 +845,61 @@ export class Belt3d {
     this.touch.reset();
     audioSystem.stopMusic();
     const kicker = this.pausedFrom === 'interlude' || this.pausedFrom === 'story' ? 'STORY PAUSED' : this.pausedFrom === 'playing' ? 'SHIFT PAUSED' : 'PAUSED';
-    this.overlay.showPanel(`<div class="kicker">${kicker}</div><h1>GAME PAUSED.</h1><p>Click RESUME or press ENTER to keep playing.</p><p>Your packages and timers are safe while paused.</p><button type="button">RESUME  ↵</button>`, () => this.resume());
+    this.showPausePanel(kicker);
+  }
+
+  private showPausePanel(kicker: string): void {
+    this.overlay.showPanel(`<div class="kicker">${kicker}</div><h1>GAME PAUSED.</h1><p>Click RESUME or press ENTER to keep playing.</p><p>Your packages and timers are safe while paused.</p><button type="button" data-action="resume">RESUME  ↵</button><button type="button" class="b3d-secondary" data-action="settings">SETTINGS</button><button type="button" class="b3d-secondary" data-action="help">HOW TO PLAY</button>`,
+      { resume: () => this.resume(), settings: () => this.showSettings(kicker), help: () => this.showHelp(kicker) });
+  }
+
+  /** The rules and controls in one place, from the pause screen. */
+  private showHelp(kicker: string): void {
+    const touch = this.touch.enabled;
+    const rows: [string, string][] = [
+      ['SORT', `${touch ? 'Tap GRAB' : 'SPACE grabs'} a parcel at the belt. Its street number names the truck: carry it through that truck's rear door and load it. Oversize goes to bulk at the back; floor freight goes down the side stairs.`],
+      ['RECOVERY', `A parcel that reaches the belt end piles up in recovery; pick it up again for half points. ${this.model.capacity} in recovery ends the shift.`],
+      ['STOP THE BELT', `${touch ? 'STOP THE BELT' : 'E'} holds the belt for two seconds, three times a night, with 15 seconds between.`],
+      ['THROW', `${touch ? 'THROW' : 'F'} throws to the nearest drop to save the walk. Fragile freight can break, and a throw down the stairs risks more.`],
+      ['PRIORITY', `A gold ring marks urgent freight. Load it yourself before the ring runs out for +${PRIORITY_3D.bonus}.`],
+      ['STREAKS', 'Each clean load in a row adds 15 more points, up to +150. A wrong drop or a miss ends the streak.'],
+      ['CONTROLS', touch ? 'The stick moves; SWITCH changes worker; GRAB / DELIVER, THROW and STOP THE BELT do what they say; VIEW shows the whole warehouse.'
+        : 'WASD or arrows move · TAB or right-click switches worker · SPACE grabs and delivers · F throws · E stops the belt · V overview · ESC pause · M sound.'],
+    ];
+    this.overlay.showPanel(`<div class="kicker">${kicker} · HOW TO PLAY</div><h1>HOW TO PLAY</h1>
+      <dl class="b3d-help">${rows.map(([term, text]) => `<dt>${term}</dt><dd>${escapeHtml(text)}</dd>`).join('')}</dl>
+      <button type="button" data-action="back">BACK</button><button type="button" class="b3d-secondary" data-action="resume">RESUME  ↵</button>`,
+    { back: () => this.showPausePanel(kicker), resume: () => this.resume() });
+  }
+
+  /** Music and effects levels and the camera shake, changed live and kept on this device. */
+  private showSettings(kicker: string): void {
+    const percent = (value: number): number => Math.round(value * 100);
+    const s = this.settings;
+    this.overlay.showPanel(`<div class="kicker">${kicker} · SETTINGS</div><h1>SOUND AND CAMERA</h1>
+      <label class="b3d-setting">MUSIC <input type="range" min="0" max="100" step="5" data-setting="music" value="${percent(s.music)}"><output>${percent(s.music)}%</output></label>
+      <label class="b3d-setting">EFFECTS <input type="range" min="0" max="100" step="5" data-setting="effects" value="${percent(s.effects)}"><output>${percent(s.effects)}%</output></label>
+      <label class="b3d-setting check"><input type="checkbox" data-setting="shake"${s.shake ? ' checked' : ''}> CAMERA SHAKE WHEN FREIGHT BREAKS</label>
+      <p>Saved on this device. M still mutes everything; reduced motion always stills the camera.</p>
+      <button type="button" data-action="back">BACK</button><button type="button" class="b3d-secondary" data-action="resume">RESUME  ↵</button>`,
+    { back: () => this.showPausePanel(kicker), resume: () => this.resume() });
+    for (const input of document.querySelectorAll<HTMLInputElement>('.b3d-panel [data-setting]')) {
+      input.addEventListener('input', () => {
+        const key = input.dataset.setting as keyof GameSettings;
+        if (key === 'shake') this.settings = { ...this.settings, shake: input.checked };
+        else {
+          this.settings = { ...this.settings, [key]: Number(input.value) / 100 };
+          const output = input.nextElementSibling;
+          if (output) output.textContent = `${input.value}%`;
+        }
+        this.applySettings();
+        saveSettings(browserStorage(), this.settings);
+      });
+    }
+  }
+
+  private applySettings(): void {
+    audioSystem.setLevels(this.settings.music, this.settings.effects);
   }
 
   private resume(): void {
@@ -1802,7 +1862,7 @@ export class Belt3d {
     this.camera.lookAt(this.cameraTarget);
     // A breakage rattles the camera briefly; the lookAt above keeps the framing.
     this.shake = snap ? 0 : this.shake * Math.exp(-dt * 7);
-    if (this.shake > 0.004 && !this.reducedMotion) {
+    if (this.shake > 0.004 && !this.reducedMotion && this.settings.shake) {
       this.camera.position.x += (Math.random() - 0.5) * this.shake;
       this.camera.position.y += (Math.random() - 0.5) * this.shake;
     } else this.shake = 0;

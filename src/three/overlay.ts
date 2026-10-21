@@ -139,6 +139,16 @@ const CSS = `
 .b3d-panel p.b3d-medal b { color: #edb765; letter-spacing: 1px; }
 /* A long briefing scrolls, but START THE NIGHT stays in view at the bottom of the panel. */
 .b3d-panel button[data-action="night"] { position: sticky; bottom: 0; z-index: 1; box-shadow: 0 -10px 18px #142a31; }
+.b3d-setting { display: grid; grid-template-columns: 90px 1fr 48px; align-items: center; gap: 12px; margin: 12px 0; font-size: 13px; letter-spacing: 1.5px; color: #c9dcdc; }
+.b3d-setting input[type=range] { width: 100%; accent-color: #edb765; }
+.b3d-setting output { text-align: right; font-variant-numeric: tabular-nums; color: #edb765; }
+.b3d-setting.check { display: flex; gap: 10px; }
+.b3d-setting.check input { width: 18px; height: 18px; accent-color: #edb765; }
+.b3d-panel button.b3d-secondary { margin-top: 10px; padding: 10px; background: transparent; border: 1px solid #3b5a62; color: #c9dcdc; font-size: 13px; }
+.b3d-help { display: grid; grid-template-columns: 130px 1fr; gap: 6px 14px; margin: 4px 0 8px; font-size: 13px; }
+.b3d-help dt { font-weight: 800; letter-spacing: 1.5px; color: #edb765; font-size: 12px; padding-top: 2px; }
+.b3d-help dd { margin: 0; color: #d9e6e6; line-height: 1.35; }
+@media (max-width: 560px) { .b3d-help { grid-template-columns: 1fr; } .b3d-help dd { margin-bottom: 6px; } }
 .b3d-panel a { display: block; margin-top: 12px; text-align: center; color: #9fb4b4; font-size: 12px; letter-spacing: 1.5px; }
 .b3d-count { font: 900 120px "Segoe UI", Arial, sans-serif; color: #f0dfb3; text-shadow: 0 8px 30px #000; }
 .b3d-toast { position: absolute; top: 92px; left: 50%; transform: translateX(-50%); background: #10232ae6; border: 1px solid #3b5a62;

@@ -2,6 +2,14 @@
 
 ## 0.1.0 — development snapshot
 
+- Add HOW TO PLAY to the 3D pause screen: sorting, recovery, stopping the belt,
+  throwing, priority freight, streaks and the controls (keyboard or touch, as
+  the device uses) on one page, with BACK to the pause screen.
+- Add settings to the 3D game (`settings.ts`): SETTINGS on the pause screen
+  opens music and effects sliders and a camera shake switch. Changes apply at
+  once and are kept in local storage on this device; M still mutes
+  everything and reduced motion still stills the camera. A focused slider
+  keeps its arrow keys instead of walking the worker.
 - Give the 3D shift HUD some life. The score rolls up to each gain in about a
   third of a second with a gold jump, and shakes red on a loss; a streak of
   five reads ON A ROLL and warms to amber, ten reads ON FIRE and flickers; a

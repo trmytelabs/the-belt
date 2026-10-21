@@ -147,7 +147,7 @@ try {
   await page.locator('.b3d-storykeys [data-story="pause"]').click();
   await wait(() => window.fixtureApp.state === 'paused');
   assert.match(await page.locator('.b3d-panel').innerText(), /STORY PAUSED/);
-  await page.locator('.b3d-panel button').click();
+  await page.getByRole('button', { name: /RESUME/ }).click();
   await wait(() => window.fixtureApp.state === 'story');
   await page.locator('.b3d-storykeys [data-story="skip"]').focus();
   await page.keyboard.press('Space');
