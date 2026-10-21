@@ -564,6 +564,7 @@ try {
   await wait(() => document.querySelector('.b3d-perk.picked')?.textContent.includes('ROOMY RECOVERY'));
   await page.keyboard.press('Enter');
   assert.deepEqual(await read(() => [window.fixtureApp.perkInPlay?.id, window.fixtureApp.model.capacity]), ['roomy-recovery', 8], 'the perk is in play for the night');
+  await wait(() => document.querySelector('.b3d-goal-chips span.perk')?.textContent === 'PERK · ROOMY RECOVERY');
   await wait(() => window.fixtureApp.state === 'story' && window.fixtureApp.story.chapter === 'arrival');
   await page.keyboard.press('Enter');
   await wait(() => window.fixtureApp.cutscene?.scene.id === 'scrum');

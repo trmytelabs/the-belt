@@ -28,6 +28,7 @@ const CSS = `
 .b3d-goal-chips span.met { background: #2f6b46; border-color: #63c58a; color: #e6ffef; }
 .b3d-goal-chips span.met::before { content: '✓ '; }
 .b3d-goal-chips span.lost { opacity: .45; text-decoration: line-through; }
+.b3d-goal-chips span.perk { border-color: #edb76588; color: #edb765; }
 /* HUD feedback: the score rolls up and jumps on a gain, shakes on a loss; a streak warms up and catches fire; the last half minute ticks red. */
 .b3d-stat b { transition: color .25s; transform-origin: left center; }
 .b3d-stat b.gain { color: #ffd98a; animation: b3d-bump .35s ease-out; }
@@ -244,8 +245,8 @@ export interface HudState {
   phase: string; combo: number; worker: 'termite' | 'skanky'; hint: string; brake: string; overview: boolean; routes?: string; scanner?: string;
   /** The clock's label when it shows something other than the time left (the endless shift's time survived). */
   clockLabel?: string;
-  /** Tonight's goals as HUD chips. */
-  goals?: { text: string; state: 'met' | 'open' | 'lost' }[];
+  /** Tonight's goals as HUD chips, and tonight's perk after them. */
+  goals?: { text: string; state: 'met' | 'open' | 'lost' | 'perk' }[];
 }
 
 interface Bubble {
@@ -299,7 +300,7 @@ export class Overlay {
         <div class="b3d-stat"><small>YOUR SCORE</small><b data-f="score">00000</b></div>
         <div class="b3d-stat time"><small data-f="timelabel">TIME LEFT</small><b data-f="time">03:00</b></div>
         <div class="b3d-stat"><small>RECOVERY</small><div class="b3d-pips" data-f="pips"></div><span class="b3d-backlog" data-f="backlog"></span></div>
-        <div class="b3d-phase"><span data-f="phase"></span><em data-f="combo"></em><div class="b3d-goal-chips" data-f="goals" aria-label="Tonight's goals"></div></div>
+        <div class="b3d-phase"><span data-f="phase"></span><em data-f="combo"></em><div class="b3d-goal-chips" data-f="goals" aria-label="Tonight's goals and perk"></div></div>
       </div>
       <div class="b3d-scanner" data-f="scanner" role="status" aria-live="polite" hidden></div>
       <div class="b3d-guide" data-f="guide" hidden><b data-f="guide-title"></b><span data-f="guide-detail"></span></div>

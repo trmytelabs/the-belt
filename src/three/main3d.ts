@@ -1332,7 +1332,8 @@ export class Belt3d {
       hint: this.state === 'interlude' ? 'Belt held · your freight is safe' : this.state === 'mesa' ? 'Y steals the Mesa · N leaves it'
         : scannerSelected ? `${this.touch.enabled ? 'RESET SCANNER' : 'SPACE resets scanner'} · carried freight stays in hand`
         : held ? `${parcelAddress(held)} · ${held.label}${throwHint}${loadingHint ? ` · ${loadingHint}` : ''}` : loadingHint || this.hint,
-      overview: this.overview, routes: this.routeLegend(), scanner, goals: m.endless ? [] : this.goals.map((goal) => goal.chip(m)),
+      overview: this.overview, routes: this.routeLegend(), scanner,
+      goals: [...(m.endless ? [] : this.goals.map((goal) => goal.chip(m))), ...(this.perkInPlay ? [{ text: `PERK · ${this.perkInPlay.title}`, state: 'perk' as const }] : [])],
       brake: m.brakeRemainingMs > 0 || m.eventStopped ? `■ BELT STOPPED · ${m.beltStopsRemaining} LEFT`
         : `[E] STOP THE BELT · ${m.beltStopsRemaining} LEFT${m.beltStopsRemaining > 0 && m.brakeCooldownMs > 0 ? ` · ${Math.ceil(m.brakeCooldownMs / 1000)}s` : ''}`,
     });
