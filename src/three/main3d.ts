@@ -45,7 +45,7 @@ import { DrivingView } from './driving';
 import { BELT_SOLID_WIDTH, HEAD_DRIVE, clearReceiving } from './receivingCollision';
 import { TouchControls } from './touch';
 import { Overlay } from './overlay';
-import { OPENER_COUNT, browserStorage, formatTotal, loadRecord, recordNight, saveRecord, type NightRecord } from './nightRecord';
+import { OPENER_COUNT, browserStorage, formatTotal, loadRecord, recordEndless, recordNight, saveRecord, type NightRecord } from './nightRecord';
 import { alignParcelToSurface, createParcelView, setParcelCarried, setParcelModels, type ParcelView } from './parcels';
 import { disposeObject3D } from './resources';
 import { loadSurfaces } from './textures';
@@ -484,6 +484,8 @@ export class Belt3d {
         if (event.code === 'Space') this.lot?.action();
       } else if (this.state === 'briefing' && event.code === 'KeyP') {
         if (this.record.completed > 0) this.startNight(true);
+      } else if (this.state === 'briefing' && event.code === 'KeyN') {
+        this.startEndless();
       } else if (event.code === 'KeyV') {
         this.overview = !this.overview;
       } else if (this.state === 'playing') {
@@ -547,12 +549,12 @@ export class Belt3d {
       <p>The night starts at home: go in to work, or quit UPS. After the shift, drive the five-ton to Southgate Mall and finish the deliveries. Driving controls appear when you get there.</p>
       ${this.recordLine()}
       ${this.goalsLine()}
-      ${this.record.completed > 0 ? `<p class="b3d-record">PEAK NIGHT UNLOCKED · in the flow and the rush freight comes a fifth sooner, the belt runs faster and recovery holds ${PEAK_NIGHT.capacity}. ${this.touch.enabled ? 'Tap PEAK NIGHT.' : 'Press P or click PEAK NIGHT.'}</p>` : ''}
+      ${this.record.completed > 0 ? `<p class="b3d-record">PEAK NIGHT UNLOCKED · in the flow and the rush freight comes a fifth sooner, the belt runs faster and recovery holds ${PEAK_NIGHT.capacity}. ${this.touch.enabled ? 'Tap PEAK NIGHT.' : 'Press P or click PEAK NIGHT.'} ENDLESS SHIFT${this.touch.enabled ? '' : ' (N)'} has no clock: the belt speeds up every minute until recovery overflows.</p>` : ''}
       <button type="button" data-action="night">START THE NIGHT  ↵</button>
-      ${this.record.completed > 0 ? '<button type="button" data-action="peak">PEAK NIGHT  P</button>' : ''}
+      ${this.record.completed > 0 ? '<button type="button" data-action="peak">PEAK NIGHT  P</button><button type="button" data-action="endless">ENDLESS SHIFT  N</button>' : ''}
       ${this.record.played > 0 ? `<button type="button" class="b3d-medals-link" data-action="medals">MEDALS · ${this.record.medals.length} OF ${MEDALS.length}</button>` : ''}
       <a href="${window.location.pathname}?mode=3d&amp;drive=mall">TRY JUST THE DRIVE · EXPLORE THE CITY</a>
-      <a href="${window.location.pathname}?mode=classic">PLAY THE ORIGINAL FULL SHIFT</a>`, { night: () => this.startNight(), peak: () => this.startNight(true), medals: () => this.showMedals() });
+      <a href="${window.location.pathname}?mode=classic">PLAY THE ORIGINAL FULL SHIFT</a>`, { night: () => this.startNight(), peak: () => this.startNight(true), medals: () => this.showMedals(), endless: () => this.startEndless() });
   }
 
   // ---------------------------------------------------------------- story flow
@@ -574,6 +576,23 @@ export class Belt3d {
     }
     this.story.go('arrival');
     this.playScene(this.story.opener);
+  }
+
+  /**
+   * The endless shift, once a night is finished: straight from the briefing to the
+   * countdown, with no story around it and no lunch break; it ends when recovery overflows.
+   */
+  private startEndless(): void {
+    if (this.state !== 'briefing' || this.record.completed === 0 || this.practiceDestination) return;
+    this.model = new ShiftModel3D({ endless: true });
+    this.story = new StoryRun(Math.random, { ...this.forcedStory, breakAtMs: Infinity });
+    this.renderer.domElement.focus({ preventScroll: true });
+    void audioSystem.unlock();
+    audioSystem.play('ui-start');
+    audioSystem.startMusic('game');
+    this.overlay.clearCenter();
+    this.story.go('countdown');
+    this.startCountdown();
   }
 
   private playScene(scene: StoryScene): void {
@@ -1068,7 +1087,7 @@ export class Belt3d {
     this.mesa.update(dt * 1000, this.time);
 
     const running = this.state === 'playing' || this.state === 'celebrating' || this.state === 'ended';
-    audioSystem.setTruckIdle((this.state === 'playing' && m.elapsedMs >= 120_000) || this.state === 'celebrating');
+    audioSystem.setTruckIdle((this.state === 'playing' && !m.endless && m.elapsedMs >= 120_000) || this.state === 'celebrating');
     // The conveyor runs while sorting goes on, and falls quiet when it stops (a brake, a story stop, a pause, the end).
     const beltRunning = this.state === 'playing' && !m.paused && !m.ended && !m.eventStopped && m.brakeRemainingMs <= 0;
     audioSystem.setBelt(beltRunning ? m.beltSpeed : null, beltRunning ? m.packages.filter((parcel) => parcel.state === 'belt').length : 0);
@@ -1111,13 +1130,15 @@ export class Belt3d {
     const overflow = truck ? [...m.truckLoads.values()].filter(load => load.route === truck && load.overflow).length : 0;
     const loadingHint = truck ? overflow ? `SHELVES FULL · ${overflow} in rear overflow` : 'Face a shelf · SPACE loads near where you stand' : '';
     this.overlay.updateHud({
-      sorted: m.sorted, goal: m.goal, score: m.score, timeLeftMs: m.timeLeftMs, backlog: m.pileup, capacity: m.capacity,
+      sorted: m.sorted, goal: m.endless ? 0 : m.goal, score: m.score, timeLeftMs: m.endless ? m.elapsedMs : m.timeLeftMs, backlog: m.pileup, capacity: m.capacity,
+      clockLabel: m.endless ? 'SURVIVED' : undefined,
       phase: this.state === 'interlude' ? 'BEN  /  DODGE TRAINING'
+        : m.endless ? `ENDLESS  /  LEVEL ${m.endlessLevel}${m.inspection ? `  /  ${this.watcherName} WATCHING ${Math.ceil(m.inspectionRemainingMs / 1000)}s` : ''}`
         : `${PHASE_LABELS[m.phase] ?? ''}${m.inspection ? `  /  ${this.watcherName} WATCHING ${Math.ceil(m.inspectionRemainingMs / 1000)}s` : ''}`, combo: m.combo, worker: m.activeWorker.id,
       hint: this.state === 'interlude' ? 'Belt held · your freight is safe' : this.state === 'mesa' ? 'Y steals the Mesa · N leaves it'
         : scannerSelected ? `${this.touch.enabled ? 'RESET SCANNER' : 'SPACE resets scanner'} · carried freight stays in hand`
         : held ? `${parcelAddress(held)} · ${held.label}${throwHint}${loadingHint ? ` · ${loadingHint}` : ''}` : loadingHint || this.hint,
-      overview: this.overview, routes: this.routeLegend(), scanner, goals: this.goals.map((goal) => goal.chip(m)),
+      overview: this.overview, routes: this.routeLegend(), scanner, goals: m.endless ? [] : this.goals.map((goal) => goal.chip(m)),
       brake: m.brakeRemainingMs > 0 || m.eventStopped ? `■ BELT STOPPED · ${m.beltStopsRemaining} LEFT`
         : `[E] STOP THE BELT · ${m.beltStopsRemaining} LEFT${m.beltStopsRemaining > 0 && m.brakeCooldownMs > 0 ? ` · ${Math.ceil(m.brakeCooldownMs / 1000)}s` : ''}`,
     });
@@ -1267,7 +1288,11 @@ export class Belt3d {
     } else if ((event.type === 'sort' && !event.assisted) || event.type === 'damage') {
       this.hint = 'Approach the belt · read the street address';
     }
-    if (event.type === 'phase') {
+    if (event.type === 'phase' && this.model.endless) {
+      // The endless shift names each new level; the ordinary rush caption would promise a last push.
+      if (event.message.startsWith('LEVEL')) this.overlay.showToast(`ENDLESS · ${event.message}`, 3200);
+      else if (this.model.phase === 'flow') this.overlay.showToast('STEADY FLOW · read the street ranges · coworker loading');
+    } else if (event.type === 'phase') {
       const caption = this.model.phase === 'flow' ? 'STEADY FLOW · read the street ranges · coworker loading'
         : this.model.phase === 'rush' ? `LAST PUSH · freight every ${ARRIVALS_3D.rushMs / 1000} seconds` : event.message;
       this.overlay.showToast(caption);
@@ -1788,6 +1813,7 @@ export class Belt3d {
 
   /** A goal reached mid-shift is announced once, the moment it happens; it pays at the results. */
   private announceGoals(): void {
+    if (this.model.endless) return;
     for (const goal of this.goals) {
       if (!goal.live || this.goalsAnnounced.has(goal.id) || !goal.met(this.model)) continue;
       this.goalsAnnounced.add(goal.id);
@@ -1818,8 +1844,36 @@ export class Belt3d {
     return `<p class="b3d-best">${best ? `BEST NIGHT ${formatTotal(best.total)} · GRADE ${escapeHtml(best.grade)}` : 'NO SHIFT FINISHED YET'} · ${nightLabel} · ${this.record.completed} finished</p>${medals}`;
   }
 
+  /** The endless shift's results: how long and how much, against the best endless run on this device. */
+  private showEndlessResults(): void {
+    const m = this.model;
+    const seconds = Math.floor(m.elapsedMs / 1000), clock = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+    const result = recordEndless(this.record, { sorted: m.sorted, seconds, score: m.score, date: new Date().toISOString().slice(0, 10) });
+    this.record = result.record;
+    saveRecord(browserStorage(), this.record);
+    const best = this.record.endless!;
+    const bestClock = `${Math.floor(best.seconds / 60)}:${String(best.seconds % 60).padStart(2, '0')}`;
+    this.overlay.showPanel(`
+      <div class="grade">∞</div>
+      <div class="kicker">ENDLESS SHIFT / LEVEL ${m.endlessLevel}</div>
+      <h1>THE BELT WINS</h1>
+      <p class="b3d-best">${result.newBest ? `<b>NEW ENDLESS BEST</b>${result.previous ? ` · beat ${result.previous.sorted} dispatched` : ''}` : `BEST ENDLESS · ${best.sorted} dispatched · ${bestClock}`}</p>
+      <p><b>${m.sorted} DISPATCHED · ${String(m.score).padStart(5, '0')} POINTS · SURVIVED ${clock}</b></p>
+      <p>${m.bestCombo} best streak · ${m.priorityOnTime} of ${m.priorityCount} priority on time · ${m.wrongDrops} wrong drops · ${m.damaged} broken</p>
+      <p>Recovery overflowed at level ${m.endlessLevel}. Endless shifts keep their own best and leave your nights' record alone.</p>
+      <button type="button">ANOTHER NIGHT  ↵</button>`, () => this.restart());
+  }
+
   private showResults(): void {
     if (this.state === 'ended') return;
+    if (this.model.endless) {
+      this.state = 'ended';
+      this.stage.end();
+      this.overlay.setMode('shift');
+      audioSystem.startMusic('results');
+      this.showEndlessResults();
+      return;
+    }
     this.state = 'ended';
     this.stage.end();
     this.overlay.setMode('shift');

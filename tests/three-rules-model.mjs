@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { ShiftModel, SHIFT_LAYOUT } from '../src/game/slice/ShiftModel.ts';
-import { INSPECTION_3D, PEAK_NIGHT, PRIORITY_3D, ShiftModel3D, WRONG_DROP_PENALTY, WORKER_SPEED_3D } from '../src/three/ShiftModel3D.ts';
+import { ENDLESS_3D, INSPECTION_3D, PEAK_NIGHT, PRIORITY_3D, ShiftModel3D, WRONG_DROP_PENALTY, WORKER_SPEED_3D } from '../src/three/ShiftModel3D.ts';
 import { ROUTE_INFO } from '../src/three/addresses.ts';
 import { DEPOT_3D_LAYOUT as L, platformLevelAt, onLowerFloor, truckInteriorAt } from '../src/three/layout.ts';
 import { platformWalkPath, pathLength, walkPath } from '../src/three/walking.ts';
@@ -663,4 +663,35 @@ test('a watched load pays the inspection bonus and a watched wrong drop costs ex
   advance(m, INSPECTION_3D.durationMs);
   const end = m.drainEvents().find(event => event.type === 'inspection' && event.packageId === undefined);
   assert.match(end.message, /^INSPECTION OVER · 1 clean load · 2 wrong · [+]50$/);
+});
+
+test('an endless shift never ends on the clock, levels up each minute from the rush, and ends only when recovery overflows', () => {
+  const m = new ShiftModel3D({ endless: true, freightRandom: seededFreight(31) });
+  assert.equal(m.endless, true);
+  assert.equal(m.durationMs, Infinity);
+  m.capacity = 999;
+  const levels = [], arrivals = { early: 0, late: 0 };
+  let seenIds = 0;
+  for (let t = 0; t < 420_000; t += 10) {
+    m.update(10);
+    for (const event of m.drainEvents()) if (event.type === 'phase' && event.message.startsWith('LEVEL')) levels.push({ at: m.elapsedMs, message: event.message });
+    if (m.packages.length > seenIds) {
+      if (m.elapsedMs >= 140_000 && m.elapsedMs < 200_000) arrivals.early += m.packages.length - seenIds;
+      if (m.elapsedMs >= 360_000 && m.elapsedMs < 420_000) arrivals.late += m.packages.length - seenIds;
+      seenIds = m.packages.length;
+    }
+  }
+  assert.equal(m.ended, false, 'seven minutes in, still sorting');
+  assert.equal(m.phase, 'rush');
+  assert.equal(m.endlessLevel, 6);
+  assert.deepEqual(levels.map(({ at }) => at - at % 1000), [126_000, 186_000, 246_000, 306_000, 366_000]);
+  assert.match(levels[0].message, /^LEVEL 2 · freight every 2[.]8 seconds/);
+  assert.ok(arrivals.late > arrivals.early * 1.2, `more freight a minute later on: ${JSON.stringify(arrivals)}`);
+  assert.ok(m.beltSpeed > 69.25 * 1.15 && m.beltSpeed <= 69.25 * ENDLESS_3D.fastest + 0.01, `the belt speeds up, within its cap: ${m.beltSpeed}`);
+  m.capacity = 7;
+  for (let t = 0; t < 300_000 && !m.ended; t += 10) m.update(10);
+  assert.equal(m.ended, true, 'an untended endless shift overflows');
+  assert.equal(m.won, false);
+  const ordinary = new ShiftModel3D();
+  assert.deepEqual([ordinary.endless, ordinary.durationMs, ordinary.endlessLevel], [false, 180_000, 1], 'an ordinary night is unchanged');
 });

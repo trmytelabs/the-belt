@@ -18,7 +18,17 @@ export const BELT_STOPS_3D = { limit: 3, durationMs: 2_000, cooldownMs: 15_000 }
  * keep their pace, so the night starts the same way.
  */
 export const PEAK_NIGHT = { arrivals: 0.8, belt: 1.125, capacity: 6 } as const;
-export interface Shift3DOptions extends ShiftOptions { peak?: boolean }
+/**
+ * The endless shift, once a night is finished: no clock and no clean-up, only
+ * the belt, until recovery overflows. From the rush on, each minute is a level:
+ * freight comes 8% sooner (down to half the rush's gap) and the belt runs 5%
+ * faster (up to half as fast again).
+ */
+export const ENDLESS_3D = { rushAt: 126_000, levelMs: 60_000, sooner: 0.08, soonest: 0.5, faster: 0.05, fastest: 1.5 } as const;
+/** The endless shift's level at `elapsedMs`: 1 before the rush, 2 as it starts, then one more each minute. */
+export const endlessLevelAt = (elapsedMs: number): number =>
+  elapsedMs < ENDLESS_3D.rushAt ? 1 : 2 + Math.floor((elapsedMs - ENDLESS_3D.rushAt) / ENDLESS_3D.levelMs);
+export interface Shift3DOptions extends ShiftOptions { peak?: boolean; endless?: boolean }
 /**
  * Priority freight. Through the flow and the rush, every third parcel the player
  * could take (their own side's trucks and floor routes, not bulk, heavy freight or
@@ -47,6 +57,10 @@ export class ShiftModel3D extends ShiftModel {
   public override readonly capacity: number;
   /** A peak night: faster freight, a quicker belt and less room in recovery (`PEAK_NIGHT`). */
   public readonly peak: boolean;
+  /** The endless shift (`ENDLESS_3D`): no time limit, faster each minute. */
+  public readonly endless: boolean;
+  public override readonly durationMs: number;
+  private levelShown = 1;
   public override readonly cleanupMs = 25_000;
   public beltStopsRemaining: number = BELT_STOPS_3D.limit;
   /** Priority parcels marked this shift, and those the player delivered in time. */
@@ -65,13 +79,23 @@ export class ShiftModel3D extends ShiftModel {
     super(options);
     this.peak = options.peak === true;
     this.capacity = this.peak ? PEAK_NIGHT.capacity : 7;
+    this.endless = options.endless === true;
+    this.durationMs = this.endless ? Infinity : 180_000;
   }
+
+  /** The endless shift's level now (1 on an ordinary night). */
+  public get endlessLevel(): number { return this.endless ? endlessLevelAt(this.elapsedMs) : 1; }
   // Read during the base constructor too, before `peak` is set: the first parcel keeps the lesson's pace either way.
   protected override get freightFlow() {
+    if (this.endless) {
+      const gap = Math.max(ENDLESS_3D.soonest, 1 - ENDLESS_3D.sooner * Math.max(0, this.endlessLevel - 2));
+      return { ...ARRIVALS_3D, rushMs: ARRIVALS_3D.rushMs * gap };
+    }
     return this.peak ? { ...ARRIVALS_3D, flowMs: ARRIVALS_3D.flowMs * PEAK_NIGHT.arrivals, rushMs: ARRIVALS_3D.rushMs * PEAK_NIGHT.arrivals } : ARRIVALS_3D;
   }
   protected override speedAt(elapsedMs: number): number {
-    const speed = 50 + (super.speedAt(elapsedMs) - 50) * 0.55;
+    const base = 50 + (super.speedAt(elapsedMs) - 50) * 0.55;
+    const speed = this.endless ? base * Math.min(ENDLESS_3D.fastest, 1 + ENDLESS_3D.faster * Math.max(0, endlessLevelAt(elapsedMs) - 2)) : base;
     return this.peak ? speed * PEAK_NIGHT.belt : speed;
   }
   private placement: { x: number; row: number } | null = null;
@@ -141,7 +165,15 @@ export class ShiftModel3D extends ShiftModel {
 
   public override update(deltaMs: number, move: { x: number; y: number } = { x: 0, y: 0 }): void {
     super.update(deltaMs, move);
-    if (!this.paused && !this.ended) { this.updatePriority(); this.updateInspection(); }
+    if (!this.paused && !this.ended) { this.updatePriority(); this.updateInspection(); this.updateLevel(); }
+  }
+
+  /** An endless shift announces each new level as a phase. */
+  private updateLevel(): void {
+    const level = this.endlessLevel;
+    if (!this.endless || level <= this.levelShown) return;
+    this.levelShown = level;
+    this.emit('phase', `LEVEL ${level} · freight every ${(this.freightFlow.rushMs / 1000).toFixed(1)} seconds · the belt speeds up`, { x: 480, y: 122 });
   }
 
   /** Time left on the inspection under way, or 0. */

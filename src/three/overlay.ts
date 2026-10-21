@@ -173,6 +173,8 @@ const CSS = `
 export interface HudState {
   sorted: number; goal: number; score: number; timeLeftMs: number; backlog: number; capacity: number;
   phase: string; combo: number; worker: 'termite' | 'skanky'; hint: string; brake: string; overview: boolean; routes?: string; scanner?: string;
+  /** The clock's label when it shows something other than the time left (the endless shift's time survived). */
+  clockLabel?: string;
   /** Tonight's goals as HUD chips. */
   goals?: { text: string; state: 'met' | 'open' | 'lost' }[];
 }
@@ -218,7 +220,7 @@ export class Overlay {
         <div class="b3d-brand"><b>THE BELT</b><small>NIGHT SORT SIMULATOR</small></div>
         <div class="b3d-stat"><small>DISPATCHED</small><b data-f="sorted">00</b><div class="b3d-progress"><i data-f="bar"></i></div></div>
         <div class="b3d-stat"><small>YOUR SCORE</small><b data-f="score">00000</b></div>
-        <div class="b3d-stat time"><small>TIME LEFT</small><b data-f="time">03:00</b></div>
+        <div class="b3d-stat time"><small data-f="timelabel">TIME LEFT</small><b data-f="time">03:00</b></div>
         <div class="b3d-stat"><small>RECOVERY</small><div class="b3d-pips" data-f="pips"></div><span class="b3d-backlog" data-f="backlog"></span></div>
         <div class="b3d-phase"><span data-f="phase"></span><em data-f="combo"></em><div class="b3d-goal-chips" data-f="goals" aria-label="Tonight's goals"></div></div>
       </div>
@@ -390,9 +392,12 @@ export class Overlay {
 
   public updateHud(state: HudState): void {
     const f = this.fields;
-    f.sorted.textContent = `${String(state.sorted).padStart(2, '0')} / ${state.goal}`;
-    f.bar.style.width = `${Math.min(100, state.sorted / state.goal * 100)}%`;
+    // A goal of 0 is the endless shift's: no target, so no fraction and no progress bar.
+    f.sorted.textContent = state.goal > 0 ? `${String(state.sorted).padStart(2, '0')} / ${state.goal}` : String(state.sorted).padStart(2, '0');
+    f.bar.style.width = state.goal > 0 ? `${Math.min(100, state.sorted / state.goal * 100)}%` : '0%';
     f.score.textContent = String(state.score).padStart(5, '0');
+    const label = state.clockLabel ?? 'TIME LEFT';
+    if (f.timelabel.textContent !== label) f.timelabel.textContent = label;
     const seconds = Math.ceil(state.timeLeftMs / 1000);
     f.time.textContent = `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
     if (f.pips.childElementCount !== state.capacity) f.pips.innerHTML = '<i></i>'.repeat(state.capacity);
@@ -402,7 +407,7 @@ export class Overlay {
     f.backlog.title = `${state.capacity} packages in recovery ends the shift`;
     f.backlog.classList.toggle('urgent', state.backlog >= state.capacity - 2);
     f.phase.textContent = state.phase;
-    f.combo.textContent = state.combo > 1 ? `${state.combo} IN A ROW  /  +${Math.min(state.combo, 10) * 15} NEXT` : `TARGET  /  ${state.goal} CLEAN DISPATCHES`;
+    f.combo.textContent = state.combo > 1 ? `${state.combo} IN A ROW  /  +${Math.min(state.combo, 10) * 15} NEXT` : state.goal > 0 ? `TARGET  /  ${state.goal} CLEAN DISPATCHES` : 'NO TARGET  /  LAST AS LONG AS YOU CAN';
     f.worker.textContent = `● ${state.worker.toUpperCase()}`;
     f.worker.className = `b3d-worker ${state.worker}`;
     f.hint.textContent = state.hint;

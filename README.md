@@ -143,6 +143,10 @@ SORT!** countdown starts the shift.
 - Inspections: twice a night the supervisor on your side (Vic or Shan) watches
   you for 20 seconds. Each load meanwhile earns 50 points; a wrong drop costs
   30 more.
+- Endless shift: once a night is finished, N (or ENDLESS SHIFT) starts a shift
+  with no clock and no story. Each minute from the rush the freight comes
+  sooner and the belt runs faster, until recovery overflows. It keeps its own
+  best, apart from your nights.
 - Night goals: each night sets three optional goals, named in the briefing
   (for example, load 8 in a row, finish with nothing broken, make 3 priority
   parcels on time). They rotate with the nights recorded on this device, and the HUD tracks each one. A goal

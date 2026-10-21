@@ -682,7 +682,7 @@ export class CrewLife {
         crate.position.copy(toWorld({ x: mix(start.x, end.x, transfer), y: mix(start.y, end.y, transfer) }, BELT_HEIGHT + 0.06));
       }
       crate.visible = cycle < 0.85;
-      const coughClock = model.elapsedMs - ENGINES_3D.firstAt - 9000 - index * 6500;
+      const coughClock = Number.isFinite(model.durationMs) ? model.elapsedMs - ENGINES_3D.firstAt - 9000 - index * 6500 : -1;
       const coughing = coughClock >= 0 && coughClock % 19_000 < 1000 && !carrying;
       worker.setPoseAt(coughing ? 'cough' : 'none', wallTime);
       if (coughing) this.once(`unloader-cough-${index}-${Math.floor(coughClock / 19_000)}`, model.elapsedMs, 0, () => audioSystem.play('cough'));
@@ -849,6 +849,8 @@ export class CrewLife {
   }
 
   private updateExhaust(t: number, dt: number, wallTime: number, model: ShiftModel): void {
+    // An endless shift has no last minute: the trucks never start.
+    if (!Number.isFinite(model.durationMs)) return;
     // Near the end of the shift the drivers bring their keys while the belt keeps running.
     this.once('drivers', t, ENGINES_3D.driversAt, () => audioSystem.play('truck'));
     const driversVisible = t >= ENGINES_3D.driversAt && t < ENGINES_3D.driversAt + 5200;

@@ -377,7 +377,7 @@ export class ShiftModel {
     { id: 'skanky', x: 578, y: 500, side: 'right', heldId: null, facing: 'left', moving: false },
   ];
   public readonly packages: Parcel[] = [];
-  public readonly durationMs = 180_000;
+  public readonly durationMs: number = 180_000;
   public readonly cleanupMs: number = 10_000;
   public readonly goal = 42;
   public readonly capacity: number = 5;

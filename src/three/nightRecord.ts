@@ -12,6 +12,8 @@ export const RECORD_KEY = 'the-belt:3d-record:v1';
 export const OPENER_COUNT = 3;
 
 export interface BestNight { total: number; grade: string; sorted: number; date: string }
+/** The longest endless shift: freight dispatched (what ranks it), then seconds survived and points. */
+export interface EndlessBest { sorted: number; seconds: number; score: number; date: string }
 export interface NightRecord {
   /** Nights that reached the results: finished shifts and failed ones alike. */
   played: number;
@@ -22,13 +24,15 @@ export interface NightRecord {
   openers: string[];
   /** The medals earned so far, by id (`medals.ts`). */
   medals: string[];
+  /** The best endless shift, if any; endless shifts are not nights and leave the rest alone. */
+  endless: EndlessBest | null;
 }
 export interface NightResult { won: boolean; total: number; grade: string; sorted: number; opener: string; date: string }
 
 /** The subset of the Web Storage API the record needs, so the model tests can hand in a stand-in. */
 export interface RecordStorage { getItem(key: string): string | null; setItem(key: string, value: string): void }
 
-export const emptyRecord = (): NightRecord => ({ played: 0, completed: 0, best: null, openers: [], medals: [] });
+export const emptyRecord = (): NightRecord => ({ played: 0, completed: 0, best: null, openers: [], medals: [], endless: null });
 
 const count = (value: unknown): number => typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.floor(value) : 0;
 
@@ -44,7 +48,10 @@ export function loadRecord(storage: RecordStorage | null): NightRecord {
     const openers = Array.isArray(data.openers) ? [...new Set(data.openers.filter((id): id is string => typeof id === 'string' && /^opener-\d$/.test(id)))] : [];
     const played = count(data.played);
     const medals = Array.isArray(data.medals) ? [...new Set(data.medals.filter((id): id is string => typeof id === 'string' && MEDAL_IDS.has(id)))] : [];
-    return { played, completed: Math.min(count(data.completed), played), best, openers, medals };
+    const endless = data.endless && typeof data.endless === 'object'
+      ? { sorted: count(data.endless.sorted), seconds: count(data.endless.seconds), score: count(data.endless.score), date: String(data.endless.date ?? '').slice(0, 10) }
+      : null;
+    return { played, completed: Math.min(count(data.completed), played), best, openers, medals, endless };
   } catch {
     return emptyRecord();
   }
@@ -74,10 +81,18 @@ export function recordNight(record: NightRecord, night: NightResult): { record: 
       best: newBest ? { total: night.total, grade: night.grade, sorted: night.sorted, date: night.date } : previous,
       openers: record.openers.includes(night.opener) ? record.openers : [...record.openers, night.opener],
       medals: record.medals,
+      endless: record.endless,
     },
     newBest,
     previous,
   };
+}
+
+/** The record after an endless shift, whether it beat the best (more dispatched, or as many for longer), and that best. */
+export function recordEndless(record: NightRecord, run: EndlessBest): { record: NightRecord; newBest: boolean; previous: EndlessBest | null } {
+  const previous = record.endless;
+  const newBest = previous === null || run.sorted > previous.sorted || (run.sorted === previous.sorted && run.seconds > previous.seconds);
+  return { record: newBest ? { ...record, endless: { ...run } } : record, newBest, previous };
 }
 
 /** The browser's local storage, or null where it is unavailable or blocked. */

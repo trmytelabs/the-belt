@@ -2,6 +2,14 @@
 
 ## 0.1.0 — development snapshot
 
+- Add an endless shift to the 3D game, unlocked beside the peak night once a
+  night is finished (N, or ENDLESS SHIFT on the briefing). It starts straight
+  into the countdown with no story around it and no lunch break, and has no
+  clock: from the rush on each minute is a level, with freight 8% sooner (to
+  half the rush's gap) and the belt 5% faster (to half as fast again), until
+  recovery overflows. The HUD counts the time survived and the level; the
+  trucks never start their engines. Its results keep their own best (most
+  dispatched, then longest) in the record without counting as a night.
 - Add inspections to the 3D shift. Twice a night, at 0:58 in the flow and at
   2:28 in the rush, the supervisor on the player's side (Vic on Termite's,
   Shan on Skanky's) watches for 20 seconds, looking at the player's worker

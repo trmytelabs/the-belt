@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { OPENER_COUNT, RECORD_KEY, emptyRecord, formatTotal, loadRecord, recordNight, saveRecord } from '../src/three/nightRecord.ts';
+import { OPENER_COUNT, RECORD_KEY, emptyRecord, formatTotal, loadRecord, recordEndless, recordNight, saveRecord } from '../src/three/nightRecord.ts';
 
 // The player's record between nights.
 
@@ -14,7 +14,7 @@ test('a first finished night is recorded as the best, with its opener', () => {
   const { record, newBest, previous } = recordNight(emptyRecord(), night());
   assert.equal(newBest, true);
   assert.equal(previous, null);
-  assert.deepEqual(record, { played: 1, completed: 1, best: { total: 5000, grade: 'A', sorted: 50, date: '2026-10-21' }, openers: ['opener-1'], medals: [] });
+  assert.deepEqual(record, { played: 1, completed: 1, best: { total: 5000, grade: 'A', sorted: 50, date: '2026-10-21' }, openers: ['opener-1'], medals: [], endless: null });
 });
 
 test('only a higher total from a finished shift beats the best; a failed night still counts as played', () => {
@@ -44,8 +44,8 @@ test('the record round-trips through storage and a bad or missing one reads as e
   assert.deepEqual(loadRecord(null), emptyRecord());
   assert.equal(saveRecord(null, record), false);
   // Tampered values are cleaned rather than trusted.
-  const odd = loadRecord(memory({ [RECORD_KEY]: JSON.stringify({ played: -4, completed: 9, best: { total: 1e3, grade: 'SSS', sorted: 'x' }, openers: ['opener-2', 'opener-2', '<script>', 7], medals: ['s-rank', 's-rank', 'bogus', 3] }) }));
-  assert.deepEqual(odd, { played: 0, completed: 0, best: { total: 1000, grade: 'SS', sorted: 0, date: '' }, openers: ['opener-2'], medals: ['s-rank'] });
+  const odd = loadRecord(memory({ [RECORD_KEY]: JSON.stringify({ played: -4, completed: 9, best: { total: 1e3, grade: 'SSS', sorted: 'x' }, openers: ['opener-2', 'opener-2', '<script>', 7], medals: ['s-rank', 's-rank', 'bogus', 3], endless: { sorted: 3.7, seconds: -2, score: 'x' } }) }));
+  assert.deepEqual(odd, { played: 0, completed: 0, best: { total: 1000, grade: 'SS', sorted: 0, date: '' }, openers: ['opener-2'], medals: ['s-rank'], endless: { sorted: 3, seconds: 0, score: 0, date: '' } });
 });
 
 test('a storage that throws keeps the game going without a record', () => {
@@ -59,4 +59,20 @@ test('a storage that throws keeps the game going without a record', () => {
 test('a night carries the medals already earned, which only the medal step adds to', () => {
   const held = { ...emptyRecord(), medals: ['first-shift'] };
   assert.deepEqual(recordNight(held, night()).record.medals, ['first-shift']);
+});
+
+test('an endless shift keeps its own best, ranked by freight dispatched and then time, and leaves the nights alone', () => {
+  const run = (sorted, seconds) => ({ sorted, seconds, score: sorted * 100, date: '2026-10-21' });
+  const first = recordEndless(emptyRecord(), run(40, 300));
+  assert.equal(first.newBest, true); assert.equal(first.previous, null);
+  assert.deepEqual(first.record, { ...emptyRecord(), endless: run(40, 300) }, 'played, best night and medals untouched');
+  assert.equal(recordEndless(first.record, run(39, 900)).newBest, false, 'fewer dispatched never beats it');
+  assert.equal(recordEndless(first.record, run(40, 299)).newBest, false);
+  const longer = recordEndless(first.record, run(40, 301));
+  assert.equal(longer.newBest, true, 'as many, for longer');
+  assert.deepEqual(longer.previous, run(40, 300));
+  const store = memory();
+  saveRecord(store, longer.record);
+  assert.deepEqual(loadRecord(store).endless, run(40, 301));
+  assert.deepEqual(recordNight(longer.record, night()).record.endless, run(40, 301), 'a night carries the endless best');
 });

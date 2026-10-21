@@ -510,6 +510,24 @@ try {
   assert.ok(medalList.find((medal) => medal.title === 'FIRST SHIFT')?.earned, JSON.stringify(medalList));
   await page.getByRole('button', { name: /BACK/ }).click();
   await page.getByRole('button', { name: /START THE NIGHT/ }).waitFor();
+  // The endless shift, unlocked by a finished night: N starts it straight into the countdown with a clock that counts up,
+  // and when recovery overflows its results keep their own best without counting a night.
+  await page.keyboard.press('KeyN');
+  await wait(() => window.fixtureApp.state === 'playing' && window.fixtureApp.model.endless);
+  await wait(() => document.querySelector('[data-f=timelabel]').textContent === 'SURVIVED' && document.querySelector('[data-f=phase]').textContent.startsWith('ENDLESS'));
+  assert.equal(await read(() => window.fixtureApp.model.durationMs), Infinity);
+  assert.deepEqual(await read(() => [document.querySelector('[data-f=sorted]').textContent.includes('/'), document.querySelector('[data-f=combo]').textContent]), [false, 'NO TARGET  /  LAST AS LONG AS YOU CAN'], 'no target on an endless shift');
+  await read(() => window.fixtureApp.model.finish(false, 'Recovery bay full'));
+  await wait(() => window.fixtureApp.state === 'ended');
+  const endless = await page.locator('.b3d-panel').innerText();
+  assert.match(endless, /ENDLESS SHIFT [/] LEVEL 1/);
+  assert.match(endless, /THE BELT WINS/);
+  assert.match(endless, /NEW ENDLESS BEST/);
+  const afterEndless = await read(() => JSON.parse(window.localStorage.getItem('the-belt:3d-record:v1')));
+  assert.equal(afterEndless.played, 2, 'an endless shift is not a night');
+  assert.ok(afterEndless.endless && afterEndless.endless.sorted >= 0, JSON.stringify(afterEndless.endless));
+  await page.keyboard.press('Enter');
+  await wait(() => window.fixtureApp.state === 'briefing' && !window.fixtureApp.model.endless);
   // A finished night unlocks the peak night beside the ordinary one; Enter still starts the ordinary night.
   assert.match(await page.locator('.b3d-panel').innerText(), /PEAK NIGHT UNLOCKED/);
   assert.ok(await page.locator('button[data-action="peak"]').isVisible(), 'the PEAK NIGHT button shows');
