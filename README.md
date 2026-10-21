@@ -303,7 +303,11 @@ loopback server, real opening inputs and isolated synthetic clock/cargo fixtures
 for later events and edge cases. TypeScript strict checking is enabled. Dependabot maintains
 compatible dependencies; major upgrades require a separate planned review.
 
-CI checks the real Canvas fallback on GPU-free Linux and Windows runners. Local
+CI runs on the owner's own Windows PC, a self-hosted GitHub Actions runner
+labelled `belt-pc`, so checks use no GitHub Actions minutes; that PC has to be on
+and logged in for checks to run, and they wait in a queue otherwise. The browser
+suites use Edge with software WebGL there, as on GPU-free hosted runners, so CI
+still checks the real Canvas fallback. Local
 checks retain the default renderer unless `BELT_BROWSER_RENDERER=canvas` is set.
 The Windows job runs the original game's smoke and audio checks; neither job
 changes the production game configuration or bypasses its countdown. The default WebGL renderer still

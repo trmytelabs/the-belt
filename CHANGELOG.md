@@ -2,6 +2,10 @@
 
 ## 0.1.0 — development snapshot
 
+- Run CI on the owner's own Windows PC, a self-hosted GitHub Actions runner
+  labelled `belt-pc`, after the account's hosted minutes ran out. Both required
+  checks keep their names and suites; the browser suites use Edge with software
+  WebGL, as on the hosted runners, instead of Playwright's Chromium.
 - Give the 3D depot some distant life: while sorting goes on, every 11 to 19
   seconds a far-off sound plays, quiet and low-passed: a forklift's reversing
   beeper, the PA's two-tone chime or a pallet set down. They stop with the
