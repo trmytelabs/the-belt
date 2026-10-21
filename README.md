@@ -37,7 +37,10 @@ Arms stay beside the torso with natural elbow bends during walking, carrying
 and gestures. Walking leans the torso in and sways it with each step; a heavy
 box pulls the carrier back onto their heels; grabbing, loading and putting down
 dip the knees, and a throw swings the arms. Termite and Skanky's heads turn
-toward the parcel they are about to grab or the drop they are carrying to.
+toward the parcel they are about to grab or the drop they are carrying to, and
+everyone else turns theirs to whoever is speaking nearby or a worker passing
+close by. Footsteps land when the visible feet do, softer with distance and
+hollower on the steel deck, and the crew's lifts and set-downs are heard too.
 Cars use two detailed sedan models, and the devil uses an animated
 horned, winged model. These compact CC0 models retain the existing story paths
 and have procedural fallbacks; see [prop sources](public/models/PROP-SOURCES.md).

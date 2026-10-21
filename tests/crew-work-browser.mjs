@@ -63,6 +63,30 @@ try {
   }
   console.log('PASS 3D scrum cast walks continuously to work; residents, Shan and playable workers remain present');
 
+  // Attention: a line from Shan turns the heads of the crew in earshot toward him, by the look record and the head itself.
+  const attention = await read(() => {
+    const app = window.fixtureApp, crew = app.crew, shan = crew.actor('shan');
+    shan.root.visible = true;
+    crew.say('shan', 'HEADS UP', 4000);
+    // The crew step by hand, so the check does not depend on the frame rate.
+    for (let i = 0; i < 40; i++) crew.update(1 / 30, app.model, app.time + (i + 1) / 30);
+    const head = { x: shan.root.position.x, y: shan.root.position.y + shan.character.headHeight * 0.92, z: shan.root.position.z };
+    const report = [];
+    for (const [id, actor] of crew.actors) {
+      if (id === 'shan' || !actor.root.visible || actor.pose !== 'none' || crew.staged.has(id)) continue;
+      const dx = head.x - actor.root.position.x, dz = head.z - actor.root.position.z, raw = Math.atan2(dx, dz) - actor.root.rotation.y;
+      report.push({ id, distance: Math.hypot(dx, dz), bearing: Math.atan2(Math.sin(raw), Math.cos(raw)), look: actor.look, yaw: actor.character.head.rotation.y, head });
+    }
+    return report;
+  });
+  const listeners = attention.filter(a => a.distance < 9 && Math.abs(a.bearing) <= 1.75);
+  assert.ok(listeners.length >= 1, `someone stands in earshot of Shan: ${JSON.stringify(attention.map(a => ({ id:a.id, d:+a.distance.toFixed(1), b:+a.bearing.toFixed(2) })))}`);
+  for (const a of listeners) {
+    assert.ok(a.look && Math.hypot(a.look.x - a.head.x, a.look.z - a.head.z) < 0.01, `${a.id} looks at Shan: ${JSON.stringify(a.look)}`);
+    if (Math.abs(a.bearing) > 0.15) assert.ok(Math.sign(a.yaw) === Math.sign(a.bearing) && Math.abs(a.yaw) > 0.05, `${a.id}'s head turns his way: yaw ${a.yaw.toFixed(2)} for bearing ${a.bearing.toFixed(2)}`);
+  }
+  console.log(`PASS 3D crew in earshot look at the speaker (${listeners.map(a => a.id).join(', ')})`);
+
   const work = await read(() => {
     const app = window.fixtureApp, crew = app.crew;
     app.state = 'paused'; crew.reset();

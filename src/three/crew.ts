@@ -6,7 +6,8 @@ import {
 import { DRIVERS, SHAN_BREAKAGE_LINES } from '../game/slice/StoryScript';
 import type { Parcel, ShiftEvent, ShiftModel } from '../game/slice/ShiftModel';
 import { audioSystem } from './audio';
-import { animateCharacter, bendElbows, bendKnees, blendPose, createCharacter, faceToward, mergeCharacter, snapshotPose, type Character } from './characters';
+import { animateCharacter, bendElbows, bendKnees, blendPose, createCharacter, faceToward, lookToward, mergeCharacter, snapshotPose, type Character } from './characters';
+import { eyeHeight, gazeInFigureFrame, lookTargetFor, type Gaze, type Speaker } from './attention';
 import { plantFeet } from './footing';
 import { SEATED_BODY_DROP } from './figure';
 
@@ -46,6 +47,8 @@ export class Actor {
   /** The arms keep a hand-set pose (Kylie's raised cup) while an imported model plays its clips. */
   public holding = false;
   public faceAngle: number | null = null;
+  /** What has this person's attention (a speaker, a passing worker), in world coordinates; the head turns to it while unposed. */
+  public look: Gaze | null = null;
   private readonly previous = new THREE.Vector3();
   private moved = false;
   private heading = 0;
@@ -79,7 +82,9 @@ export class Actor {
     if (c.motion) { c.motion.pose = this.pose; c.motion.holding = this.holding; }
     // A posed figure owns its torso; a plain walk keeps the walk cycle's lean and sway.
     if (this.pose !== 'none') c.body.rotation.set(0, 0, 0);
-    c.head.rotation.set(0, 0, 0);
+    // Unposed, the head turns to whatever has this person's attention and eases back when nothing does; a gag owns the head.
+    if (this.pose === 'none') lookToward(c, this.look ? gazeInFigureFrame(c, this.look) : null, dt, reducedMotion);
+    else c.head.rotation.set(0, 0, 0);
     applyPose(c, this.pose, time - this.poseStart, reducedMotion);
     blendPose(c, time);
     // Walking the stairs or an aisle's steps, each foot stands on its own tread; a gag keeps its pose.
@@ -272,9 +277,15 @@ export class CrewLife {
   public readonly breakageLines: string[] = [];
   private shanVisit: { start: number; line: string; spoken: boolean; from: { x: number; y: number }; to: { x: number; y: number } } | null = null;
 
+  /** Who is speaking, and until when (wall time), so the people in earshot look at them. */
+  private readonly spoke = new Map<string, number>();
+  private wallTime = 0;
+  /** Handling foley at a place in the depot (the crew's lifts and drops); the game sets the distance fall-off. */
+  public foley: (effect: 'grab' | 'drop', at: THREE.Vector3) => void = () => undefined;
+
   constructor(world: DepotWorld, say: Say) {
     this.world = world;
-    this.say = say;
+    this.say = (id, copy, durationMs) => { this.noteSpeech(id, durationMs); say(id, copy, durationMs); };
     this.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     for (const [id, resident] of world.residents) this.actors.set(id, new Actor(resident.character));
     for (const id of ['kylie', 'shan', 'john', 'vic'] as const) {
@@ -512,7 +523,33 @@ export class CrewLife {
   }
 
   /** Runs only while the shift clock runs. */
+  /** Notes that `id` speaks for `durationMs` from now, so the crew in earshot look over (the workers' lines come through here too). */
+  public noteSpeech(id: string, durationMs: number): void {
+    this.spoke.set(id, this.wallTime + durationMs / 1000);
+  }
+
+  /** Who looks at whom: a voice within earshot, else a worker passing close by, else nobody. */
+  private updateLooks(model: ShiftModel, wallTime: number): void {
+    const speakers: Speaker[] = [];
+    for (const [id, until] of this.spoke) {
+      if (until <= wallTime) { this.spoke.delete(id); continue; }
+      const actor = this.actors.get(id);
+      if (actor) {
+        if (actor.root.visible) speakers.push({ id, until, x: actor.root.position.x, z: actor.root.position.z, y: actor.root.position.y + eyeHeight(actor.character.headHeight) });
+        continue;
+      }
+      const worker = model.workers.find((w) => w.id === id);
+      if (worker) { const at = toWorld(worker, actorSurfaceAt(worker.x, worker.y)); speakers.push({ id, until, x: at.x, z: at.z, y: at.y + 1.6 }); }
+    }
+    const workers: Gaze[] = model.workers.map((worker) => { const at = toWorld(worker, actorSurfaceAt(worker.x, worker.y)); return { x: at.x, z: at.z, y: at.y + 1.6 }; });
+    for (const [id, actor] of this.actors) {
+      if (!actor.root.visible || this.staged.has(id)) continue;
+      actor.look = lookTargetFor({ id, x: actor.root.position.x, z: actor.root.position.z, facing: actor.root.rotation.y }, wallTime, speakers, workers);
+    }
+  }
+
   public update(dt: number, model: ShiftModel, wallTime: number): void {
+    this.wallTime = wallTime;
     const t = model.elapsedMs;
     const reserved = this.advanceWorkWalk(dt);
 
@@ -561,6 +598,7 @@ export class CrewLife {
       shan.character.skinMaterial.color.setHex(0xe8b98f).lerp(new THREE.Color(0xd8453a), Math.min(1, anger * 1.4));
       if (!shanVisible) shan.pose = 'none';
     }
+    this.updateLooks(model, wallTime);
     this.animate(dt, wallTime);
   }
 
@@ -594,6 +632,7 @@ export class CrewLife {
       // Leave the trailer into the side aisle before walking down alongside
       // the feeder; the old diagonal crossed its first guard and support leg.
       worker.place(mix(trailerX, trailerX + side * 34, Math.min(1, p * 2)), mix(-205, -122, Math.max(0, p * 2 - 1)));
+      if (carrying !== worker.carrying) this.foley(carrying ? 'grab' : 'drop', worker.root.position);
       worker.carrying = carrying;
       const crate = this.unloaderCrates[index];
       if (carrying) {
@@ -941,6 +980,8 @@ export class CrewLife {
       const atRest = from === start && to === start;
       actor.faceAngle = atRest ? (start.x < 480 ? Math.PI / 2 - 0.5 : -Math.PI / 2 + 0.5) : null;
       const carrying = clock > 0 && cycle >= 1300 && cycle < 4300;
+      // The lift off the belt and the set-down are heard, softer the further from the camera.
+      if (carrying !== actor.carrying) this.foley(carrying ? 'grab' : 'drop', actor.root.position);
       actor.carrying = carrying;
       if (id === 'hussan' && actor.pose !== 'cough' && actor.pose !== 'swear') actor.pose = atRest && cycle > 7500 ? 'phone' : 'none';
       view.root.visible = !!trip && cycle < 4300;

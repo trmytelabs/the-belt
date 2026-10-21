@@ -25,8 +25,9 @@ import {
   type StoryActor, type StoryBeat, type StoryScene,
 } from '../game/slice/StoryScript';
 import { audioSystem, type SoundEffect } from './audio';
-import { clipRoleOf, syncCharacterModels, useCharacterClips, useCharacterModels, type CharacterModelEntry } from './characterModels';
+import { clipRoleOf, modelFeet, syncCharacterModels, useCharacterClips, useCharacterModels, type CharacterModelEntry } from './characterModels';
 import { plantFeet } from './footing';
+import { footfall } from './footsteps';
 import { animateCharacter, createCharacter, lookToward, mergeCharacter, triggerAction, type Character } from './characters';
 import { CrewLife } from './crew';
 import { MesaDream } from './dream';
@@ -254,6 +255,7 @@ export class Belt3d {
     }
     this.crew = new CrewLife(this.world, (id, copy, ms) => this.say(id, copy, ms));
     this.crew.caption = (text) => this.overlay.showToast(text, 2600);
+    this.crew.foley = (effect, at) => audioSystem.playNear(effect, this.nearness(at));
     this.setPieces = new SetPieces(this.world, this.crew, (id, copy, ms) => this.say(id, copy, ms));
     this.mesa = new MesaEncounter(this.overlay, this.crew, {
       say: (id, copy, ms) => this.say(id, copy, ms),
@@ -1029,6 +1031,7 @@ export class Belt3d {
     if (!depotStory) this.syncWorkers(running || this.state === 'countdown' ? dt : 0);
     if (this.state === 'playing' || this.state === 'countdown' || this.state === 'briefing') this.clearCrewFootprints();
     this.syncParcels(running ? dt : 0);
+    this.footsteps();
     this.world.updateTruckInterior(m.activeWorker);
     this.updateCamera(dt);
     this.updateHud();
@@ -1255,7 +1258,30 @@ export class Belt3d {
   private say(id: string, copy: string, durationMs: number): void {
     const name = id === 'termite' || id === 'skanky' ? id.toUpperCase() : this.crew.characterFor(id)?.root.name ?? id.toUpperCase();
     this.overlay.say(id, name, copy, durationMs, this.speakerAnchor(id));
+    this.crew.noteSpeech(id, durationMs);
     audioSystem.play('npc-talk');
+  }
+
+  /** The volume fall-off for a sound made at `at`, by its distance from the active camera. */
+  private nearness(at: THREE.Vector3): number {
+    const distance = this.activeCamera().position.distanceTo(at);
+    return Math.max(0, 1 - distance / 18) ** 2;
+  }
+
+  /** Footsteps for everyone walking in view: the workers, the crew and a scene's cast, read off their feet. */
+  private footsteps(): void {
+    const characters: Character[] = Object.values(this.workers);
+    for (const actor of this.crew.actors.values()) if (actor.root.visible) characters.push(actor.character);
+    if (this.usesStage()) for (const actor of this.stage.castActors()) if (actor.root.visible && !actor.seatedIn) characters.push(actor.character);
+    for (const character of characters) {
+      if (!character.root.visible) continue;
+      const foot = footfall(character, modelFeet(character), this.time);
+      if (!foot || !character.motion?.moving) continue;
+      const gain = this.nearness(character.root.position) * character.root.scale.x;
+      if (gain <= 0.02) continue;
+      // The raised deck is steel and knocks; the floor, the lot and the street are concrete.
+      audioSystem.footstep(gain, !this.usesStage() && character.root.position.y >= PLATFORM_HEIGHT - 0.05 ? 'deck' : 'floor');
+    }
   }
 
   private syncWorkers(dt: number): void {

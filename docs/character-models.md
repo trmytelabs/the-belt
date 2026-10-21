@@ -130,6 +130,30 @@ bald, clothed male avatar with glasses fitted in front of the face; the glasses
 remain visible when the procedural figure is hidden. These two recasts replace
 only their own GLBs and retain their existing dialogue, props and animations.
 
+## Attention and footsteps
+
+Unposed characters look at things (`attention.ts`). In the depot
+`CrewLife.updateLooks` gives each visible, unstaged actor a world point to look
+at: the head of the nearest person speaking within 9 m (a line through
+`say`, or a worker's line noted by `noteSpeech`), else the head of a worker
+within 3.2 m, else nothing; targets more than 100° off the facing are ignored, so
+nobody looks over a shoulder. In a story scene `StoryStage.updateLooks` has the
+cast look at the beat's speaker and the speaker at the nearest listener.
+`Actor.animate` and `StageActor.animate` ease the head there with
+`lookToward` (which takes a target height now, so another head is looked at
+level and a parcel down), and a gag or gesture still owns the head.
+
+Footsteps are read off the feet (`footsteps.ts`): an attached model's foot
+bones (`modelFeet`) or the figure's ankles. A foot that rises off its recent
+floor and stops descending has landed; the remembered floor follows a step down
+and climbs back slowly, so the stairs count. `Belt3d.footsteps` runs it for the
+workers, the crew and a scene's cast each frame and plays `DepotAudio.footstep`
+with a gain by distance from the active camera, hollower on the raised deck.
+The crew's lifts and set-downs call `DepotAudio.playNear` the same way. The
+classic game's `SoundEffect` list is untouched. `tests/footsteps-model.mjs`
+checks the detector and the look choice; the crew-work browser suite checks
+that a line from Shan turns the heads in earshot.
+
 ## Converting Rocketbox avatars
 
 Rocketbox ships 3ds Max FBX files with 2048 px TGA textures. The converter in

@@ -664,25 +664,7 @@ export function animateCharacter(character: Character, dt: number, state: {
   character.body.rotation.z = ease(character.body.rotation.z, walking ? Math.sin(phase) * 0.022 : 0);
 }
 
-/**
- * Turns the head toward a point (in the character root's frame), within the
- * neck's comfortable range, easing over a few frames. Pass `null` to look ahead.
- */
-export function lookToward(character: Character, target: { x: number; z: number } | null, dt: number, reducedMotion = false): void {
-  let yaw = 0;
-  let pitch = 0;
-  if (target && !reducedMotion) {
-    const distance = Math.hypot(target.x, target.z);
-    if (distance > 1e-3) {
-      // The figure faces +Z and its left side is -X: a point straight ahead has yaw 0, to its left negative.
-      yaw = Math.max(-1.0, Math.min(1.0, Math.atan2(target.x, target.z)));
-      pitch = distance < 2.8 ? 0.2 : 0.08;
-    }
-  }
-  const ease = Math.min(1, dt * 8);
-  character.head.rotation.y += (yaw - character.head.rotation.y) * ease;
-  character.head.rotation.x += (pitch - character.head.rotation.x) * ease;
-}
+export { lookToward } from './attention';
 
 
 /**

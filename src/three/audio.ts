@@ -49,6 +49,7 @@ export class DepotAudio extends AudioSystem {
   private readonly foleyBuffers = new Map<string, AudioBuffer>();
   private readonly foleyVoices = new Map<AudioBufferSourceNode, GainNode>();
   private readonly variations = new Map<string, number>();
+  private stepIndex = 0;
 
   public override async unlock(): Promise<void> {
     await super.unlock();
@@ -110,14 +111,36 @@ export class DepotAudio extends AudioSystem {
     source.start(start); source.stop(start + duration);
   }
 
-  private recordedFoley(effect: SoundEffect | 'drive-collision'): boolean {
+  /**
+   * A footstep in view: a short scuff with a knock under it, hollower on the
+   * steel deck than on the concrete floor. `gain` is the distance fall-off from
+   * the camera, so a crowd at the far end of the depot is a murmur.
+   */
+  public footstep(gain: number, surface: 'floor' | 'deck' = 'floor'): void {
+    const context = this.getContext();
+    if (!context || this.muted || gain <= 0.01) return;
+    const now = context.currentTime + 0.004;
+    const step = this.stepIndex++;
+    const rate = 0.92 + (step % 5) * 0.04;
+    const deck = surface === 'deck';
+    this.noise(now, 0.055, (deck ? 520 : 380) * rate, 0.11 * gain);
+    this.voice((deck ? 110 : 72) * rate, 0.08, now, (deck ? 0.045 : 0.03) * gain, { type: 'triangle', end: 38, cutoff: 320, attack: 0.004 });
+  }
+
+  /** Recorded handling foley heard from a distance (the crew's lifts and drops); `gain` is the distance fall-off. */
+  public playNear(effect: 'grab' | 'drop', gain: number): void {
+    if (!this.getContext() || this.muted || gain <= 0.01) return;
+    this.recordedFoley(effect, gain);
+  }
+
+  private recordedFoley(effect: SoundEffect | 'drive-collision', gain = 1): boolean {
     const cue = FOLEY[effect];
     if (!cue) return false;
     const available = cue.files.filter(file => this.foleyBuffers.has(file));
     if (!available.length) return false;
     const index = this.variations.get(effect) ?? 0;
     this.variations.set(effect, index + 1);
-    this.sample(this.foleyBuffers.get(available[index % available.length])!, cue.volume, [0.97, 1.015, 1][index % 3], cue.cutoff ?? 4000);
+    this.sample(this.foleyBuffers.get(available[index % available.length])!, cue.volume * gain, [0.97, 1.015, 1][index % 3], cue.cutoff ?? 4000);
     if (effect === 'correct' && this.foleyBuffers.has('click_002')) this.sample(this.foleyBuffers.get('click_002')!, 0.1, 1, 3000, 0.08);
     return true;
   }
