@@ -457,6 +457,9 @@ try {
   assert.equal(stored.played, 1);
   assert.equal(stored.completed, 1);
   assert.ok(stored.best.total > 0 && /^opener-\d$/.test(stored.openers[0]), `the night is recorded: ${JSON.stringify(stored)}`);
+  // The first finished shift earns its medal, named on the results and kept with the record.
+  assert.match(results, /MEDAL · FIRST SHIFT · Finish a shift/);
+  assert.ok(stored.medals.includes('first-shift'), `the medal is kept: ${JSON.stringify(stored.medals)}`);
   assert.deepEqual(await read(() => window.fixtureApp.story.visited.slice(-9)),
     ['shift', 'clockout', 'assignment', 'to-mall', 'mall', 'to-ups', 'return', 'home', 'results']);
   assert.deepEqual(errors, []);
@@ -499,7 +502,7 @@ try {
   // The briefing shows the record so far: two nights reached the results (the finale and the synthetic regression), both finished.
   // Two nights on record: the third night's goals are the rotation's third set.
   assert.match(await page.locator('.b3d-panel').innerText(), /TONIGHT’S GOALS · [+]150 EACH: Finish with 2 or fewer missed · Load 8 in a row · Finish with no wrong drops/);
-  assert.match(await page.locator('.b3d-panel').innerText(), /YOUR RECORD · 2 OF 2 NIGHTS FINISHED · BEST NIGHT \d{5} · GRADE [SABCDF] · 1 OF 3 OPENERS SEEN/);
+  assert.match(await page.locator('.b3d-panel').innerText(), /YOUR RECORD · 2 OF 2 NIGHTS FINISHED · BEST NIGHT \d{5} · GRADE [SABCDF] · 1 OF 3 OPENERS SEEN · \d+ OF 10 MEDALS/);
   // A finished night unlocks the peak night beside the ordinary one; Enter still starts the ordinary night.
   assert.match(await page.locator('.b3d-panel').innerText(), /PEAK NIGHT UNLOCKED/);
   assert.ok(await page.locator('button[data-action="peak"]').isVisible(), 'the PEAK NIGHT button shows');

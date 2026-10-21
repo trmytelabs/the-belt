@@ -14,7 +14,7 @@ test('a first finished night is recorded as the best, with its opener', () => {
   const { record, newBest, previous } = recordNight(emptyRecord(), night());
   assert.equal(newBest, true);
   assert.equal(previous, null);
-  assert.deepEqual(record, { played: 1, completed: 1, best: { total: 5000, grade: 'A', sorted: 50, date: '2026-10-21' }, openers: ['opener-1'] });
+  assert.deepEqual(record, { played: 1, completed: 1, best: { total: 5000, grade: 'A', sorted: 50, date: '2026-10-21' }, openers: ['opener-1'], medals: [] });
 });
 
 test('only a higher total from a finished shift beats the best; a failed night still counts as played', () => {
@@ -44,8 +44,8 @@ test('the record round-trips through storage and a bad or missing one reads as e
   assert.deepEqual(loadRecord(null), emptyRecord());
   assert.equal(saveRecord(null, record), false);
   // Tampered values are cleaned rather than trusted.
-  const odd = loadRecord(memory({ [RECORD_KEY]: JSON.stringify({ played: -4, completed: 9, best: { total: 1e3, grade: 'SSS', sorted: 'x' }, openers: ['opener-2', 'opener-2', '<script>', 7] }) }));
-  assert.deepEqual(odd, { played: 0, completed: 0, best: { total: 1000, grade: 'SS', sorted: 0, date: '' }, openers: ['opener-2'] });
+  const odd = loadRecord(memory({ [RECORD_KEY]: JSON.stringify({ played: -4, completed: 9, best: { total: 1e3, grade: 'SSS', sorted: 'x' }, openers: ['opener-2', 'opener-2', '<script>', 7], medals: ['s-rank', 's-rank', 'bogus', 3] }) }));
+  assert.deepEqual(odd, { played: 0, completed: 0, best: { total: 1000, grade: 'SS', sorted: 0, date: '' }, openers: ['opener-2'], medals: ['s-rank'] });
 });
 
 test('a storage that throws keeps the game going without a record', () => {
@@ -54,4 +54,9 @@ test('a storage that throws keeps the game going without a record', () => {
   assert.equal(saveRecord(broken, emptyRecord()), false);
   assert.equal(formatTotal(5950), '05950');
   assert.equal(formatTotal(-3), '00000');
+});
+
+test('a night carries the medals already earned, which only the medal step adds to', () => {
+  const held = { ...emptyRecord(), medals: ['first-shift'] };
+  assert.deepEqual(recordNight(held, night()).record.medals, ['first-shift']);
 });

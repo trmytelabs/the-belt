@@ -6,6 +6,8 @@
  * private window) just means no record: the game plays the same without one.
  */
 
+import { MEDAL_IDS } from './medals.ts';
+
 export const RECORD_KEY = 'the-belt:3d-record:v1';
 export const OPENER_COUNT = 3;
 
@@ -18,13 +20,15 @@ export interface NightRecord {
   best: BestNight | null;
   /** The opener scenes seen so far, by id. */
   openers: string[];
+  /** The medals earned so far, by id (`medals.ts`). */
+  medals: string[];
 }
 export interface NightResult { won: boolean; total: number; grade: string; sorted: number; opener: string; date: string }
 
 /** The subset of the Web Storage API the record needs, so the model tests can hand in a stand-in. */
 export interface RecordStorage { getItem(key: string): string | null; setItem(key: string, value: string): void }
 
-export const emptyRecord = (): NightRecord => ({ played: 0, completed: 0, best: null, openers: [] });
+export const emptyRecord = (): NightRecord => ({ played: 0, completed: 0, best: null, openers: [], medals: [] });
 
 const count = (value: unknown): number => typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.floor(value) : 0;
 
@@ -39,7 +43,8 @@ export function loadRecord(storage: RecordStorage | null): NightRecord {
       : null;
     const openers = Array.isArray(data.openers) ? [...new Set(data.openers.filter((id): id is string => typeof id === 'string' && /^opener-\d$/.test(id)))] : [];
     const played = count(data.played);
-    return { played, completed: Math.min(count(data.completed), played), best, openers };
+    const medals = Array.isArray(data.medals) ? [...new Set(data.medals.filter((id): id is string => typeof id === 'string' && MEDAL_IDS.has(id)))] : [];
+    return { played, completed: Math.min(count(data.completed), played), best, openers, medals };
   } catch {
     return emptyRecord();
   }
@@ -68,6 +73,7 @@ export function recordNight(record: NightRecord, night: NightResult): { record: 
       completed: record.completed + (night.won ? 1 : 0),
       best: newBest ? { total: night.total, grade: night.grade, sorted: night.sorted, date: night.date } : previous,
       openers: record.openers.includes(night.opener) ? record.openers : [...record.openers, night.opener],
+      medals: record.medals,
     },
     newBest,
     previous,

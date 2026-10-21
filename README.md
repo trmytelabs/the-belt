@@ -136,6 +136,10 @@ SORT!** countdown starts the shift.
   time. A gold ring around it runs down over 15 seconds, turning red for the
   last five. Load it yourself before it empties for a 100-point bonus; late, or
   loaded by your partner, it is an ordinary parcel. Results show how many made it.
+- Medals: ten achievements, each earned once and kept with the record on this
+  device (for example an S, a peak night, all three goals in one night, 20 in
+  a row, or bringing the five-ton home with no bumps or red lights). The
+  results name new ones and the briefing counts them.
 - Night goals: each night sets three optional goals, named in the briefing
   (for example, load 8 in a row, finish with nothing broken, make 3 priority
   parcels on time). They rotate with the nights recorded on this device, and the HUD tracks each one. A goal

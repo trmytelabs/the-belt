@@ -86,6 +86,8 @@ const CSS = `
 .b3d-panel .grade { font: 900 64px/1 "Segoe UI", Arial, sans-serif; color: #edb765; float: right; margin-left: 16px; }
 .b3d-panel button { display: block; width: 100%; margin-top: 18px; padding: 14px; border: 0; border-radius: 6px; background: #edb765;
   color: #1a2226; font: 800 16px "Segoe UI", Arial, sans-serif; letter-spacing: 1px; cursor: pointer; }
+.b3d-panel p.b3d-medal { color: #f3e6c6; border-left: 3px solid #edb765; padding-left: 10px; }
+.b3d-panel p.b3d-medal b { color: #edb765; letter-spacing: 1px; }
 .b3d-panel a { display: block; margin-top: 12px; text-align: center; color: #9fb4b4; font-size: 12px; letter-spacing: 1.5px; }
 .b3d-count { font: 900 120px "Segoe UI", Arial, sans-serif; color: #f0dfb3; text-shadow: 0 8px 30px #000; }
 .b3d-toast { position: absolute; top: 92px; left: 50%; transform: translateX(-50%); background: #10232ae6; border: 1px solid #3b5a62;

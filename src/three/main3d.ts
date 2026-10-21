@@ -2,6 +2,7 @@ import { DEPOT_3D_LAYOUT as SHIFT_LAYOUT, floorPileSlot, truckInteriorAt } from 
 import { ARRIVALS_3D, PEAK_NIGHT, PRIORITY_3D, ShiftModel3D } from './ShiftModel3D';
 import { createPriorityMarker, updatePriorityMarker, type PriorityMarker } from './priorityMarker';
 import { GOAL_BONUS, judgeGoals, nightGoals, type NightGoal } from './nightGoals';
+import { MEDALS, awardMedals, type NightFacts } from './medals';
 import { sortingGuide } from './sortingGuide';
 import { pathLength, platformWalkPath, walkPath, type WalkPoint } from './walking';
 import * as THREE from 'three';
@@ -140,6 +141,8 @@ export class Belt3d {
   private readonly goalsAnnounced = new Set<string>();
   /** What the goals paid at the last results. */
   public goalBonus = 0;
+  /** The medals the last results awarded for the first time. */
+  public medalsEarned: string[] = [];
   private depotShot: { position: THREE.Vector3; look: THREE.Vector3 } | null = null;
   private readonly stolen = new Set<number>();
   private readonly parcels = new Map<number, ParcelView>();
@@ -1752,19 +1755,23 @@ export class Belt3d {
     const { played, completed, best, openers } = this.record;
     if (played === 0) return '';
     const bestText = best ? `BEST NIGHT ${formatTotal(best.total)} · GRADE ${escapeHtml(best.grade)}` : 'NO SHIFT FINISHED YET';
-    return `<p class="b3d-record"><b>YOUR RECORD · ${completed} OF ${played} ${played === 1 ? 'NIGHT' : 'NIGHTS'} FINISHED · ${bestText} · ${openers.length} OF ${OPENER_COUNT} OPENERS SEEN</b></p>`;
+    return `<p class="b3d-record"><b>YOUR RECORD · ${completed} OF ${played} ${played === 1 ? 'NIGHT' : 'NIGHTS'} FINISHED · ${bestText} · ${openers.length} OF ${OPENER_COUNT} OPENERS SEEN · ${this.record.medals.length} OF ${MEDALS.length} MEDALS</b></p>`;
   }
 
   /** Adds this night to the record and says how it compares with the best. */
-  private recordResults(won: boolean, total: number, grade: string): string {
+  private recordResults(won: boolean, total: number, grade: string, night: Omit<NightFacts, 'openersSeen' | 'nightsPlayed'>): string {
     const result = recordNight(this.record, { won, total, grade, sorted: this.model.sorted, opener: this.story.opener.id, date: new Date().toISOString().slice(0, 10) });
-    this.record = result.record;
+    const awarded = awardMedals(result.record.medals, { ...night, openersSeen: result.record.openers.length, nightsPlayed: result.record.played });
+    this.record = { ...result.record, medals: awarded.medals };
+    this.medalsEarned = awarded.fresh.map((medal) => medal.id);
     saveRecord(browserStorage(), this.record);
-    const night = `NIGHT ${this.record.played}`;
-    if (result.newBest) return `<p class="b3d-best"><b>NEW PERSONAL BEST · ${night}</b>${result.previous ? ` · beat ${formatTotal(result.previous.total)}` : ''}</p>`;
+    const nightLabel = `NIGHT ${this.record.played}`;
+    const medals = awarded.fresh.map((medal) => `<p class="b3d-medal"><b>MEDAL · ${medal.title}</b> · ${escapeHtml(medal.detail)}</p>`).join('');
+    if (result.newBest) return `<p class="b3d-best"><b>NEW PERSONAL BEST · ${nightLabel}</b>${result.previous ? ` · beat ${formatTotal(result.previous.total)}` : ''}</p>${medals}`;
     const best = this.record.best;
-    return `<p class="b3d-best">${best ? `BEST NIGHT ${formatTotal(best.total)} · GRADE ${escapeHtml(best.grade)}` : 'NO SHIFT FINISHED YET'} · ${night} · ${this.record.completed} finished</p>`;
+    return `<p class="b3d-best">${best ? `BEST NIGHT ${formatTotal(best.total)} · GRADE ${escapeHtml(best.grade)}` : 'NO SHIFT FINISHED YET'} · ${nightLabel} · ${this.record.completed} finished</p>${medals}`;
   }
+
 
   private showResults(): void {
     if (this.state === 'ended') return;
@@ -1783,7 +1790,11 @@ export class Belt3d {
     this.goalBonus = judged.bonus;
     const total = Math.max(0, m.score + this.mallBonus - this.drivingPenalty + judged.bonus);
     const goals = this.goals.map((goal) => `${judged.met.includes(goal) ? '✓' : '✗'} ${escapeHtml(goal.label)}`).join(' · ');
-    const record = this.recordResults(m.won, total, m.won ? m.grade : 'F');
+    const record = this.recordResults(m.won, total, m.won ? m.grade : 'F', {
+      won: m.won, grade: m.won ? m.grade : 'F', peak: m.peak, goalsMet: judged.met.length, goalsTotal: this.goals.length,
+      priorityCount: m.priorityCount, priorityOnTime: m.priorityOnTime, bestCombo: m.bestCombo, wrongDrops: m.wrongDrops,
+      damaged: m.damaged, missed: m.missed, safeDrive: home && this.drivingCollisions === 0 && this.drivingRedLights === 0,
+    });
     this.overlay.showPanel(`
       <div class="grade">${m.won ? m.grade : 'F'}</div>
       <div class="kicker">${m.won ? `SHIFT COMPLETE / GRADE ${m.grade}` : 'SHIFT TERMINATED / YOU FAILED THE SORT'}${m.peak ? ' · PEAK NIGHT' : ''}</div>
