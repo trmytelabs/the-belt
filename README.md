@@ -131,6 +131,11 @@ SORT!** countdown starts the shift.
   destination marker guides loading; throws still target the nearest physical drop
   and retain their break risk. A wrong drop costs up to 10 points.
   See [address sorting and loading](docs/address-sorting.md).
+- Priority freight: through the flow and the rush, every third parcel your worker
+  could take is marked urgent (never bulk, heavy freight or the Mesa), one at a
+  time. A gold ring around it runs down over 15 seconds, turning red for the
+  last five. Load it yourself before it empties for a 100-point bonus; late, or
+  loaded by your partner, it is an ordinary parcel. Results show how many made it.
 - E / STOP THE BELT stops it for two seconds. You get three stops per 3D run,
   with a 15-second cooldown starting on each use. The controls show stops left
   and cooldown time; starting another night restores all three.

@@ -2,6 +2,15 @@
 
 ## 0.1.0 — development snapshot
 
+- Add priority freight to the 3D shift. Through the flow and the rush, every
+  third parcel the player could take (their own side, not bulk, heavy freight
+  or the Mesa) is marked urgent, one at a time, with a toast and an alert. A
+  gold ring around it and a PRIORITY label count down 15 seconds, turning red
+  for the last five and hiding the ring while it is carried. Loaded by the
+  player in time it pays a 100-point bonus with its own pop and a till ring;
+  late, or loaded by the partner, it is an ordinary parcel. The briefing
+  explains it and the results count the priority parcels made on time. The
+  classic and 2D games are unchanged.
 - Add a peak night to the 3D game, unlocked once a night has been finished.
   The briefing then offers PEAK NIGHT beside the ordinary night (P, or the
   button): in the flow and the rush freight comes a fifth sooner, the belt runs

@@ -1,5 +1,6 @@
 import { DEPOT_3D_LAYOUT as SHIFT_LAYOUT, floorPileSlot, truckInteriorAt } from './layout';
-import { ARRIVALS_3D, PEAK_NIGHT, ShiftModel3D } from './ShiftModel3D';
+import { ARRIVALS_3D, PEAK_NIGHT, PRIORITY_3D, ShiftModel3D } from './ShiftModel3D';
+import { createPriorityMarker, updatePriorityMarker, type PriorityMarker } from './priorityMarker';
 import { sortingGuide } from './sortingGuide';
 import { pathLength, platformWalkPath, walkPath, type WalkPoint } from './walking';
 import * as THREE from 'three';
@@ -139,6 +140,8 @@ export class Belt3d {
   private readonly departing: { view: ParcelView; from: THREE.Vector3; to: THREE.Vector3; t: number; route: Route }[] = [];
   /** Broken parcels stay in view where they landed for a while. */
   private readonly broken = new Map<number, number>();
+  /** The countdown rings on live priority parcels, by parcel id. */
+  private readonly priorityMarkers = new Map<number, PriorityMarker>();
   private readonly throwers = new Map<number, WorkerId>();
   private readonly throwStarts = new Map<number, THREE.Vector3>();
   private readonly seenRoutes = new Set<Route>();
@@ -522,7 +525,7 @@ export class Belt3d {
         <li><b>Walk through the truck’s open rear door.</b> ${this.touch.enabled ? 'Tap GRAB / DELIVER' : 'Press SPACE'} inside to load. OVERSIZE goes to BULK at the back; floor freight goes down the side stairs.</li>
       </ol>
       <p><b>Missed one? Recover it at the belt end.</b> The shift ends at ${this.model.capacity} packages in recovery. ${this.touch.enabled ? 'STOP THE BELT' : 'E / STOP THE BELT'} gives you two seconds to catch up: 3 stops per run, with a 15-second cooldown after each use. You get ${this.model.cleanupMs / 1000} seconds to finish after intake closes.</p>
-      <p>Your partner sorts their side automatically. ${this.touch.enabled ? 'SWITCH' : 'TAB / right-click'} changes worker; only your controlled worker picks up bulk. Partner deliveries count toward the goal. Wrong drops cost 10 points; throws can break freight.</p>
+      <p>Your partner sorts their side automatically. ${this.touch.enabled ? 'SWITCH' : 'TAB / right-click'} changes worker; only your controlled worker picks up bulk. Partner deliveries count toward the goal. Wrong drops cost 10 points; throws can break freight. A gold PRIORITY ring marks urgent freight: load it before the ring runs out for +${PRIORITY_3D.bonus}.</p>
       ${this.touch.enabled ? `
       <p>The stick moves. SWITCH changes worker. GRAB / DELIVER picks up and delivers. THROW risks it to save the walk.</p>
       <p>STOP THE BELT gives you a moment to catch up. VIEW shows the whole warehouse. In story scenes, NEXT or SKIP.</p>` : `
@@ -854,6 +857,7 @@ export class Belt3d {
     this.parcels.clear();
     this.departing.length = 0;
     this.broken.clear();
+    this.priorityMarkers.clear();
     this.throwers.clear();
     this.throwStarts.clear();
     this.seenRoutes.clear();
@@ -1182,6 +1186,7 @@ export class Belt3d {
   }
 
   private handleEvent(event: ShiftEvent): void {
+    if (event.type === 'priority') { this.handlePriority(event); return; }
     const sound = event.assisted || event.type === 'wrong' && !event.message.startsWith('WRONG DROP') ? undefined : EVENT_SOUNDS[event.type];
     if (sound) audioSystem.play(sound);
     // The worker whose hands did it: the event names a worker, or stands nearest the spot.
@@ -1234,6 +1239,34 @@ export class Belt3d {
     } else if (event.type === 'miss' || (event.type === 'scanner' && this.model.pendingScannerWorker === null)) this.overlay.showToast(event.message);
 
     this.crew.onEvent(event, this.model);
+  }
+
+  /** Priority freight: marked (no score), delivered on time (its bonus), or late (a score of zero). */
+  private handlePriority(event: ShiftEvent): void {
+    if (event.score === undefined) {
+      audioSystem.play('event-alert');
+      this.overlay.showToast(event.message, 3200);
+    } else if (event.score > 0) {
+      audioSystem.play('register');
+      this.overlay.pop(`PRIORITY +${event.score}`, '#ffc23a', toWorld(event, surfaceAt(event.x, event.y) + 2.6), 1.2);
+    } else this.overlay.showToast(event.message, 2400);
+  }
+
+  /** A live priority parcel wears its countdown; anything else loses it. */
+  private syncPriority(parcel: Parcel, view: ParcelView): void {
+    const remaining = this.model.priorityRemainingMs(parcel.id);
+    if (remaining === null) return;
+    let marker = this.priorityMarkers.get(parcel.id);
+    if (!marker) {
+      marker = createPriorityMarker(view.highlight.scale.x);
+      this.priorityMarkers.set(parcel.id, marker);
+    }
+    if (marker.root.parent !== view.root) view.root.add(marker.root);
+    updatePriorityMarker(marker, remaining, PRIORITY_3D.windowMs, this.time, {
+      labelY: view.tag.position.y + view.tag.scale.y + 0.06,
+      carried: parcel.state === 'held' || parcel.state === 'thrown',
+      reducedMotion: this.reducedMotion,
+    });
   }
 
   private handleMallEvent(event: MallEvent): void {
@@ -1557,6 +1590,13 @@ export class Belt3d {
         view.parts.spill.visible = true;
       }
       this.animateParcel(view, parcel, dt);
+      this.syncPriority(parcel, view);
+    }
+    for (const [id, marker] of this.priorityMarkers) {
+      if (m.priorityRemainingMs(id) !== null && marker.root.parent === this.parcels.get(id)?.root) continue;
+      marker.root.removeFromParent();
+      disposeObject3D(marker.root);
+      this.priorityMarkers.delete(id);
     }
     for (const [id, view] of this.parcels) {
       if (!seen.has(id)) {
@@ -1718,6 +1758,7 @@ export class Belt3d {
       <p>${rate}% of freight dispatched · ${m.recoveredDeliveries} recovered and dispatched · ${m.bulkSorted} to bulk</p>
       <p>${m.unshipped} left behind · ${m.wrongDrops} wrong drops · GRADE ${m.accuracy.toFixed(1)}% (S: 95%+)</p>
       <p>${escapeHtml(routes)}</p>
+      ${m.priorityCount ? `<p>${m.priorityOnTime} of ${m.priorityCount} priority parcels on time · +${m.priorityOnTime * PRIORITY_3D.bonus}</p>` : ''}
       <p>${m.thrownDeliveries} thrown in clean · ${m.damaged} broken (−${m.breakagePenalty} points${m.damaged > THROWING.gradeForgivenBreaks ? `, ${m.gradedBreaks} counted against the grade` : ''})</p>
       ${mall ? `<p>MALL RUN · ${mall.delivered}/6 delivered · ${mall.signatures}/6 signed · five-ton ${home ? 'returned' : 'not returned'} · +${this.mallBonus}</p>
       <p>DRIVING · ${this.drivingCollisions} bumps${this.drivingRedLights ? ` · ${this.drivingRedLights} red lights` : ''} · −${this.drivingPenalty} points · cargo safe</p>
