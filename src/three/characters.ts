@@ -84,6 +84,8 @@ export interface CharacterMotion {
   /** The named pose from crew.ts, `none` when only walking or standing. */
   pose: string;
   seated: boolean;
+  /** On a stair flight with the feet planted on its treads, so a model's legs follow the figure. */
+  stairs: boolean;
 }
 
 export type ActionKind = 'lift' | 'drop' | 'throw';
@@ -593,7 +595,7 @@ export function animateCharacter(character: Character, dt: number, state: {
   const load = Math.max(0, Math.min(1, state.load ?? 0));
   const walking = moving && !state.reducedMotion;
   // For an imported model's clips; the pose code sets `pose`, `seated` and `holding` after this.
-  const motion = (character.motion ??= { time: state.time, moving: false, carrying: false, holding: false, reduced: false, pose: 'none', seated: false });
+  const motion = (character.motion ??= { time: state.time, moving: false, carrying: false, holding: false, reduced: false, pose: 'none', seated: false, stairs: false });
   motion.time = state.time;
   motion.moving = moving;
   motion.carrying = carrying;
@@ -601,6 +603,7 @@ export function animateCharacter(character: Character, dt: number, state: {
   motion.reduced = state.reducedMotion === true;
   motion.pose = 'none';
   motion.seated = false;
+  motion.stairs = false;
   if (walking) character.walkPhase += dt * 9 * speed;
   const phase = character.walkPhase;
   const swing = walking ? Math.sin(phase) : 0;

@@ -7,12 +7,13 @@ import { DRIVERS, SHAN_BREAKAGE_LINES } from '../game/slice/StoryScript';
 import type { Parcel, ShiftEvent, ShiftModel } from '../game/slice/ShiftModel';
 import { audioSystem } from './audio';
 import { animateCharacter, bendElbows, bendKnees, createCharacter, mergeCharacter, type Character } from './characters';
+import { plantFeet } from './footing';
 import { SEATED_BODY_DROP } from './figure';
 
 export { SEATED_BODY_DROP } from './figure';
 import { alignParcelToSurface, createParcelView, type ParcelView } from './parcels';
 import { CrewFreightTrip } from './crewFreight';
-import { BELT_HEIGHT, actorSurfaceAt, setFromModel, standard, textSprite, toWorld } from './space';
+import { BELT_HEIGHT, actorSurfaceAt, setFromModel, standard, surfaceUnder, textSprite, toWorld } from './space';
 import { SKIN, VISITORS, type DepotWorld } from './world';
 import { placeProp } from './propModels';
 import { DEPOT_3D_LAYOUT as DEPOT } from './layout';
@@ -82,6 +83,8 @@ export class Actor {
     if (this.pose !== 'none') c.body.rotation.set(0, 0, 0);
     c.head.rotation.set(0, 0, 0);
     applyPose(c, this.pose, time - this.poseStart, reducedMotion);
+    // Walking the stairs or an aisle's steps, each foot stands on its own tread; a gag keeps its pose.
+    if (this.pose === 'none') plantFeet(c, surfaceUnder);
     this.moved = false;
   }
 }

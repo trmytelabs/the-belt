@@ -2,6 +2,15 @@
 
 ## 0.1.0 — development snapshot
 
+- Lift from the knees and climb the stairs on the treads (phase 4 of the
+  models and animation plan). A grab, recovery, load or put-down on an
+  imported crew model plays the Rocketbox crouch-in and crouch-out clips
+  (converted into `crew-clips.glb`, each half timed to its measured movement)
+  while the arms keep the figure's reach for the parcel; a throw keeps the
+  figure's swing. On a stair flight or an aisle's steps every worker and crew
+  member plants each foot on the tread under it, bending the uphill knee and
+  reaching the downhill foot, with a swinging foot keeping its lift; a model's
+  legs follow the figure on a flight and the software fallback does the same.
 - Light and batch the 3D city (phase 3 of the models and animation plan). The
   28 traffic sedans draw as three batched meshes (paint tinted per car, trim
   and wheels by vertex colour, unlit lamps) with each car switching to a

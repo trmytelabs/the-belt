@@ -38,10 +38,11 @@ On GPU renderers the crew move with motion-captured clips from the same MIT
 Rocketbox repository and commit as the avatars. They were captured on the
 very Biped skeleton the crew models carry, so they play without retargeting.
 `src/three/rocketboxClips.ts` lists them: two standing idles, walk, slow
-walk and run, and the cough, cheer, clap, wave, phone call, crouch, dance,
-drink, shrug and announcement gestures, each in a male and a female version
+walk and run, the cough, cheer, clap, wave, phone call, crouch, dance,
+drink, shrug and announcement gestures, and the crouch-in and crouch-out
+clips a lift plays, each in a male and a female version
 (the four women use the female ones). `tools/rocketbox` converts them into
-one file, `public/models/animations/crew-clips.glb` (about 4.4 MB), keeping
+one file, `public/models/animations/crew-clips.glb` (about 4.6 MB), keeping
 every bone's rotation, fingers included, and the root's rise and fall, and
 removing the root's travel across the floor: the game moves the character and
 the clip plays in place, sped up or slowed to match the character's real
@@ -56,9 +57,14 @@ clip would be wrong:
 
 - carrying (and Kylie's raised cup), where the arms follow the figure while the
   legs and body walk or idle;
-- a lift, put-down or throw, a seat, lying down, and every pose without a clip
-  (the squat, massage, push, keys and others), where the whole body follows the
-  figure;
+- a throw, a seat, lying down, and every pose without a clip (the squat,
+  massage, push, keys and others), where the whole body follows the figure;
+- a lift or put-down, where the body goes down and comes back up on the
+  crouch-in and crouch-out clips (each half plays its measured movement,
+  `CLIP_SPANS`, in half of `LIFT_SECONDS`) while the arms follow the figure's
+  reach for the parcel;
+- a stair flight, where the legs follow the figure, whose feet are planted on
+  the treads (`footing.ts`);
 - reduced motion, where the clips stop and the figure takes over.
 
 Termite and Skanky's head turn toward their work is added on top of the

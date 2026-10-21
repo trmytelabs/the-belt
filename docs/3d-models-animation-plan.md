@@ -259,6 +259,14 @@ from one instanced draw (`cityWindows.ts`) and the road is wet asphalt. The
 road already drew 60 fps on the reference GPU before batching, at about 330
 draw calls and 450k triangles a frame; batching the traffic is for lower-end
 machines and the draw-call budget the browser check now holds.
+Phase 4 is done as far as the free clips allow: the
+Rocketbox set has crouch-in and crouch-out clips but no lift, carry or throw
+(`tools/rocketbox` converts the two crouches into `crew-clips.glb`; a lift
+plays them over the figure's reaching arms, `characterModels.ts`), and the
+Quaternius clips were not downloaded, so carrying and throwing stay
+procedural. Feet plant on the stair treads by the same two-bone solver that
+seats the drivers (`footing.ts`), on the figure's pivots, which a model's legs
+follow on a flight.
 
 | Phase | Objective | Files | Actions | Depends on | Effort | Risks | Tests affected and replacement | Done when |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |

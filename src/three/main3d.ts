@@ -26,6 +26,7 @@ import {
 } from '../game/slice/StoryScript';
 import { audioSystem, type SoundEffect } from './audio';
 import { syncCharacterModels, useCharacterClips, useCharacterModels, type CharacterModelEntry } from './characterModels';
+import { plantFeet } from './footing';
 import { animateCharacter, createCharacter, lookToward, mergeCharacter, triggerAction, type Character } from './characters';
 import { CrewLife } from './crew';
 import { MesaDream } from './dream';
@@ -43,7 +44,7 @@ import { alignParcelToSurface, createParcelView, setParcelCarried, setParcelMode
 import { disposeObject3D } from './resources';
 import { loadSurfaces } from './textures';
 import {
-  BELT_HEIGHT, PLATFORM_HEIGHT, ROUTE_COLORS, actorSurfaceAt, setFromModel, surfaceAt, textSprite, toWorld, toWorldX, toWorldZ,
+  BELT_HEIGHT, PLATFORM_HEIGHT, ROUTE_COLORS, actorSurfaceAt, setFromModel, surfaceAt, surfaceUnder, textSprite, toWorld, toWorldX, toWorldZ,
 } from './space';
 import { DepotWorld, SKANKY_SPEC, TERMITE_SPEC } from './world';
 
@@ -1269,6 +1270,8 @@ export class Belt3d {
       const held = worker.heldId === null ? null : m.packages.find((item) => item.id === worker.heldId) ?? null;
       const load = held ? THREE.MathUtils.clamp((1 - CARRY_MULTIPLIER[held.kind]) / 0.6, 0, 1) : 0;
       animateCharacter(character, dt, { moving: walk ? !walk.done : worker.moving, carrying: held !== null, time: this.time, reducedMotion: this.reducedMotion, load });
+      // On a stair flight each foot stands on its own tread instead of hanging over the root's.
+      plantFeet(character, surfaceUnder);
       // Eyes on the work: the parcel about to be grabbed, or the drop the held one is bound for.
       const focus = this.state === 'playing' ? held ? m.deliveryPoint(held, worker) : m.nearestPackage(worker) : null;
       if (focus) {
