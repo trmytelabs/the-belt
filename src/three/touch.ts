@@ -22,6 +22,7 @@ const CSS = `
 .b3d-actions .grab { grid-row: 1 / span 3; }
 .b3d-actions .throw { background: #6d4a7a; }
 .b3d-touch.chapter .switch, .b3d-touch.chapter .throw, .b3d-touch.chapter .b3d-corner [data-touch="view"] { display: none; }
+.b3d-touch.chapter.driving .b3d-corner [data-touch="view"] { display: revert; }
 .b3d-touch.driving .b3d-actions { display: none; }
 .b3d-drive-pedals { display: none; position: absolute; right: max(16px, env(safe-area-inset-right)); bottom: max(22px, env(safe-area-inset-bottom)); gap: 10px; }
 .b3d-touch.driving .b3d-drive-pedals { display: flex; align-items: end; }

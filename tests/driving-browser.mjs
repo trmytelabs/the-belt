@@ -102,6 +102,9 @@ try {
   await page.waitForFunction(() => window.fixtureApp.driving.speed > 10, null, { polling: 10 });
   await page.keyboard.down('KeyA'); await page.waitForTimeout(220); await page.keyboard.up('KeyA');
   assert.ok(await page.evaluate(() => window.fixtureApp.driving.heading > Math.PI / 2 + 0.1), 'A changes actual world heading to the left');
+  // The camera and cab checks below steer the truck about; it goes back where it was after them, so the checks that follow
+  // (the synthetic cone five metres ahead) start from the same place as before, not beside a building.
+  const beforeTurns = await page.evaluate(() => { const d = window.fixtureApp.driving; return { x: d.x, z: d.z, heading: d.heading, speed: d.speed, steer: d.steer }; });
   // A hard turn at speed: the chase camera lags through the corner, and must never end a frame inside a building or a lamp post
   // (that showed as the screen flashing black), nor present a frame with nothing in it.
   await page.evaluate(() => {
@@ -158,6 +161,29 @@ try {
     return result;
   });
   if (bloomCheck) assert.ok(bloomCheck.stock > 100 && bloomCheck.guarded <= 1, `a stock bloom spreads one invalid pixel, the game's guarded bloom does not: ${JSON.stringify(bloomCheck)}`);
+  // The cab view: V puts the camera at the driver's eyes in the five-ton's cab, on its left (left-hand drive), with the truck's
+  // body hidden and the cab's wheel turning with the steering; V again goes back behind the truck.
+  const cabView = async () => page.evaluate(async () => {
+    const app = window.fixtureApp, view = app.drivingView, truck = view.truck;
+    await new Promise(resolve => setTimeout(resolve, 250));
+    const local = truck.worldToLocal(view.camera.position.clone()), facing = view.camera.getWorldDirection(view.camera.position.clone());
+    return { view: view.view, local: local.toArray().map(v => +v.toFixed(2)), along: facing.x * app.driving.pose.tx + facing.z * app.driving.pose.tz,
+      cab: truck.getObjectByName('truck-cab').visible, body: truck.getObjectByName('driving-model-truck')?.visible ?? null,
+      wheel: truck.getObjectByName('cab-steering-wheel').rotation.z };
+  });
+  await page.keyboard.press('KeyV');
+  const inCab = await cabView();
+  assert.ok(inCab.view === 'cab' && inCab.cab && inCab.body === false, `V shows the cab and hides the truck's body: ${JSON.stringify(inCab)}`);
+  assert.ok(inCab.local[0] > 1.4 && inCab.local[0] < 2.1 && inCab.local[1] > 1.3 && inCab.local[1] < 1.8 && inCab.local[2] < -0.2 && inCab.local[2] > -0.7, `the camera is at the driver's eyes, on the left: ${JSON.stringify(inCab)}`);
+  assert.ok(inCab.along > 0.9, `looking down the road ahead: ${JSON.stringify(inCab)}`);
+  await page.keyboard.down('KeyA');
+  const turning = await cabView();
+  await page.keyboard.up('KeyA');
+  assert.ok(turning.wheel > 0.5, `the cab's wheel turns left with the steering: ${JSON.stringify(turning)}`);
+  await page.keyboard.press('KeyV');
+  const behind = await cabView();
+  assert.ok(behind.view === 'chase' && !behind.cab && behind.body !== false, `V again goes back behind the truck: ${JSON.stringify(behind)}`);
+  await page.evaluate(pose => Object.assign(window.fixtureApp.driving, pose), beforeTurns);
   await page.keyboard.down('KeyD'); await page.waitForTimeout(220); await page.keyboard.up('KeyD');
   if (process.env.BELT_SCREENSHOT_DIR) await page.screenshot({ path: join(process.env.BELT_SCREENSHOT_DIR, 'driving-road.png') });
   await page.keyboard.up('KeyW');
@@ -235,6 +261,13 @@ try {
   await touch.getByRole('button', { name: 'Accelerate truck', exact: true }).waitFor();
   const navBox = await touch.locator('.b3d-drive-nav').boundingBox(), toastBox = await touch.locator('.b3d-toast').boundingBox();
   assert.ok(toastBox.y >= navBox.y + navBox.height + 6, 'the portrait opening hint stays below the navigation arrow and label');
+  // On a touch screen VIEW switches to the cab and back while driving.
+  const viewButton = touch.locator('[data-touch="view"]');
+  assert.ok(await viewButton.isVisible(), 'the VIEW button shows while driving');
+  await viewButton.tap();
+  assert.equal(await touch.evaluate(() => window.fixtureApp.drivingView.view), 'cab', 'VIEW puts the camera in the cab');
+  await viewButton.tap();
+  assert.equal(await touch.evaluate(() => window.fixtureApp.drivingView.view), 'chase', 'and VIEW again goes back behind the truck');
   const cdp = await touch.context().newCDPSession(touch);
   const box = await touch.getByRole('button', { name: 'Accelerate truck', exact: true }).boundingBox();
   const gasPoint = { x: box.x + box.width / 2, y: box.y + box.height / 2, id: 1 };

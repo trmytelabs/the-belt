@@ -132,7 +132,8 @@ function specFor(id: string): CharacterSpec {
  */
 const SEAT_Y = 0.06;
 const PLAIN_SEATS: Record<SeatName, THREE.Vector3> = {
-  driver: new THREE.Vector3(-0.3, SEAT_Y, 0.36), passenger: new THREE.Vector3(-0.3, SEAT_Y, -0.36),
+  // Left-hand drive, as on the detailed sedans: the driver on the car's left (−z; the nose is +x).
+  driver: new THREE.Vector3(-0.3, SEAT_Y, -0.36), passenger: new THREE.Vector3(-0.3, SEAT_Y, 0.36),
   rearL: new THREE.Vector3(-0.98, SEAT_Y, -0.34), rearR: new THREE.Vector3(-0.98, SEAT_Y, 0.34),
 };
 
@@ -2082,7 +2083,8 @@ export class StoryStage {
       skanky.root.visible = true;
       skanky.pose = 'none';
       skanky.faceAngle = null;
-      const step = alongPath([[9.5, -12.8], [0.5, -3.0], [-8.3, -3.0], [-8.3, -4.9]], walk);
+      // Behind the car and up its left side (world −x: it faces −z in the stall) to the driver's door.
+      const step = alongPath([[9.5, -12.8], [0.5, -3.0], [-8.3, -2.6], [-10.8, -2.6], [-10.8, -4.9]], walk);
       skanky.at(step.x, step.z);
     } else this.seat(skanky, car, 'driver');
     const phone = props.phoneGlow as THREE.PointLight;
@@ -2164,12 +2166,13 @@ export class StoryStage {
           skanky.setPose('sit', time);
         } else {
           skanky.seatedIn = null;
-          const path = alongPath([[-0.4, -0.55], [-0.5, 1.8], [3.6, 1.6], [5.0, 1.4], [6.6, 1.4], [8.4, 1.4], [8.45, 0.6]], out);
+          // Round the car's nose to the driver's door, on its left (world +x: the car faces +z here).
+          const path = alongPath([[-0.4, -0.55], [-0.5, 1.8], [3.6, 1.6], [5.0, 1.4], [6.6, 2.0], [9.2, 3.3], [10.0, 2.6], [10.0, 0.6]], out);
           stand(skanky, out > 0 ? path.x : mix(0.45, -0.4, up), out > 0 ? path.z : -0.55, out <= 0 ? -Math.PI / 2 : out >= 1 ? Math.PI / 2 : null);
           skanky.setPose(cueProgress(cutscene, 'keys') > 0 ? 'keys' : 'none', time);
         }
         if (up <= 0) gaming = new Set(['skanky']);
-        const path = alongPath([[2.6, 1.4], [4.4, 1.4], [5.0, 1.4], [6.6, 1.6], [10.0, 2.8], [10.0, 0.6]], Math.max(0, (out - 0.1) / 0.9));
+        const path = alongPath([[2.6, 1.4], [4.4, 1.4], [5.0, 1.4], [6.6, 1.4], [8.4, 1.4], [8.45, 0.6]], Math.max(0, (out - 0.1) / 0.9));
         stand(termite, path.x, path.z, out <= 0 || out >= 1 ? -Math.PI / 2 : null);
         termite.setPose('none', time);
       }

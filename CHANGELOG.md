@@ -2,6 +2,16 @@
 
 ## 0.1.0 — development snapshot
 
+- Add a cab view to the five-ton's drives and put the cars' drivers on the
+  left. V (or VIEW on a touch screen) puts the camera at Skanky's eyes in the
+  cab: the green hood and wipers, a dashboard with two lit gauges, a broad
+  wheel that turns with the steering, the windscreen pillars, header, roof
+  lining, doors and the passenger's seat, pitching and rolling with the body
+  on its springs; V again goes back behind the truck. The truck's own body,
+  whose painted windows are opaque, is hidden while in the cab. The city's
+  traffic keeps to the right, so the sedans built in the seating pass are now
+  left-hand drive: the driver's seat and wheel moved to the car's left, and
+  Skanky walks to the driver's door when he leaves home and the lot.
 - Ease the 3D figures into and out of walks and seats. A walk now builds to
   full stride over its first 0.3 s and winds down over 0.35 s, finishing the
   step under way, instead of jumping to full stride or to a stand in a frame;
