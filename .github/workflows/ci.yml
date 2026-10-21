@@ -14,12 +14,17 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Both jobs run on the owner's own Windows PC, the self-hosted runner `belt-pc`,
+  # so checks use no GitHub Actions minutes. The browser suites keep software WebGL
+  # (no BELT_3D_GPU), as on the hosted runners before, so they still check the
+  # GPU-free fallback. Edge stands in for Playwright's bundled Chromium, which does
+  # not launch on that machine. With one runner the two jobs take turns.
   build:
     name: TypeScript and production build
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, belt-pc]
     # The 3D suite plays the larger city, both loading yards and touch detours; on the
-    # software renderer it takes 21 to 29 minutes depending on the runner it lands on,
-    # and a slow runner has pushed it well past that.
+    # software renderer it takes 21 to 29 minutes depending on the machine it runs on,
+    # and a slow one has pushed it well past that.
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -33,13 +38,13 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm run test:model
-      - run: npx playwright install --with-deps chromium
       - run: npm run test:browser
         env:
+          BELT_BROWSER_EXECUTABLE: C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe
           BELT_BROWSER_RENDERER: canvas
   windows-browser:
     name: Windows browser gameplay checks
-    runs-on: windows-latest
+    runs-on: [self-hosted, belt-pc]
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -52,8 +57,8 @@ jobs:
           cache-dependency-path: package-lock.json
       - run: npm ci
       - run: npm run build
-      # The 3D preview's check runs in the Linux job. This GPU-free Windows
-      # runner's software WebGL delays input by seconds, unlike real PCs.
+      # The 3D suites run in the build job above; this job keeps the original
+      # game's smoke and audio checks as their own required check.
       - run: npm run test:browser:classic
         env:
           BELT_BROWSER_EXECUTABLE: C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe
