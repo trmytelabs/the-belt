@@ -1041,6 +1041,9 @@ export class Belt3d {
 
     const running = this.state === 'playing' || this.state === 'celebrating' || this.state === 'ended';
     audioSystem.setTruckIdle((this.state === 'playing' && m.elapsedMs >= 120_000) || this.state === 'celebrating');
+    // The conveyor runs while sorting goes on, and falls quiet when it stops (a brake, a story stop, a pause, the end).
+    const beltRunning = this.state === 'playing' && !m.paused && !m.ended && !m.eventStopped && m.brakeRemainingMs <= 0;
+    audioSystem.setBelt(beltRunning ? m.beltSpeed : null, beltRunning ? m.packages.filter((parcel) => parcel.state === 'belt').length : 0);
     audioSystem.setDriving(this.state === 'driving' && this.driving ? this.driving.speed : null);
     if (this.state === 'playing') this.crew.updateReceiving(m, dt, this.time);
     this.world.update(running ? dt : 0, this.time, m.beltTravel, this.reducedMotion);

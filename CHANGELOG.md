@@ -2,6 +2,11 @@
 
 ## 0.1.0 — development snapshot
 
+- Give the 3D conveyor its sound. While sorting goes on, a low motor hum whose
+  pitch follows the belt's speed and a band of roller rattle that clacks at
+  the rollers' rate and grows with the freight riding it play under the
+  music; the belt falls quiet when it stops for a brake, a story stop, a pause
+  or the end of the shift, and on mute (`DepotAudio.setBelt`).
 - Give the 3D crew five more motions from Quaternius's Universal Animation
   Library (CC0, the free Standard pack), retargeted onto their Rocketbox
   skeleton by a new step in the converter (`tools/rocketbox/ual.js`) and kept

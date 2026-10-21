@@ -50,6 +50,8 @@ export class DepotAudio extends AudioSystem {
   private readonly foleyVoices = new Map<AudioBufferSourceNode, GainNode>();
   private readonly variations = new Map<string, number>();
   private stepIndex = 0;
+  /** The conveyor: its motor, the roller rattle and the pulse that clacks the rattle, while the belt runs. */
+  private belt: { motor: OscillatorNode; rollers: AudioBufferSourceNode; pulse: OscillatorNode; motorGain: GainNode; rattleGain: GainNode; pulseDepth: GainNode; nodes: AudioNode[] } | null = null;
 
   public override async unlock(): Promise<void> {
     await super.unlock();
@@ -189,12 +191,14 @@ export class DepotAudio extends AudioSystem {
     this.stopRecordings();
     this.setTruckIdle(false);
     this.setDriving(null);
+    this.setBelt(null);
     this.stopFoley();
   }
 
   public override setMuted(muted: boolean): void {
     super.setMuted(muted);
     if (muted) this.setDriving(null);
+    if (muted) this.setBelt(null);
     if (muted) this.stopFoley();
     if (!muted) this.scheduleTrack();
   }
@@ -324,6 +328,58 @@ export class DepotAudio extends AudioSystem {
       this.voice(2750, 0.57, now + offset + 0.035, 0.032, { end: 2680, attack: 0.055, cutoff: 3400 });
       this.noise(now + offset, 0.62, 2500, 0.07);
     }
+  }
+
+  /**
+   * The conveyor while it runs: a low motor hum whose pitch follows the belt's speed,
+   * and a band of roller rattle that clacks at the rollers' rate and grows with the
+   * freight riding it. `speed` is the belt's speed in depot pixels per second (50 at
+   * the start of a shift), null or 0 when it stands; `load` the parcels on it.
+   */
+  public setBelt(speed: number | null, load = 0): void {
+    if (!speed || speed <= 0 || this.muted) {
+      if (this.belt) {
+        const { motor, rollers, pulse, motorGain, rattleGain } = this.belt;
+        const now = this.context?.currentTime ?? 0;
+        this.fade(motorGain, 0, 0.1);
+        this.fade(rattleGain, 0, 0.08);
+        for (const source of [motor, rollers, pulse]) source.stop(now + 0.45);
+        this.belt = null;
+      }
+      return;
+    }
+    const context = this.getContext();
+    if (!context || context.state !== 'running' || !this.sfxGain || !this.noiseBuffer) return;
+    if (!this.belt) {
+      const motor = context.createOscillator(), motorFilter = context.createBiquadFilter(), motorGain = context.createGain();
+      motor.type = 'sawtooth'; motor.frequency.value = 50;
+      motorFilter.type = 'lowpass'; motorFilter.frequency.value = 240; motorFilter.Q.value = 0.7;
+      motorGain.gain.value = 0;
+      motor.connect(motorFilter); motorFilter.connect(motorGain); motorGain.connect(this.sfxGain);
+      const rollers = context.createBufferSource(), rollerFilter = context.createBiquadFilter(), rattleGain = context.createGain(), clack = context.createGain();
+      rollers.buffer = this.noiseBuffer; rollers.loop = true;
+      rollerFilter.type = 'bandpass'; rollerFilter.frequency.value = 1100; rollerFilter.Q.value = 0.8;
+      rattleGain.gain.value = 0;
+      // The clack: a slow square wave opens and closes the rattle as each roller passes.
+      clack.gain.value = 0.5;
+      const pulse = context.createOscillator(), pulseDepth = context.createGain();
+      pulse.type = 'square'; pulse.frequency.value = 6;
+      pulseDepth.gain.value = 0.35;
+      pulse.connect(pulseDepth); pulseDepth.connect(clack.gain);
+      rollers.connect(rollerFilter); rollerFilter.connect(clack); clack.connect(rattleGain); rattleGain.connect(this.sfxGain);
+      const nodes = [motorFilter, motorGain, rollerFilter, clack, rattleGain, pulseDepth];
+      let remaining = 3;
+      const cleanup = () => { if (--remaining === 0) for (const node of nodes) node.disconnect(); };
+      for (const source of [motor, rollers, pulse]) source.onended = () => { source.disconnect(); cleanup(); };
+      motor.start(); rollers.start(); pulse.start();
+      this.belt = { motor, rollers, pulse, motorGain, rattleGain, pulseDepth, nodes };
+    }
+    const rate = Math.min(2.5, speed / 50);
+    const now = context.currentTime;
+    this.belt.motor.frequency.setTargetAtTime(44 + 22 * rate, now, 0.25);
+    this.belt.pulse.frequency.setTargetAtTime(4 + 5 * rate, now, 0.25);
+    this.fade(this.belt.motorGain, 0.012 + 0.006 * Math.min(1.5, rate), 0.25);
+    this.fade(this.belt.rattleGain, (0.008 + 0.014 * Math.min(6, load)) * Math.min(1.4, rate), 0.2);
   }
 
   /** Low, continuous diesel rumble, stopped with pause, lunch, results and replay. */
