@@ -2,6 +2,11 @@
 
 ## 0.1.0 — development snapshot
 
+- Sharpen the 3D main cast. Shan, Vic, Kylie, John, Hussan, Doris, Brian and
+  Fruit Loop are reconverted from their Rocketbox sources with 1024-pixel
+  textures, as Termite and Skanky already were; the other crew keep 512. The
+  eight models grow from 7.4 MB to 12.6 MB together, each still under the
+  2 MB per-model budget.
 - Give the 3D conveyor its sound. While sorting goes on, a low motor hum whose
   pitch follows the belt's speed and a band of roller rattle that clacks at
   the rollers' rate and grows with the freight riding it play under the
