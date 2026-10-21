@@ -60,7 +60,13 @@ function modelBounds({ json }) {
   return bounds;
 }
 
-test('every prop model is a small GLB with plain glTF PBR and downsized JPEG textures', () => {
+/** Width and height from a PNG's IHDR chunk. */
+function pngSize(bytes) {
+  assert.equal(bytes.toString('latin1', 1, 4), 'PNG', 'PNG start');
+  return { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) };
+}
+
+test('every prop model is a small GLB with plain glTF PBR and downsized textures', () => {
   for (const [id, source] of Object.entries(PROP_MODELS)) {
     const bytes = statSync(file(id)).size;
     assert.ok(bytes < 1024 * 1024, `${id}: ${bytes} bytes is under 1 MB`);
@@ -71,14 +77,19 @@ test('every prop model is a small GLB with plain glTF PBR and downsized JPEG tex
       assert.ok(['KHR_mesh_quantization', 'KHR_materials_emissive_strength'].includes(extension), `${id}: ${extension} is supported without decoders`);
     }
     assert.ok(json.materials.every((material) => !material.extensions?.KHR_materials_transmission), `${id}: no transmission pass`);
-    for (const image of json.images ?? []) {
-      assert.equal(image.mimeType, 'image/jpeg', `${id}: JPEG textures`);
+    // Only a cut-out (alpha-masked chain-link) keeps a PNG colour map; everything else is JPEG.
+    const cutouts = new Set(json.materials.filter((material) => material.alphaMode === 'MASK')
+      .map((material) => json.textures[material.pbrMetallicRoughness?.baseColorTexture?.index]?.source).filter((index) => index !== undefined));
+    for (const [index, image] of (json.images ?? []).entries()) {
+      const png = cutouts.has(index);
+      assert.equal(image.mimeType, png ? 'image/png' : 'image/jpeg', `${id}: ${png ? 'PNG cut-out' : 'JPEG'} textures`);
       const view = json.bufferViews[image.bufferView];
-      const size = jpegSize(binary.subarray(view.byteOffset ?? 0, (view.byteOffset ?? 0) + view.byteLength));
+      const data = binary.subarray(view.byteOffset ?? 0, (view.byteOffset ?? 0) + view.byteLength);
+      const size = png ? pngSize(data) : jpegSize(data);
       assert.ok(Math.max(size.width, size.height) <= source.textureSize, `${id}: textures at most ${source.textureSize} px`);
     }
     const extent = modelBounds(glb).getSize(new THREE.Vector3());
-    assert.ok(extent.y > 0.1 && extent.y < 2.5, `${id}: real-world height (${extent.y.toFixed(2)} m)`);
+    assert.ok(extent.y > 0.1 && extent.y < 4, `${id}: real-world height (${extent.y.toFixed(2)} m)`);
   }
 });
 

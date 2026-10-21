@@ -6,7 +6,7 @@ import { mergeStatic } from './merge';
 import { shadowed, standard, textSprite } from './space';
 
 export type HairStyle = 'short' | 'long' | 'curly' | 'bun' | 'bald' | 'mullet' | 'slick';
-export type Headwear = 'none' | 'termiteHat' | 'beanie';
+export type Headwear = 'none' | 'termiteHat' | 'beanie' | 'santaHat';
 
 export interface CharacterSpec {
   name: string;
@@ -62,6 +62,43 @@ export interface Character {
   nameTag: THREE.Sprite;
   headHeight: number;
   walkPhase: number;
+  /** A short one-shot motion (a lift, a put-down, a throw) layered over the walk cycle. */
+  action?: CharacterAction;
+  /**
+   * What the character is doing this frame, set by `animateCharacter` and the
+   * pose code, so an imported model can play matching animation clips
+   * (characterModels.ts). A figure posed by hand and never animated has none,
+   * and its model follows the figure's joints.
+   */
+  motion?: CharacterMotion;
+}
+
+export interface CharacterMotion {
+  /** The game time of the last `animateCharacter` call; clips advance by its change, so a paused game holds them. */
+  time: number;
+  moving: boolean;
+  carrying: boolean;
+  /** The arms follow the figure (a held cup, a raised hand) whatever the clip does. */
+  holding: boolean;
+  reduced: boolean;
+  /** The named pose from crew.ts, `none` when only walking or standing. */
+  pose: string;
+  seated: boolean;
+}
+
+export type ActionKind = 'lift' | 'drop' | 'throw';
+export interface CharacterAction {
+  kind: ActionKind;
+  /** Wall-clock start, in the same seconds as `animateCharacter`'s `time`. */
+  start: number;
+}
+
+/** How long each one-shot motion plays, in seconds. */
+export const ACTION_SECONDS: Record<ActionKind, number> = { lift: 0.42, drop: 0.36, throw: 0.34 };
+
+/** Starts a one-shot motion; a motion already playing is replaced. */
+export function triggerAction(character: Character, kind: ActionKind, time: number): void {
+  character.action = { kind, start: time };
 }
 
 /** Joint heights and limb lengths, in metres at scale 1. */
@@ -353,6 +390,31 @@ function buildHeadwear(head: THREE.Group, spec: CharacterSpec): void {
     const badge = textSprite(['T'], 0.06, { width: 32, height: 32, color: '#5b4316' });
     badge.position.set(0, 0.275, 0.12);
     head.add(crown, brim, band, badge);
+  } else if (spec.headwear === 'santaHat') {
+    // A Christmas hat: red felt flopping to one side, a white fur cuff and pompom.
+    const felt = matte(0xc4202a);
+    const fur = matte(0xf4f1ea);
+    const hat = new THREE.Group();
+    hat.position.set(0, 0.17, -0.01);
+    hat.rotation.x = -0.18;
+    const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.128, 0.16, 18), felt);
+    crown.position.y = 0.08;
+    const tip = new THREE.Group();
+    tip.position.y = 0.155;
+    tip.rotation.set(-0.5, 0, 0.95);
+    const point = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.2, 14), felt);
+    point.position.y = 0.09;
+    const pompom = ball(0.038, fur, 10, 8);
+    pompom.position.y = 0.2;
+    tip.add(point, pompom);
+    const cuff = new THREE.Mesh(new THREE.TorusGeometry(0.124, 0.03, 8, 22), fur);
+    cuff.rotation.x = Math.PI / 2;
+    cuff.scale.set(1, 1.06, 1);
+    cuff.position.y = 0.012;
+    hat.add(crown, tip, cuff);
+    // An accessory, like glasses: it stays on when an imported model replaces the figure.
+    hat.traverse(child => { child.userData.headAccessory = true; });
+    head.add(hat);
   } else if (spec.headwear === 'beanie') {
     const wool = matte(0x3b5874);
     const beanie = new THREE.Mesh(new THREE.SphereGeometry(0.113, 14, 9, 0, Math.PI * 2, 0, Math.PI / 2), wool);
@@ -523,42 +585,102 @@ export function bendKnees(character: Character, left: number, right = left): voi
   character.rightShin.rotation.x = right;
 }
 
-/** Walk cycle plus carrying/idle arm poses. Call every frame. */
+/**
+ * Walk cycle plus carrying/idle arm poses. Call every frame.
+ *
+ * `load` (0..1) is how heavy the carried freight is: a heavy box pulls the
+ * carrier back onto their heels and lowers the arms. A one-shot `action` set
+ * with `triggerAction` (a lift from the belt, a put-down, a throw) is blended
+ * in as a brief dip of the knees, hips and arms, then fades out by itself.
+ * The torso leans into a walk and sways with each step; the motion offsets are
+ * folded into the easing targets, so nothing accumulates frame to frame.
+ */
 export function animateCharacter(character: Character, dt: number, state: {
-  moving: boolean; carrying?: boolean; speed?: number; reducedMotion?: boolean; time: number;
+  moving: boolean; carrying?: boolean; speed?: number; reducedMotion?: boolean; time: number; load?: number;
 }): void {
   const { moving, carrying = false, speed = 1 } = state;
+  const load = Math.max(0, Math.min(1, state.load ?? 0));
   const walking = moving && !state.reducedMotion;
+  // For an imported model's clips; the pose code sets `pose`, `seated` and `holding` after this.
+  const motion = (character.motion ??= { time: state.time, moving: false, carrying: false, holding: false, reduced: false, pose: 'none', seated: false });
+  motion.time = state.time;
+  motion.moving = moving;
+  motion.carrying = carrying;
+  motion.holding = false;
+  motion.reduced = state.reducedMotion === true;
+  motion.pose = 'none';
+  motion.seated = false;
   if (walking) character.walkPhase += dt * 9 * speed;
   const phase = character.walkPhase;
   const swing = walking ? Math.sin(phase) : 0;
   const ease = (current: number, target: number): number => current + (target - current) * Math.min(1, dt * 14);
+  // The one-shot motion's envelope: 0 outside it, rising and falling inside.
+  const action = character.action;
+  let dip = 0;
+  let fling = 0;
+  if (action) {
+    const t = (state.time - action.start) / ACTION_SECONDS[action.kind];
+    if (t >= 1 || t < 0) character.action = undefined;
+    else if (!state.reducedMotion) {
+      const pulse = Math.sin(t * Math.PI);
+      if (action.kind === 'throw') fling = pulse;
+      else dip = action.kind === 'lift' ? pulse : pulse * 0.7;
+    }
+  }
   // Hips swing; each knee folds while its leg passes forward and straightens to land.
-  character.leftLeg.rotation.x = ease(character.leftLeg.rotation.x, swing * 0.5);
-  character.rightLeg.rotation.x = ease(character.rightLeg.rotation.x, -swing * 0.5);
+  // A lift or put-down folds both legs together.
+  character.leftLeg.rotation.x = ease(character.leftLeg.rotation.x, swing * 0.5 - 0.45 * dip);
+  character.rightLeg.rotation.x = ease(character.rightLeg.rotation.x, -swing * 0.5 - 0.45 * dip);
   character.leftLeg.rotation.z = ease(character.leftLeg.rotation.z, 0);
   character.rightLeg.rotation.z = ease(character.rightLeg.rotation.z, 0);
-  const leftKnee = walking ? 0.08 + Math.max(0, -Math.cos(phase)) * 0.85 : 0.03;
-  const rightKnee = walking ? 0.08 + Math.max(0, Math.cos(phase)) * 0.85 : 0.03;
+  const leftKnee = (walking ? 0.08 + Math.max(0, -Math.cos(phase)) * 0.85 : 0.03) + 0.75 * dip;
+  const rightKnee = (walking ? 0.08 + Math.max(0, Math.cos(phase)) * 0.85 : 0.03) + 0.75 * dip;
   character.leftShin.rotation.x = ease(character.leftShin.rotation.x, leftKnee);
   character.rightShin.rotation.x = ease(character.rightShin.rotation.x, rightKnee);
   // Carrying holds the parcel at the waist with bent elbows; otherwise the arms swing.
-  const carryAngle = -0.3;
-  character.leftArm.rotation.x = ease(character.leftArm.rotation.x, carrying ? carryAngle : -swing * 0.24);
-  character.rightArm.rotation.x = ease(character.rightArm.rotation.x, carrying ? carryAngle : swing * 0.24);
+  // A heavy load hangs lower; a throw swings both arms forward and up; a lift reaches down.
+  const carryAngle = -0.3 + 0.12 * load;
+  const reach = -0.22 * dip - 1.3 * fling;
+  character.leftArm.rotation.x = ease(character.leftArm.rotation.x, (carrying ? carryAngle : -swing * 0.24) + reach);
+  character.rightArm.rotation.x = ease(character.rightArm.rotation.x, (carrying ? carryAngle : swing * 0.24) + reach);
   character.leftArm.rotation.y = ease(character.leftArm.rotation.y, 0);
   character.rightArm.rotation.y = ease(character.rightArm.rotation.y, 0);
   character.leftArm.rotation.z = ease(character.leftArm.rotation.z, carrying ? -0.12 : -0.1);
   character.rightArm.rotation.z = ease(character.rightArm.rotation.z, carrying ? 0.12 : 0.1);
-  const elbowLeft = carrying ? -1.25 : walking ? -0.2 - Math.max(0, swing) * 0.12 : -0.12;
-  const elbowRight = carrying ? -1.25 : walking ? -0.2 - Math.max(0, -swing) * 0.12 : -0.12;
+  const elbowLeft = (carrying ? -1.25 + 0.2 * load : walking ? -0.2 - Math.max(0, swing) * 0.12 : -0.12) * (1 - fling * 0.6);
+  const elbowRight = (carrying ? -1.25 + 0.2 * load : walking ? -0.2 - Math.max(0, -swing) * 0.12 : -0.12) * (1 - fling * 0.6);
   character.leftForearm.rotation.x = ease(character.leftForearm.rotation.x, elbowLeft);
   character.rightForearm.rotation.x = ease(character.rightForearm.rotation.x, elbowRight);
   character.leftForearm.rotation.y = ease(character.leftForearm.rotation.y, 0);
   character.rightForearm.rotation.y = ease(character.rightForearm.rotation.y, 0);
   character.leftForearm.rotation.z = ease(character.leftForearm.rotation.z, 0);
   character.rightForearm.rotation.z = ease(character.rightForearm.rotation.z, 0);
-  // A light rise and fall each step, and slow breathing at rest.
+  // A light rise and fall each step, slow breathing at rest, and a crouch for a lift.
   const bob = walking ? Math.abs(Math.cos(phase)) * 0.025 : Math.sin(state.time * 1.8) * 0.005;
-  character.body.position.y = bob;
+  character.body.position.y = bob - 0.13 * dip;
+  // The torso leans into a walk, back under a heavy load and forward over a lift,
+  // and sways a little from side to side with the steps.
+  const lean = (walking ? 0.055 : 0) - 0.07 * load * (carrying ? 1 : 0) + 0.1 * dip + 0.12 * fling;
+  character.body.rotation.x = ease(character.body.rotation.x, lean);
+  character.body.rotation.z = ease(character.body.rotation.z, walking ? Math.sin(phase) * 0.022 : 0);
+}
+
+/**
+ * Turns the head toward a point (in the character root's frame), within the
+ * neck's comfortable range, easing over a few frames. Pass `null` to look ahead.
+ */
+export function lookToward(character: Character, target: { x: number; z: number } | null, dt: number, reducedMotion = false): void {
+  let yaw = 0;
+  let pitch = 0;
+  if (target && !reducedMotion) {
+    const distance = Math.hypot(target.x, target.z);
+    if (distance > 1e-3) {
+      // The figure faces +Z and its left side is -X: a point straight ahead has yaw 0, to its left negative.
+      yaw = Math.max(-1.0, Math.min(1.0, Math.atan2(target.x, target.z)));
+      pitch = distance < 2.8 ? 0.2 : 0.08;
+    }
+  }
+  const ease = Math.min(1, dt * 8);
+  character.head.rotation.y += (yaw - character.head.rotation.y) * ease;
+  character.head.rotation.x += (pitch - character.head.rotation.x) * ease;
 }

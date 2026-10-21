@@ -12,18 +12,25 @@ import { RALPH_BAY, type DepotWorld } from './world';
 import { DevilModel } from './propModels';
 
 /**
- * The 2D depot's big set pieces, on its authored clocks
- * (src/game/slice/DepotLife.ts, DepotRoutines.ts). Staging positions are
- * adapted so nobody walks through a parked truck; words, order and timing
- * are unchanged.
+ * The night shift's big set pieces, on the authored clocks of the original
+ * events. Staging positions are adapted so nobody walks through a parked
+ * truck; words, order and timing are unchanged.
  */
 export const BEN_START = 68_000;
 export const BEN_END = 92_500;
 export const BEN_CAST = new Set(['ben', 'gunman', 'paula']);
 const SHOT_TIMES = [78_500, 78_760, 79_180, 79_500, 80_020];
 const BEN_BAY = SHIFT_LAYOUT.eventBays.ben;
-const GATE = { x: 152, y: BEN_BAY.y };
-const FALLEN = { x: 210, y: BEN_BAY.y + 2 };
+/**
+ * The robbery plays out at the open end of Ben's aisle, past the parked
+ * trucks' noses by the bay opening, so no truck hides it from the camera.
+ * Ben steps out of his bay to meet the gunman, who walks in from the yard.
+ */
+const STAND = { x: 150, y: BEN_BAY.y };
+const GATE = { x: 58, y: BEN_BAY.y };
+const FALLEN = { x: 116, y: BEN_BAY.y + 2 };
+/** Where the gunman and Paula come in from: the snowy yard beyond the open bay. */
+const YARD_X = -70;
 
 export class SetPieces {
   public readonly devilModel: DevilModel;
@@ -348,7 +355,7 @@ export class SetPieces {
     // The gunman comes in along the outer wall and threatens the floor.
     gunman.root.visible = t >= 68_000 && t < 81_700;
     if (gunman.root.visible) {
-      gunman.place(t < 69_500 ? mix(40, 112, (t - 68_000) / 1500) : t < 80_500 ? 112 : mix(112, 40, (t - 80_500) / 1200), BEN_BAY.y);
+      gunman.place(t < 69_500 ? mix(YARD_X, 20, (t - 68_000) / 1500) : t < 80_500 ? 20 : mix(20, YARD_X, (t - 80_500) / 1200), BEN_BAY.y);
       const aiming = t >= 69_500 && t < 80_500;
       gunman.faceAngle = aiming
         ? Math.atan2(ben.root.position.x - gunman.root.position.x, ben.root.position.z - gunman.root.position.z) : null;
@@ -362,13 +369,13 @@ export class SetPieces {
     ben.root.visible = t < 85_600;
     ben.character.nameTag.visible = t < 80_020;
     if (t < 77_200) {
-      ben.place(BEN_BAY.x, BEN_BAY.y);
+      ben.place(mix(BEN_BAY.x, STAND.x, THREE.MathUtils.clamp((t - 68_000) / 1500, 0, 1)), BEN_BAY.y);
       ben.faceAngle = -Math.PI / 2;
       ben.pose = t >= 72_000 && t < 77_200 ? 'announce' : 'none';
       ben.root.rotation.x = 0;
     } else if (t < 80_020) {
       if (this.benStage === 'boast') this.benStage = 'dodge';
-      ben.place(BEN_BAY.x - (BEN_BAY.x - FALLEN.x) * dodge + Math.sin(dodge * Math.PI * 4) * 16, BEN_BAY.y + Math.sin(dodge * Math.PI * 3) * 14);
+      ben.place(STAND.x - (STAND.x - FALLEN.x) * dodge + Math.sin(dodge * Math.PI * 4) * 16, BEN_BAY.y + Math.sin(dodge * Math.PI * 3) * 14);
       ben.faceAngle = this.reducedMotion ? -Math.PI / 2 : -Math.PI / 2 + Math.sin(t / 90) * 0.9;
       ben.pose = 'crouch';
     } else if (t < 81_700 || t >= 85_600) {
@@ -437,7 +444,7 @@ export class SetPieces {
         this.crew.benGone = true;
         ben.root.visible = false;
       }
-      paula.place(t < 86_400 ? mix(10, 210, (t - 85_600) / 800) : t < 91_600 ? 210 : mix(210, 10, (t - 91_600) / 900), BEN_BAY.y + 10);
+      paula.place(t < 86_400 ? mix(YARD_X, FALLEN.x, (t - 85_600) / 800) : t < 91_600 ? FALLEN.x : mix(FALLEN.x, YARD_X, (t - 91_600) / 900), BEN_BAY.y + 10);
       paula.faceAngle = t >= 86_400 && t < 91_600 ? Math.PI / 2 : null;
       paula.pose = t >= 86_400 && t < 91_600 ? 'swear' : 'none';
     }
@@ -450,6 +457,15 @@ export class SetPieces {
       ben.root.visible = false;
       paula.root.visible = false;
     }
+  }
+
+  /**
+   * Skips straight to the end of Ben's scene: every line, shot and sound is
+   * passed over, and the floor is left exactly as the finished scene leaves it.
+   */
+  public skipBen(wallTime: number): void {
+    for (const key of ['gunman', 'ben-training', 'paula', ...SHOT_TIMES.map((_, index) => `shot-${index}`)]) this.cues.add(key);
+    this.updateBen(BEN_END, 0, wallTime);
   }
 
   /** Lays Ben on his back, feet toward the gate (yaw is applied after the fall). */

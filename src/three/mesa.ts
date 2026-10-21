@@ -6,7 +6,7 @@ import { mix, type CrewLife } from './crew';
 import type { Overlay } from './overlay';
 
 /**
- * The Vic/Mesa choice, from src/game/slice/DepotMesaEncounter.ts. One
+ * The Vic/Mesa choice, on the original encounter's rules. One
  * unheld Mesa after 34 s pauses the shift. Vic offers to put it in his SUV,
  * and a fresh one-in-five roll decides whether Shan catches a theft.
  */

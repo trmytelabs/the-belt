@@ -18,10 +18,11 @@ export class DrivingNavigation {
     });
     geometry.translate(0, 0, -0.325);
     geometry.rotateX(-Math.PI / 2);
-    const face = new THREE.MeshStandardMaterial({ color: 0x91f348, emissive: 0x38bc14, emissiveIntensity: 0.65,
-      roughness: 0.4, metalness: 0.25, depthTest: false, depthWrite: false, toneMapped: false });
-    const edge = new THREE.MeshStandardMaterial({ color: 0x256b13, emissive: 0x0a3806, emissiveIntensity: 0.35,
-      roughness: 0.45, depthTest: false, depthWrite: false });
+    // A HUD element, so unlit: with the lower chase camera the arrow sat within
+    // reach of the yard lamps and the environment map, and bloomed. Flat faces
+    // keep the arrow's two tones; the outline below keeps its edges readable.
+    const face = new THREE.MeshBasicMaterial({ color: 0x7fd93c, depthTest: false, depthWrite: false, toneMapped: false });
+    const edge = new THREE.MeshBasicMaterial({ color: 0x2b7a18, depthTest: false, depthWrite: false, toneMapped: false });
     this.pointer = new THREE.Mesh(geometry, [face, edge]);
     this.pointer.name = 'solid-navigation-arrow'; this.pointer.renderOrder = 1000;
     const outline = new THREE.LineSegments(new THREE.EdgesGeometry(geometry, 35),

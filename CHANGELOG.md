@@ -2,6 +2,67 @@
 
 ## 0.1.0 — development snapshot
 
+- Remove the 2D depot. The 3D depot is the only night shift; its briefing,
+  results screen and WebGL fallback offer the original full shift
+  (`?mode=classic`) instead of `?mode=2d`, which now opens the 3D depot like
+  any other address. The 2D scene, its art, browser suites, touch styles and
+  docs are gone; the shared shift, story and mall models stay, and the source
+  parity checks read the 3D set pieces and cast instead. The classic game is
+  unchanged. The Windows CI job runs `test:browser:classic`.
+- Make the 3D night's models more realistic. The twelve depot trucks are
+  rebuilt as cab-over box trucks: riveted aluminium-white boxes with rub and
+  cap rails, livery bands and cabs in each crew member's colour (Paula Abdul's
+  stays purple), fleet-brown cabs on the player's four, raked windshields,
+  door seams, mirrors, roof and side markers, grilles, chrome bumpers, dual
+  rear wheels, fuel tanks, battery boxes and mud flaps. Twelve more Poly Haven
+  CC0 models join on GPU renderers: a photographed cardboard box stands in for
+  the plain parcels, the bulk stock, Ralph's load, the receiving cargo and the
+  unloaders' crates; metal racks join the depot's front corners; the UPS lot
+  gets a real chain-link fence (with its gate) and lamp posts; the living room
+  a leather sofa, armchair, coffee table, bookcase and wall clock; Tim Hortons
+  a wall clock. A half-resolution screen-space ambient-occlusion pass, fed by
+  the main render's own depth so it draws the scene no second time, grounds
+  the scene without letting tags, rings or snow cast false shadows. The
+  converter keeps alpha cut-outs as PNG; software renderers keep every
+  code-built stand-in and download nothing.
+- Polish the 3D depot's motion, camera and feedback. Walking leans and sways
+  the torso; a heavy box leans the carrier back and lowers the arms; grabbing,
+  loading and putting down dip the knees and a throw swings the arms; Termite
+  and Skanky's heads turn to the parcel they can grab or the drop they are
+  heading for; a carried box bobs with the step. The follow camera leads a
+  walking worker, rattles on a breakage and keeps its oblique angle at the
+  back of the depot: the terminal wall fades out ahead of the camera, showing
+  the snowy lot behind, instead of forcing a top-down view over the stairs,
+  floor drops and bulk. A carried parcel's tag rides higher, clear of the
+  face. Clean dispatches throw gold sparks and pop points that grow
+  with the streak, the chase camera jolts on a road bump, a soft vignette
+  frames the picture and hazard stripes mark the top of each stair flight.
+  Reduced motion disables every new movement.
+- Set the 3D night at Christmas. Snow covers the yards outside the depot's
+  bays, the UPS lot, the road, home, the city drive and the view from the break
+  stops, and keeps falling (the flakes hold still with reduced motion). Shan wears a Santa hat,
+  which stays on over his imported model. Through the three-minute shift,
+  cartons pile up at random against the depot's corner walls until the columns
+  reach the top and start tumbling off the edges onto the floor; the piles stay
+  in corners no worker, coworker or truck uses and reset each night.
+- Stage the 3D Tim Hortons break inside the restaurant, at a booth and the
+  pickup counter, beside a Christmas tree and a snowy window. Only the wording
+  that placed the crew in the car changes ("We haven't left the counter."); the
+  2D depot keeps the original parking-lot script. The 7-Eleven break gains a
+  window onto the snowy street.
+- Fill the strip behind the 3D bulk area, either side of the bulk pile, with
+  cartons up to the top of the rear wall through the shift, out of every
+  worker's reach and without spilling onto the bulk drops.
+- Make Termite and Skanky's house a closed, furnished living room: solid walls
+  with skirting, crown molding, a ceiling, curtained windows onto the snowy
+  street, a framed side door, a bookcase, armchair, dining corner, coats, rug,
+  pictures, a clock, a Christmas tree with presents and string lights. Every
+  indoor shot is taken from inside the room.
+- Stage Ben's 3D robbery in the open end of his aisle, where no truck hides it;
+  the gunman and Paula walk in from the yard. Enter or SKIP SCENE skips it,
+  passing over its lines, shots and sounds.
+- Remove the scanner-reset fault from the 3D shift; the 2D depot keeps it.
+- Fix a black 3D depot when the game loaded in a hidden or zero-size window.
 - Open the 3D night at Termite and Skanky's place. They choose to go in or quit
   UPS. Quitting plays an all-nighter with a Warsteiner keg, Hershey's Eggies,
   Twilight Princess on the Wii and Heavy Metal, Skanky being sick and Shan's

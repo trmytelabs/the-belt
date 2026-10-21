@@ -8,13 +8,15 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { createNightEnvironment, disposeNightEnvironment } from './nightEnvironment';
 
+import { DepotAmbientOcclusion } from './ambientOcclusion';
 import { MESA } from './references';
 import { clearDepotFootprint, DEPOT_BODY_RADIUS, DEPOT_CARRY_RADIUS, depotSolidFootprints, type FootprintCircle } from '../game/slice/DepotClearance';
 import { KeyReturnModel, MALL_RULES, type MallEvent } from '../game/slice/MallModel';
 import { MallModel3D as MallModel } from './MallModel3D';
 import {
-  THROWING, type Parcel, type Route, type ShiftEvent, type WorkerId,
+  CARRY_MULTIPLIER, THROWING, type Parcel, type Route, type ShiftEvent, type WorkerId,
 } from '../game/slice/ShiftModel';
 import { ROUTE_INFO, parcelAddress } from './addresses';
 import { Cutscene, StoryRun, type StoryChoices } from '../game/slice/StoryModel';
@@ -23,20 +25,21 @@ import {
   type StoryActor, type StoryBeat, type StoryScene,
 } from '../game/slice/StoryScript';
 import { audioSystem, type SoundEffect } from './audio';
-import { syncCharacterModels, useCharacterModels, type CharacterModelEntry } from './characterModels';
-import { animateCharacter, createCharacter, mergeCharacter, type Character } from './characters';
+import { syncCharacterModels, useCharacterClips, useCharacterModels, type CharacterModelEntry } from './characterModels';
+import { animateCharacter, createCharacter, lookToward, mergeCharacter, triggerAction, type Character } from './characters';
 import { CrewLife } from './crew';
 import { MesaDream } from './dream';
 import { MesaEncounter } from './mesa';
 import { BEN_CAST, BEN_END, BEN_START, SetPieces } from './setpieces';
 import { StoryStage, directDepot } from './story';
+import { breakScene3d } from './breakScenes3d';
 import { DrivingModel, type DriveDestination, type DriveOrigin } from './DrivingModel';
 import { DECISION, HOME_DECISION, LEAVE_HOUSE, QUIT_ENDING, QUIT_NIGHT, type HomeBeat } from './homeScript';
 import { DrivingView } from './driving';
 import { BELT_SOLID_WIDTH, HEAD_DRIVE, clearReceiving } from './receivingCollision';
 import { TouchControls } from './touch';
 import { Overlay } from './overlay';
-import { alignParcelToSurface, createParcelView, setParcelCarried, type ParcelView } from './parcels';
+import { alignParcelToSurface, createParcelView, setParcelCarried, setParcelModels, type ParcelView } from './parcels';
 import { disposeObject3D } from './resources';
 import { loadSurfaces } from './textures';
 import {
@@ -81,7 +84,7 @@ function showWebglFallback(host: HTMLElement): void {
   host.innerHTML = `<div class="b3d-fallback" style="position:fixed;inset:0;display:grid;place-items:center;background:#0b171c;color:#edf0de;font:16px 'Segoe UI',Arial,sans-serif;text-align:center;padding:24px">
     <div><h1 style="font-size:28px;margin:0 0 12px">THE BELT</h1>
     <p>The 3D night shift needs WebGL, which this browser has turned off.</p>
-    <p><a style="color:#edb765" href="${window.location.pathname}?mode=2d">Play the 2D night shift instead</a></p></div></div>`;
+    <p><a style="color:#edb765" href="${window.location.pathname}?mode=classic">Play the original full shift instead</a></p></div></div>`;
 }
 
 const escapeHtml = (text: string): string => text.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
@@ -110,6 +113,7 @@ export class Belt3d {
   private readonly renderer: THREE.WebGLRenderer;
   private readonly composer: EffectComposer | null;
   private readonly renderPass: RenderPass | null;
+  private readonly gtao: DepotAmbientOcclusion | null;
   private readonly camera = new THREE.PerspectiveCamera(38, 1, 0.1, 140);
   private readonly cameraTarget = new THREE.Vector3();
   private readonly workers: Record<WorkerId, Character>;
@@ -156,6 +160,13 @@ export class Belt3d {
   private fumeTimer = 0;
   private mallBonus = 0;
   private breakAlertMs = 0;
+  /** Each worker's smoothed velocity in world metres per second, for the camera's look-ahead. */
+  private readonly motion: Record<WorkerId, { previous: THREE.Vector3 | null; velocity: THREE.Vector3 }> = {
+    termite: { previous: null, velocity: new THREE.Vector3() }, skanky: { previous: null, velocity: new THREE.Vector3() },
+  };
+  private readonly lookAhead = new THREE.Vector3();
+  /** A decaying camera shake, in metres, for breakages. */
+  private shake = 0;
   /** The current story scene's heading, so a beat can move its clock. */
   private storyHeading = { title: '', kicker: '' };
   /**
@@ -167,6 +178,8 @@ export class Belt3d {
   private readonly host: HTMLElement;
   private readonly inputAbort = new AbortController();
   private readonly environment: THREE.WebGLRenderTarget;
+  /** The snowy night outside: reflections and ambient for every scene but the depot. */
+  private readonly nightEnvironment: THREE.WebGLRenderTarget;
   private tickTimer: number | undefined;
   private disposed = false;
   private readonly depotSolids = [...depotSolidFootprints(SHIFT_LAYOUT, SHIFT_LAYOUT.crewTruckRows, SHIFT_LAYOUT.playerTruckDepth).map(rect =>
@@ -182,8 +195,11 @@ export class Belt3d {
     const rendererName = debug ? String(gl.getParameter(debug.UNMASKED_RENDERER_WEBGL)) : '';
     this.quality = /swiftshader|llvmpipe|software|basic render/i.test(rendererName) ? 'low' : 'high';
     this.renderer.setPixelRatio(this.quality === 'high' ? Math.min(window.devicePixelRatio, 2) : 0.6);
-    // Software renderers keep the lighter procedural people and download no models.
+    // Software renderers keep the lighter procedural people and cartons and download no models.
     if (this.quality === 'low') void useCharacterModels([]);
+    // Motion-captured clips move the crew models on GPU renderers; software renderers keep the figures' poses.
+    else void useCharacterClips(true);
+    setParcelModels(this.quality === 'high');
     this.renderer.shadowMap.enabled = this.quality === 'high';
     this.renderer.shadowMap.type = this.quality === 'high' ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -198,20 +214,36 @@ export class Belt3d {
     this.environment = pmrem.fromScene(room, 0.04);
     this.world.scene.environment = this.environment.texture;
     room.dispose();
-    pmrem.dispose();
     this.world.scene.environmentIntensity = 0.18;
+    // Outside the depot nothing reflected anything: car paint and glass read as
+    // flat film. A procedural night sky, moon and sodium lamps give the lot,
+    // road, house, dream and drive their reflections and a little ambient.
+    const night = createNightEnvironment();
+    this.nightEnvironment = pmrem.fromScene(night, 0.04);
+    disposeNightEnvironment(night);
+    pmrem.dispose();
     this.stage = new StoryStage(this.quality);
+    this.stage.setEnvironment(this.nightEnvironment.texture, 0.32);
 
     if (this.quality === 'high') {
-      const target = new THREE.WebGLRenderTarget(1, 1, { samples: 4, type: THREE.HalfFloatType });
+      // The scene's depth is kept for the ambient-occlusion pass, which reads it instead of drawing the scene again.
+      const depthTexture = DepotAmbientOcclusion.depthTexture();
+      const target = new THREE.WebGLRenderTarget(1, 1, { samples: 4, type: THREE.HalfFloatType, depthTexture });
       this.composer = new EffectComposer(this.renderer, target);
       this.renderPass = new RenderPass(this.world.scene, this.camera);
       this.composer.addPass(this.renderPass);
+      // Ambient occlusion: contact shading under trucks, freight, shelves and
+      // people, which the merged, flat-lit geometry otherwise lacks.
+      // The composer clones its target, and the render pass draws into the clone (its read buffer), so the pass reads that clone's depth.
+      const sceneDepth = this.composer.readBuffer.depthTexture ?? depthTexture;
+      this.gtao = new DepotAmbientOcclusion(this.world.scene, this.camera, sceneDepth);
+      this.composer.addPass(this.gtao);
       this.composer.addPass(new UnrealBloomPass(new THREE.Vector2(1, 1), 0.55, 0.5, 0.96));
       this.composer.addPass(new OutputPass());
     } else {
       this.composer = null;
       this.renderPass = null;
+      this.gtao = null;
     }
 
     this.workers = { termite: createCharacter(TERMITE_SPEC), skanky: createCharacter(SKANKY_SPEC) };
@@ -240,6 +272,8 @@ export class Belt3d {
       this.stolen.add(parcel.id);
     };
     this.dream = new MesaDream(this.overlay.root, this.quality);
+    this.dream.scene.environment = this.nightEnvironment.texture;
+    this.dream.scene.environmentIntensity = 0.22;
     this.touch = new TouchControls(this.overlay.root, {
       action: () => this.act(),
       switchWorker: () => { if (this.state === 'playing') this.model.switchWorker(); },
@@ -253,6 +287,7 @@ export class Belt3d {
       mute: () => { audioSystem.toggleMuted(); },
     });
     this.overlay.onStoryButton((action) => {
+      if (action === 'skip' && this.state === 'interlude') { this.skipInterlude(); return; }
       if (this.state !== 'story' || !this.cutscene) return;
       if (action === 'pause') { if (this.canPause()) this.pause(); return; }
       if (action === 'next') this.cutscene.userNext();
@@ -314,6 +349,7 @@ export class Belt3d {
     disposeObject3D(this.dream.scene);
     disposeObject3D(this.world.scene);
     this.environment.dispose();
+    this.nightEnvironment.dispose();
     for (const pass of this.composer?.passes ?? []) pass.dispose();
     this.composer?.dispose();
     this.renderer.dispose();
@@ -326,6 +362,11 @@ export class Belt3d {
     return useCharacterModels(list);
   }
 
+  /** Turns the crew's animation clips on or off. For checks and rehearsal. */
+  public useCharacterClips(enabled: boolean): Promise<void> {
+    return useCharacterClips(enabled);
+  }
+
   /** Fixes the next run's random choices (opener, break place, variant, time). For checks and rehearsal. */
   public forceStory(choices: Partial<StoryChoices>): void {
     this.forcedStory = { ...choices };
@@ -335,6 +376,9 @@ export class Belt3d {
   private resize(): void {
     const width = this.host.clientWidth || window.innerWidth;
     const height = this.host.clientHeight || window.innerHeight;
+    // A page opened in a hidden or collapsed window has no size yet. A 0/0
+    // aspect would poison every camera; wait for the resize that gives it one.
+    if (!width || !height) return;
     this.renderer.setSize(width, height, false);
     this.composer?.setSize(width, height);
     this.camera.aspect = width / height;
@@ -385,6 +429,7 @@ export class Belt3d {
           else this.restart();
         }
         else if (this.state === 'paused') this.resume();
+        else if (this.state === 'interlude') this.skipInterlude();
       } else if (event.code === 'KeyM') {
         audioSystem.toggleMuted();
       } else if (event.code === 'Escape') {
@@ -453,7 +498,6 @@ export class Belt3d {
       </ol>
       <p><b>Missed one? Recover it at the belt end.</b> The shift ends at ${this.model.capacity} packages in recovery. ${this.touch.enabled ? 'STOP THE BELT' : 'E / STOP THE BELT'} gives you two seconds to catch up: 3 stops per run, with a 15-second cooldown after each use. You get ${this.model.cleanupMs / 1000} seconds to finish after intake closes.</p>
       <p>Your partner sorts their side automatically. ${this.touch.enabled ? 'SWITCH' : 'TAB / right-click'} changes worker; only your controlled worker picks up bulk. Partner deliveries count toward the goal. Wrong drops cost 10 points; throws can break freight.</p>
-      <p>If a scanner stops, switch to the worker named on screen and ${this.touch.enabled ? 'tap RESET SCANNER' : 'press SPACE'}. Freight stays in hand.</p>
       ${this.touch.enabled ? `
       <p>The stick moves. SWITCH changes worker. GRAB / DELIVER picks up and delivers. THROW risks it to save the walk.</p>
       <p>STOP THE BELT gives you a moment to catch up. VIEW shows the whole warehouse. In story scenes, NEXT or SKIP.</p>` : `
@@ -463,7 +507,6 @@ export class Belt3d {
       <p>The night starts at home: go in to work, or quit UPS. After the shift, drive the five-ton to Southgate Mall and finish the deliveries. Driving controls appear when you get there.</p>
       <button type="button">START THE NIGHT  ↵</button>
       <a href="${window.location.pathname}?mode=3d&amp;drive=mall">TRY JUST THE DRIVE · EXPLORE THE CITY</a>
-      <a href="${window.location.pathname}?mode=2d">PLAY THE 2D DEPOT</a>
       <a href="${window.location.pathname}?mode=classic">PLAY THE ORIGINAL FULL SHIFT</a>`, () => this.startNight());
   }
 
@@ -491,6 +534,7 @@ export class Belt3d {
     // The 3D road now has a playable journey after the departure and original quip.
     // Keep shared cutscenes intact for both legacy versions.
     if (scene.id === 'drive-to-mall' || scene.id === 'drive-to-ups') scene = { ...scene, beats: scene.beats.slice(0, 2) };
+    scene = breakScene3d(scene);
     this.overlay.setLunchAlert(false);
     this.state = 'story';
     this.cutscene = new Cutscene(scene);
@@ -640,7 +684,11 @@ export class Belt3d {
 
   private beginDriving(destination: DriveDestination, origin: DriveOrigin = 'depot'): void {
     this.driving = new DrivingModel(destination, origin);
-    this.drivingView ??= new DrivingView(this.quality);
+    if (!this.drivingView) {
+      this.drivingView = new DrivingView(this.quality);
+      this.drivingView.scene.environment = this.nightEnvironment.texture;
+      this.drivingView.scene.environmentIntensity = 0.35;
+    }
     this.drivingView.resize(this.camera.aspect);
     this.drivingView.begin(this.driving, origin === 'home' ? 'car' : 'truck');
     this.stage.end();
@@ -695,6 +743,7 @@ export class Belt3d {
 
   private pause(): void {
     this.overlay.setLunchAlert(false);
+    this.overlay.setInterlude(false);
     this.pausedFrom = this.state as Resumable;
     this.state = 'paused';
     this.model.paused = true;
@@ -711,6 +760,7 @@ export class Belt3d {
   private resume(): void {
     this.state = this.pausedFrom;
     this.overlay.setLunchAlert(this.state === 'break-alert');
+    this.overlay.setInterlude(this.state === 'interlude');
     // The shift stays frozen through a story; only active sorting runs its clock.
     this.model.paused = this.state !== 'playing';
     if (this.mall) this.mall.paused = false;
@@ -731,11 +781,21 @@ export class Belt3d {
     this.benClock = BEN_START;
     this.keys.clear();
     this.overlay.hold = (key) => BEN_CAST.has(key);
-    this.overlay.showToast("BEN'S BIG MOMENT · belt held, your freight is safe", 3000);
+    this.overlay.setInterlude(true);
+    this.overlay.showToast(`BEN'S BIG MOMENT · belt held, your freight is safe · ${this.touch.enabled ? 'SKIP SCENE' : 'ENTER'} skips it`, 3000);
     audioSystem.stopMusic();
   }
 
+  /** ENTER or SKIP SCENE: Ben's scene jumps to its end and the shift carries on. */
+  private skipInterlude(): void {
+    if (this.state !== 'interlude') return;
+    this.setPieces.skipBen(this.time);
+    this.benClock = BEN_END;
+    this.endInterlude();
+  }
+
   private endInterlude(): void {
+    this.overlay.setInterlude(false);
     this.state = 'playing';
     this.model.paused = false;
     this.overlay.dropSpeech((key) => BEN_CAST.has(key));
@@ -775,6 +835,7 @@ export class Belt3d {
     this.benStarted = false;
     this.benClock = BEN_START;
     this.overlay.hold = null;
+    this.overlay.setInterlude(false);
     this.setPieces.reset();
     this.mesa.reset();
     this.dream.stop();
@@ -792,6 +853,10 @@ export class Belt3d {
     this.stage.reset();
     this.stage.resetMall();
     this.depotShot = null;
+    for (const motion of Object.values(this.motion)) { motion.previous = null; motion.velocity.set(0, 0, 0); }
+    this.lookAhead.set(0, 0, 0);
+    this.shake = 0;
+    for (const worker of Object.values(this.workers)) worker.action = undefined;
     this.banter.clear();
     this.crew.reset();
     this.workerWalks.clear();
@@ -908,6 +973,7 @@ export class Belt3d {
         if (event.type === 'collision') {
           this.drivingPenalty += event.points; this.drivingCollisions++;
           audioSystem.drivingCue('collision');
+          this.drivingView?.jolt(event.kind === 'cone' ? 0.18 : 0.4);
           this.overlay.showToast(`EASY DOES IT · −${event.points} points${drive.origin === 'home' ? '' : ' · cargo safe'}`, 1600);
         } else if (event.type === 'red-light') {
           this.drivingPenalty += event.points; this.drivingRedLights++;
@@ -944,6 +1010,9 @@ export class Belt3d {
     audioSystem.setDriving(this.state === 'driving' && this.driving ? this.driving.speed : null);
     if (this.state === 'playing') this.crew.updateReceiving(m, dt, this.time);
     this.world.update(running ? dt : 0, this.time, m.beltTravel, this.reducedMotion);
+    // Depot snow only falls while the depot is on screen; the wall piles always follow the shift clock.
+    const depotShown = this.state !== 'paused' && this.state !== 'dream' && !this.usesDriving() && !this.usesStage();
+    this.world.updateChristmas(depotShown ? dt : 0, m.elapsedMs, m.durationMs, this.reducedMotion);
     const depotStory = this.state === 'story' && this.cutscene?.scene.location === 'depot';
     if (!depotStory) this.syncWorkers(running || this.state === 'countdown' ? dt : 0);
     if (this.state === 'playing' || this.state === 'countdown' || this.state === 'briefing') this.clearCrewFootprints();
@@ -1053,6 +1122,7 @@ export class Belt3d {
     else if (this.composer && this.renderPass) {
       this.renderPass.scene = scene;
       this.renderPass.camera = camera;
+      if (this.gtao) { this.gtao.scene = scene; this.gtao.camera = camera; }
       this.composer.render();
     } else this.renderer.render(scene, camera);
     this.renderCost = performance.now() - now;
@@ -1083,8 +1153,24 @@ export class Belt3d {
   private handleEvent(event: ShiftEvent): void {
     const sound = event.assisted || event.type === 'wrong' && !event.message.startsWith('WRONG DROP') ? undefined : EVENT_SOUNDS[event.type];
     if (sound) audioSystem.play(sound);
+    // The worker whose hands did it: the event names a worker, or stands nearest the spot.
+    const actor = event.workerId ? this.workers[event.workerId]
+      : this.workers[[...this.model.workers].sort((a, b) => Math.hypot(a.x - event.x, a.y - event.y) - Math.hypot(b.x - event.x, b.y - event.y))[0].id];
+    if (event.type === 'grab' || event.type === 'recover') triggerAction(actor, 'lift', this.time);
+    else if (event.type === 'drop' || event.type === 'sort' || (event.type === 'wrong' && event.message.startsWith('WRONG DROP'))) triggerAction(actor, 'drop', this.time);
+    else if (event.type === 'throw') triggerAction(actor, 'throw', this.time);
     if (event.type === 'sort' && event.score) {
-      this.overlay.pop(`+${event.score}`, ROUTE_COLORS[event.route ?? 'A'], toWorld(event, surfaceAt(event.x, event.y) + 1.8));
+      // A clean dispatch pops its points, growing with the streak, and throws a little gold up from the drop.
+      const combo = this.model.combo;
+      const streak = combo >= 3 ? ` · ${combo} IN A ROW` : '';
+      this.overlay.pop(`+${event.score}${streak}`, ROUTE_COLORS[event.route ?? 'A'], toWorld(event, surfaceAt(event.x, event.y) + 1.8), 1 + Math.min(combo, 10) * 0.06);
+      if (!this.reducedMotion) {
+        const at = toWorld(event, surfaceAt(event.x, event.y) + 0.5);
+        for (let i = 0; i < 9; i += 1) {
+          this.world.puffs.emit(at, { color: 0xffd98a, size: 0.11, life: 0.55 + Math.random() * 0.25, opacity: 0.9, grow: 0.35, spread: 0.5,
+            velocity: new THREE.Vector3((Math.random() - 0.5) * 1.6, 1.4 + Math.random() * 0.8, (Math.random() - 0.5) * 1.6) });
+        }
+      }
     }
     if (event.type === 'throw' && event.packageId !== undefined && event.workerId) {
       this.throwers.set(event.packageId, event.workerId);
@@ -1098,6 +1184,7 @@ export class Belt3d {
       this.overlay.showToast(`${parcel?.label ?? 'PARCEL'} BROKE · no credit · −${lost} points`, 2800);
       const thrower = this.model.workers.find((worker) => worker.id === (event.packageId !== undefined ? this.throwers.get(event.packageId) : undefined)) ?? this.model.activeWorker;
       this.crew.shanBreakage(thrower, this.model.elapsedMs);
+      this.shake = Math.max(this.shake, 0.22);
       const at = toWorld(event, surfaceAt(event.x, event.y) + 0.3);
       for (let i = 0; i < 10; i += 1) {
         this.world.puffs.emit(at, { color: parcel?.kind === 'makeup' ? 0xda8db6 : 0xb8875a, size: 0.12, life: 0.9, velocity: new THREE.Vector3((Math.random() - 0.5) * 2, 1.2, (Math.random() - 0.5) * 2), opacity: 0.8, grow: 1.4, spread: 0.3 });
@@ -1171,9 +1258,28 @@ export class Belt3d {
       let delta = targetAngle - character.root.rotation.y;
       delta = Math.atan2(Math.sin(delta), Math.cos(delta));
       character.root.rotation.y += delta * Math.min(1, dt * 12);
-      animateCharacter(character, dt, { moving: walk ? !walk.done : worker.moving, carrying: worker.heldId !== null, time: this.time, reducedMotion: this.reducedMotion });
+      // Smoothed velocity, so the camera can lead a walking worker.
+      const motion = this.motion[worker.id];
+      if (motion.previous && dt > 0) {
+        const velocity = character.root.position.clone().sub(motion.previous).divideScalar(dt);
+        motion.velocity.lerp(velocity, Math.min(1, dt * 6));
+      } else if (dt > 0) motion.velocity.set(0, 0, 0);
+      motion.previous = (motion.previous ?? new THREE.Vector3()).copy(character.root.position);
+      // A heavy box pulls the carrier back onto their heels; an envelope weighs nothing.
+      const held = worker.heldId === null ? null : m.packages.find((item) => item.id === worker.heldId) ?? null;
+      const load = held ? THREE.MathUtils.clamp((1 - CARRY_MULTIPLIER[held.kind]) / 0.6, 0, 1) : 0;
+      animateCharacter(character, dt, { moving: walk ? !walk.done : worker.moving, carrying: held !== null, time: this.time, reducedMotion: this.reducedMotion, load });
+      // Eyes on the work: the parcel about to be grabbed, or the drop the held one is bound for.
+      const focus = this.state === 'playing' ? held ? m.deliveryPoint(held, worker) : m.nearestPackage(worker) : null;
+      if (focus) {
+        const toFocus = toWorld(focus, character.root.position.y).sub(character.root.position);
+        const facing = character.root.rotation.y;
+        // Into the figure's own frame, which faces +Z.
+        lookToward(character, { x: toFocus.x * Math.cos(facing) - toFocus.z * Math.sin(facing), z: toFocus.x * Math.sin(facing) + toFocus.z * Math.cos(facing) }, dt, this.reducedMotion);
+      } else lookToward(character, null, dt, this.reducedMotion);
       if (this.state === 'celebrating' && !this.reducedMotion) {
-        // Termite and Skanky celebrate with the crew.
+        // Termite and Skanky celebrate with the crew (an imported model plays its cheer).
+        if (character.motion) character.motion.pose = 'cheer';
         const beat = this.time * 9 + (worker.id === 'skanky' ? 1.3 : 0);
         character.body.position.y = Math.abs(Math.sin(beat)) * 0.12;
         character.leftArm.rotation.set(-2.8 + Math.sin(beat) * 0.35, 0, 0.25);
@@ -1243,8 +1349,9 @@ export class Belt3d {
     if (parcel.state === 'held' && parcel.workerId) {
       const character = this.workers[parcel.workerId];
       const forward = new THREE.Vector3(Math.sin(character.root.rotation.y), 0, Math.cos(character.root.rotation.y));
+      // The box rides the torso: it bobs with each step and dips with a lift or a put-down.
       return target.copy(character.root.position).addScaledVector(forward, carryOffset)
-        .setY(character.root.position.y + 1.05 - view.height * 0.35);
+        .setY(character.root.position.y + 1.05 + character.body.position.y - view.height * 0.35);
     }
     if (parcel.state === 'missed') {
       const missed = this.model.packages.filter((item) => item.state === 'missed');
@@ -1376,6 +1483,9 @@ export class Belt3d {
         }
       }
       this.parcelPosition(parcel, view, target);
+      // In the hands, the shipping tag rides higher, clear of the carrier's face,
+      // at its full size so the street number stays readable while carrying.
+      view.tag.position.y = view.tag.userData.baseY + (parcel.state === 'held' ? 0.5 : 0);
       const assigned = parcel.route === 'C' || ROUTE_INFO[parcel.route].side === m.activeWorker.side;
       view.highlight.visible = this.state === 'playing' && assigned && ['belt', 'floor', 'missed'].includes(parcel.state)
         && (parcel.state !== 'floor' || (m.activeWorker.side === 'left' ? parcel.x < 440 : parcel.x > 520));
@@ -1446,11 +1556,13 @@ export class Belt3d {
     const portrait = this.camera.aspect < 1;
     let position: THREE.Vector3;
     let look: THREE.Vector3;
+    let follow = false;
     const state = this.state === 'paused' ? this.pausedFrom : this.state;
     if (state === 'interlude') {
-      // Frame the whole outer bay: gunman, Ben, the gate and the demon.
-      look = new THREE.Vector3(toWorldX(210), 1.0, toWorldZ(SHIFT_LAYOUT.eventBays.ben.y));
-      position = look.clone().add(portrait ? new THREE.Vector3(2, 11, 9) : new THREE.Vector3(3.2, 6.6, 7.6));
+      // Frame the open end of Ben's aisle from past the truck noses, so no truck
+      // stands between the camera and the gunman, Ben, the gate and the demon.
+      look = new THREE.Vector3(toWorldX(90), 1.0, toWorldZ(SHIFT_LAYOUT.eventBays.ben.y));
+      position = look.clone().add(portrait ? new THREE.Vector3(1.2, 11, 8) : new THREE.Vector3(1.4, 6.2, 7.2));
     } else if (state === 'story' && this.depotShot) {
       look = this.depotShot.look;
       position = this.depotShot.position.clone();
@@ -1459,21 +1571,46 @@ export class Belt3d {
       look = new THREE.Vector3(0, 0, toWorldZ((SHIFT_LAYOUT.worldTop + SHIFT_LAYOUT.worldBottom) / 2));
       position = look.clone().add(new THREE.Vector3(0, Math.max(portrait ? 104 : 80, 58 / this.camera.aspect), portrait ? 39 : 27));
     } else {
-      const worker = this.workers[this.model.activeWorker.id].root.position;
-      const insideTruck = truckInteriorAt(this.model.activeWorker);
+      const active = this.model.activeWorker;
+      const worker = this.workers[active.id].root.position;
+      const insideTruck = truckInteriorAt(active);
       // Follow the worker inside so the transparent roof reveals the shelves.
       const terminal = THREE.MathUtils.smoothstep(worker.z, toWorldZ(SHIFT_LAYOUT.stairs.minY - 80), toWorldZ(SHIFT_LAYOUT.stairs.minY + 10));
       look = new THREE.Vector3(worker.x * (insideTruck ? 1 : 0.5 + 0.5 * terminal), worker.y + 0.4, worker.z - (1 - terminal));
+      // Lead a walking worker a little, so there is more belt or floor in view ahead of them.
+      const velocity = this.motion[active.id].velocity;
+      const lead = snap || this.reducedMotion ? new THREE.Vector3() : velocity.clone().setY(0).multiplyScalar(0.28);
+      if (lead.length() > 0.9) lead.setLength(0.9);
+      this.lookAhead.lerp(lead, snap ? 1 : 1 - Math.exp(-dt * 3));
+      look.add(this.lookAhead);
       position = look.clone().add(portrait ? new THREE.Vector3(0, 15, 9) : new THREE.Vector3(worker.x * 0.2 * (1 - terminal), 10.5, 9.4));
       if (insideTruck && !portrait) position = look.clone().add(new THREE.Vector3(0, 9, 5.5));
+      follow = true;
     }
+    // The overview and story shots stay inside the terminal wall. The follow
+    // camera may pass behind it at the back of the depot: the wall fades out
+    // ahead of the camera (see DepotWorld.fadeRearWall), keeping the same
+    // oblique view over the stairs, the floor drops and bulk instead of a
+    // top-down one jammed against the wall.
     const rearLimit = toWorldZ(SHIFT_LAYOUT.bulkRearWall.y - SHIFT_LAYOUT.bulkRearWall.height / 2) - this.camera.near - 0.15;
-    position.z = Math.min(position.z, rearLimit);
+    if (!follow) position.z = Math.min(position.z, rearLimit);
+    // Easing never recovers from an invalid position (NaN stays NaN), which left the depot black.
+    if (!Number.isFinite(this.camera.position.lengthSq()) || !Number.isFinite(this.cameraTarget.lengthSq())) {
+      this.camera.position.copy(position);
+      this.cameraTarget.copy(look);
+    }
     const ease = snap ? 1 : 1 - Math.exp(-dt * 4);
     this.camera.position.lerp(position, ease);
-    this.camera.position.z = Math.min(this.camera.position.z, rearLimit);
+    if (!follow) this.camera.position.z = Math.min(this.camera.position.z, rearLimit);
     this.cameraTarget.lerp(look, ease);
+    this.world.fadeRearWall(this.camera.position);
     this.camera.lookAt(this.cameraTarget);
+    // A breakage rattles the camera briefly; the lookAt above keeps the framing.
+    this.shake = snap ? 0 : this.shake * Math.exp(-dt * 7);
+    if (this.shake > 0.004 && !this.reducedMotion) {
+      this.camera.position.x += (Math.random() - 0.5) * this.shake;
+      this.camera.position.y += (Math.random() - 0.5) * this.shake;
+    } else this.shake = 0;
     const fog = this.world.scene.fog;
     if (fog instanceof THREE.Fog) {
       const altitude = Math.max(0, this.camera.position.y - 20);
@@ -1509,7 +1646,7 @@ export class Belt3d {
       <p>DRIVING · ${this.drivingCollisions} bumps${this.drivingRedLights ? ` · ${this.drivingRedLights} red lights` : ''} · −${this.drivingPenalty} points · cargo safe</p>
       <p><b>NIGHT TOTAL ${String(total).padStart(5, '0')}</b> · ${m.gradeQuote}</p>` : ''}
       <button type="button">ANOTHER NIGHT  ↵</button>
-      <a href="${window.location.pathname}?mode=2d">PLAY THE 2D DEPOT</a>`, () => this.restart());
+      <a href="${window.location.pathname}?mode=classic">PLAY THE ORIGINAL FULL SHIFT</a>`, () => this.restart());
   }
 }
 

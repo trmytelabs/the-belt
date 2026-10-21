@@ -9,7 +9,8 @@ import { ROCKETBOX_CAST } from '../src/three/rocketboxCast.ts';
 // phones, carries a humanoid skeleton the game recognises, and is listed for
 // names the game really uses.
 const folder = 'public/models/characters';
-const MAX_BYTES = 1.5 * 1024 * 1024;
+// Colour, normal and roughness maps: the largest, Skanky, is about 1.8 MB.
+const MAX_BYTES = 2 * 1024 * 1024;
 
 /** The JSON chunk of a GLB file. */
 function glbJson(path) {

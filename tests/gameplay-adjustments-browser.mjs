@@ -4,34 +4,26 @@ import { chromium } from 'playwright';
 import { preview } from 'vite';
 import { ROCKETBOX_CAST } from '../src/three/rocketboxCast.ts';
 
-const mode = process.argv[2] ?? '3d';
 const server = process.env.BELT_TEST_BASE_URL ? null : await preview({ preview: { host: '127.0.0.1', port: 0 }, logLevel: 'silent' });
 let browser;
 try {
   browser = await chromium.launch({ headless: true,
     ...(process.env.BELT_BROWSER_EXECUTABLE ? { executablePath: process.env.BELT_BROWSER_EXECUTABLE } : { channel: 'chromium' }),
-    args: mode === '3d' ? ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] : process.env.BELT_BROWSER_RENDERER === 'canvas' ? ['--disable-webgl'] : [],
+    args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
   });
   const page = await browser.newPage({ viewport: { width: 1440, height: 960 } });
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.addInitScript(() => {
     window.addEventListener('belt3d:ready', event => { window.fixtureApp = event.detail; event.detail.playPrologue = false; });
-    let phaser;
-    Object.defineProperty(window, 'Phaser', { configurable: true, get: () => phaser, set: value => {
-      phaser = value;
-      const boot = value.Game.prototype.boot;
-      value.Game.prototype.boot = function (...args) { window.fixtureGame = this; return boot.apply(this,args); };
-    } });
   });
   await page.route('https://fonts.googleapis.com/**', route => route.fulfill({body:''}));
   await page.route('https://fonts.gstatic.com/**', route => route.fulfill({body:''}));
-  await page.goto(new URL(`?mode=${mode}`, process.env.BELT_TEST_BASE_URL ?? server.resolvedUrls.local[0]).href);
-  const read = (fn, arg = mode) => page.evaluate(fn, arg);
-  const wait = (fn, options = {}) => page.waitForFunction(fn, mode, { polling: 10, timeout: 90_000, ...options });
-  if(mode === '2d') await page.waitForFunction(() => window.fixtureGame?.scene.isActive('DepotScene'));
-  await wait(mode => (mode === '3d' ? window.fixtureApp : window.fixtureGame?.scene.getScene('DepotScene'))?.state === 'briefing');
-  if (mode === '3d') {
+  await page.goto(new URL('?mode=3d', process.env.BELT_TEST_BASE_URL ?? server.resolvedUrls.local[0]).href);
+  const read = (fn, arg) => page.evaluate(fn, arg);
+  const wait = (fn, options = {}) => page.waitForFunction(fn, undefined, { polling: 10, timeout: 90_000, ...options });
+  await wait(() => window.fixtureApp?.state === 'briefing');
+  {
     // Force the shipped workers and Shan even on software graphics. The normal
     // fallback is checked separately; this run checks real bodies with cargo.
     const cast = ROCKETBOX_CAST.filter(({ file }) => ['termite', 'skanky', 'shan'].includes(file))
@@ -39,40 +31,36 @@ try {
     await read(entries => window.fixtureApp.useCharacterModels(entries.map(entry => ({ ...entry, skinMaterial: /head/i }))), cast);
     await wait(() => Object.values(window.fixtureApp.workers).every(worker => worker.root.getObjectByName('character-model')));
   }
-  if(mode === '2d') await page.waitForFunction(() => window.fixtureGame.loop.frame >= 3);
-  await read(mode => (mode === '3d' ? window.fixtureApp : window.fixtureGame.scene.getScene('DepotScene')).forceStory({breakAtMs:1e12}));
-  if(mode === '2d') {
-    const bounds=await page.locator('#app canvas').boundingBox();
-    await page.mouse.click(bounds.x+bounds.width/2,bounds.y+bounds.height*495/720);
-  } else await page.getByRole('button',{name:'START THE NIGHT  ↵'}).click();
-  await wait(mode => (mode === '3d' ? window.fixtureApp : window.fixtureGame.scene.getScene('DepotScene')).state === 'story', {timeout:15_000});
+  await read(() => window.fixtureApp.forceStory({breakAtMs:1e12}));
+  await page.getByRole('button',{name:'START THE NIGHT  ↵'}).click();
+  await wait(() => window.fixtureApp.state === 'story', {timeout:15_000});
   await page.keyboard.press('Enter', {delay:40});
-  await wait(mode => (mode === '3d' ? window.fixtureApp : window.fixtureGame.scene.getScene('DepotScene')).cutscene?.scene.id === 'scrum');
+  await wait(() => window.fixtureApp.cutscene?.scene.id === 'scrum');
   await page.keyboard.press('Enter', {delay:40});
-  await wait(mode => (mode === '3d' ? window.fixtureApp : window.fixtureGame.scene.getScene('DepotScene')).state === 'playing');
-  await read(mode => {
-    const app = mode === '3d' ? window.fixtureApp : window.fixtureGame.scene.getScene('DepotScene');
+  await wait(() => window.fixtureApp.state === 'playing');
+  await read(() => {
+    const app = window.fixtureApp;
     window.flowSample = null;
     const timer = setInterval(() => {
       const m = app.model;
-      if (m.elapsedMs >= (mode === '3d' ? 4800 : 4000) && !window.flowSample) window.flowSample = { count:m.packages.length, elapsed:m.elapsedMs, auto:m.autonomousCoworker };
+      if (m.elapsedMs >= 4800 && !window.flowSample) window.flowSample = { count:m.packages.length, elapsed:m.elapsedMs, auto:m.autonomousCoworker };
       if (window.flowSample) clearInterval(timer);
     },10);
   });
   await wait(() => window.flowSample !== null);
-  assert.equal(await read(() => window.flowSample.count), mode === '3d' ? 2 : 3, '3D arrivals give the player more breathing room');
+  assert.equal(await read(() => window.flowSample.count), 2, '3D arrivals give the player more breathing room');
   assert.equal(await read(() => window.flowSample.auto), true);
-  await wait(mode => {
-    const m = (mode === '3d' ? window.fixtureApp : window.fixtureGame.scene.getScene('DepotScene')).model;
+  await wait(() => {
+    const m = window.fixtureApp.model;
     return m.workers[1].moving || m.workers[1].heldId !== null;
   });
-  assert.deepEqual(await read(mode => {
-    const w = (mode === '3d' ? window.fixtureApp : window.fixtureGame.scene.getScene('DepotScene')).model.workers[0];
+  assert.deepEqual(await read(() => {
+    const w = window.fixtureApp.model.workers[0];
     return {x:w.x,y:w.y};
   }), {x:382,y:500}, 'coworker autonomy never moves the player-controlled worker');
-  console.log(`PASS ${mode} default intake and autonomous coworker with real start inputs`);
+  console.log('PASS 3D default intake and autonomous coworker with real start inputs');
 
-  if (mode === '3d') {
+  {
     await read(() => {
       const app = window.fixtureApp, m = app.model, template = { ...m.packages[0] };
       m.eventStopped = true; m.autonomousCoworker = false; m.activeIndex = 0;
@@ -97,19 +85,13 @@ try {
     console.log('PASS 3D route-restricted selection marker and real-key pickup for both workers');
   }
 
-  const visual = await read(mode => {
-    const app = mode === '3d' ? window.fixtureApp : window.fixtureGame.scene.getScene('DepotScene');
+  const visual = await read(() => {
+    const app = window.fixtureApp;
     app.state = 'paused';
     const m = app.model;
     m.autonomousCoworker = false;
     for (const worker of m.workers) worker.heldId = null;
     const template = {...m.packages[0]};
-    if(mode === '2d') {
-      const texts=[];
-      const visit = item => { if(item.type === 'Text') texts.push(item.text); if(item.list) item.list.forEach(visit); };
-      app.children.list.forEach(visit);
-      return {millwoods:texts.includes('MILL WOODS'), ranges:texts.filter(copy=>/^\d+–\d+ ST$/.test(copy)).length};
-    }
     const samples=[];
     const bodyFront = Object.fromEntries(Object.entries(app.workers).map(([id, character]) => {
       character.root.updateMatrixWorld(true);
@@ -183,7 +165,7 @@ try {
     });
     return {samples,eventAreas};
   });
-  if(mode === '3d') {
+  {
     assert.equal(visual.samples.length,112);
     for(const sample of visual.samples) {
       assert.ok(Number.isFinite(sample.bodyFront), 'measure the actual imported worker torso');
@@ -193,12 +175,9 @@ try {
     for (const area of visual.eventAreas) {
       assert.ok(area.minY > area.previousEdge + 4 && area.maxY < area.nextEdge - 4, `real event geometry fits between truck bodies: ${JSON.stringify(area)}`);
     }
-  } else {
-    assert.equal(visual.millwoods,true);
-    assert.ok(visual.ranges>=10, 'truck and floor signs display street ranges');
   }
 
-  if (mode === '3d') {
+  {
     await read(() => {
       const app = window.fixtureApp, m = app.model;
       m.truckLoads.clear(); m.eventStopped = true; m.activeIndex = 0; m.score = 100;
@@ -273,28 +252,25 @@ try {
 
   // A real F press at the stair top: one break penalty, an actual Shan visit,
   // no result screen, with the production scene continuing to update.
-  await read(mode => {
-    const app = mode === '3d' ? window.fixtureApp : window.fixtureGame.scene.getScene('DepotScene');
+  await read(() => {
+    const app = window.fixtureApp;
     const m=app.model;
     const parcel={...m.packages[0],id:9001,kind:'smallbox',label:'BOOKS',route:'T',street:119,address:'2417 119 ST',size:'normal',state:'held',workerId:'termite',flight:null};
     m.packages.splice(0,m.packages.length,parcel);
-    Object.assign(m.workers[0],mode === '3d' ? {x:330,y:m.layout.stairs.centerY,heldId:parcel.id,facing:'left'} : {x:380,y:784,heldId:parcel.id,facing:'down'});
+    Object.assign(m.workers[0],{x:330,y:m.layout.stairs.centerY,heldId:parcel.id,facing:'left'});
     m.workers[1].heldId=null;
     m.activeIndex=0; m.score=1000; m.damaged=0; m.breakagePenalty=0; m.paused=false; m.random=()=>0.299999; m.spawnElapsedMs=0; m.nextSpawnIntervalMs=2000; m.pendingIntake=null;
     app.state='playing';
-    if (mode === '3d') app.overlay.clearCenter();
+    app.overlay.clearCenter();
   });
   await page.keyboard.press('KeyF');
-  await wait(mode => (mode==='3d'?window.fixtureApp:window.fixtureGame.scene.getScene('DepotScene')).model.damaged===1);
-  assert.equal(await read(mode=>(mode==='3d'?window.fixtureApp:window.fixtureGame.scene.getScene('DepotScene')).model.score),850);
-  await wait(mode => {
-    const app=mode==='3d'?window.fixtureApp:window.fixtureGame.scene.getScene('DepotScene');
-    return (mode==='3d'?app.overlay.history:app.life.history).some(line=>line.startsWith("SHAN O'MAC: WHAT DID I SAY"));
-  });
-  assert.equal(await read(mode=>(mode==='3d'?window.fixtureApp:window.fixtureGame.scene.getScene('DepotScene')).state),'playing');
-  if(process.env.BELT_SCREENSHOT_DIR) await page.screenshot({path:join(process.env.BELT_SCREENSHOT_DIR,`address-stairs-${mode}.png`)});
+  await wait(() => window.fixtureApp.model.damaged===1);
+  assert.equal(await read(() => window.fixtureApp.model.score),850);
+  await wait(() => window.fixtureApp.overlay.history.some(line=>line.startsWith("SHAN O'MAC: WHAT DID I SAY")));
+  assert.equal(await read(() => window.fixtureApp.state),'playing');
+  if(process.env.BELT_SCREENSHOT_DIR) await page.screenshot({path:join(process.env.BELT_SCREENSHOT_DIR,'address-stairs-3d.png')});
   assert.deepEqual(errors,[]);
-  console.log(`PASS ${mode} address signs, carrying clearance, stair throw and single penalty with Shan yelling; no script errors`);
+  console.log('PASS 3D address signs, carrying clearance, stair throw and single penalty with Shan yelling; no script errors');
 } finally {
   await browser?.close();
   if (server) await new Promise(resolve=>server.httpServer.close(resolve));

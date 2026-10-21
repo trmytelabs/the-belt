@@ -1,7 +1,7 @@
 # 3D depot
 
-Active development targets **3D only**. The 2D and classic modes are retained as
-legacy versions. See [current gameplay rules](address-sorting.md) for street
+Active development targets **3D only**. The classic mode is retained as a
+legacy version. See [current gameplay rules](address-sorting.md) for street
 sorting, the rear platform and side stairs, player-only bulk, the 10-point wrong
 drop penalty and brighter night lighting. New 3D rules use `ShiftModel3D` and
 `layout.ts`; shared model extensions must preserve legacy behavior.
@@ -28,15 +28,14 @@ The countdown-to-play transition releases any pause left by resuming an opening
 scene, and restores keyboard focus, so WASD, arrows and pickup work immediately.
 
 The 3D depot is the default entry. It shows every reference in
-[reference parity](reference-parity.md), as the 2D depot does. The 2D depot is
-kept at `?mode=2d`, the original full shift at `?mode=classic`, and `?mode=3d`
-still opens the 3D depot. It was built in four phases: core loop, crew
+[reference parity](reference-parity.md). The original full shift is kept at
+`?mode=classic`, and `?mode=3d` also opens the 3D depot. It was built in four phases: core loop, crew
 routines, set pieces, then touch controls and the default switch.
 
 ## How it works
 
-`src/main.ts` loads one engine per mode: Phaser for the 2D game, Three.js for
-`?mode=3d`. `ShiftModel3D` extends the shared shift engine with the current
+`src/main.ts` loads one engine per mode: Phaser for the classic game, Three.js
+for everything else. `ShiftModel3D` extends the shared shift engine with the current
 3D-only layout, intake cadence, truck loading, coworker bulk restriction and
 wrong-drop penalty. The legacy model retains its behavior. Model pixels map to
 world metres at 1/32 (`src/three/space.ts`); `src/three/layout.ts` defines the
@@ -51,12 +50,20 @@ rear platform, outward side stairs, truck interiors and lower-floor drops.
   `rocketboxCast.ts`, then drives their bones from those pivots. The existing
   walk, carrying, gestures, attached props and story poses continue to work.
   See [character models](character-models.md) for the cast and MIT provenance.
+  The walk cycle leans the torso in and sways it with each step, a heavy load
+  (`load`, from the freight's carry multiplier) leans the carrier back and
+  lowers the arms, and `triggerAction` layers a one-shot lift, put-down or
+  throw over whatever the figure is doing. `lookToward` turns a head toward a
+  point within the neck's range; Termite and Skanky look at the parcel they
+  can grab or the drop they are carrying to. All of these fold into the
+  existing easing targets, so nothing accumulates, and reduced motion keeps
+  every figure still. `tests/character-animation-model.mjs` covers them.
 - `setpieces.ts` stages Vic and Shan's belt buttons, Ralph's five-ton and
   Ben's robbery. `mesa.ts` runs the Mesa choice, and `dream.ts` is Skanky's
   bedroom.
 - `merge.ts` merges rigid meshes into a few vertex-coloured draw calls.
-- `crew.ts` runs the crew's routines and gags on the 2D depot's authored
-  schedule and lines (`DepotLife`, `DepotRoutines`, `DepotReceiving`), with
+- `crew.ts` runs the crew's routines and gags on the night shift's authored
+  schedule and lines, with
   poses for yelling, crouching, massage, dancing, swearing, coughing and
   cheering. The crew walk out of the scrum to platform work stations, then
   spend most of their time collecting and loading parcels. `walking.ts`
@@ -72,14 +79,29 @@ rear platform, outward side stairs, truck interiors and lower-floor drops.
   off-screen, the bubble moves to the nearest edge with an arrow pointing
   toward them.
 
+The follow camera leads a walking worker slightly in their direction of
+travel and rattles briefly when freight breaks (never with reduced motion).
+At the back of the depot it keeps its oblique angle over the stairs, the floor
+drops and bulk instead of being stopped against the terminal wall: the wall
+fades out as the camera approaches its inner face and is hidden once the
+camera is behind it (`DepotWorld.fadeRearWall`), showing the snowy lot behind
+the depot instead. The fade is a function of the camera's position, so the
+near plane never meets a visible wall; the overview, high above the wall,
+keeps it solid. `tests/depot-geometry-browser.mjs` checks both.
+
 Rendering uses ACES tone mapping, soft shadows, a room environment for
-reflections and a bloom pass that only catches real light sources. On a
+reflections, a screen-space ambient-occlusion pass (`ambientOcclusion.ts`:
+Three's GTAO at half resolution, reading the depth the main render already
+wrote and reconstructing normals from it, so it draws the scene no second
+time; tags, rings and snow write no depth, so they cast no false shadows) and
+a bloom pass that only catches real light sources. A soft vignette over the picture and a
+hazard-striped band at the top of each stair flight round out the look. On a
 software WebGL renderer (SwiftShader/llvmpipe), the preview switches to low
 quality: procedural figures without model downloads, no shadow maps or bloom,
 fewer lights and a reduced render resolution.
 It also spaces out its draws, so the shift clock, input and bubbles keep running
 at full rate even when a single draw takes longer than a frame. Without WebGL it explains
-the requirement and links to the 2D game.
+the requirement and links to the classic game.
 
 ## Reference coverage after phase 3
 
@@ -171,7 +193,7 @@ Present in 3D:
         the same shift.
       - Safe: the 5-second 3D bedroom dream, then the same shift resumes.
         The stolen Mesa is not a dispatch.
-  - The bedroom keeps everything from the 2D dream:
+  - The bedroom keeps everything from the original dream:
     - The `BULK RULES`, `PAYTMAN SUCKS` and `NO REPEATS` posters and the
       `BUILT THE BELT` monitor.
     - The night window.
@@ -194,8 +216,8 @@ Present in 3D:
 
 `tests/three-browser.mjs` runs in `npm run test:browser` (or on its own with
 `npm run test:browser:3d`). It launches its own SwiftShader WebGL, so it runs
-in CI's GPU-free Linux job. The Windows job runs the 2D suites only
-(`test:browser:2d`): on that runner, software WebGL delays input and page
+in CI's GPU-free Linux job. The Windows job runs the classic suites only
+(`test:browser:classic`): on that runner, software WebGL delays input and page
 round trips by seconds at unpredictable times. Real Windows PCs with a GPU
 are unaffected, and the game itself is identical on every platform. It
 checks:
@@ -211,8 +233,7 @@ checks:
 - Pause and resume.
 - The worker handoff.
 - John's yell and crouch on the ordinary clock.
-- Every phase-2 routine above, using a synthetic shift clock as the 2D
-  reference suite does. Belt freight is cleared between jumps so a slow
+- Every phase-2 routine above, using a synthetic shift clock. Belt freight is cleared between jumps so a slow
   renderer cannot fail the shift. The check covers each line, AJ's massage
   pose and the towel, the label change from `THE SNAKES CELL` to `CELL`, all
   twelve drivers, the United Way reaction without Ben, the dockhand's position,
@@ -220,7 +241,7 @@ checks:
 - Touch, in a 390×844 touch browser: the touch briefing, stick movement,
   GRAB / DELIVER, SWITCH, STOP THE BELT, VIEW, and PAUSE / RESUME.
 - That the plain address opens the 3D depot; without WebGL it links to
-  `?mode=2d`.
+  `?mode=classic`.
 - Every phase-3 set piece:
   - Ben: each story stage, the five shots, `X_X`, the gate and demon,
     Paula's line, the frozen shift clock and belt, Escape pausing the story,
@@ -233,7 +254,7 @@ checks:
     same shift, with no dispatch credited; and a keyboard steal caught by
     Shan, which costs points and resumes the shift.
 
-`BELT_BROWSER_CPU_RATE=6` throttles the page like the 2D suites, to rehearse
+`BELT_BROWSER_CPU_RATE=6` throttles the page, to rehearse
 slow CI runners.
 
 Set `BELT_3D_GPU=1` to use a hardware GPU instead. Visual quality on hardware

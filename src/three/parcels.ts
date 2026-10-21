@@ -5,10 +5,15 @@ import type { Parcel, ParcelKind } from '../game/slice/ShiftModel';
 import { parcelAddress, parcelStreet } from './addresses';
 import { mergeStatic } from './merge';
 import { physicalBounds } from './collision3d';
+import { placeProp } from './propModels';
 import { PALETTE, shadowed, standard, textPlane } from './space';
 import { boxUVs, cardboardMaterial, surfacesLoaded } from './textures';
 
 const PARCEL_SCALE = 1.3;
+
+/** Plain cartons wear the photographed `cardboard-box` model on GPU renderers (main3d switches this on). */
+let parcelModels = false;
+export function setParcelModels(enabled: boolean): void { parcelModels = enabled; }
 
 export interface ParcelView {
   root: THREE.Group;
@@ -37,7 +42,19 @@ const crateDark = standard(0x7a5530, 0.9);
 
 // Cardboard materials are requested per carton, not at import: surface
 // textures load after this module does. Identical requests share a material.
-function carton(w: number, h: number, d: number, material = cardboardMaterial(PALETTE.cardboard)): THREE.Group {
+// A plain carton (no tint) stands in for the photographed box model, which
+// replaces it at the same size once loaded; tinted cartons stay code-built.
+function carton(w: number, h: number, d: number, material?: THREE.Material): THREE.Group {
+  const plain = material === undefined;
+  const group = buildCarton(w, h, d, material ?? cardboardMaterial(PALETTE.cardboard));
+  if (!plain || !parcelModels) return group;
+  const slot = new THREE.Group();
+  slot.add(group);
+  void placeProp(slot, 'cardboard-box', { fallback: group, size: { x: w, y: h, z: d } });
+  return slot;
+}
+
+function buildCarton(w: number, h: number, d: number, material: THREE.Material): THREE.Group {
   const group = new THREE.Group();
   const shell = rounded(w, h, d, material, 0.025);
   if (surfacesLoaded()) boxUVs(shell.geometry, CARDBOARD_TILE);
@@ -247,8 +264,9 @@ export function createParcelView(parcel: Parcel): ParcelView {
   if (parcel.kind === 'mesa' || parcel.kind === 'atv') badge.position.set(0.08, top + 0.012, -0.1);
   group.add(badge);
   const animated = new Set(Object.values(parts));
-  mergeStatic(group, (object) => animated.has(object));
-  // Freight reads at the 2D depot's scale relative to the workers.
+  // A model slot and its stand-in stay separate: one appears and the other hides later.
+  mergeStatic(group, (object) => animated.has(object) || object.userData.keep === true);
+  // Freight reads at the shared model's scale relative to the workers.
   group.scale.setScalar(PARCEL_SCALE);
   // Include visible labels and asymmetric parts in both carry orientations.
   // Hidden damage effects must not enlarge a parcel while it is in the hands.
@@ -262,9 +280,11 @@ export function createParcelView(parcel: Parcel): ParcelView {
   const carryDepth = Math.max(0, -carryBounds.min.z), carrySideDepth = Math.max(0, carryBounds.max.x);
   root.add(group);
   const size = physicalBounds(group).getSize(new THREE.Vector3());
-  // Every named freight shows its full authored name, as in the 2D depot.
+  // Every named freight shows its full authored name.
   const tag = parcelTag(parcel);
   tag.position.y = Math.max(height * PARCEL_SCALE, size.y) + 0.38;
+  // Where the tag rests on the freight; the renderer lifts it while the parcel is carried.
+  tag.userData.baseY = tag.position.y;
   tag.center.set(0.5, 0);
   root.add(tag);
   const highlight = new THREE.Mesh(new THREE.RingGeometry(0.53, 0.64, 36), new THREE.MeshBasicMaterial({

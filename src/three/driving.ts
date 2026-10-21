@@ -6,8 +6,11 @@ import { createCar } from './story';
 import { standard, textPlane } from './space';
 import { mergeStatic } from './merge';
 import { disposeObject3D } from './resources';
+import { followWheels, type WheelRig } from './vehicleRig';
+import { PAVING_TILE, scaleUVs, surfaceMaterial } from './textures';
 import { DrivingModels } from './drivingModels';
 import { DrivingNavigation } from './drivingNavigation';
+import { snowMaterial, Snowfall } from './snow';
 
 /** A reusable city with real connected intersections and free player movement. */
 export class DrivingView {
@@ -16,6 +19,8 @@ export class DrivingView {
   public readonly truck = createTruck('5 TON', 0x5a4632, 0x4a3a2a, 'right');
   /** Skanky's own car, for the drive in to work. */
   public readonly car = createCar(0x8f3f34);
+  /** The moon: the road's one shadow caster, kept over the vehicle. */
+  private moon!: THREE.DirectionalLight;
   public readonly ready: Promise<void>;
   public buildingCount = 0;
   public readonly navigation: DrivingNavigation;
@@ -30,6 +35,16 @@ export class DrivingView {
   private readonly pool: THREE.PointLight;
   private snapped = false;
   private disposed = false;
+  /** Christmas snow falling round the vehicle wherever it drives. */
+  private readonly snow: Snowfall;
+  private readonly reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  /** A decaying knock to the chase camera after a bump, in metres. */
+  private jolting = 0;
+
+  /** Rattles the chase camera: a cone is a tap, a car or a building a thump. */
+  public jolt(amount: number): void {
+    this.jolting = Math.max(this.jolting, amount);
+  }
 
   constructor(quality: 'high' | 'low') {
     const scene = this.scene;
@@ -39,13 +54,26 @@ export class DrivingView {
     const loads: Promise<boolean>[] = [];
     scene.background = new THREE.Color(0x101c2b);
     scene.fog = new THREE.Fog(0x101c2b, 75, 160);
-    scene.add(new THREE.HemisphereLight(0xb7cee8, 0x55604a, 2.2));
-    const moon = new THREE.DirectionalLight(0xc7d9ff, 1.6);
+    scene.add(new THREE.HemisphereLight(0xb7cee8, 0x55604a, 1.9));
+    // The moon casts the only shadows on the road; its shadow camera rides along
+    // with the vehicle in `update`, so the 60 m around the player stay shadowed.
+    const moon = new THREE.DirectionalLight(0xc7d9ff, 1.5);
     moon.position.set(-30, 50, -20);
-    scene.add(moon);
-    const ground = new THREE.Mesh(new THREE.PlaneGeometry(CITY.groundWidth, CITY.groundDepth), standard(0x24352f, 1));
-    ground.rotation.x = -Math.PI / 2; ground.position.set(30, -0.04, -100); scene.add(ground);
-    const asphalt = standard(0x343e47, 0.95), sidewalk = standard(0x737974, 1), stripe = standard(0xe9e5ce, 0.9), yellow = standard(0xe9bd64, 0.9);
+    moon.castShadow = quality === 'high';
+    moon.shadow.mapSize.setScalar(2048);
+    moon.shadow.camera.left = -36; moon.shadow.camera.right = 36; moon.shadow.camera.top = 36; moon.shadow.camera.bottom = -36;
+    moon.shadow.camera.near = 1; moon.shadow.camera.far = 140;
+    moon.shadow.normalBias = 0.05; moon.shadow.radius = 2;
+    moon.target.userData.keep = true;
+    scene.add(moon, moon.target);
+    this.moon = moon;
+    // A snowy Christmas night: lawns and lots under snow, packed snow on the sidewalks, plowed roads.
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(CITY.groundWidth, CITY.groundDepth), snowMaterial(CITY.groundWidth, CITY.groundDepth, 8));
+    ground.rotation.x = -Math.PI / 2; ground.position.set(30, -0.04, -100); ground.receiveShadow = true; scene.add(ground);
+    // Photo asphalt and packed snow (CC0), tinted to the street's old flat colours; markings stay flat paint.
+    const asphalt = surfaceMaterial('asphalt', { color: 0x343e47, roughness: 0.8 });
+    const sidewalk = surfaceMaterial('snowpack', { color: 0xc6ced6, roughness: 0.95 });
+    const stripe = standard(0xe9e5ce, 0.9), yellow = standard(0xe9bd64, 0.9);
     for (const x of CITY.streetsX) {
       const extent = streetExtent(x), centre = (extent.minZ + extent.maxZ) / 2, length = extent.maxZ - extent.minZ;
       this.pavement(x, centre, 18, length, sidewalk, -0.01);
@@ -162,7 +190,9 @@ export class DrivingView {
     this.truck.add(this.headlight, this.headlight.target);
     this.pool = new THREE.PointLight(0xffc58b, 35, 24, 1.4);
     scene.add(this.pool);
-    const objects = new Set<THREE.Object3D>([this.truck, this.car, this.pool]);
+    this.snow = new Snowfall(new THREE.Box3(new THREE.Vector3(-35, 0, -35), new THREE.Vector3(35, 16, 35)), { count: quality === 'high' ? 5000 : 1400, size: 0.14, fall: 1.1 });
+    scene.add(this.snow.points);
+    const objects = new Set<THREE.Object3D>([this.truck, this.car, this.pool, this.snow.points]);
     mergeStatic(scene, object => objects.has(object) || object.userData.keep === true || (object as THREE.Light).isLight === true);
     this.ready = Promise.all(loads).then(() => {
       if (this.disposed) return;
@@ -172,13 +202,19 @@ export class DrivingView {
   }
 
   private pavement(x: number, z: number, width: number, depth: number, material: THREE.Material, height: number): void {
-    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(width, depth), material);
-    mesh.rotation.x = -Math.PI / 2; mesh.position.set(x, height, z); this.scene.add(mesh);
+    const geometry = new THREE.PlaneGeometry(width, depth);
+    // Photo-textured paving tiles at its real size; flat paint keeps its single-colour UVs.
+    if ((material as THREE.MeshStandardMaterial).map) scaleUVs(geometry, width / PAVING_TILE, depth / PAVING_TILE);
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.rotation.x = -Math.PI / 2; mesh.position.set(x, height, z); mesh.receiveShadow = true; this.scene.add(mesh);
   }
 
   private terminal(p: CityPoint, name: string, subtitle: string, color: number, end: 1 | -1): void {
-    const apron = new THREE.Mesh(new THREE.PlaneGeometry(42, 26), standard(0x454d50, 0.95));
-    apron.rotation.x = -Math.PI / 2; apron.position.set(p.x, -0.02, p.z + end * 12);
+    const apronGeometry = new THREE.PlaneGeometry(42, 26);
+    const apronMaterial = surfaceMaterial('asphalt', { color: 0x454d50, roughness: 0.95 });
+    if (apronMaterial.map) scaleUVs(apronGeometry, 42 / PAVING_TILE, 26 / PAVING_TILE);
+    const apron = new THREE.Mesh(apronGeometry, apronMaterial);
+    apron.rotation.x = -Math.PI / 2; apron.position.set(p.x, -0.02, p.z + end * 12); apron.receiveShadow = true;
     this.scene.add(apron);
     const paint = standard(0xe5c88a, 0.9);
     for (const side of [-1, 1]) {
@@ -262,12 +298,27 @@ export class DrivingView {
       const object = this.traffic.get(obstacle.id) ?? this.cones.get(obstacle.id)!;
       object.visible = true; object.position.set(obstacle.x, obstacle.kind === 'cone' && obstacle.hit ? 0.15 : 0, obstacle.z);
       object.rotation.set(0, obstacle.heading, obstacle.kind === 'cone' && obstacle.hit ? Math.PI / 2 : 0);
+      if (object.userData.wheels) followWheels(object.userData.wheels as WheelRig, object, dt);
     }
-    const chase = new THREE.Vector3(p.x - p.tx * 15, 9.5, p.z - p.tz * 15);
-    const target = new THREE.Vector3(p.x + p.tx * 12, 1.3, p.z + p.tz * 12);
+    if (this.vehicle.userData.wheels) followWheels(this.vehicle.userData.wheels as WheelRig, this.vehicle, dt);
+    // The moon's shadow camera follows the vehicle on a 2 m grid, so the shadows do not swim.
+    const anchorX = Math.round(p.x / 2) * 2, anchorZ = Math.round(p.z / 2) * 2;
+    this.moon.position.set(anchorX - 30, 50, anchorZ - 20);
+    this.moon.target.position.set(anchorX, 0, anchorZ);
+    this.moon.target.updateMatrixWorld();
+    // A lower, closer chase camera: the vehicle filled a small patch at the bottom of the old frame.
+    const chase = new THREE.Vector3(p.x - p.tx * 9, 4.5, p.z - p.tz * 9);
+    const target = new THREE.Vector3(p.x + p.tx * 10, 1.2, p.z + p.tz * 10);
     const follow = !this.snapped ? 1 : 1 - Math.exp(-dt * 5);
     this.camera.position.lerp(chase, follow); this.look.lerp(target, follow);
     this.camera.lookAt(this.look); this.snapped = true;
+    this.jolting = model.paused ? this.jolting : this.jolting * Math.exp(-dt * 6);
+    if (this.jolting > 0.005 && !this.reducedMotion && !model.paused) {
+      this.camera.position.x += (Math.random() - 0.5) * this.jolting;
+      this.camera.position.y += (Math.random() - 0.5) * this.jolting * 0.6;
+    } else if (this.jolting <= 0.005) this.jolting = 0;
+    this.snow.follow(this.vehicle.position);
+    this.snow.update(model.paused ? 0 : dt, this.reducedMotion);
     this.navigation.update(model, this.camera);
   }
 

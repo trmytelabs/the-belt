@@ -5,12 +5,9 @@ import { TGALoader } from 'three/examples/jsm/loaders/TGALoader.js';
 import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 import { ROCKETBOX_CAST, ROCKETBOX_COMMIT } from '../../src/three/rocketboxCast.ts';
+import { ROCKETBOX_CLIPS, clipName } from '../../src/three/rocketboxClips.ts';
 
 const REPOSITORY = `https://raw.githubusercontent.com/microsoft/Microsoft-Rocketbox/${ROCKETBOX_COMMIT}/Assets/Avatars/`;
-
-// Normal and specular maps are left out: at the game's camera distance they
-// add download size without visible detail. A 1×1 TGA stands in for them.
-const BLANK_TGA = URL.createObjectURL(new Blob([new Uint8Array([0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 32, 8, 128, 128, 255, 255])]));
 
 const rows = document.querySelector('#rows');
 const button = document.querySelector('#convert');
@@ -29,7 +26,7 @@ function report(file, text, kind = '') {
   cell.className = kind;
 }
 
-/** Loads an avatar's FBX with its colour (and hair opacity) textures. */
+/** Loads an avatar's FBX with its colour, hair opacity, normal and specular textures. */
 async function loadAvatar(source) {
   const base = `${REPOSITORY}${source}/`;
   const name = source.split('/').pop();
@@ -41,7 +38,7 @@ async function loadAvatar(source) {
   manager.setURLModifier((url) => {
     if (!/\.tga$/i.test(url)) return url;
     const texture = url.split(/[\\/]/).pop().toLowerCase();
-    return /_(normal|specular)\.tga$/.test(texture) ? BLANK_TGA : `${base}Textures/${texture}`;
+    return `${base}Textures/${texture}`;
   });
   manager.addHandler(/\.tga$/i, new TGALoader(manager));
   const avatar = await new FBXLoader(manager).loadAsync(`${base}Export/${name}.fbx`);
@@ -49,28 +46,127 @@ async function loadAvatar(source) {
   return avatar;
 }
 
-/** A canvas copy of a TGA texture at most `size` pixels on its longest edge. */
-function resized(texture, size, cache) {
-  if (!texture?.image?.data) return null;
-  let copy = cache.get(texture);
-  if (copy) return copy;
+/** A TGA texture's pixels on a full-size canvas, rows as the loader stored them. */
+function fullCanvas(texture) {
   const { data, width, height } = texture.image;
   const full = document.createElement('canvas');
   full.width = width;
   full.height = height;
   full.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(data.buffer, data.byteOffset, data.byteLength), width, height), 0, 0);
-  const scale = Math.min(1, size / Math.max(width, height));
-  const canvas = document.createElement('canvas');
-  canvas.width = Math.round(width * scale);
-  canvas.height = Math.round(height * scale);
-  const context = canvas.getContext('2d');
+  return full;
+}
+
+/** A texture made from `canvas`, scaled to at most `size` pixels on its longest edge. */
+function scaledTexture(canvas, texture, size, colorSpace, mimeType) {
+  const scale = Math.min(1, size / Math.max(canvas.width, canvas.height));
+  const scaled = document.createElement('canvas');
+  scaled.width = Math.round(canvas.width * scale);
+  scaled.height = Math.round(canvas.height * scale);
+  const context = scaled.getContext('2d');
   context.imageSmoothingQuality = 'high';
-  context.drawImage(full, 0, 0, canvas.width, canvas.height);
-  copy = new THREE.CanvasTexture(canvas);
+  context.drawImage(canvas, 0, 0, scaled.width, scaled.height);
+  const copy = new THREE.CanvasTexture(scaled);
   copy.flipY = texture.flipY;
-  copy.colorSpace = THREE.SRGBColorSpace;
+  copy.colorSpace = colorSpace;
   copy.wrapS = texture.wrapS;
   copy.wrapT = texture.wrapT;
+  copy.userData.mimeType = mimeType;
+  return copy;
+}
+
+/** A canvas copy of a TGA colour texture at most `size` pixels on its longest edge. */
+function resized(texture, size, cache) {
+  if (!texture?.image?.data) return null;
+  let copy = cache.get(texture);
+  if (copy) return copy;
+  copy = scaledTexture(fullCanvas(texture), texture, size, THREE.SRGBColorSpace, 'image/jpeg');
+  cache.set(texture, copy);
+  return copy;
+}
+
+/**
+ * Which way a normal map's green channel points, from its pixels alone. A
+ * normal map encodes the slopes of a height field, so in the right convention
+ * its slope field has no curl: d(x-slope)/d(row) equals d(row-slope)/d(column).
+ * Read the other way round, the two differ. Returns whether green points
+ * toward increasing rows (down the stored rows) and how decisive that was
+ * (the smaller residual over the larger; near 1 would be undecided).
+ */
+function greenAlongRows({ data, width, height }) {
+  const slope = (x, y, channel) => {
+    const i = (y * width + x) * 4;
+    const z = Math.max(0.3, data[i + 2] / 127.5 - 1);
+    return (data[i + channel] / 127.5 - 1) / z;
+  };
+  let down = 0;
+  let up = 0;
+  for (let y = 1; y < height - 1; y += 2) {
+    for (let x = 1; x < width - 1; x += 2) {
+      const dxSlopeByRow = slope(x, y + 1, 0) - slope(x, y - 1, 0);
+      const dRowSlopeByColumn = slope(x + 1, y, 1) - slope(x - 1, y, 1);
+      down += Math.abs(dxSlopeByRow - dRowSlopeByColumn);
+      up += Math.abs(dxSlopeByRow + dRowSlopeByColumn);
+    }
+  }
+  return { down: down < up, ratio: Math.min(down, up) / Math.max(down, up, 1e-9) };
+}
+
+/**
+ * The normal map in glTF's convention: green points up the image as it is
+ * stored in the GLB. The exporter flips a `flipY` texture's rows on the way
+ * out, which reverses "down the loader's rows", so the test result is read
+ * through that flip. 3ds Max maps arrive with green the other way and are
+ * inverted. `notes` collects what was found, for the conversion report.
+ */
+function normalTexture(texture, size, cache, notes) {
+  if (!texture?.image?.data) return null;
+  let copy = cache.get(texture);
+  if (copy) return copy;
+  const full = fullCanvas(texture);
+  const context = full.getContext('2d');
+  const image = context.getImageData(0, 0, full.width, full.height);
+  const { down, ratio } = greenAlongRows(image);
+  const upWhenStored = texture.flipY ? down : !down;
+  if (!upWhenStored) {
+    for (let i = 1; i < image.data.length; i += 4) image.data[i] = 255 - image.data[i];
+    context.putImageData(image, 0, 0);
+  }
+  notes.push({ map: texture.name || 'normal', inverted: !upWhenStored, confidence: Number((1 - ratio).toFixed(2)) });
+  copy = scaledTexture(full, texture, size, THREE.NoColorSpace, 'image/jpeg');
+  cache.set(texture, copy);
+  return copy;
+}
+
+/**
+ * A glTF metallic-roughness texture from a 3ds Max specular map: roughness
+ * (green) falls where the specular level rises, from 0.94 on the dullest
+ * texels to 0.52 on the shiniest (normalised by the map's own 95th
+ * percentile, since Rocketbox levels vary per avatar); metalness (blue) is 0.
+ */
+function roughnessTexture(texture, size, cache) {
+  if (!texture?.image?.data) return null;
+  let copy = cache.get(texture);
+  if (copy) return copy;
+  const full = fullCanvas(texture);
+  const context = full.getContext('2d');
+  const image = context.getImageData(0, 0, full.width, full.height);
+  const { data } = image;
+  const levels = new Uint32Array(256);
+  for (let i = 0; i < data.length; i += 4) levels[Math.round(0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2])] += 1;
+  const pixels = data.length / 4;
+  let top = 255;
+  for (let level = 255, seen = 0; level > 0; level -= 1) {
+    seen += levels[level];
+    if (seen >= pixels * 0.05) { top = Math.max(level, 1); break; }
+  }
+  for (let i = 0; i < data.length; i += 4) {
+    const shine = Math.min(1, (0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2]) / top);
+    data[i] = 255;
+    data[i + 1] = Math.round((0.94 - 0.42 * shine) * 255);
+    data[i + 2] = 0;
+  }
+  context.putImageData(image, 0, 0);
+  copy = scaledTexture(full, texture, size, THREE.NoColorSpace, 'image/jpeg');
   cache.set(texture, copy);
   return copy;
 }
@@ -82,21 +178,29 @@ function prepare(avatar, size) {
   const detailed = meshes.filter((mesh) => /hipoly/i.test(mesh.name));
   if (detailed.length) for (const mesh of meshes) if (!detailed.includes(mesh)) mesh.removeFromParent();
   const cache = new Map();
+  const normals = [];
   const convert = (material) => {
     // Hair, lashes and other cut-outs use RGBA "opacity" textures.
     const cutout = /opacity/i.test(material.name) || /opacity/i.test(material.map?.name ?? '');
     // Cut-outs stay PNG for their alpha, so they are kept to 512 px.
     const map = resized(material.map, cutout ? Math.min(size, 512) : size, cache);
     if (map) map.userData.mimeType = cutout ? 'image/png' : 'image/jpeg';
-    return new THREE.MeshStandardMaterial({
+    // Skin and cloth relief at the colour map's size; the roughness map is low-frequency, so half.
+    const normalMap = cutout ? null : normalTexture(material.normalMap, size, cache, normals);
+    const roughnessMap = cutout ? null : roughnessTexture(material.specularMap, Math.max(256, size / 2), cache);
+    const converted = new THREE.MeshStandardMaterial({
       name: material.name,
       map,
       color: 0xffffff,
-      roughness: 0.85,
+      roughness: roughnessMap ? 1 : 0.85,
       metalness: 0,
       alphaTest: cutout ? 0.5 : 0,
       side: cutout ? THREE.DoubleSide : THREE.FrontSide,
     });
+    if (normalMap) converted.normalMap = normalMap;
+    // One packed texture for both: the exporter writes it as the glTF metallic-roughness map.
+    if (roughnessMap) converted.roughnessMap = converted.metalnessMap = roughnessMap;
+    return converted;
   };
   for (const mesh of meshes.filter((mesh) => mesh.parent)) {
     // FBX meshes arrive with every triangle's corners stored separately; shared corners halve the file.
@@ -104,19 +208,22 @@ function prepare(avatar, size) {
     mesh.material = Array.isArray(mesh.material) ? mesh.material.map(convert) : convert(mesh.material);
   }
   avatar.animations = [];
-  return { triangles: meshes.filter((mesh) => mesh.parent).reduce((sum, mesh) => sum + (mesh.geometry.index?.count ?? mesh.geometry.attributes.position.count) / 3, 0) };
+  return {
+    triangles: meshes.filter((mesh) => mesh.parent).reduce((sum, mesh) => sum + (mesh.geometry.index?.count ?? mesh.geometry.attributes.position.count) / 3, 0),
+    normals,
+  };
 }
 
 async function convertOne(casting) {
   report(casting.file, 'loading');
   const avatar = await loadAvatar(casting.source);
   report(casting.file, 'converting');
-  const { triangles } = prepare(avatar, casting.textureSize);
+  const { triangles, normals } = prepare(avatar, casting.textureSize);
   const glb = await new GLTFExporter().parseAsync(avatar, { binary: true });
   report(casting.file, 'saving');
   const response = await fetch(`/__save?file=${casting.file}`, { method: 'POST', body: glb });
   if (!response.ok) throw new Error(await response.text());
-  const summary = { file: casting.file, bytes: glb.byteLength, triangles: Math.round(triangles) };
+  const summary = { file: casting.file, bytes: glb.byteLength, triangles: Math.round(triangles), normals };
   report(casting.file, `saved, ${(glb.byteLength / 1e6).toFixed(2)} MB, ${summary.triangles} triangles`, 'done');
   return summary;
 }
@@ -140,4 +247,142 @@ async function convertAll(files) {
 }
 
 window.convertRocketbox = convertAll;
+
+const ANIMATIONS = `https://raw.githubusercontent.com/microsoft/Microsoft-Rocketbox/${ROCKETBOX_COMMIT}/Assets/Animations/`;
+
+/** Loads one Rocketbox animation FBX, e.g. `xy/m_walk_neutral`. */
+async function loadClip(path) {
+  const [folder, file] = path.split('/');
+  return new FBXLoader().loadAsync(`${ANIMATIONS}all_animations_max_motextr_${folder}/${file}.max.fbx`);
+}
+
+/** A report of a clip's hierarchy and tracks, for checking new clips against the crew rigs. */
+window.inspectClip = async (path) => {
+  const group = await loadClip(path);
+  const nodes = [];
+  group.traverse((object) => {
+    if (nodes.length > 12) return;
+    const depth = (() => { let d = 0; for (let o = object; o.parent; o = o.parent) d += 1; return d; })();
+    nodes.push({ name: object.name, type: object.type, depth, position: object.position.toArray().map((v) => +v.toFixed(3)), quaternion: object.quaternion.toArray().map((v) => +v.toFixed(3)), scale: object.scale.toArray().map((v) => +v.toFixed(3)) });
+  });
+  const clip = group.animations[0];
+  const kinds = {};
+  for (const track of clip.tracks) { const kind = track.name.split('.').pop(); kinds[kind] = (kinds[kind] ?? 0) + 1; }
+  const positions = clip.tracks.filter((track) => track.name.endsWith('.position')).slice(0, 6).map((track) => {
+    const v = track.values; const n = v.length / 3;
+    return { name: track.name, keys: n, first: [v[0], v[1], v[2]].map((x) => +x.toFixed(2)), last: [v[n * 3 - 3], v[n * 3 - 2], v[n * 3 - 1]].map((x) => +x.toFixed(2)) };
+  });
+  const times = clip.tracks[0].times;
+  return { animations: group.animations.length, duration: clip.duration, tracks: clip.tracks.length, kinds, fps: times.length > 1 ? Math.round(1 / (times[1] - times[0])) : null, keys: times.length, nodes, positions, sampleTracks: clip.tracks.slice(0, 5).map((track) => track.name), meshes: (() => { let m = 0; group.traverse((o) => { if (o.isMesh) m += 1; }); return m; })() };
+};
+
+const ROOT = 'Bip01';
+
+/**
+ * Drops keys that interpolation between their kept neighbours reproduces
+ * within `tolerance` (radians for rotations, clip units, centimetres, for
+ * positions). Mocap keys every frame; most bones barely move between them.
+ */
+function thinKeys(times, values, size, tolerance, quaternion) {
+  const count = times.length;
+  if (count <= 2) return { times, values };
+  const at = (i) => values.subarray(i * size, i * size + size);
+  const error = (a, b, c, t) => {
+    if (quaternion) {
+      const qa = new THREE.Quaternion().fromArray(a), qb = new THREE.Quaternion().fromArray(b), qc = new THREE.Quaternion().fromArray(c);
+      return qa.slerp(qb, t).angleTo(qc);
+    }
+    let sum = 0;
+    for (let k = 0; k < size; k += 1) { const d = a[k] + (b[k] - a[k]) * t - c[k]; sum += d * d; }
+    return Math.sqrt(sum);
+  };
+  const kept = [0];
+  let start = 0;
+  for (let end = 2; end < count; end += 1) {
+    let fits = true;
+    for (let i = start + 1; i < end && fits; i += 1) {
+      const t = (times[i] - times[start]) / (times[end] - times[start]);
+      fits = error(at(start), at(end), at(i), t) <= tolerance;
+    }
+    if (!fits) { kept.push(end - 1); start = end - 1; }
+  }
+  kept.push(count - 1);
+  const outTimes = new Float32Array(kept.length);
+  const outValues = new Float32Array(kept.length * size);
+  kept.forEach((index, j) => { outTimes[j] = times[index]; outValues.set(at(index), j * size); });
+  return { times: outTimes, values: outValues };
+}
+
+/**
+ * A clip ready for the crew: every bone's rotation, and the root's position
+ * with its travel across the floor removed (the game moves the character; the
+ * clip keeps its sway and its rise and fall). Per-bone positions and scales
+ * are dropped so each avatar keeps its own proportions. Returns the clip and
+ * the root's natural ground speed in clip units (centimetres) per second.
+ */
+function prepareClip(source, name, loop) {
+  const tracks = [];
+  let speed = 0;
+  for (const track of source.tracks) {
+    const [node, property] = [track.name.slice(0, track.name.lastIndexOf('.')), track.name.slice(track.name.lastIndexOf('.') + 1)];
+    // Biped's footstep track and 3ds Max's motion-extraction helper are not bones of any avatar.
+    if (/Footsteps|MotionExtractionHelper/.test(node)) continue;
+    if (property === 'quaternion') {
+      const { times, values } = thinKeys(track.times, track.values, 4, 0.0025, true);
+      tracks.push(new THREE.QuaternionKeyframeTrack(track.name, times, values));
+    } else if (property === 'position' && node === ROOT) {
+      const values = Float32Array.from(track.values);
+      const n = track.times.length;
+      const duration = track.times[n - 1] - track.times[0] || 1;
+      // The straight-line travel over the clip, removed so it plays in place.
+      const vx = (values[n * 3 - 3] - values[0]) / duration;
+      const vz = (values[n * 3 - 1] - values[2]) / duration;
+      speed = Math.hypot(vx, vz);
+      for (let i = 0; i < n; i += 1) {
+        const t = track.times[i] - track.times[0];
+        values[i * 3] -= vx * t;
+        values[i * 3 + 2] -= vz * t;
+      }
+      const thinned = thinKeys(track.times, values, 3, 0.1, false);
+      tracks.push(new THREE.VectorKeyframeTrack(track.name, thinned.times, thinned.values));
+    }
+  }
+  const clip = new THREE.AnimationClip(name, source.duration, tracks);
+  clip.userData = { loop };
+  return { clip, speed };
+}
+
+/**
+ * Converts every role in rocketboxClips.ts, male and female, into one GLB of
+ * animations on the Biped skeleton (no mesh), saved as
+ * public/models/animations/crew-clips.glb. Exposed for scripted runs.
+ */
+async function convertClips() {
+  let skeleton = null;
+  const clips = [];
+  const results = [];
+  for (const source of ROCKETBOX_CLIPS) {
+    for (const female of [false, true]) {
+      const path = female ? source.female : source.male;
+      const group = await loadClip(path);
+      skeleton ??= group;
+      const raw = group.animations[0];
+      const { clip, speed } = prepareClip(raw, clipName(source.role, female), source.loop);
+      const keysBefore = raw.tracks.reduce((sum, track) => sum + track.times.length, 0);
+      const keysAfter = clip.tracks.reduce((sum, track) => sum + track.times.length, 0);
+      clips.push(clip);
+      results.push({ name: clip.name, path, duration: +clip.duration.toFixed(3), tracks: clip.tracks.length, keysBefore, keysAfter, speed: +speed.toFixed(1) });
+    }
+  }
+  // The tracks need their bones in the exported scene; the first clip's skeleton carries every name.
+  const helpers = [];
+  skeleton.traverse((object) => { if (/Footsteps|MotionExtractionHelper/.test(object.name)) helpers.push(object); });
+  for (const object of helpers) object.removeFromParent();
+  const glb = await new GLTFExporter().parseAsync(skeleton, { binary: true, animations: clips });
+  const response = await fetch('/__save-clips?file=crew-clips', { method: 'POST', body: glb });
+  if (!response.ok) throw new Error(await response.text());
+  return { bytes: glb.byteLength, clips: results };
+}
+
+window.convertRocketboxClips = convertClips;
 button.addEventListener('click', () => { void convertAll(); });

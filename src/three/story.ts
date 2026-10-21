@@ -7,7 +7,9 @@ import type { Cutscene } from '../game/slice/StoryModel';
 import type { StoryScene } from '../game/slice/StoryScript';
 import { animateCharacter, createCharacter, mergeCharacter, type Character, type CharacterSpec } from './characters';
 import { applyPose, type CrewLife, type Pose } from './crew';
-import { upgradeCar } from './propModels';
+import { placeProp, upgradeCar } from './propModels';
+import { followWheels, type WheelRig } from './vehicleRig';
+import { PAVING_TILE, scaleUVs, surfaceMaterial, surfacesLoaded } from './textures';
 import { PuffField } from './fx';
 import { buildSouthgateMall, mallX, mallZ, type SouthgateMall } from './mall';
 import { mergeStatic } from './merge';
@@ -16,6 +18,7 @@ import { physicalBounds } from './collision3d';
 import { actorSurfaceAt, setFromModel, shadowed, standard, textPlane, textSprite, toWorld } from './space';
 import { RESIDENT_SPECS, SKANKY_SPEC, SKIN, TERMITE_SPEC, VISITORS, createTruck } from './world';
 import { DEPOT_3D_LAYOUT as DEPOT } from './layout';
+import { snowBank, snowCap, snowField, snowfall, type Snowfall } from './snow';
 
 /**
  * The story's locations away from the depot floor (the UPS lot, the break
@@ -79,7 +82,9 @@ export class StageActor {
     delta = Math.atan2(Math.sin(delta), Math.cos(delta));
     c.root.rotation.y += delta * Math.min(1, dt * 10);
     animateCharacter(c, dt, { moving: this.moved, carrying: this.carrying, time, reducedMotion });
-    c.body.rotation.set(0, 0, 0);
+    if (c.motion) { c.motion.pose = this.pose; c.motion.seated = this.seatedIn !== null; }
+    // A posed or seated figure owns its torso; a plain walk keeps the walk cycle's lean and sway.
+    if (this.pose !== 'none' || this.seatedIn) c.body.rotation.set(0, 0, 0);
     c.head.rotation.set(0, 0, 0);
     // Smoking/phone gestures are upper-body actions. Preserve the seat's hip
     // height and folded legs so they cannot stand a passenger through the roof.
@@ -186,11 +191,46 @@ interface Stage {
   actors: Map<string, StageActor>;
   props: Record<string, THREE.Object3D>;
   puffs: PuffField;
+  /** Snow falling outside, wherever this stage shows the outdoors. */
+  snow: Snowfall[];
 }
 
 /** Model pixels in the lot's key-return area map onto the lot stage's metres. */
 const lotX = (x: number): number => (x - 480) / 32;
 const lotZ = (y: number): number => (y - 140) / 32 - 13.5;
+
+/** Tim Hortons seating: the booths' centre line, each bench's depth position and the crew's table. */
+const BOOTH_X = 3.4;
+const BOOTHS = { north: -1.45, south: 0.25, next: 1.15, table: -0.6 } as const;
+const TABLE_TOP = 0.76;
+
+/** The living room's indoor camera angles. */
+const HOUSE_VIEWS = {
+  door: { position: new THREE.Vector3(-4.0, 2.15, 3.3), look: new THREE.Vector3(2.4, 0.95, 0.1) },
+  room: { position: new THREE.Vector3(3.9, 2.2, 3.4), look: new THREE.Vector3(-1.8, 0.95, -0.9) },
+} as const;
+
+/** What the house's windows show: a snowy street at night, flakes in the air. */
+function snowyWindow(): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 128; canvas.height = 64;
+  const ctx = canvas.getContext('2d')!;
+  const sky = ctx.createLinearGradient(0, 0, 0, 44);
+  sky.addColorStop(0, '#0e1a30'); sky.addColorStop(1, '#2a3e5e');
+  ctx.fillStyle = sky; ctx.fillRect(0, 0, 128, 64);
+  // Neighbours' roofs under snow, a lit window, then the snowy yard.
+  ctx.fillStyle = '#1a2436';
+  ctx.fillRect(8, 26, 40, 20); ctx.fillRect(74, 22, 46, 24);
+  ctx.fillStyle = '#e8eef4';
+  ctx.fillRect(6, 23, 44, 4); ctx.fillRect(72, 19, 50, 4);
+  ctx.fillStyle = '#f0c070'; ctx.fillRect(86, 30, 8, 7);
+  ctx.fillStyle = '#e4ebf2'; ctx.fillRect(0, 44, 128, 20);
+  ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  for (let i = 0; i < 70; i += 1) ctx.fillRect((i * 37) % 128, (i * 23) % 44, 1.5, 1.5);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
 
 export class StoryStage {
   public readonly camera = new THREE.PerspectiveCamera(42, 1, 0.1, 160);
@@ -198,10 +238,14 @@ export class StoryStage {
   private readonly quality: 'high' | 'low';
   private readonly reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   private readonly stages: Partial<Record<StageId, Stage>> = {};
+  /** The night outside, as reflections and ambient for every stage scene. */
+  private environment: { texture: THREE.Texture; intensity: number } | null = null;
   private readonly cameraLook = new THREE.Vector3();
   private frameDt = 1 / 60;
   private dawn = 0;
   private roadTravel = 0;
+  /** The road scrolls past a parked truck, so its snow is carried backwards at the truck's speed. */
+  private roadWind = 0;
   private mallStoreText = new Map<string, string>();
   private southgate: SouthgateMall | null = null;
   private mallIntroBeat = -1;
@@ -270,11 +314,25 @@ export class StoryStage {
 
   // ------------------------------------------------------------------ stages
 
+  /** Gives every stage scene, built or still to build, the same environment map. */
+  public setEnvironment(texture: THREE.Texture, intensity: number): void {
+    this.environment = { texture, intensity };
+    for (const stage of Object.values(this.stages)) {
+      if (!stage) continue;
+      stage.scene.environment = texture;
+      stage.scene.environmentIntensity = intensity;
+    }
+  }
+
   private stage(id: StageId): Stage {
     let stage = this.stages[id];
     if (stage) return stage;
     const scene = new THREE.Scene();
-    stage = { scene, actors: new Map(), props: {}, puffs: new PuffField(scene) };
+    if (this.environment) {
+      scene.environment = this.environment.texture;
+      scene.environmentIntensity = this.environment.intensity;
+    }
+    stage = { scene, actors: new Map(), props: {}, puffs: new PuffField(scene), snow: [] };
     this.stages[id] = stage;
     if (id === 'lot') this.buildLot(stage);
     else if (id === 'store') this.buildStore(stage);
@@ -282,6 +340,7 @@ export class StoryStage {
     else if (id === 'road') this.buildRoad(stage);
     else if (id === 'house') this.buildHouse(stage);
     else this.buildMall(stage);
+    for (const flakes of stage.snow) scene.add(flakes.points);
     const dynamic = new Set<THREE.Object3D>([...stage.actors.values()].map((actor) => actor.root));
     for (const [name, prop] of Object.entries(stage.props)) {
       prop.name = name;
@@ -304,11 +363,15 @@ export class StoryStage {
   private night(scene: THREE.Scene, background: number): void {
     scene.background = new THREE.Color(background);
     scene.fog = new THREE.Fog(background, 30, 90);
-    scene.add(new THREE.HemisphereLight(0xb4c7df, 0x485568, 1.25));
-    const key = new THREE.DirectionalLight(0xc8d6ff, 1.1);
+    // The environment map now carries part of the ambient, so the sky light eases
+    // off and the moon's shadow softens: the lot read as flat and hard-edged.
+    scene.add(new THREE.HemisphereLight(0xb4c7df, 0x485568, 1.05));
+    const key = new THREE.DirectionalLight(0xc8d6ff, 0.9);
     key.position.set(-8, 16, 10);
     key.castShadow = this.quality === 'high';
     key.shadow.mapSize.setScalar(2048);
+    key.shadow.radius = 3;
+    key.shadow.normalBias = 0.03;
     const s = key.shadow.camera;
     s.left = -24; s.right = 24; s.top = 24; s.bottom = -24;
     scene.add(key);
@@ -317,10 +380,27 @@ export class StoryStage {
   private buildLot(stage: Stage): void {
     const { scene, props } = stage;
     this.night(scene, 0x0b1520);
-    const asphalt = new THREE.Mesh(new THREE.PlaneGeometry(90, 70), standard(0x23292c, 0.95));
-    asphalt.rotation.x = -Math.PI / 2;
-    asphalt.receiveShadow = true;
-    scene.add(asphalt);
+    // A snowy Christmas night: the street, the gate apron and the lot are plowed; the rest is under snow.
+    scene.add(snowField(90, 70, 0, 0, -0.01));
+    // Plowed asphalt with snow worked into the grain: a CC0 photo set, tinted to the old wet colour.
+    const paved = surfacesLoaded();
+    const wet = surfaceMaterial('asphalt', { color: 0x262c30, roughness: 0.7 });
+    for (const [x0, x1, z0, z1] of [[-45, 45, 2.2, 13.5], [-3.6, 3.6, -0.3, 2.2], [-24, 24, -13.9, -0.3]] as const) {
+      const geometry = new THREE.PlaneGeometry(x1 - x0, z1 - z0);
+      if (paved) scaleUVs(geometry, (x1 - x0) / PAVING_TILE, (z1 - z0) / PAVING_TILE);
+      const asphalt = new THREE.Mesh(geometry, wet);
+      asphalt.rotation.x = -Math.PI / 2;
+      asphalt.position.set((x0 + x1) / 2, 0, (z0 + z1) / 2);
+      asphalt.receiveShadow = true;
+      scene.add(asphalt);
+    }
+    // Plowed banks along the fence, across the street and down both sides of the lot.
+    for (const [x, z, length, turn] of [[-15, 1.1, 21, 0], [15, 1.1, 21, 0], [0, 15.4, 88, 0], [-25.2, -7, 13, Math.PI / 2], [25.2, -7, 13, Math.PI / 2]] as const) {
+      const bank = snowBank(length, 1.4, 0.6);
+      bank.position.set(x, 0, z);
+      bank.rotation.y = turn;
+      scene.add(bank);
+    }
     const paint = new THREE.MeshStandardMaterial({ color: 0xd8d8c8, roughness: 0.8 });
     for (let x = -17; x <= 17; x += 3) {
       const stripe = new THREE.Mesh(new THREE.PlaneGeometry(0.1, 4.2), paint);
@@ -341,6 +421,10 @@ export class StoryStage {
     building.receiveShadow = true;
     scene.add(building);
     props.lotBuilding = building;
+    const roofSnow = snowCap(50.2, 8.2, 0.24);
+    roofSnow.position.set(0, 8.12, -18);
+    scene.add(roofSnow);
+    stage.snow.push(snowfall([-30, 0, -16], [30, 12, 18], { count: this.quality === 'high' ? 3500 : 900, size: 0.1 }));
     for (const x of [-16, -10, -4]) {
       const door = new THREE.Mesh(new THREE.PlaneGeometry(4, 3.6), standard(0x10181c, 0.9));
       door.position.set(x, 1.8, -13.98);
@@ -367,20 +451,48 @@ export class StoryStage {
     linkTexture.repeat.set(10, 1);
     const link = new THREE.MeshStandardMaterial({ map: linkTexture, transparent: true, alphaTest: 0.2, side: THREE.DoubleSide, roughness: 0.6, metalness: 0.4 });
     const post = standard(0x8a949a, 0.4, 0.6);
+    const models = this.quality === 'high';
     for (const [from, to] of [[-26, -3.2], [3.2, 26]] as const) {
       const panel = new THREE.Mesh(new THREE.PlaneGeometry(to - from, 2.2), link);
       panel.position.set((from + to) / 2, 1.1, 0);
       scene.add(panel);
       props[from < 0 ? 'fence-west' : 'fence-east'] = panel;
-      for (let x = from; x <= to; x += 2.6) {
-        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.4, 8), post);
-        pole.position.set(x, 1.2, 0);
-        scene.add(pole);
+      if (models) {
+        // Twelve photographed chain-link panels and their posts stand in for the drawn run.
+        const bays = 12;
+        const bay = (to - from) / bays;
+        for (let i = 0; i < bays; i += 1) {
+          const slot = new THREE.Group();
+          slot.position.set(from + bay * (i + 0.5), 0, 0);
+          void placeProp(slot, 'chainlink-panel', { fallback: i === 0 ? panel : undefined, size: { x: bay - 0.04, y: 2.2 } });
+          scene.add(slot);
+        }
+        for (let i = 0; i <= bays; i += 1) {
+          const slot = new THREE.Group();
+          slot.position.set(from + bay * i, 0, 0);
+          void placeProp(slot, 'chainlink-post', { size: { y: 2.4 } });
+          scene.add(slot);
+        }
+      } else {
+        for (let x = from; x <= to; x += 2.6) {
+          const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.4, 8), post);
+          pole.position.set(x, 1.2, 0);
+          scene.add(pole);
+        }
       }
     }
     const gate = new THREE.Group();
     const gatePanel = new THREE.Mesh(new THREE.PlaneGeometry(6.4, 2.2), link);
     gatePanel.position.y = 1.1;
+    if (models) {
+      // The sliding gate carries three of the same panels inside its frame.
+      for (const x of [-2.13, 0, 2.13]) {
+        const slot = new THREE.Group();
+        slot.position.set(x, 0, 0);
+        void placeProp(slot, 'chainlink-panel', { fallback: x === 0 ? gatePanel : undefined, size: { x: 2.1, y: 2.1 } });
+        gate.add(slot);
+      }
+    }
     const frame = new THREE.MeshStandardMaterial({ color: 0xb7c0c4, roughness: 0.4, metalness: 0.6 });
     for (const [x, y, w, h] of [[0, 2.2, 6.4, 0.08], [0, 0.1, 6.4, 0.08], [-3.2, 1.1, 0.08, 2.2], [3.2, 1.1, 0.08, 2.2]] as const) {
       const bar = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.08), frame);
@@ -398,13 +510,23 @@ export class StoryStage {
     const gateSign = textPlane(['NO ENTRY · STAFF ONLY'], 3.2, 0.35, { width: 300, height: 34, background: '#c23a2e', color: '#fff6e8' });
     gateSign.position.set(-6, 2.0, 0.06);
     scene.add(gateSign);
-    // Streetlights.
+    // Streetlights: a photographed lamp post on GPU renderers, over the drawn pole and head.
     for (const x of [-14, 0, 14]) {
+      const fixture = new THREE.Group();
       const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 6, 8), post);
-      pole.position.set(x, 3, 11.5);
+      pole.position.set(0, 3, 0);
       const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.18, 0.4), new THREE.MeshStandardMaterial({ color: 0x333333, emissive: 0xffc070, emissiveIntensity: 3 }));
-      lamp.position.set(x, 6, 11);
-      scene.add(pole, lamp);
+      lamp.position.set(0, 6, -0.5);
+      fixture.add(pole, lamp);
+      fixture.position.set(x, 0, 11.5);
+      scene.add(fixture);
+      if (models) {
+        const slot = new THREE.Group();
+        slot.position.set(x, 0, 11.5);
+        slot.rotation.y = Math.PI;
+        void placeProp(slot, 'street-lamp', { fallback: fixture, size: { y: 6.6 } });
+        scene.add(slot);
+      }
       if (this.quality === 'high' || x === 0) {
         const light = new THREE.PointLight(0xffb060, 30, 20, 1.6);
         light.position.set(x, 5.6, 10.5);
@@ -466,11 +588,26 @@ export class StoryStage {
     floor.rotation.x = -Math.PI / 2;
     scene.add(floor);
     const wall = standard(0xe8e4d8, 0.8);
-    for (const [x, z, w, d] of [[0, -7, 16, 0.2], [-8, 0, 0.2, 14], [8, 0, 0.2, 14]] as const) {
+    for (const [x, z, w, d] of [[0, -7, 16, 0.2], [-8, 0, 0.2, 14]] as const) {
       const panel = new THREE.Mesh(new THREE.BoxGeometry(w, 4, d), wall);
       panel.position.set(x, 2, z);
       scene.add(panel);
     }
+    // The east wall has a window onto the snowy street.
+    for (const [y, z, h, d] of [[0.5, 0, 1, 14], [3.3, 0, 1.4, 14], [1.8, -6.25, 1.6, 1.5], [1.8, 3.75, 1.6, 6.5]] as const) {
+      const panel = new THREE.Mesh(new THREE.BoxGeometry(0.2, h, d), wall);
+      panel.position.set(8, y, z);
+      scene.add(panel);
+    }
+    const pane = new THREE.Mesh(new THREE.PlaneGeometry(6, 1.6), new THREE.MeshStandardMaterial({ color: 0x9cb6c8, roughness: 0.05, metalness: 0.2, transparent: true, opacity: 0.16, depthWrite: false }));
+    pane.rotation.y = -Math.PI / 2;
+    pane.position.set(7.95, 1.8, -2.5);
+    scene.add(pane);
+    scene.add(snowField(30, 24, 23, 0, -0.02));
+    const street = new THREE.PointLight(0xffc080, 14, 16, 1.5);
+    street.position.set(13, 4.5, -2.5);
+    scene.add(street);
+    stage.snow.push(snowfall([8.3, 0, -10], [26, 8, 6], { count: this.quality === 'high' ? 1200 : 350, size: 0.08 }));
     // Generic convenience-store stripes and a plain sign.
     for (const [y, color] of [[3.2, 0xe8702a], [3.0, 0x2e8b57], [2.8, 0xc8302a]] as const) {
       const stripe = new THREE.Mesh(new THREE.BoxGeometry(16, 0.16, 0.05), standard(color, 0.6));
@@ -547,27 +684,177 @@ export class StoryStage {
     this.cast(stage, ['termite', 'skanky', 'bannerman', 'doris', 'brian', 'cashier']);
   }
 
+  /**
+   * Inside a Tim Hortons on a snowy Christmas night: the counter and menu
+   * boards along the back wall, two booths by the side windows, and Skanky's
+   * car parked in the snow outside.
+   */
   private buildCoffee(stage: Stage): void {
     const { scene, props } = stage;
-    this.night(scene, 0x0b1520);
-    const asphalt = new THREE.Mesh(new THREE.PlaneGeometry(60, 50), standard(0x262c30, 0.95));
-    asphalt.rotation.x = -Math.PI / 2;
-    asphalt.receiveShadow = true;
-    scene.add(asphalt);
-    const shop = new THREE.Mesh(new THREE.BoxGeometry(16, 4.4, 6), standard(0x5a3a2a, 0.8));
-    shop.position.set(0, 2.2, -10);
-    const windows = new THREE.Mesh(new THREE.PlaneGeometry(12, 2), new THREE.MeshStandardMaterial({ color: 0xffd8a0, emissive: 0xffc070, emissiveIntensity: 1.1 }));
-    windows.position.set(0, 1.6, -6.98);
-    const sign = textPlane(['TIM HORTONS'], 6, 0.9, { width: 400, height: 60, background: '#f4efe6', color: '#b0221c', radius: 8 });
-    sign.position.set(0, 3.7, -6.97);
-    const glow = new THREE.PointLight(0xffc080, 24, 16, 1.5);
-    glow.position.set(0, 3, -5);
-    scene.add(shop, windows, sign, glow);
+    scene.background = new THREE.Color(0x0b1520);
+    scene.add(new THREE.HemisphereLight(0xfff1dc, 0x4a3a2e, 1.05));
+    // Brown and cream floor tiles.
+    const tiles = document.createElement('canvas');
+    tiles.width = tiles.height = 64;
+    const tctx = tiles.getContext('2d')!;
+    tctx.fillStyle = '#c9b292'; tctx.fillRect(0, 0, 64, 64);
+    tctx.fillStyle = '#8a6646'; tctx.fillRect(0, 0, 32, 32); tctx.fillRect(32, 32, 32, 32);
+    const tileTexture = new THREE.CanvasTexture(tiles);
+    tileTexture.wrapS = tileTexture.wrapT = THREE.RepeatWrapping;
+    tileTexture.repeat.set(9, 7);
+    tileTexture.colorSpace = THREE.SRGBColorSpace;
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(16, 13), new THREE.MeshStandardMaterial({ map: tileTexture, roughness: 0.45 }));
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.z = -0.5;
+    floor.receiveShadow = true;
+    scene.add(floor);
+    // Walls: cream above a dark wood wainscot. The window wall (east) is built round its glass.
+    const cream = standard(0xe9dcc4, 0.85);
+    const wood = standard(0x5a3826, 0.6);
+    const wall = (x: number, y: number, z: number, w: number, h: number, d: number, material: THREE.Material = cream): void => {
+      const panel = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
+      panel.position.set(x, y, z);
+      scene.add(panel);
+    };
+    wall(0, 2, -7, 16, 4, 0.2);
+    wall(0, 0.55, -6.88, 16, 1.1, 0.06, wood);
+    wall(-8, 2, -0.5, 0.2, 4, 13);
+    wall(-7.88, 0.55, -0.5, 0.06, 1.1, 13, wood);
+    wall(8, 0.45, -0.5, 0.2, 0.9, 13, wood);
+    wall(8, 3.3, -0.5, 0.2, 1.4, 13);
+    wall(8, 1.75, -6.4, 0.2, 1.7, 1.2); wall(8, 1.75, 5.4, 0.2, 1.7, 1.2);
+    for (const z of [-3.2, 0, 3.2]) wall(8, 1.75, z, 0.2, 1.7, 0.16, wood);
+    const glass = new THREE.Mesh(new THREE.PlaneGeometry(11, 1.7), new THREE.MeshStandardMaterial({ color: 0x9cb6c8, roughness: 0.05, metalness: 0.2, transparent: true, opacity: 0.16, depthWrite: false }));
+    glass.rotation.y = -Math.PI / 2;
+    glass.position.set(7.95, 1.75, -0.5);
+    scene.add(glass);
+    // A red band and the sign over the counter, and the menu boards.
+    const red = new THREE.Mesh(new THREE.BoxGeometry(16, 0.22, 0.05), standard(0xb0221c, 0.6));
+    red.position.set(0, 3.75, -6.86);
+    scene.add(red);
+    const sign = textPlane(['TIM HORTONS'], 4.6, 0.62, { width: 400, height: 54, background: '#f4efe6', color: '#b0221c', radius: 8 });
+    sign.position.set(-2.6, 3.35, -6.86);
+    scene.add(sign);
+    const menus: [number, string[]][] = [
+      [-5.6, ['COFFEE', 'DOUBLE-DOUBLE · 2.29', 'FRENCH VANILLA · 2.49', 'STEEPED TEA · 1.99']],
+      [-2.6, ['DONUTS', 'HONEY DIP · 1.59', 'DOZEN · 13.49', 'TIMBITS 20 · 5.99']],
+      [0.4, ['BREAKFAST', "FARMER'S WRAP · 4.99", 'BAGEL B.E.L.T. · 6.49', 'HOT CHOC · 2.39']],
+    ];
+    for (const [x, lines] of menus) {
+      const board = textPlane(lines, 2.6, 1.2, { width: 300, height: 140, background: '#2a1a12', color: '#f3e3c4', radius: 6 });
+      board.position.set(x, 2.45, -6.86);
+      scene.add(board);
+    }
+    // The service counter, with the donut case and two registers; brewers behind it.
+    const counter = rounded(7.4, 1.05, 0.9, wood, 0.04);
+    counter.position.set(-2.4, 0.525, -5.0);
+    const top = rounded(7.5, 0.06, 1.0, standard(0xd8cdb8, 0.35), 0.02);
+    top.position.set(-2.4, 1.08, -5.0);
+    const stripe = new THREE.Mesh(new THREE.BoxGeometry(7.42, 0.12, 0.02), standard(0xb0221c, 0.6));
+    stripe.position.set(-2.4, 0.86, -4.54);
+    scene.add(counter, top, stripe);
+    for (const x of [-1.2, 0.2]) {
+      const register = rounded(0.5, 0.3, 0.42, standard(0x222428, 0.4), 0.04);
+      register.position.set(x, 1.26, -5.1);
+      const screen = new THREE.Mesh(new THREE.PlaneGeometry(0.34, 0.2), new THREE.MeshStandardMaterial({ color: 0x102030, emissive: 0x60b0ff, emissiveIntensity: 0.7 }));
+      screen.position.set(x, 1.48, -4.95);
+      screen.rotation.x = -0.4;
+      scene.add(register, screen);
+    }
+    const caseGlass = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.7, 0.8), new THREE.MeshStandardMaterial({ color: 0xcfe6f0, roughness: 0.05, transparent: true, opacity: 0.22, depthWrite: false }));
+    caseGlass.position.set(-4.6, 1.46, -5.0);
+    scene.add(caseGlass);
+    const glazes = [0xc08040, 0x6a3a1e, 0xf2d8e2, 0xe8c070, 0x8a4a2a, 0xf4efe6];
+    for (let i = 0; i < 24; i += 1) {
+      const donut = new THREE.Mesh(new THREE.TorusGeometry(0.07, 0.035, 6, 12), standard(glazes[i % glazes.length], 0.55));
+      donut.rotation.x = Math.PI / 2;
+      donut.position.set(-5.65 + (i % 8) * 0.3, 1.18 + Math.floor(i / 8) * 0.22, -5.0 + (Math.floor(i / 8) % 2) * 0.12);
+      scene.add(donut);
+    }
+    const back = rounded(7.4, 0.95, 0.6, standard(0x7a7e82, 0.4, 0.4), 0.03);
+    back.position.set(-2.4, 0.475, -6.5);
+    scene.add(back);
+    for (const x of [-5.4, -4.2, -3.0]) {
+      const brewer = rounded(0.55, 0.75, 0.45, standard(0x2c2e30, 0.35, 0.5), 0.04);
+      brewer.position.set(x, 1.33, -6.5);
+      const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.12, 0.22, 12), standard(0xb0221c, 0.5));
+      pot.position.set(x, 1.06, -6.25);
+      scene.add(brewer, pot);
+    }
+    // Two pairs of booths by the windows; the crew's is nearer the counter.
+    const vinyl = standard(0x8a2420, 0.6);
+    const booth = (z: number, facing: 1 | -1): THREE.Mesh => {
+      const seat = rounded(1.9, 0.45, 0.55, vinyl, 0.06);
+      seat.position.set(BOOTH_X, 0.225, z);
+      const rest = rounded(1.9, 0.75, 0.16, vinyl, 0.05);
+      rest.position.set(BOOTH_X, 0.8, z - facing * 0.3);
+      scene.add(shadowed(seat), shadowed(rest));
+      return seat;
+    };
+    const table = (z: number): void => {
+      const slab = rounded(1.8, 0.05, 0.85, standard(0xd8cdb8, 0.4), 0.02);
+      slab.position.set(BOOTH_X, TABLE_TOP - 0.025, z);
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, TABLE_TOP - 0.03, 10), standard(0x3a3a3a, 0.4, 0.6));
+      post.position.set(BOOTH_X, (TABLE_TOP - 0.03) / 2, z);
+      scene.add(shadowed(slab), post);
+    };
+    props.boothNorth = booth(BOOTHS.north, 1);
+    props.boothSouth = booth(BOOTHS.south, -1);
+    props.nextBooth = booth(BOOTHS.next, 1);
+    booth(2.85, -1);
+    table(BOOTHS.table);
+    table(2.0);
+    // A Christmas tree in the corner by the window.
+    const tree = new THREE.Group();
+    const needles = standard(0x1f5a32, 0.8);
+    for (const [r, h, y] of [[0.8, 1.0, 0.6], [0.62, 0.85, 1.15], [0.42, 0.7, 1.62]] as const) {
+      const tier = new THREE.Mesh(new THREE.ConeGeometry(r, h, 12), needles);
+      tier.position.y = y;
+      tree.add(tier);
+    }
+    const star = new THREE.Mesh(new THREE.OctahedronGeometry(0.11), new THREE.MeshStandardMaterial({ color: 0xffe080, emissive: 0xffd040, emissiveIntensity: 1.6 }));
+    star.position.y = 2.05;
+    tree.add(star);
+    const baubles = [0xd02a2a, 0xf2c14e, 0x3a7ad0, 0xe8e8e8];
+    for (let i = 0; i < 16; i += 1) {
+      const angle = i * 2.4;
+      const y = 0.45 + (i % 8) * 0.17;
+      const radius = 0.75 - (y - 0.3) * 0.38;
+      const bauble = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), new THREE.MeshStandardMaterial({ color: baubles[i % 4], emissive: baubles[i % 4], emissiveIntensity: 0.4 }));
+      bauble.position.set(Math.cos(angle) * radius, y, Math.sin(angle) * radius);
+      tree.add(bauble);
+    }
+    tree.position.set(6.9, 0, -5.7);
+    scene.add(tree);
+    if (this.quality === 'high') {
+      // A wall clock over the counter, between the menu boards and the window wall.
+      const slot = new THREE.Group();
+      slot.position.set(3.2, 2.42, -6.84);
+      void placeProp(slot, 'wall-clock', { size: { y: 0.4 } });
+      scene.add(slot);
+    }
+    const ceiling = new THREE.PointLight(0xfff0d8, 16, 16, 1.4);
+    ceiling.position.set(-1.5, 3.6, -2.5);
+    const boothLight = new THREE.PointLight(0xffd8a0, 9, 8, 1.5);
+    boothLight.position.set(BOOTH_X, 2.6, 0.4);
+    scene.add(ceiling, boothLight);
+    // Outside the windows: snow, the lot's lamp, and Skanky's car.
+    scene.add(snowField(40, 30, 22, -0.5, -0.02));
+    for (const z of [-8, 7]) {
+      const bank = snowBank(10, 1.6, 0.7);
+      bank.position.set(16, 0, z);
+      scene.add(bank);
+    }
+    const lotLamp = new THREE.PointLight(0xffc080, 18, 18, 1.5);
+    lotLamp.position.set(13, 5, 0);
+    scene.add(lotLamp);
     const car = createCar(0x8f3f34);
-    car.position.set(0, 0, -1);
+    car.position.set(11.5, 0, 0.4);
+    car.rotation.y = Math.PI / 2;
     scene.add(car);
     props.car = car;
-    // The tray of coffees and the donut box on the hood.
+    stage.snow.push(snowfall([8.3, 0, -12], [34, 9, 12], { count: this.quality === 'high' ? 1800 : 500, size: 0.08 }));
+    // The tray of coffees and the donut box on the crew's table.
     const tray = new THREE.Group();
     const cardboard = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.06, 0.42), standard(0xa88a60, 0.9));
     tray.add(cardboard);
@@ -576,7 +863,6 @@ export class StoryStage {
       cup.position.set(x, 0.12, z);
       tray.add(cup);
     }
-    tray.position.set(1.35, 0.99, -1.4);
     scene.add(tray);
     props.tray = tray;
     const box = new THREE.Group();
@@ -601,7 +887,6 @@ export class StoryStage {
     lid.position.set(0, 0.13, -0.22);
     lid.userData.keep = true;
     box.add(lid);
-    box.position.set(1.4, 0.96, -0.6);
     scene.add(box);
     props.donutBox = box;
     props.lid = lid;
@@ -612,7 +897,7 @@ export class StoryStage {
     stain.visible = false;
     scene.add(stain);
     props.stain = stain;
-    this.cast(stage, ['termite', 'skanky', 'kylie', 'doris', 'brian']);
+    this.cast(stage, ['termite', 'skanky', 'kylie', 'doris', 'brian', 'cashier']);
   }
 
   private buildRoad(stage: Stage): void {
@@ -633,10 +918,7 @@ export class StoryStage {
     surface.userData.keep = true;
     scene.add(surface);
     props.road = surface;
-    const verge = new THREE.Mesh(new THREE.PlaneGeometry(120, 60), standard(0x1a2420, 0.95));
-    verge.rotation.x = -Math.PI / 2;
-    verge.position.y = -0.01;
-    scene.add(verge);
+    scene.add(snowField(120, 60, 0, 0, -0.01));
     // Streetlights and buildings that scroll past.
     const passing = new THREE.Group();
     for (let i = 0; i < 10; i += 1) {
@@ -647,13 +929,23 @@ export class StoryStage {
       lamp.position.set(x, 6, -4.4);
       const building = new THREE.Mesh(new THREE.BoxGeometry(8, 4 + (i * 7) % 6, 6), standard(0x1c2630, 0.9));
       building.position.set(x + 3, building.geometry.parameters.height / 2, -14);
+      const roofSnow = snowCap(8.1, 6.1, 0.2);
+      roofSnow.position.set(x + 3, building.geometry.parameters.height + 0.1, -14);
+      passing.add(roofSnow);
       const lit = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.8), new THREE.MeshStandardMaterial({ color: 0x302010, emissive: 0xffc070, emissiveIntensity: (i % 3) * 0.5 }));
       lit.position.set(x + 2, 2, -10.98);
       passing.add(pole, lamp, building, lit);
     }
+    // Plowed banks line both sides of the road.
+    for (const z of [-4.7, 4.7]) {
+      const bank = snowBank(120, 1.3, 0.55);
+      bank.position.set(0, 0, z);
+      passing.add(bank);
+    }
     passing.userData.keep = true;
     scene.add(passing);
     props.passing = passing;
+    stage.snow.push(snowfall([-26, 0, -12], [26, 10, 12], { count: this.quality === 'high' ? 3000 : 800, size: 0.1 }));
     const light = new THREE.PointLight(0xffb060, 28, 30, 1.5);
     light.position.set(0, 6, -2);
     scene.add(light);
@@ -666,8 +958,8 @@ export class StoryStage {
   private buildHouse(stage: Stage): void {
     const { scene, props } = stage;
     this.night(scene, 0x0a121c);
-    const grass = new THREE.Mesh(new THREE.PlaneGeometry(60, 50), standard(0x1c2a1e, 0.95));
-    grass.rotation.x = -Math.PI / 2; grass.position.y = -0.02; grass.receiveShadow = true;
+    // Snow on the lawns; the driveway and the street are shovelled and plowed.
+    const grass = snowField(60, 50, 0, 0, -0.02);
     const driveway = new THREE.Mesh(new THREE.PlaneGeometry(5.6, 16), standard(0x3a3e40, 0.9));
     driveway.rotation.x = -Math.PI / 2; driveway.position.set(9.3, -0.01, 3); driveway.receiveShadow = true;
     const street = new THREE.Mesh(new THREE.PlaneGeometry(60, 7), standard(0x25292b, 0.95));
@@ -687,48 +979,103 @@ export class StoryStage {
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(10, 8), new THREE.MeshStandardMaterial({ map: plankTexture, roughness: 0.7 }));
     floor.rotation.x = -Math.PI / 2; floor.position.y = 0.005; floor.receiveShadow = true;
     scene.add(floor);
-    // Walls: back (with a window), the TV wall and the side wall with the door.
-    // The front wall and roof only show from outside, so indoors reads like a sitcom set.
-    const paint = standard(0x8c8f74, 0.9);
-    const wall = (x: number, y: number, z: number, w: number, h: number, d: number): void => {
-      const panel = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), paint);
+    // A closed room: painted walls inside, siding outside, a ceiling, skirting
+    // and crown molding. The back and front walls have windows, the east wall the door.
+    const paint = standard(0xcdbf9f, 0.9);
+    const siding = standard(0x5d6a72, 0.9);
+    const trim = standard(0xebe5d6, 0.6);
+    const wall = (x: number, y: number, z: number, w: number, h: number, d: number, material: THREE.Material = paint): void => {
+      const panel = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
       panel.position.set(x, y, z);
       scene.add(shadowed(panel));
     };
-    wall(-3.1, 1.4, -4, 3.8, 2.8, 0.16); wall(3.85, 1.4, -4, 2.3, 2.8, 0.16);
+    // Each wall is solid up to its openings: the back window spans x -0.25..2.65,
+    // the side door z 0.8..2.0; the walls meet at the corners (±5.08, ±4.08).
+    wall(-2.665, 1.4, -4, 4.83, 2.8, 0.16); wall(3.865, 1.4, -4, 2.43, 2.8, 0.16);
     wall(1.2, 0.5, -4, 2.9, 1.0, 0.16); wall(1.2, 2.65, -4, 2.9, 0.3, 0.16);
     wall(-5, 1.4, 0, 0.16, 2.8, 8.16);
-    wall(5, 1.4, -1.8, 0.16, 2.8, 4.4); wall(5, 1.4, 3.0, 0.16, 2.8, 2.0); wall(5, 2.45, 1.4, 0.16, 0.7, 1.2);
-    // The ceiling faces down only, so the roof still shows from outside.
-    const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(10.16, 16), standard(0xd9d3c2, 0.9));
-    ceiling.rotation.x = Math.PI / 2;
-    ceiling.position.set(0, 2.8, 3.9);
-    const fixture = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.32, 0.08, 18), new THREE.MeshStandardMaterial({ color: 0xf4ecd8, emissive: 0xffe2b0, emissiveIntensity: 0.5 }));
-    fixture.position.set(0, 2.76, 0);
-    scene.add(ceiling, fixture);
-    const frontWall = new THREE.Mesh(new THREE.BoxGeometry(10.16, 2.8, 0.16), standard(0x5d6a72, 0.9));
+    wall(5, 1.4, -1.64, 0.16, 2.8, 4.88); wall(5, 1.4, 3.04, 0.16, 2.8, 2.08); wall(5, 2.4, 1.4, 0.16, 0.8, 1.2);
+    // The east wall's outside face, seen from the driveway.
+    for (const [y, z, h, d] of [[1.4, -1.64, 2.8, 4.88], [1.4, 3.04, 2.8, 2.08], [2.4, 1.4, 0.8, 1.2]] as const) wall(5.09, y, z, 0.02, h, d, siding);
+    // The front wall: siding and a lit window outside, paint and a curtained window inside.
+    const frontWall = new THREE.Mesh(new THREE.BoxGeometry(10.16, 2.8, 0.16), siding);
     frontWall.position.set(0, 1.4, 4);
     const frontWindow = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 1.1), new THREE.MeshStandardMaterial({ color: 0x40301c, emissive: 0xffc27a, emissiveIntensity: 0.9 }));
     frontWindow.position.set(-1.5, 0.15, 0.09);
     frontWall.add(frontWindow);
-    frontWall.visible = false;
     scene.add(frontWall);
     props.frontWall = frontWall;
+    const inner = new THREE.Mesh(new THREE.PlaneGeometry(10, 2.8), paint);
+    inner.rotation.y = Math.PI;
+    inner.position.set(0, 1.4, 3.915);
+    scene.add(inner);
+    // The ceiling faces down only, so the roof still shows from outside.
+    const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(10.16, 8.16), standard(0xf0ebe0, 0.9));
+    ceiling.rotation.x = Math.PI / 2;
+    ceiling.position.set(0, 2.8, 0);
+    const fixture = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.32, 0.08, 18), new THREE.MeshStandardMaterial({ color: 0xf4ecd8, emissive: 0xffe2b0, emissiveIntensity: 0.5 }));
+    fixture.position.set(0, 2.76, 0);
+    scene.add(ceiling, fixture);
+    // Skirting and crown molding round the room; the skirting breaks for the door.
+    for (const [x, z, w, d] of [[0, -3.9, 9.84, 0.04], [0, 3.9, 9.84, 0.04], [-4.9, 0, 0.04, 7.84], [4.9, -1.56, 0.04, 4.72], [4.9, 2.96, 0.04, 1.92]] as const) {
+      const skirting = new THREE.Mesh(new THREE.BoxGeometry(w, 0.12, d), trim);
+      skirting.position.set(x, 0.06, z);
+      scene.add(skirting);
+    }
+    for (const [x, z, w, d] of [[0, -3.89, 9.84, 0.06], [0, 3.89, 9.84, 0.06], [-4.89, 0, 0.06, 7.84], [4.89, 0, 0.06, 7.84]] as const) {
+      const crown = new THREE.Mesh(new THREE.BoxGeometry(w, 0.1, d), trim);
+      crown.position.set(x, 2.75, z);
+      scene.add(crown);
+    }
+    // Trim round the side door.
+    for (const [y, z, h, d] of [[1.07, 0.78, 2.14, 0.12], [1.07, 2.02, 2.14, 0.12], [2.16, 1.4, 0.08, 1.36]] as const) {
+      const casing = new THREE.Mesh(new THREE.BoxGeometry(0.05, h, d), trim);
+      casing.position.set(4.9, y, z);
+      scene.add(casing);
+    }
     const roof = new THREE.Group();
     for (const side of [-1, 1]) {
       const slope = new THREE.Mesh(new THREE.BoxGeometry(11, 0.18, 5.0), standard(0x3a2c2a, 0.9));
       slope.position.set(0, 3.55, side * 2.2);
       slope.rotation.x = side * 0.38;
+      const roofSnow = snowCap(11.1, 5.05, 0.12);
+      roofSnow.position.y = 0.14;
+      slope.add(roofSnow);
       roof.add(slope);
     }
     roof.visible = false;
     scene.add(roof);
     props.roof = roof;
-    // The back window: night blue, then morning.
-    const backWindow = new THREE.Mesh(new THREE.PlaneGeometry(2.9, 1.2), new THREE.MeshStandardMaterial({ color: 0x0b1626, emissive: 0x1a2c48, emissiveIntensity: 0.6 }));
-    backWindow.position.set(1.2, 1.6, -3.95);
+    // The back window looks out on the snowy yard: night, then morning.
+    const view = snowyWindow();
+    const backWindow = new THREE.Mesh(new THREE.PlaneGeometry(2.9, 1.5), new THREE.MeshStandardMaterial({ color: 0x8090a8, map: view, emissiveMap: view, emissive: 0x8a9ab8, emissiveIntensity: 0.6 }));
+    backWindow.position.set(1.2, 1.75, -3.95);
     scene.add(backWindow);
     props.backWindow = backWindow;
+    const frontView = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 1.1), new THREE.MeshStandardMaterial({ color: 0x8090a8, map: view, emissiveMap: view, emissive: 0x8a9ab8, emissiveIntensity: 0.6 }));
+    frontView.rotation.y = Math.PI;
+    frontView.position.set(-1.5, 1.55, 3.9);
+    scene.add(frontView);
+    // Frames, sills, rods and curtains on both windows.
+    const curtain = standard(0x7a2a2a, 0.95);
+    for (const [cx, cy, w, h, z, facing] of [[1.2, 1.75, 2.9, 1.5, -3.9, 1], [-1.5, 1.55, 2.2, 1.1, 3.86, -1]] as const) {
+      for (const [x, y, fw, fh] of [[cx, cy + h / 2 + 0.03, w + 0.12, 0.06], [cx, cy - h / 2 - 0.03, w + 0.12, 0.06], [cx - w / 2 - 0.03, cy, 0.06, h], [cx + w / 2 + 0.03, cy, 0.06, h], [cx, cy, 0.04, h]] as const) {
+        const frame = new THREE.Mesh(new THREE.BoxGeometry(fw, fh, 0.05), trim);
+        frame.position.set(x, y, z);
+        scene.add(frame);
+      }
+      const sill = new THREE.Mesh(new THREE.BoxGeometry(w + 0.3, 0.04, 0.16), trim);
+      sill.position.set(cx, cy - h / 2 - 0.07, z + facing * 0.06);
+      const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, w + 1.0, 8), standard(0x3a2a20, 0.5, 0.4));
+      rod.rotation.z = Math.PI / 2;
+      rod.position.set(cx, cy + h / 2 + 0.2, z + facing * 0.08);
+      scene.add(sill, rod);
+      for (const side of [-1, 1]) {
+        const drape = rounded(0.42, h + 0.55, 0.08, curtain, 0.03);
+        drape.position.set(cx + side * (w / 2 + 0.18), cy + 0.02, z + facing * 0.1);
+        scene.add(shadowed(drape));
+      }
+    }
     // The side door swings open on the way out.
     const door = new THREE.Group();
     const slab = new THREE.Mesh(new THREE.BoxGeometry(0.06, 2.1, 1.16), standard(0x5a3a24, 0.7));
@@ -739,9 +1086,25 @@ export class StoryStage {
     door.position.set(4.97, 0, 0.82);
     scene.add(door);
     props.door = door;
+    for (const [x, z, length, turn] of [[12.8, 2.5, 13, Math.PI / 2], [-12, 10.4, 34, 0], [20, 10.4, 15, 0]] as const) {
+      const bank = snowBank(length, 1.2, 0.5);
+      bank.position.set(x, 0, z);
+      bank.rotation.y = turn;
+      scene.add(bank);
+    }
+    // Snow falls all round the house. The living room is an open-fronted set
+    // seen from the yard, so directHouse shows it only for outdoor shots.
+    const flakes = this.quality === 'high' ? 1 : 0.3;
+    for (const [min, max, count] of [
+      [[5.3, 0, -14], [26, 9, 18], 1300], [[-26, 0, 4.3], [5.3, 9, 18], 1300],
+      [[-26, 0, -22], [5.3, 9, -4.3], 900], [[-26, 0, -4.3], [-5.3, 9, 4.3], 300],
+    ] as [[number, number, number], [number, number, number], number][]) {
+      stage.snow.push(snowfall(min, max, { count: Math.round(count * flakes), size: 0.08 }));
+    }
     const porch = new THREE.PointLight(0xffd49a, 14, 9, 1.6);
     porch.position.set(5.6, 2.6, 1.4);
     scene.add(porch);
+    this.furnishHouse(scene);
     // TV stand, TV and the Wii.
     const tvStand = rounded(0.5, 0.5, 1.9, standard(0x2a2522, 0.7), 0.03);
     tvStand.position.set(-4.62, 0.25, 0);
@@ -763,26 +1126,45 @@ export class StoryStage {
     const sensor = rounded(0.04, 0.03, 0.24, standard(0x15171a, 0.4), 0.01);
     sensor.position.set(-4.68, 1.62, 0);
     scene.add(wii, slot, sensor);
-    // The couch faces the TV.
+    // The couch faces the TV: a photographed sofa on GPU renderers, over the drawn one.
+    const models = this.quality === 'high';
     const fabric = standard(0x46566a, 0.95);
+    const couch = new THREE.Group();
     const seat = rounded(0.9, 0.42, 2.3, fabric, 0.08);
     seat.position.set(0.6, 0.21, 0);
     const back = rounded(0.26, 0.6, 2.3, fabric, 0.08);
     back.position.set(1.0, 0.7, 0);
-    scene.add(shadowed(seat), shadowed(back));
+    couch.add(shadowed(seat), shadowed(back));
     for (const z of [-1.24, 1.24]) {
       const arm = rounded(0.9, 0.62, 0.22, fabric, 0.08);
       arm.position.set(0.6, 0.31, z);
-      scene.add(shadowed(arm));
+      couch.add(shadowed(arm));
     }
+    scene.add(couch);
     props.couch = seat;
+    if (models) {
+      const slot = new THREE.Group();
+      slot.position.set(0.7, 0, 0);
+      slot.rotation.y = -Math.PI / 2;
+      void placeProp(slot, 'sofa', { fallback: couch, size: { x: 2.3, y: 0.76 } });
+      scene.add(slot);
+    }
+    const coffeeTable = new THREE.Group();
     const table = rounded(0.62, 0.06, 1.2, standard(0x6b4a30, 0.6), 0.02);
     table.position.set(-1.55, 0.4, 0);
-    scene.add(table);
+    coffeeTable.add(table);
     for (const [x, z] of [[-1.8, -0.52], [-1.3, -0.52], [-1.8, 0.52], [-1.3, 0.52]] as const) {
       const leg = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.38, 0.05), standard(0x4a3220, 0.6));
       leg.position.set(x, 0.19, z);
-      scene.add(leg);
+      coffeeTable.add(leg);
+    }
+    scene.add(coffeeTable);
+    if (models) {
+      const slot = new THREE.Group();
+      slot.position.set(-1.55, 0, 0);
+      slot.rotation.y = Math.PI / 2;
+      void placeProp(slot, 'coffee-table', { fallback: coffeeTable, size: { x: 1.2, y: 0.42 } });
+      scene.add(slot);
     }
     // Skanky's Warsteiner keg behind the couch, with its tap.
     const keg = new THREE.Group();
@@ -908,6 +1290,157 @@ export class StoryStage {
     scene.add(lampShade, lampPole, lamp, tvGlow, sun);
     this.houseLights = { lamp, tvGlow, sun };
     this.cast(stage, ['termite', 'skanky']);
+  }
+
+  /**
+   * The rest of a lived-in living room, kept clear of every path the pair
+   * walk (couch to door, door to couch) and of the keg, the table and the TV:
+   * a rug, a bookcase, an armchair, a dining corner, coats by the door,
+   * pictures and a clock, and for Christmas a tree, presents and string lights.
+   */
+  private furnishHouse(scene: THREE.Scene): void {
+    const wood = standard(0x5a3a24, 0.6);
+    const add = (mesh: THREE.Mesh, x: number, y: number, z: number, turn = 0): THREE.Mesh => {
+      mesh.position.set(x, y, z);
+      mesh.rotation.y = turn;
+      scene.add(shadowed(mesh));
+      return mesh;
+    };
+    // On GPU renderers a photographed model stands over a drawn piece, which it hides once loaded.
+    const model = (parts: THREE.Object3D[], id: Parameters<typeof placeProp>[1], x: number, z: number, turn: number, size: { x?: number; y?: number }): void => {
+      const fallback = new THREE.Group();
+      for (const part of parts) fallback.attach(part);
+      scene.add(fallback);
+      if (this.quality !== 'high') return;
+      const slot = new THREE.Group();
+      slot.position.set(x, 0, z);
+      slot.rotation.y = turn;
+      void placeProp(slot, id, { fallback, size });
+      scene.add(slot);
+    };
+    // A rug under the coffee table, between the couch and the TV.
+    const rugEdge = new THREE.Mesh(new THREE.PlaneGeometry(2.7, 2.5), standard(0xc8b48a, 0.95));
+    rugEdge.rotation.x = -Math.PI / 2;
+    rugEdge.position.set(-1.75, 0.008, 0);
+    const rug = new THREE.Mesh(new THREE.PlaneGeometry(2.45, 2.25), standard(0x7a3328, 0.95));
+    rug.rotation.x = -Math.PI / 2;
+    rug.position.set(-1.75, 0.01, 0);
+    scene.add(rugEdge, rug);
+    // A bookcase against the back wall.
+    const bookcase: THREE.Object3D[] = [];
+    bookcase.push(add(new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.9, 0.03), wood), -2.4, 0.95, -3.89));
+    for (const x of [-3.18, -1.62]) bookcase.push(add(new THREE.Mesh(new THREE.BoxGeometry(0.04, 1.9, 0.36), wood), x, 0.95, -3.72));
+    const bookColors = [0x8a2a2a, 0x2a4a7a, 0x3a6a3a, 0xc8a040, 0x5a3a6a, 0xd8d0c0, 0x2a2a2a];
+    for (let shelf = 0; shelf < 5; shelf += 1) {
+      bookcase.push(add(new THREE.Mesh(new THREE.BoxGeometry(1.56, 0.03, 0.34), wood), -2.4, 0.03 + shelf * 0.46, -3.72));
+      if (shelf === 4) continue;
+      let x = -3.12;
+      for (let i = 0; x < -1.75; i += 1) {
+        const w = 0.05 + ((i * 7 + shelf * 3) % 4) * 0.012;
+        const h = 0.28 + ((i * 5 + shelf) % 3) * 0.04;
+        bookcase.push(add(new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.24), standard(bookColors[(i + shelf * 2) % bookColors.length], 0.7)), x + w / 2, 0.045 + shelf * 0.46 + h / 2, -3.74));
+        x += w + 0.008;
+        if (i % 9 === 8) x += 0.18;
+      }
+    }
+    model(bookcase, 'bookshelf', -2.4, -3.62, 0, { x: 1.6, y: 2.0 });
+    // An armchair in the back corner by the lamp, facing the TV.
+    const fabric = standard(0x6a4a3a, 0.95);
+    const armchair: THREE.Object3D[] = [];
+    armchair.push(add(rounded(0.85, 0.42, 0.85, fabric, 0.08), 3.2, 0.21, -2.2));
+    armchair.push(add(rounded(0.22, 0.62, 0.85, fabric, 0.08), 3.56, 0.72, -2.2));
+    for (const z of [-2.62, -1.78]) armchair.push(add(rounded(0.85, 0.58, 0.18, fabric, 0.07), 3.2, 0.29, z));
+    model(armchair, 'armchair', 3.2, -2.2, -Math.PI / 2, { x: 0.9, y: 1.0 });
+    // A dining corner by the front window door side.
+    add(rounded(1.1, 0.05, 0.75, wood, 0.02), 3.4, 0.74, 3.05);
+    for (const [x, z] of [[2.95, 2.8], [3.85, 2.8], [2.95, 3.3], [3.85, 3.3]] as const) add(new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.72, 0.05), wood), x, 0.36, z);
+    for (const [z, facing] of [[2.42, 1], [3.62, -1]] as const) {
+      add(rounded(0.45, 0.05, 0.42, wood, 0.02), 3.4, 0.46, z);
+      add(rounded(0.45, 0.5, 0.05, wood, 0.02), 3.4, 0.72, z - facing * 0.2);
+      for (const [x, dz] of [[3.21, -0.17], [3.59, -0.17], [3.21, 0.17], [3.59, 0.17]] as const) add(new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.44, 0.04), wood), x, 0.22, z + dz);
+    }
+    // Coats on hooks beside the door, and a mat inside it.
+    add(new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.08, 0.04), wood), 4.35, 1.78, 3.88);
+    for (const [x, color] of [[4.1, 0x2a3a4a], [4.6, 0x6a2a20]] as const) add(rounded(0.4, 0.75, 0.12, standard(color, 0.9), 0.06), x, 1.38, 3.8);
+    const mat = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 1.0), standard(0x4a3a2a, 1));
+    mat.rotation.x = -Math.PI / 2;
+    mat.position.set(4.55, 0.009, 1.4);
+    scene.add(mat);
+    // Pictures, and a clock over the keg.
+    const picture = (x: number, y: number, z: number, turn: number, w: number, h: number, colors: [string, string]): void => {
+      add(new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.04), wood), x, y, z, turn);
+      const canvas = document.createElement('canvas');
+      canvas.width = 64; canvas.height = 48;
+      const ctx = canvas.getContext('2d')!;
+      const sky = ctx.createLinearGradient(0, 0, 0, 48);
+      sky.addColorStop(0, colors[0]); sky.addColorStop(1, colors[1]);
+      ctx.fillStyle = sky; ctx.fillRect(0, 0, 64, 48);
+      ctx.fillStyle = '#2a3a2a'; ctx.beginPath(); ctx.moveTo(0, 40); ctx.lineTo(20, 22); ctx.lineTo(34, 34); ctx.lineTo(48, 18); ctx.lineTo(64, 36); ctx.lineTo(64, 48); ctx.lineTo(0, 48); ctx.fill();
+      const art = new THREE.Mesh(new THREE.PlaneGeometry(w - 0.08, h - 0.08), new THREE.MeshStandardMaterial({ map: new THREE.CanvasTexture(canvas), roughness: 0.6 }));
+      (art.material as THREE.MeshStandardMaterial).map!.colorSpace = THREE.SRGBColorSpace;
+      art.position.set(x + Math.sin(turn) * 0.025, y, z + Math.cos(turn) * 0.025);
+      art.rotation.y = turn;
+      scene.add(art);
+    };
+    picture(-4.9, 1.65, 2.4, Math.PI / 2, 0.9, 0.65, ['#d88a5a', '#f4d8a0']);
+    picture(4.9, 1.65, -2.4, -Math.PI / 2, 0.8, 0.6, ['#5a8ac8', '#d8e8f0']);
+    const clock = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.04, 24), standard(0xf4efe4, 0.5));
+    clock.rotation.x = Math.PI / 2;
+    const clockParts: THREE.Object3D[] = [add(clock, -0.6, 2.2, -3.9)];
+    for (const [len, angle] of [[0.11, 0.6], [0.14, 2.4]] as const) {
+      const hand = new THREE.Mesh(new THREE.BoxGeometry(0.012, len, 0.01), standard(0x1a1a1a, 0.5));
+      hand.position.set(-0.6 + Math.sin(angle) * len / 2, 2.2 + Math.cos(angle) * len / 2, -3.87);
+      hand.rotation.z = -angle;
+      scene.add(hand);
+      clockParts.push(hand);
+    }
+    if (this.quality === 'high') {
+      // The clock model hangs from its centre; the slot sits at the drawn clock's centre.
+      const fallback = new THREE.Group();
+      for (const part of clockParts) fallback.attach(part);
+      scene.add(fallback);
+      const slot = new THREE.Group();
+      slot.position.set(-0.6, 2.2 - 0.18, -3.9);
+      void placeProp(slot, 'wall-clock', { fallback, size: { y: 0.36 } });
+      scene.add(slot);
+    }
+    // A Christmas tree in the corner by the TV, with presents underneath.
+    const tree = new THREE.Group();
+    const needles = standard(0x1f5a32, 0.8);
+    for (const [r, h, y] of [[0.7, 0.9, 0.55], [0.55, 0.75, 1.05], [0.38, 0.6, 1.47]] as const) {
+      const tier = new THREE.Mesh(new THREE.ConeGeometry(r, h, 12), needles);
+      tier.position.y = y;
+      tree.add(tier);
+    }
+    const star = new THREE.Mesh(new THREE.OctahedronGeometry(0.1), new THREE.MeshStandardMaterial({ color: 0xffe080, emissive: 0xffd040, emissiveIntensity: 1.6 }));
+    star.position.y = 1.86;
+    tree.add(star);
+    const lights = [0xd02a2a, 0xf2c14e, 0x3a7ad0, 0x40c060];
+    for (let i = 0; i < 18; i += 1) {
+      const angle = i * 2.4;
+      const y = 0.4 + (i % 9) * 0.14;
+      const radius = 0.66 - (y - 0.3) * 0.36;
+      const bauble = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 6), new THREE.MeshStandardMaterial({ color: lights[i % 4], emissive: lights[i % 4], emissiveIntensity: 0.8 }));
+      bauble.position.set(Math.cos(angle) * radius, y, Math.sin(angle) * radius);
+      tree.add(bauble);
+    }
+    tree.position.set(-4.2, 0, -3.15);
+    scene.add(tree);
+    for (const [x, z, s, color, ribbon] of [[-3.6, -2.6, 0.32, 0xb02a2a, 0xf2c14e], [-4.1, -2.4, 0.26, 0x2a5a9a, 0xe8e8e8], [-3.55, -3.2, 0.24, 0x2a7a3a, 0xd02a2a]] as const) {
+      add(new THREE.Mesh(new THREE.BoxGeometry(s, s * 0.8, s), standard(color, 0.6)), x, s * 0.4, z, 0.3);
+      add(new THREE.Mesh(new THREE.BoxGeometry(s + 0.01, s * 0.8 + 0.01, 0.05), standard(ribbon, 0.5)), x, s * 0.4, z, 0.3);
+    }
+    // String lights along the top of the back and TV walls.
+    for (let i = 0; i < 46; i += 1) {
+      const t = i / 45;
+      const [x, z] = t < 0.55 ? [-4.85 + (t / 0.55) * 9.6, -3.84] : [-4.84, -3.8 + ((t - 0.55) / 0.45) * 7.5];
+      const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.028, 6, 5), new THREE.MeshStandardMaterial({ color: lights[i % 4], emissive: lights[i % 4], emissiveIntensity: 1.8 }));
+      bulb.position.set(x, 2.6 - Math.abs(Math.sin(i * 1.3)) * 0.06, z);
+      scene.add(bulb);
+    }
+    const glow = new THREE.PointLight(0xffb070, 4, 5, 1.6);
+    glow.position.set(-3.8, 1.4, -2.6);
+    scene.add(glow);
   }
 
   /** The TV picture: the Wii menu, a twilit field with a little hero in green, or the movie. */
@@ -1102,6 +1635,7 @@ export class StoryStage {
     this.dawn = scene.id === 'go-home' ? 1 : scene.id === 'drive-to-ups' ? 0.6 : 0;
     this.applySky(stage);
     this.roadTravel = 0;
+    this.roadWind = 0;
     this.mallIntroBeat = -1;
   }
 
@@ -1129,7 +1663,10 @@ export class StoryStage {
     else if (id === 'home-decision' || id === 'leave-house' || id === 'quit-night') this.directHouse(stage, cutscene, time);
     else if (id === 'mall-intro') this.directMallIntro(stage, cutscene);
     for (const actor of stage.actors.values()) if (actor.root.visible) actor.animate(dt, time, this.reducedMotion);
+    // Cars that moved this beat roll and steer their wheels to match.
+    for (const prop of Object.values(stage.props)) if (prop.visible && prop.userData.wheels) followWheels(prop.userData.wheels as WheelRig, prop, dt);
     stage.puffs.update(dt);
+    for (const flakes of stage.snow) flakes.update(dt, this.reducedMotion, this.active === 'road' ? this.roadWind : 0);
   }
 
   private cameraTo(position: THREE.Vector3, look: THREE.Vector3, dt: number, snap = false): void {
@@ -1295,73 +1832,91 @@ export class StoryStage {
     this.cameraTo(new THREE.Vector3(-4.6, 3.0, 3.2), new THREE.Vector3(0.6, 1.2, -1.6), this.frameDt, cutscene.index === 0 && cutscene.elapsedMs < 50);
   }
 
+  /** Inside Tim Hortons: the crew's booth, the tray and donut box on its table, and the pickup counter. */
   private directCoffee(stage: Stage, cutscene: Cutscene, time: number): void {
     const { props, actors } = stage;
     const a = (id: string): StageActor => actors.get(id)!;
     const variant = cutscene.scene.id;
-    const car = props.car;
-    car.position.set(0, 0, -1);
-    car.rotation.y = 0;
     const stand = (id: string, x: number, z: number, face: number): void => {
       const actor = a(id);
       actor.root.visible = true;
       actor.at(x, z);
       actor.faceAngle = face;
     };
+    // Seated on a booth bench, facing the table (+z from the north bench, -z from the south).
+    const sit = (id: string, bench: 'north' | 'south' | 'next', x: number): void => {
+      const actor = a(id);
+      const facing = bench === 'south' ? -1 : 1;
+      actor.root.visible = true;
+      actor.at(x, BOOTHS[bench] + facing * 0.05);
+      actor.seatedIn = props[bench === 'north' ? 'boothNorth' : bench === 'south' ? 'boothSouth' : 'nextBooth'];
+      actor.faceAngle = facing > 0 ? 0 : Math.PI;
+      actor.pose = 'sit';
+    };
+    const onTable = (prop: THREE.Object3D, x: number, z: number, lift = 0): void => {
+      prop.position.set(x, TABLE_TOP + lift, z);
+    };
+    stand('cashier', -0.5, -5.95, 0);
     props.stain.visible = false;
+    props.tray.visible = variant === 'timhortons-1';
+    onTable(props.tray, BOOTH_X - 0.45, BOOTHS.table + 0.05, 0.03);
+    onTable(props.donutBox, BOOTH_X + 0.45, BOOTHS.table);
+    props.lid.rotation.x = 0;
+    props.cup.visible = false;
+    const snap = cutscene.index === 0 && cutscene.elapsedMs < 50;
     if (variant === 'timhortons-2') {
-      // Everyone is in the car; the donut box is on Skanky's lap.
-      this.seat(a('skanky'), car, new THREE.Vector3(0.2, SEAT_Y, 0.36));
-      this.seat(a('termite'), car, new THREE.Vector3(0.2, SEAT_Y, -0.36));
-      this.seat(a('doris'), car, new THREE.Vector3(-0.8, SEAT_Y, 0.36));
-      this.seat(a('brian'), car, new THREE.Vector3(-0.8, SEAT_Y, -0.36));
-      props.tray.visible = false;
-      props.donutBox.position.copy(car.localToWorld(new THREE.Vector3(0.5, 1.0, 0.36)));
+      // Everyone is in the booth with a dozen donuts; Brian is in the next one, chewing.
+      sit('skanky', 'north', BOOTH_X - 0.45);
+      sit('termite', 'north', BOOTH_X + 0.45);
+      sit('doris', 'south', BOOTH_X - 0.45);
+      sit('brian', 'next', BOOTH_X + 0.2);
       props.lid.rotation.x = -1.6;
+      a('skanky').setPose(cueProgress(cutscene, 'count-donuts') > 0 && cutscene.index <= 2 ? 'press' : 'sit', time);
       a('brian').character.head.rotation.x = Math.sin(time * 9) * 0.08;
       const back = cueProgress(cutscene, 'back-seat');
-      if (back > 0 && back < 1 && Math.random() < 0.15) stage.puffs.emit(a('brian').root.position.clone().add(new THREE.Vector3(0, 1.35, 0.25)), { color: 0xc08040, size: 0.05, life: 0.8, velocity: new THREE.Vector3(0, -0.5, 0.4), opacity: 0.9, grow: 1 });
-      props.cup.visible = false;
-      this.cameraTo(new THREE.Vector3(4.4, 2.2, 2.2), new THREE.Vector3(0.1, 1.1, -1), this.frameDt, cutscene.index === 0 && cutscene.elapsedMs < 50);
+      if (back > 0 && back < 1 && Math.random() < 0.15) stage.puffs.emit(a('brian').root.position.clone().add(new THREE.Vector3(0, 1.3, 0.25)), { color: 0xc08040, size: 0.05, life: 0.8, velocity: new THREE.Vector3(0, -0.5, 0.4), opacity: 0.9, grow: 1 });
+      this.cameraTo(new THREE.Vector3(0.6, 2.4, 2.6), new THREE.Vector3(BOOTH_X, 0.9, BOOTHS.table), this.frameDt, snap);
       return;
     }
-    props.tray.visible = variant === 'timhortons-1';
-    stand('termite', 2.7, -0.4, -Math.PI / 2);
-    stand('skanky', 2.9, 0.9, -Math.PI / 2 - 0.6);
-    stand('doris', 2.2, -2.5, -0.3);
-    stand('brian', 3.4, -2.0, -0.9);
     if (variant === 'timhortons-1') {
-      stand('kylie', 1.4, 0.6, Math.PI);
+      // Kylie brings the tray to the booth and asks whose double-double it is.
+      sit('skanky', 'north', BOOTH_X - 0.45);
+      sit('termite', 'north', BOOTH_X + 0.45);
+      sit('doris', 'south', BOOTH_X - 0.45);
+      sit('brian', 'south', BOOTH_X + 0.45);
+      stand('kylie', BOOTH_X - 1.35, BOOTHS.table, Math.PI / 2);
       const hands = cueProgress(cutscene, 'three-hands');
-      for (const id of ['skanky', 'doris', 'brian']) a(id).setPose(hands > 0 && cutscene.index <= 3 ? 'handup' : 'none', time);
+      for (const id of ['skanky', 'doris', 'brian']) a(id).setPose(hands > 0 && cutscene.index <= 3 ? 'handup' : 'sit', time);
       const box = cueProgress(cutscene, 'donut-box');
-      props.donutBox.position.set(1.4, 0.96, -0.6);
       props.lid.rotation.x = box <= 0 || box >= 1 ? 0 : -Math.sin(Math.min(1, box * 1.6) * Math.PI) * 1.8;
-      a('termite').setPose(box > 0 && box < 1 ? 'press' : 'none', time);
-      props.cup.visible = false;
-    } else {
-      // Skanky hands Termite a coffee with a loose lid; it spills on his sleeve.
-      props.donutBox.position.set(1.4, 0.96, -0.6);
-      props.lid.rotation.x = 0;
-      const hand = ease(cueProgress(cutscene, 'hand-coffee'));
-      const spill = cueProgress(cutscene, 'spill');
-      const from = a('skanky').root.position.clone().add(new THREE.Vector3(-0.35, 1.05, -0.2));
-      const to = a('termite').root.position.clone().add(new THREE.Vector3(-0.3, 1.0, 0.1));
-      props.cup.visible = true;
-      props.cup.position.lerpVectors(from, to, Math.min(1, hand * 1.4));
-      a('skanky').setPose(hand > 0 && hand < 0.8 ? 'press' : 'none', time);
-      a('termite').setPose(hand > 0.5 ? 'press' : 'none', time);
-      if (spill > 0 && spill < 0.6 && Math.random() < 0.6) {
-        stage.puffs.emit(to.clone(), { color: 0x5a3018, size: 0.08, life: 0.7, velocity: new THREE.Vector3((Math.random() - 0.5) * 0.6, -1.2, (Math.random() - 0.5) * 0.6), opacity: 0.95, grow: 1.2 });
-      }
-      if (spill > 0) {
-        const arm = new THREE.Vector3();
-        a('termite').character.rightArm.getWorldPosition(arm);
-        props.stain.visible = true;
-        props.stain.position.copy(arm).add(new THREE.Vector3(0, -0.25, 0));
-      }
+      a('termite').setPose(box > 0 && box < 1 ? 'press' : 'sit', time);
+      this.cameraTo(new THREE.Vector3(0.4, 2.7, 2.9), new THREE.Vector3(BOOTH_X - 0.2, 0.9, BOOTHS.table - 0.3), this.frameDt, snap);
+      return;
     }
-    this.cameraTo(new THREE.Vector3(2.4, 5.2, 6.2), new THREE.Vector3(2.0, 0.9, -0.9), this.frameDt, cutscene.index === 0 && cutscene.elapsedMs < 50);
+    // At the pickup end of the counter, Skanky hands Termite a coffee with a loose lid; it spills on his sleeve.
+    sit('doris', 'north', BOOTH_X - 0.45);
+    sit('brian', 'north', BOOTH_X + 0.45);
+    stand('termite', 1.0, -3.7, Math.PI / 2);
+    stand('skanky', 1.95, -3.75, -Math.PI / 2);
+    const hand = ease(cueProgress(cutscene, 'hand-coffee'));
+    const spill = cueProgress(cutscene, 'spill');
+    // Hand to hand, following each reaching arm.
+    const from = a('skanky').character.rightHand.getWorldPosition(new THREE.Vector3());
+    const to = a('termite').character.rightHand.getWorldPosition(new THREE.Vector3());
+    props.cup.visible = true;
+    props.cup.position.lerpVectors(from, to, Math.min(1, hand * 1.4));
+    a('skanky').setPose(hand > 0 && hand < 0.8 ? 'press' : 'none', time);
+    a('termite').setPose(hand > 0.5 ? 'press' : 'none', time);
+    if (spill > 0 && spill < 0.6 && Math.random() < 0.6) {
+      stage.puffs.emit(to.clone(), { color: 0x5a3018, size: 0.08, life: 0.7, velocity: new THREE.Vector3((Math.random() - 0.5) * 0.6, -1.2, (Math.random() - 0.5) * 0.6), opacity: 0.95, grow: 1.2 });
+    }
+    if (spill > 0) {
+      const arm = new THREE.Vector3();
+      a('termite').character.rightArm.getWorldPosition(arm);
+      props.stain.visible = true;
+      props.stain.position.copy(arm).add(new THREE.Vector3(0, -0.25, 0));
+    }
+    this.cameraTo(new THREE.Vector3(1.4, 2.3, -0.4), new THREE.Vector3(1.45, 1.1, -3.9), this.frameDt, snap);
   }
 
   private directRoad(stage: Stage, cutscene: Cutscene, dt: number): void {
@@ -1370,6 +1925,7 @@ export class StoryStage {
     const arrive = cueProgress(cutscene, 'arrive');
     const speed = 14 * Math.min(1, depart * 1.5) * (1 - arrive);
     this.roadTravel += speed * dt;
+    this.roadWind = -speed;
     const map = ((props.road as THREE.Mesh).material as THREE.MeshStandardMaterial).map!;
     map.offset.x = this.roadTravel / 10;
     props.passing.position.x = -(this.roadTravel % 12);
@@ -1557,20 +2113,25 @@ export class StoryStage {
     lights.lamp.intensity = 9 * (1 - morning);
     lights.sun.intensity = morning * 2.2;
     const window = props.backWindow as THREE.Mesh<THREE.PlaneGeometry, THREE.MeshStandardMaterial>;
-    window.material.emissive.set(0x1a2c48).lerp(new THREE.Color(0xffe2a8), morning);
+    window.material.emissive.set(0x8a9ab8).lerp(new THREE.Color(0xffe2a8), morning);
     window.material.emissiveIntensity = 0.6 + morning * 1.4;
     const sky = new THREE.Color(0x0a121c).lerp(new THREE.Color(0x9ab8d8), morning);
     (stage.scene.background as THREE.Color).copy(sky);
     (stage.scene.fog as THREE.Fog).color.copy(sky);
-    props.frontWall.visible = props.roof.visible = outside;
+    props.roof.visible = outside;
+    for (const flakes of stage.snow) flakes.points.visible = outside;
     const closeUp = !outside && (onPhone || id === 'quit-night' && cutscene.index >= 3 && morning <= 0);
     const snap = cutscene.index === 0 && cutscene.elapsedMs < 50 || outside !== this.houseOutside || closeUp !== this.houseCloseUp;
     this.houseOutside = outside;
     this.houseCloseUp = closeUp;
+    // Every indoor shot is taken from inside the room, under the ceiling.
     if (outside) this.cameraTo(new THREE.Vector3(15.5, 4.2, 10.5), new THREE.Vector3(7.2, 1.0, 0.6), this.frameDt, snap);
     // From the TV side for the long night and the call, so both faces show.
     else if (closeUp) this.cameraTo(new THREE.Vector3(-2.7, 1.9, 2.7), new THREE.Vector3(0.45, 0.9, -0.3), this.frameDt, snap);
-    else this.cameraTo(new THREE.Vector3(0.3, 2.35, 9.5), new THREE.Vector3(-0.6, 0.9, -0.3), this.frameDt, snap);
+    // Leaving: from the TV corner, the couch and the side door both in view.
+    else if (id !== 'quit-night') this.cameraTo(HOUSE_VIEWS.door.position, HOUSE_VIEWS.door.look, this.frameDt, snap);
+    // The long night: from the front corner, the TV, the couch and the tree.
+    else this.cameraTo(HOUSE_VIEWS.room.position, HOUSE_VIEWS.room.look, this.frameDt, snap);
   }
 
   // ------------------------------------------------------------------ mall and lot gameplay
@@ -1743,6 +2304,7 @@ export class StoryStage {
     skanky.faceAngle = { right: Math.PI / 2, left: -Math.PI / 2, down: 0, up: Math.PI }[model.skanky.facing];
     skanky.animate(dt, time, this.reducedMotion);
     stage.puffs.update(dt);
+    for (const flakes of stage.snow) flakes.update(dt, this.reducedMotion);
     const target = skanky.root.position;
     this.cameraTo(new THREE.Vector3(target.x + 2, 9, target.z + 9), new THREE.Vector3(target.x + 1, 0.8, target.z - 2), dt);
   }
@@ -1776,6 +2338,7 @@ export function directDepot(cast: DepotCast, cutscene: Cutscene, dt: number, tim
     setFromModel(character.root.position, { x, y }, actorSurfaceAt(x, y));
     character.root.rotation.y = angle;
     animateCharacter(character, dt, { moving, time, reducedMotion });
+    if (character.motion) character.motion.pose = pose;
     character.body.rotation.set(0, 0, 0);
     character.head.rotation.set(0, 0, 0);
     applyPose(character, pose, time, reducedMotion);

@@ -2,8 +2,8 @@
 
 The Belt is a browser game built with Three.js, Phaser, TypeScript and Vite.
 
-Active development targets **the 3D depot only**. The 2D depot and classic game
-are retained as legacy versions; new gameplay requests apply to 3D unless the
+Active development targets **the 3D depot only**. The original full shift is
+retained as a legacy version; new gameplay requests apply to 3D unless the
 owner explicitly requests another version.
 Players switch between workers, pick up packages and sort them to the appropriate
 dock. The game includes keyboard, mouse and touch controls.
@@ -25,12 +25,20 @@ Open the local URL printed by Vite. The default entry is the **3D depot**: the
 night shift in a lit Three.js warehouse, with every original reference event and
 speech bubbles anchored to whoever is speaking. On touch screens it shows a
 movement stick and GRAB / DELIVER, SWITCH, STOP THE BELT, VIEW and PAUSE buttons. It needs
-WebGL; without it the page links to the 2D depot. See
+WebGL; without it the page links to the original full shift. See
 [the 3D depot](docs/3d-preview.md). The crew uses 23 rigged Microsoft Rocketbox
 characters, with procedural figures on software graphics. Their animation,
 props and provenance are covered in [character models](docs/character-models.md).
+On GPU renderers the crew walk, run, idle, cough, cheer, clap, wave, phone,
+crouch, dance, drink, shrug and announce with motion-captured Rocketbox clips
+(MIT) made for their own skeleton; poses without a clip, carried boxes and
+reduced motion keep the hand-built animation below.
 Arms stay beside the torso with natural elbow bends during walking, carrying
-and gestures. Cars use two detailed sedan models, and the devil uses an animated
+and gestures. Walking leans the torso in and sways it with each step; a heavy
+box pulls the carrier back onto their heels; grabbing, loading and putting down
+dip the knees, and a throw swings the arms. Termite and Skanky's heads turn
+toward the parcel they are about to grab or the drop they are carrying to.
+Cars use two detailed sedan models, and the devil uses an animated
 horned, winged model. These compact CC0 models retain the existing story paths
 and have procedural fallbacks; see [prop sources](public/models/PROP-SOURCES.md).
 Kylie is a short Asian man; AJ is a clothed bald man with fitted glasses.
@@ -41,15 +49,23 @@ Package rustles, impacts, mechanical latches and tablet clicks use small local
 recordings, with subtle variation and controlled volume. M mutes both music and
 effects. Source details are in [music sources](public/audio/MUSIC-SOURCES.md)
 and [foley sources](public/audio/FOLEY-SOURCES.md).
-The floor, belt, rails, trucks and parcels use small CC0 photo textures; see
-[depot surface textures](docs/textures.md).
+The floor, belt, rails, trucks, parcels, arrival lot and city streets use small CC0 photo textures; see
+[depot surface textures](docs/textures.md). The twelve depot trucks are
+cab-over box trucks with riveted aluminium boxes, each crew member's colour on
+the cab and livery band, fleet-brown cabs on the player's four, mirrors, roof
+markers, dual rear wheels, fuel tanks and mud flaps. On GPU renderers the
+plain parcels, the bulk stock, Ralph's load and the receiving cargo are a
+photographed cardboard box, the UPS lot has a real chain-link fence and lamp
+posts, the living room has a leather sofa, armchair, coffee table and bookcase,
+and a screen-space ambient-occlusion pass grounds everything; see
+[prop models](docs/prop-models.md).
 
-The legacy **2D Night Shift / Depot 07** is at `?mode=2d`. The current 3D game
-plays a whole night: it starts at home, where Termite and Skanky decide whether
+The 3D game plays a whole snowy Christmas night: it starts at home, where Termite and Skanky decide whether
 to go in or quit UPS (quitting ends the night on the couch with a Wii; going in
 means driving Skanky's car to work), then one of three random
 arrivals outside the locked gate, Shan's morning scrum, the warehouse shift
-with a Tim Hortons or 7-Eleven break, then Skanky's mall run in the five-ton
+(peak season: cartons pile up against the walls until they hit the top and
+overflow) with a break at the 7-Eleven counter or inside Tim Hortons, then Skanky's mall run in the five-ton
 (a 3D mall inspired by Edmonton's Southgate Centre),
 returning the truck and going home. Story scenes advance by themselves; Space
 shows the next line and Enter skips the scene. See
@@ -100,8 +116,11 @@ SORT!** countdown starts the shift.
   with a 15-second cooldown starting on each use. The controls show stops left
   and cooldown time; starting another night restores all three.
 - Escape pauses; M toggles sound. Losing focus pauses the preview automatically.
-- The closer camera follows your worker up and down the belt and reframes when
-  you switch workers. V, or the Overview button, shows the whole warehouse.
+- The closer camera follows your worker up and down the belt, leads them a
+  little as they walk, and reframes when you switch workers. At the back of
+  the depot the terminal wall fades out so the view stays oblique over the
+  stairs, floor drops and bulk. V, or the Overview button, shows the whole
+  warehouse.
 - Walk up past the first truck row to see the receiving dock: two incoming
   semis, unloaders and a smelly dockhand feeding the next real parcel onto the belt.
 - Original named crew bays are preserved above the two player truck rows.
@@ -160,9 +179,10 @@ including Paytman's fish tank and Donna's Warcraft vignette. Brian's much larger
 curling green stink trails make his particular contribution unmistakable. Drivers, keys,
 exhaust, coughs, clock-out lines, departures and original grade quotes return.
 
-Ben's robbery, dodge-training, demon and Paula sequence gets a close-up: the
+Ben's robbery, dodge-training, demon and Paula sequence plays out in the open
+end of his aisle, past the parked trucks, with a clear close-up: the
 belt, freight, workers, shift clock and other crew routines freeze until it
-finishes. Escape or losing focus pauses the story too. The camera then returns
+finishes. Enter or SKIP SCENE skips it. Escape or losing focus pauses the story too. The camera then returns
 smoothly to your worker and sorting resumes from the same positions. Everyday
 banter, the CELL dance, massage and loading routines continue during gameplay;
 Mesa retains its existing paused choice and dream.
@@ -178,13 +198,13 @@ in the original source; it is now implemented. See the source inventory and
 restoration evidence in [reference parity](docs/reference-parity.md).
 
 The **original full shift**, including its NPCs, special freight and timed
-events, is retained. Choose **Play the original full shift** in either depot's
-briefing (keyboard O in the 2D depot), or open the local URL with `?mode=classic`. Its controls
+events, is retained. Choose **PLAY THE ORIGINAL FULL SHIFT** in the 3D briefing
+or results screen, or open the local URL with `?mode=classic`. Its controls
 remain unchanged; it starts with Enter or a title-screen tap.
 
-The 3D and legacy 2D depots preserve the same reference events. New loading,
+The 3D depot preserves every reference event of the original. New loading,
 layout and scoring changes apply to 3D only.
-`?mode=3d` also opens the 3D depot.
+`?mode=3d` also opens the 3D depot; any other `mode` value does too.
 
 Node 24 is recorded in `.node-version` and used by CI. The locked Vite dependency
 requires Node `^20.19.0 || >=22.12.0`; use the documented Node version so local and
@@ -219,11 +239,10 @@ keyboard/touch controls, belt rendering, pause, brake, handoff, recovery,
 results, restart, readable dialogue variants, scripted story stages, Mesa
 choices/dream, crew loading, Ralph's five pickups, and departures. Audio checks
 render every effect and music mode in Chromium, checking headroom, envelopes,
-mute/resume and scheduling after a stall. Receiving checks inspect the actual
-unloading handoff, parcel identity, contact, stops and restart cleanup.
+mute/resume and scheduling after a stall.
 Story checks play all three arrivals, the scrum, all six break exchanges,
 throwing and breakage, the stairs, the full mall run, the key return and a
-clean replay in both depots.
+clean replay.
 Geometry checks cover all seven destinations, truck/deck alignment, stairs,
 mixed recovery freight, full lower-floor stacks, sampled story and camera
 clearances, and GPU-resource cleanup across restarts. See the
@@ -236,14 +255,11 @@ compatible dependencies; major upgrades require a separate planned review.
 
 CI checks the real Canvas fallback on GPU-free Linux and Windows runners. Local
 checks retain the default renderer unless `BELT_BROWSER_RENDERER=canvas` is set.
-Both CI jobs run the same gameplay assertions; they do not change the production
-game configuration or bypass its countdown. The default WebGL renderer still
+The Windows job runs the original game's smoke and audio checks; neither job
+changes the production game configuration or bypasses its countdown. The default WebGL renderer still
 needs a local check on a machine with usable graphics support.
 
-The original scenes reference Google Fonts when a network connection is available;
-the preview uses system fonts and editable engine-native art. See
-[asset provenance](docs/night-shift-assets.md) and
-[the preview's scope and design](docs/night-shift-preview.md).
+The original scenes reference Google Fonts when a network connection is available.
 Physical-device usability and audible sound still need manual checks. Automated
 coverage of timed events uses controlled fixtures, not a claim that every story
 was encountered in one unassisted playthrough.

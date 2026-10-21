@@ -8,8 +8,12 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const output = resolve(here, '../../public/models/characters');
 const LIMIT = 8 * 1024 * 1024;
+// Models go to characters/, the shared animation clips to animations/.
+const OUTPUTS = {
+  '/__save': resolve(here, '../../public/models/characters'),
+  '/__save-clips': resolve(here, '../../public/models/animations'),
+};
 
 export default {
   root: here,
@@ -18,11 +22,11 @@ export default {
   plugins: [{
     name: 'save-character-model',
     configureServer(server) {
-      server.middlewares.use('/__save', (request, response) => {
+      for (const [route, output] of Object.entries(OUTPUTS)) server.middlewares.use(route, (request, response) => {
         const file = new URL(request.url ?? '', 'http://localhost').searchParams.get('file') ?? '';
         if (request.method !== 'POST' || !/^[a-z0-9-]+$/.test(file)) {
           response.statusCode = 400;
-          response.end('expected POST /__save?file=<lower-case-name>');
+          response.end(`expected POST ${route}?file=<lower-case-name>`);
           return;
         }
         const chunks = [];

@@ -3,6 +3,7 @@ import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
 import type { Character, CharacterSpec } from './characters';
 import { ROCKETBOX_CAST } from './rocketboxCast.ts';
+import { CLIP_SPEEDS, CREW_CLIPS_URL, ROCKETBOX_CLIPS, clipName, type ClipRole } from './rocketboxClips.ts';
 
 /**
  * Imported character models (glTF/GLB with a humanoid skeleton).
@@ -28,6 +29,8 @@ export interface CharacterModelEntry {
   height?: number;
   /** Materials that redden with the figure's skin (Shan); `skin` or `body` by default. */
   skinMaterial?: RegExp;
+  /** Which set of Rocketbox clips (rocketboxClips.ts) moves this model; without one, the figure's poses always do. */
+  clips?: 'male' | 'female';
 }
 
 /**
@@ -35,8 +38,8 @@ export interface CharacterModelEntry {
  * crew are Rocketbox people, whose head material holds the face and whose
  * body material includes the clothes, so only the head reddens.
  */
-export const CHARACTER_MODELS: CharacterModelEntry[] = ROCKETBOX_CAST.map(({ file, names }) => ({
-  names, url: `/models/characters/${file}.glb`, skinMaterial: /head/i,
+export const CHARACTER_MODELS: CharacterModelEntry[] = ROCKETBOX_CAST.map(({ file, names, source }) => ({
+  names, url: `/models/characters/${file}.glb`, skinMaterial: /head/i, clips: /Female/.test(source) ? 'female' : 'male',
 }));
 
 const FIGURE_HEIGHT = 1.78;
@@ -67,14 +70,88 @@ interface Drive {
   bone: THREE.Bone;
   /** The bone's rest rotation relative to the character root, with the limbs hanging straight down. */
   rest: THREE.Quaternion;
+  /** An arm bone, which follows the figure while carrying even when clips move the rest of the body. */
+  arm: boolean;
 }
 
 interface ModelRig {
   container: THREE.Group;
+  /** The model itself (the glTF scene copy), under the container's facing turn. */
+  model: THREE.Object3D;
   drives: Drive[];
   hands: { pivot: THREE.Object3D; bone: THREE.Bone }[];
   skin: { material: THREE.MeshStandardMaterial; base: THREE.Color }[];
   figureSkin: THREE.Color;
+  /** The clip set the entry names, or none. */
+  clipSet: 'male' | 'female' | null;
+  /** Built once the clip library has loaded; null while it has not, or when the model cannot play it. */
+  clips: ClipRig | null;
+  /** True once a clip rig was tried, so a model that cannot play the clips is not retried every frame. */
+  clipsTried: boolean;
+}
+
+/**
+ * Animation clips playing on one model (the Rocketbox crew). The clips move
+ * every bone; the figure's pose is blended over them by `figure`, so poses
+ * without a clip (and a reduced-motion player) keep today's look exactly.
+ */
+interface ClipRig {
+  mixer: THREE.AnimationMixer;
+  female: boolean;
+  actions: Map<string, THREE.AnimationAction>;
+  role: ClipRole | null;
+  /** How much the figure's pose overrides the clips: 1 is the figure entirely, as before clips. */
+  figure: number;
+  /** The same for the arms alone, raised for carrying and hand-held props. */
+  arms: number;
+  /** Every bone the figure does not drive, with its rest rotation, to blend toward the figure's (unposed) look. */
+  free: { bone: THREE.Object3D; rest: THREE.Quaternion }[];
+  /** `Bip01`: a bone on most avatars, a plain node on a few (it is not always a skin joint). */
+  root: THREE.Object3D;
+  rootRest: THREE.Vector3;
+  /** The game time the mixer last advanced to. */
+  time: number | null;
+  /** Smoothed ground speed in metres per second, measured from the character's own movement. */
+  speed: number;
+  last: THREE.Vector3 | null;
+  /** 0-1 per character, so the crew do not breathe, idle and cheer in step. */
+  phase: number;
+}
+
+/** Poses an imported model plays as a clip; every other pose (and seated, lying, squatting) stays the figure's. */
+const POSE_CLIPS: Partial<Record<string, ClipRole>> = {
+  cheer: 'cheer', cough: 'cough', phone: 'phone', dance: 'dance', sip: 'sip', shrug: 'shrug', announce: 'announce', crouch: 'crouch',
+};
+// Two long, lively standing idles; Rocketbox's "breathe" clips are nearly still and read as a statue.
+const IDLE_ROLES: ClipRole[] = ['idle', 'idleAlt'];
+const LOOPING = new Set(ROCKETBOX_CLIPS.filter((source) => source.loop).map((source) => source.role));
+/** Seconds to cross-fade between clips, and the rate (per second) the figure's weight eases. */
+const CROSS_FADE = 0.25;
+const BLEND_RATE = 10;
+const ROOT_BONE = 'Bip01';
+
+let clipsWanted = false;
+let clipLoad: Promise<void> | null = null;
+let clipLibrary: Map<string, THREE.AnimationClip> | null = null;
+
+/**
+ * Turns the crew's animation clips on or off. On (GPU renderers), the clip
+ * library downloads once and every Rocketbox model plays clips from then on;
+ * off, every model follows its figure's joints as before. Models whose entry
+ * names no clip set always follow their figures.
+ */
+export function useCharacterClips(enabled: boolean): Promise<void> {
+  clipsWanted = enabled;
+  if (!enabled) return Promise.resolve();
+  clipLoad ??= (async () => {
+    const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js');
+    const gltf = await new GLTFLoader().loadAsync(CREW_CLIPS_URL);
+    clipLibrary = new Map(gltf.animations.map((clip) => [clip.name, clip]));
+  })().catch((error: unknown) => {
+    // Every model keeps following its figure.
+    console.warn('Crew animation clips could not be loaded', error);
+  });
+  return clipLoad;
 }
 
 interface Tracked {
@@ -150,11 +227,19 @@ export function syncCharacterModels(scene: THREE.Object3D): void {
         if (item.rig) attached += 1;
       } else if (!entry) item.entry = null;
     }
+    if (item.rig && !item.rig.clips && !item.rig.clipsTried && clipsWanted && clipLibrary && item.rig.clipSet) {
+      item.rig.clipsTried = true;
+      item.rig.clips = buildClipRig(item.rig, item.spec.name);
+    }
     if (item.rig) driveModel(item.character, item.rig);
   });
 }
 
 function detach(item: Tracked): void {
+  if (item.rig?.clips) {
+    item.rig.clips.mixer.stopAllAction();
+    item.rig.clips.mixer.uncacheRoot(item.rig.model);
+  }
   item.rig?.container.removeFromParent();
   setFigureVisible(item.character, true);
   attached -= 1;
@@ -173,7 +258,7 @@ function setFigureVisible(character: Character, visible: boolean): void {
  * procedural figure. Returns null, leaving the figure, if the skeleton lacks
  * the head, arms and legs.
  */
-export function attachModel(character: Character, source: THREE.Object3D, entry: Pick<CharacterModelEntry, 'rotationY' | 'height' | 'skinMaterial'>, figureSkin: number): ModelRig | null {
+export function attachModel(character: Character, source: THREE.Object3D, entry: Pick<CharacterModelEntry, 'rotationY' | 'height' | 'skinMaterial' | 'clips'>, figureSkin: number): ModelRig | null {
   const model = cloneSkinned(source);
   // The container follows the figure's body (bob, lean, lying down); the
   // inner turn faces the model along the figure's +Z.
@@ -225,18 +310,18 @@ export function attachModel(character: Character, source: THREE.Object3D, entry:
   }
 
   const drives: Drive[] = [];
-  const add = (pivot: THREE.Object3D, bone: THREE.Bone): void => {
-    drives.push({ pivot, bone, rest: frameQuaternion(bone, container) });
+  const add = (pivot: THREE.Object3D, bone: THREE.Bone, arm = false): void => {
+    drives.push({ pivot, bone, rest: frameQuaternion(bone, container), arm });
   };
   // Parents before children, so each bone is set after its parent. The body
   // pivot moves the container, so the hips need no drive of their own.
   add(character.head, head);
-  add(character.leftArm, upperArm.neg);
-  add(character.rightArm, upperArm.pos);
-  add(character.leftForearm, forearm.neg);
-  add(character.rightForearm, forearm.pos);
-  add(character.leftHand, hand.neg);
-  add(character.rightHand, hand.pos);
+  add(character.leftArm, upperArm.neg, true);
+  add(character.rightArm, upperArm.pos, true);
+  add(character.leftForearm, forearm.neg, true);
+  add(character.rightForearm, forearm.pos, true);
+  add(character.leftHand, hand.neg, true);
+  add(character.rightHand, hand.pos, true);
   add(character.leftLeg, thigh.neg);
   add(character.rightLeg, thigh.pos);
   add(character.leftShin, shin.neg);
@@ -261,9 +346,12 @@ export function attachModel(character: Character, source: THREE.Object3D, entry:
   character.root.add(container);
   setFigureVisible(character, false);
   const rig: ModelRig = {
-    container, drives, skin,
+    container, model, drives, skin,
     hands: [{ pivot: character.leftHand, bone: hand.neg }, { pivot: character.rightHand, bone: hand.pos }],
     figureSkin: new THREE.Color(figureSkin),
+    clipSet: entry.clips ?? null,
+    clips: null,
+    clipsTried: false,
   };
   driveModel(character, rig);
   return rig;
@@ -316,22 +404,156 @@ function alignBone(container: THREE.Object3D, bone: THREE.Bone, next: THREE.Bone
 
 const pivotFrame = new THREE.Quaternion();
 const parentFrame = new THREE.Quaternion();
+const boneFrame = new THREE.Quaternion();
+const lookTurn = new THREE.Quaternion();
 const handWorld = new THREE.Vector3();
+const IDENTITY = new THREE.Quaternion();
 
-/** Poses the model from the figure's pivots. */
+/** A stable 0-1 value from a name, so each person idles a little out of step with the rest. */
+function phaseOf(name: string): number {
+  let hash = 2166136261;
+  for (let i = 0; i < name.length; i += 1) hash = Math.imul(hash ^ name.charCodeAt(i), 16777619);
+  return ((hash >>> 0) % 1000) / 1000;
+}
+
+/**
+ * Builds the clip player for a model once the library has loaded, if its
+ * skeleton carries the clips' bones (the Rocketbox Biped); otherwise null, and
+ * the model keeps following its figure.
+ */
+function buildClipRig(rig: ModelRig, name: string): ClipRig | null {
+  if (!clipLibrary || !rig.clipSet) return null;
+  const female = rig.clipSet === 'female';
+  const sample = clipLibrary.get(clipName('idle', female));
+  if (!sample) return null;
+  // The mixer binds tracks to nodes by name, bone or not.
+  const nodes = new Map<string, THREE.Object3D>();
+  rig.model.traverse((object) => { if (object.name && !(object as THREE.Mesh).isMesh) nodes.set(object.name, object); });
+  const targets = sample.tracks.map((track) => track.name.slice(0, track.name.lastIndexOf('.')));
+  const found = targets.filter((target) => nodes.has(target)).length;
+  const root = nodes.get(ROOT_BONE);
+  if (!root || found < targets.length * 0.95) {
+    console.warn(`Character model for ${name} lacks the clips' skeleton (${found}/${targets.length} bones); it follows its figure`);
+    return null;
+  }
+  const driven = new Set<THREE.Object3D>(rig.drives.map((drive) => drive.bone));
+  const animated = new Set(targets);
+  const bones = [...nodes.values()].filter((node) => animated.has(node.name));
+  return {
+    mixer: new THREE.AnimationMixer(rig.model),
+    female,
+    actions: new Map(),
+    role: null,
+    // Starts as the figure and eases into the clips, so nobody snaps on arrival.
+    figure: 1,
+    arms: 1,
+    free: bones.filter((bone) => !driven.has(bone)).map((bone) => ({ bone, rest: bone.quaternion.clone() })),
+    root,
+    rootRest: root.position.clone(),
+    time: null,
+    speed: 0,
+    last: null,
+    phase: phaseOf(name),
+  };
+}
+
+/**
+ * Picks and advances the clip for what the character is doing, and eases how
+ * much the figure's pose overrides it. Time is the game's: a paused game, or
+ * a check that poses without advancing time, holds the clips still.
+ */
+function advanceClips(character: Character, rig: ModelRig, clips: ClipRig): void {
+  const motion = character.motion;
+  const now = motion?.time ?? clips.time ?? 0;
+  const dt = clips.time === null ? 0 : THREE.MathUtils.clamp(now - clips.time, 0, 0.1);
+  clips.time = now;
+  const position = character.root.position;
+  if (dt > 0) {
+    if (clips.last) clips.speed += (Math.hypot(position.x - clips.last.x, position.z - clips.last.z) / dt - clips.speed) * Math.min(1, dt * 8);
+    clips.last = (clips.last ?? new THREE.Vector3()).copy(position);
+  }
+  // The figure's pose wins whenever a clip would be wrong: reduced motion, a seat, a lift or throw, a pose without a clip.
+  let role: ClipRole | null = null;
+  let figure = 0;
+  if (!clipsWanted || !motion || motion.reduced || motion.seated || character.action) figure = 1;
+  else if (motion.pose !== 'none') {
+    role = POSE_CLIPS[motion.pose] ?? null;
+    if (!role) figure = 1;
+  }
+  const arms = motion && (motion.carrying || motion.holding) ? 1 : 0;
+  // Underneath, the walk or idle keeps playing, so a pose ends back in motion.
+  role ??= motion?.moving
+    ? clips.speed > 2.4 ? 'run' : clips.speed < 0.9 ? 'walkSlow' : 'walk'
+    : IDLE_ROLES[Math.floor(clips.phase * IDLE_ROLES.length)];
+  const name = clipName(role, clips.female);
+  const clip = clipLibrary?.get(name);
+  if (clip && role !== clips.role) {
+    let next = clips.actions.get(name);
+    if (!next) {
+      next = clips.mixer.clipAction(clip);
+      next.setLoop(LOOPING.has(role) ? THREE.LoopRepeat : THREE.LoopOnce, Infinity);
+      next.clampWhenFinished = true;
+      clips.actions.set(name, next);
+    }
+    next.reset();
+    next.time = (clips.phase * clip.duration) % clip.duration;
+    next.play();
+    const current = clips.role ? clips.actions.get(clipName(clips.role, clips.female)) : undefined;
+    if (current && current !== next) current.crossFadeTo(next, CROSS_FADE, false);
+    clips.role = role;
+  }
+  const action = clip ? clips.actions.get(name) : undefined;
+  const natural = CLIP_SPEEDS[name];
+  if (action && natural) {
+    // World metres per clip unit: the model's fit to the figure's height and the character's own scale.
+    const metres = natural * rig.model.scale.x * character.root.scale.x;
+    action.timeScale = THREE.MathUtils.clamp(clips.speed / metres, 0.5, 2);
+  } else if (action) action.timeScale = 1;
+  clips.mixer.update(dt);
+  const ease = clipsWanted ? Math.min(1, dt * BLEND_RATE) : 1;
+  clips.figure += (figure - clips.figure) * ease;
+  clips.arms += (arms - clips.arms) * ease;
+}
+
+/**
+ * Poses the model: from its clips where it has them (the Rocketbox crew on
+ * GPU renderers), with the figure's pose blended over them where a clip does
+ * not fit; otherwise entirely from the figure's pivots, as before clips.
+ */
 function driveModel(character: Character, rig: ModelRig): void {
   const { body } = character;
   rig.container.visible = body.visible;
-  // The body pivot's bob, crouch, lean and seat height move the whole model.
-  rig.container.position.copy(body.position);
-  rig.container.quaternion.copy(body.quaternion);
+  const clips = rig.clips;
+  if (clips) advanceClips(character, rig, clips);
+  const figure = clips ? clips.figure : 1;
+  const arms = clips ? Math.max(clips.figure, clips.arms) : 1;
+  // The body pivot's bob, crouch, lean and seat height move the whole model; a clip carries its own.
+  rig.container.position.copy(body.position).multiplyScalar(figure);
+  rig.container.quaternion.copy(IDENTITY).slerp(body.quaternion, figure);
   rig.container.scale.copy(body.scale);
-  for (const { pivot, bone, rest } of rig.drives) {
+  if (clips && figure > 0) {
+    // Bones the figure has no pivot for (spine, clavicles, fingers) return toward rest as the figure takes over.
+    for (const { bone, rest } of clips.free) bone.quaternion.slerp(rest, figure);
+    clips.root.position.lerp(clips.rootRest, figure);
+  }
+  for (const { pivot, bone, rest, arm } of rig.drives) {
+    const weight = arm ? arms : figure;
+    if (weight <= 0) continue;
     // The pivot's rotation away from its rest (no rotation at all) within the body...
     frameQuaternion(pivot, body, pivotFrame);
     // ...applied to the bone's rest rotation, then expressed in its parent's frame.
     frameQuaternion(bone.parent ?? rig.container, rig.container, parentFrame).invert();
-    bone.quaternion.copy(parentFrame.multiply(pivotFrame.multiply(rest)));
+    parentFrame.multiply(pivotFrame.multiply(rest));
+    if (weight >= 1) bone.quaternion.copy(parentFrame);
+    else bone.quaternion.slerp(parentFrame, weight);
+  }
+  // With clips, the figure's head turn (Termite and Skanky look at their work) is added on top of the clip's head.
+  if (clips && figure < 1 && !character.head.quaternion.equals(IDENTITY)) {
+    const head = rig.drives[0].bone;
+    lookTurn.copy(IDENTITY).slerp(character.head.quaternion, 1 - figure);
+    frameQuaternion(head, rig.container, boneFrame).premultiply(lookTurn);
+    frameQuaternion(head.parent ?? rig.container, rig.container, parentFrame).invert();
+    head.quaternion.copy(parentFrame.multiply(boneFrame));
   }
   // Held props ride on the figure's hands; put those hands at the model's wrists.
   character.root.updateMatrixWorld(true);

@@ -4,6 +4,7 @@ import { chromium } from 'playwright';
 import { preview } from 'vite';
 
 import { BREAK_SCENES, OPENERS, SCRUM } from '../src/game/slice/StoryScript.ts';
+import { breakScene3d } from '../src/three/breakScenes3d.ts';
 import { DEPOT_3D_LAYOUT as L } from '../src/three/layout.ts';
 import { driveJourney } from './driving-helpers.mjs';
 
@@ -196,7 +197,8 @@ try {
     const frozen = await read(() => ({ t: window.fixtureApp.model.elapsedMs, travel: window.fixtureApp.model.beltTravel, paused: window.fixtureApp.model.paused }));
     assert.equal(frozen.paused, true, 'the shift is paused for the break');
     if (index === 0 || index === 3) { await page.waitForTimeout(1200); await shot(`break-${id}`); }
-    const lines = BREAK_SCENES[place][variant].beats.filter((beat) => beat.line).map((beat) => `${name(beat.speaker)}: ${beat.line}`);
+    // The 3D night plays Tim Hortons inside the restaurant (see breakScenes3d.ts).
+    const lines = breakScene3d(BREAK_SCENES[place][variant]).beats.filter((beat) => beat.line).map((beat) => `${name(beat.speaker)}: ${beat.line}`);
     await stepScene(id);
     for (const line of lines) assert.ok((await read(() => window.fixtureApp.overlay.history)).includes(line), `${id} shows "${line}"`);
     await wait(() => window.fixtureApp.state === 'playing');
@@ -215,7 +217,7 @@ try {
     assert.equal(await read(() => window.fixtureApp.state), 'playing');
   }
   assert.deepEqual(errors, []);
-  console.log('PASS 3D break: all six approved exchanges (three at 7-Eleven, three at Tim Hortons) by real keys, shift and held freight preserved, once per shift; no script errors');
+  console.log('PASS 3D break: all six exchanges (three at 7-Eleven, three inside Tim Hortons) by real keys, shift and held freight preserved, once per shift; no script errors');
 
   // ---- Throwing and breakage with the real F key; the belt keeps moving while Shan yells.
   await freshRun({ opener: 0, breakAtMs: 1e12 });

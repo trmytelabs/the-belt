@@ -52,7 +52,7 @@ jobs:
       - run: npm run build
       # The 3D preview's check runs in the Linux job. This GPU-free Windows
       # runner's software WebGL delays input by seconds, unlike real PCs.
-      - run: npm run test:browser:2d
+      - run: npm run test:browser:classic
         env:
           BELT_BROWSER_EXECUTABLE: C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe
           BELT_BROWSER_RENDERER: canvas

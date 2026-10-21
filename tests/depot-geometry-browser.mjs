@@ -84,25 +84,14 @@ try {
     return { assisted, pending: m.pendingScannerWorker, heldId: carried.id, routeBefore: m.routeSorted.B };
   }, SHIFT_LAYOUT);
   assert.deepEqual(scanner.assisted, { count: 4, dispatched: 4, score: 420, combo: 3 }, 'partner dispatches add no points or combo');
-  assert.equal(scanner.pending, 'skanky', 'the inactive worker asks for a scanner reset');
-  await page.locator('.b3d-scanner').waitFor({ state: 'visible' });
-  assert.match(await page.locator('.b3d-scanner').textContent(), /SKANKY.*TAB TO SWITCH/);
-  await page.keyboard.press('Tab');
-  await page.waitForFunction(() => window.fixtureApp.model.activeWorker.id === 'skanky');
-  assert.equal(await page.evaluate(() => window.fixtureApp.model.pendingScannerWorker), 'skanky', 'switching alone does not reset the scanner');
-  await page.waitForFunction(() => document.querySelector('.b3d-scanner')?.textContent.includes('SPACE TO RESET'));
-  assert.match(await page.locator('.b3d-scanner').textContent(), /SPACE TO RESET/);
-  assert.match(await page.locator('[data-touch="grab"]').textContent(), /RESET.*SCANNER/);
-  await page.keyboard.press('Space');
-  await page.waitForFunction(() => window.fixtureApp.model.pendingScannerWorker === null);
-  assert.deepEqual(await page.evaluate(() => ({ held: window.fixtureApp.model.activeWorker.heldId,
-    resets: window.fixtureApp.model.scannerResets, score: window.fixtureApp.model.score, combo: window.fixtureApp.model.combo })),
-  { held: scanner.heldId, resets: 1, score: 420, combo: 3 }, 'resetting preserves held freight, score and combo');
-  await page.locator('.b3d-scanner').waitFor({ state: 'hidden' });
-  await page.keyboard.press('Space');
-  await page.waitForFunction(before => window.fixtureApp.model.routeSorted.B === before + 1, scanner.routeBefore);
-  assert.ok(await page.evaluate(() => window.fixtureApp.model.score > 420), 'the following player delivery earns points');
-  console.log('PASS partner dispatches without score; persistent named scanner prompt; real Tab/Space reset preserves freight and resumes delivery');
+  // The 3D shift has no scanner faults (the shared model keeps them).
+  assert.equal(scanner.pending, null, 'no worker asks for a scanner reset in 3D');
+  assert.equal(await page.locator('.b3d-scanner').isVisible(), false, 'no scanner prompt is shown');
+  // With no fault to wait on, the partner carries on and delivers the freight it holds.
+  await page.waitForFunction(id => window.fixtureApp.model.packages.find(p => p.id === id)?.state === 'delivered', scanner.heldId);
+  assert.equal(await page.evaluate(() => window.fixtureApp.model.workers[1].heldId), null, 'the partner has delivered its carried freight');
+  assert.equal(await page.evaluate(() => window.fixtureApp.model.score), 420, 'the partner delivery adds no points');
+  console.log('PASS partner dispatches without score; no 3D scanner fault, so the partner delivers its carried freight without a prompt');
 
   // Every destination uses the same rendered surface as the shared rules.
   const destinations = ['A', 'D', 'T', 'B', 'E', 'S', 'C'];
@@ -364,8 +353,17 @@ try {
     const app = window.fixtureApp; app.restart();
     const failures = [];
     let samples = 0;
+    let behindWall = 0;
     const check = label => {
       const camera = app.camera; camera.updateMatrixWorld();
+      // The follow camera may stand behind the terminal wall at the back of the
+      // depot; the wall must then be gone, and solid whenever the camera is well inside.
+      const wall = app.world.bulkRearWall;
+      const wallFront = wall.position.z - layout.bulkRearWall.height / 32 / 2;
+      if (camera.position.z >= wallFront) {
+        behindWall++;
+        if (wall.visible) failures.push(`${label}: terminal wall drawn with the camera behind it`);
+      } else if (camera.position.z < wallFront - 3 && (!wall.visible || wall.material.opacity < 1)) failures.push(`${label}: terminal wall faded with the camera inside`);
       const visible = (point, item) => {
         const fog = app.world.scene.fog;
         if (app.state === 'playing' && app.overview && point.distanceTo(camera.position) > fog.near + (fog.far - fog.near) * 0.35) failures.push(`${label}: ${item} lost in overview fog`);
@@ -418,9 +416,10 @@ try {
         check(`scrum beat ${beat}, aspect ${aspect}`);
       }
     }
-    return { failures, samples };
+    return { failures, samples, behindWall };
   }, { layout: SHIFT_LAYOUT, scrum: SCRUM });
   assert.ok(depotCameras.samples > 1_000, 'warehouse checks cover actual geometry, both workers, all drop heights, both views and two aspect ratios');
+  assert.ok(depotCameras.behindWall >= 8, `the follow camera stands behind the faded terminal wall at the back of the depot (${depotCameras.behindWall} samples)`);
   assert.deepEqual(depotCameras.failures, []);
 
   const clockout = await page.evaluate(({ scene, layout }) => {

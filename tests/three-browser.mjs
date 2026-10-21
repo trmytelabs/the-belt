@@ -18,11 +18,11 @@ try {
   const blocked = await chromium.launch({ headless: true, args: ['--disable-webgl', '--disable-webgl2'], ...executable });
   browsers.push(blocked);
   const fallbackPage = await blocked.newPage();
-  // The plain address is now the 3D game; without WebGL it points to the 2D depot.
+  // The plain address is the 3D game; without WebGL it points to the original full shift.
   await fallbackPage.goto(server.resolvedUrls.local[0]);
   await fallbackPage.getByText('The 3D night shift needs WebGL').waitFor();
-  assert.equal(await fallbackPage.getByRole('link', { name: 'Play the 2D night shift instead' }).getAttribute('href'), '/?mode=2d');
-  console.log('PASS default 3D entry explains a missing WebGL renderer and links to ?mode=2d');
+  assert.equal(await fallbackPage.getByRole('link', { name: 'Play the original full shift instead' }).getAttribute('href'), '/?mode=classic');
+  console.log('PASS default 3D entry explains a missing WebGL renderer and links to ?mode=classic');
 
   const browser = await chromium.launch({
     headless: true, ...executable,
@@ -78,7 +78,7 @@ try {
     // Keep the extra everyday freight out of the long reference-event fixtures.
     // The gameplay-adjustments suite exercises the full default workload.
     window.fixtureEverydayCleanup ??= setInterval(() => {
-      const model = window.fixtureApp?.model ?? window.fixtureGame?.scene.getScene('DepotScene')?.model;
+      const model = window.fixtureApp?.model;
       if (!model) return;
       const named = new Set(['MALLWOOD RD EAST','GOJI BERRIES','LIVE LOBSTERS','LE DUCK','MAKEUP LOTION','MESA BOOGIE','PANCHETTERS','SMALL ATV','ENVELOPE','SMALL BOX','PARCEL','BIG BOX','LONG BOX','THE SNAKES CELL']);
       for (const parcel of model.packages) if (parcel.state === 'belt' && !named.has(parcel.label)) parcel.state = 'delivered';

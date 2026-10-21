@@ -4,6 +4,8 @@ const CSS = `
 .b3d { position: fixed; inset: 0; overflow: hidden; background: #0a1317; font-family: "Segoe UI", system-ui, Arial, sans-serif; color: #edf0de; }
 .b3d canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; outline: none; }
 .b3d-hud { position: absolute; inset: 0; pointer-events: none; }
+.b3d-vignette { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse 72% 68% at 50% 48%, transparent 58%, #040a0d66 100%); }
+.b3d.dreaming .b3d-vignette { display: none; }
 .b3d-lunch-alert { position: absolute; left: 50%; top: 36%; transform: translate(-50%, -50%); width: min(640px, 85%); box-sizing: border-box; padding: 28px 24px; border: 2px solid #e8b765; border-radius: 14px; background: #14262df2; color: #f3e6c6; text-align: center; font: 900 clamp(24px, 4vw, 40px)/1.15 "Segoe UI", sans-serif; box-shadow: 0 12px 50px #0006; pointer-events: none; }
 .b3d-top { position: absolute; top: 0; left: 0; right: 0; display: flex; align-items: center; gap: 28px; padding: 12px 22px;
   background: linear-gradient(#0b171ce8, #0b171c00); }
@@ -106,6 +108,8 @@ const CSS = `
   font: 800 13px 'Segoe UI', Arial, sans-serif; letter-spacing: 1px; padding: 10px 14px; cursor: pointer; min-height: 44px; }
 .b3d-storykeys button small { opacity: .7; font-size: 10px; }
 .b3d-storykeys button.skip { background: #edb765; color: #1a2226; }
+.b3d.interlude .b3d-storykeys { display: flex; }
+.b3d.interlude .b3d-storykeys button:not(.skip) { display: none; }
 .b3d-chapterhud { position: absolute; left: 0; bottom: 0; right: 0; display: none; gap: 18px; align-items: center;
   background: linear-gradient(#0b171c00, #0b171ce8); padding: 12px 22px; pointer-events: none; flex-wrap: wrap; }
 .b3d.chapter .b3d-chapterhud { display: flex; }
@@ -188,6 +192,8 @@ export class Overlay {
     this.root = document.createElement('div');
     this.root.className = 'b3d';
     host.append(this.root);
+    // A soft vignette over the picture, under every control and label.
+    this.div('b3d-vignette', this.root);
     this.hud = this.div('b3d-hud', this.root);
     this.hud.innerHTML = `
       <div class="b3d-top">
@@ -265,6 +271,13 @@ export class Overlay {
     }
   }
 
+  /** Ben's scene plays over the shift HUD with only the SKIP SCENE button. */
+  public setInterlude(on: boolean): void {
+    this.root.classList.toggle('interlude', on);
+    const focused = document.activeElement;
+    if (!on && focused instanceof HTMLElement && this.storykeys.contains(focused)) focused.blur();
+  }
+
   public onStoryButton(handler: (action: 'next' | 'skip' | 'pause') => void): void {
     for (const button of this.storykeys.querySelectorAll<HTMLButtonElement>('button')) {
       const action = button.dataset.story as 'next' | 'skip' | 'pause';
@@ -277,7 +290,7 @@ export class Overlay {
       button.addEventListener('keydown', (event) => {
         if (event.code !== 'Enter' && event.code !== 'NumpadEnter' && event.code !== 'Space') return;
         // Outside a story scene the buttons are hidden: the game's own keys apply.
-        if (!this.root.classList.contains('story')) return;
+        if (!this.root.classList.contains('story') && !this.root.classList.contains('interlude')) return;
         event.preventDefault();
         event.stopPropagation();
         if (event.repeat) return;
@@ -416,10 +429,12 @@ export class Overlay {
     this.toastMs = ms;
   }
 
-  public pop(text: string, color: string, world: THREE.Vector3): void {
+  /** A short floating score note; `scale` enlarges it for a long streak. */
+  public pop(text: string, color: string, world: THREE.Vector3, scale = 1): void {
     const element = this.div('b3d-pop', this.pops);
     element.textContent = text;
     element.style.color = color;
+    if (scale !== 1) element.style.fontSize = `${Math.round(18 * scale)}px`;
     this.popups.push({ element, world: world.clone(), age: 0 });
   }
 

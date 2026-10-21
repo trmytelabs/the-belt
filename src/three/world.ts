@@ -17,9 +17,32 @@ import { TruckCutaway } from './truckCutaway';
 import { DEPOT_DRESSING } from './depotDressing';
 import { DevilModel, placeProp } from './propModels';
 import { SURFACE_MEANS, boxUVs, cardboardMaterial, getSurface, scaleUVs, surfaceMaterial, surfacesLoaded } from './textures';
+import { snowBank, snowField, snowMaterial, snowfall, type Snowfall } from './snow';
+import { WallPiles } from './wallPiles';
 
 const rounded = (w: number, h: number, d: number, material: THREE.Material, r = 0.05): THREE.Mesh =>
   new THREE.Mesh(new RoundedBoxGeometry(w, h, d, 2, Math.min(r, w / 2, h / 2, d / 2)), material);
+
+/** Yellow and black chevrons, one period per 128 px; set the repeat for the surface. */
+function hazardStripes(): THREE.CanvasTexture {
+  const stripes = document.createElement('canvas');
+  stripes.width = 128; stripes.height = 16;
+  const ctx = stripes.getContext('2d')!;
+  ctx.fillStyle = '#e8c04a'; ctx.fillRect(0, 0, 128, 16);
+  ctx.fillStyle = '#1c1c1c';
+  for (let i = -16; i < 128; i += 16) { ctx.beginPath(); ctx.moveTo(i, 16); ctx.lineTo(i + 8, 0); ctx.lineTo(i + 16, 0); ctx.lineTo(i + 8, 16); ctx.fill(); }
+  const texture = new THREE.CanvasTexture(stripes);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  return texture;
+}
+
+/** Painted hazard stripes along a strip `repeats` periods long. */
+function hazardMaterial(repeats: number): THREE.MeshStandardMaterial {
+  const map = hazardStripes();
+  map.repeat.set(Math.max(1, Math.round(repeats)), 1);
+  return new THREE.MeshStandardMaterial({ map, roughness: 0.75 });
+}
 
 /** Real-world size, in metres, of one tile of each photo surface (docs/textures.md). */
 const CONCRETE_TILE = 3;
@@ -80,7 +103,7 @@ export const VISITORS: Record<string, CharacterSpec & { x: number; y: number }> 
   kylie: { name: 'KYLIE', x: 850, y: 400, skin: SKIN.light, shirt: 0x8e3232, pants: 0x2b2f3a, hair: 0x171310, hairStyle: 'short', scale: 0.86 },
   john: { name: 'JOHN RUSHTON', x: 77, y: 397, skin: 0xbf9672, shirt: 0x2f4f64, pants: 0x2b3038, hair: 0x3a2a19, hairStyle: 'short', scale: 0.92 },
   vic: { name: 'VIC', x: 132, y: 286, skin: 0xc29c7a, shirt: 0x727f83, pants: 0x34383d, hair: 0xb4b4a1, hairStyle: 'short', moustache: true },
-  shan: { name: SHAN_NAME, dynamicSkin: true, x: 610, y: SHIFT_LAYOUT.eventBays.brian.y, skin: SKIN.light, shirt: 0xe9e4d6, pants: 0x30343c, hair: 0x8b8b88, hairStyle: 'bald', tie: 0x8a2630 },
+  shan: { name: SHAN_NAME, dynamicSkin: true, x: 610, y: SHIFT_LAYOUT.eventBays.brian.y, skin: SKIN.light, shirt: 0xe9e4d6, pants: 0x30343c, hair: 0x8b8b88, hairStyle: 'bald', tie: 0x8a2630, headwear: 'santaHat' },
 };
 
 export const TERMITE_SPEC: CharacterSpec = { name: 'TERMITE', skin: 0xe2b088, shirt: 0x2f5f8f, pants: 0x2a3f5c, overalls: 0x2a3f5c, hair: 0x5a3a20, hairStyle: 'short', headwear: 'termiteHat', beard: true };
@@ -110,7 +133,7 @@ export class DepotWorld {
   public readonly ralphTruck = new THREE.Group();
   /** Lower-floor drop piles: one instanced box per delivered parcel. */
   public readonly floorPiles = {} as Record<'T' | 'S', THREE.InstancedMesh>;
-  private readonly ralphLoad: THREE.Mesh[] = [];
+  private readonly ralphLoad: THREE.Object3D[] = [];
   private stopCap!: THREE.Mesh;
   private startCap!: THREE.Mesh;
   public readonly trucks: {
@@ -122,7 +145,7 @@ export class DepotWorld {
   private readonly emitters: { anchor: THREE.Object3D; kind: 'smoke' | 'stink'; timer: number }[] = [];
   private readonly lamps: THREE.Mesh[] = [];
   /** Realistic prop models replace code-built props (not on software renderers). */
-  private readonly models: boolean;
+  public readonly models: boolean;
   private readonly fish: THREE.Mesh[] = [];
   private readonly beltRollers: THREE.Mesh[] = [];
   /** Every belt surface map and the world length of one of its tiles; all scroll together. */
@@ -138,6 +161,10 @@ export class DepotWorld {
   public readonly stairTreads: { side: 'left' | 'right'; index: number; mesh: THREE.Mesh }[] = [];
   public readonly stairRails: THREE.Mesh[] = [];
   public groundSurface!: THREE.Mesh;
+  /** Christmas peak: cartons piling against the walls through the shift. */
+  public readonly wallPiles: WallPiles;
+  /** Snow falling in the yards outside the bays and beyond the receiving wall. */
+  public readonly snow: Snowfall[] = [];
 
   public physicalBounds(object: THREE.Object3D): THREE.Box3 { return physicalBounds(object); }
 
@@ -181,6 +208,9 @@ export class DepotWorld {
     this.addBulkCrates();
     this.addRalphTruck();
     if (this.models) this.addDressing();
+    this.wallPiles = new WallPiles(undefined, quality === 'high');
+    scene.add(this.wallPiles.mesh);
+    this.addSnow(quality);
     this.mergeStaticGeometry();
     this.truckCutaway = new TruckCutaway(this.trucks);
   }
@@ -330,16 +360,34 @@ export class DepotWorld {
       }
     }
     // One solid terminal wall closes the depot behind bulk and both side drops.
-    // The follow camera stays on its interior side; there is no rear landing.
+    // There is no rear landing. The follow camera may pass behind this wall at
+    // the back of the depot; it fades out ahead of the camera (fadeRearWall)
+    // and the snowy lot behind it shows instead.
     const rear = SHIFT_LAYOUT.bulkRearWall;
     const southZ = toWorldZ(rear.y + rear.height / 2);
-    const south = new THREE.Mesh(new THREE.BoxGeometry(rear.width * WORLD_SCALE, 7.4, rear.height * WORLD_SCALE), wall);
+    const south = new THREE.Mesh(new THREE.BoxGeometry(rear.width * WORLD_SCALE, 7.4, rear.height * WORLD_SCALE), wall.clone());
     south.position.copy(toWorld(rear, 3.7));
     south.receiveShadow = true;
     south.userData.keep = true;
     south.name = 'final-depot-wall';
     this.bulkRearWall = south;
     scene.add(south);
+    // The lot behind the terminal wall, under snow, seen only when the wall has
+    // faded. No depot light reaches it: it is night snow, blue-grey, not white.
+    const nightSnow = snowMaterial(92, 20).clone();
+    nightSnow.color.setHex(0x5f6c7c);
+    const behind = snowField(92, 20, 0, southZ + 10, -0.01);
+    behind.material = nightSnow;
+    behind.userData.solid = false;
+    scene.add(behind);
+    const bankSnow = snowMaterial(12, 2.4, 3).clone();
+    bankSnow.color.setHex(0x74818f);
+    for (const x of [-30, -8, 14, 36]) {
+      const bank = snowBank(12, 2.4, 0.9);
+      bank.material = bankSnow;
+      bank.position.set(x, 0, southZ + 17);
+      scene.add(bank);
+    }
     // Close the 20cm seams to the shell's inner side faces at ±15.2m.
     for (const side of [-1, 1]) {
       const cap = new THREE.Mesh(new THREE.BoxGeometry(0.2, 7.4, rear.height * WORLD_SCALE), wall);
@@ -356,8 +404,8 @@ export class DepotWorld {
     const bayTop = toWorldZ(100);
     const bayBottom = toWorldZ(SHIFT_LAYOUT.ralphBay.y + 56);
     const pillar = standard(0x2c3c43, 0.6, 0.3);
-    const outside = new THREE.Mesh(new THREE.PlaneGeometry(30, groundEnd - groundTop), standard(0x101619, 0.95));
-    outside.rotation.x = -Math.PI / 2;
+    // It is Christmas: the yards outside the open bays are under fresh snow.
+    const outside = snowField(30, groundEnd - groundTop);
     for (const side of [-1, 1]) {
       const segments: [number, number][] = [[-22, bayTop], [bayBottom, southZ]];
       for (const [from, to] of segments) {
@@ -395,10 +443,62 @@ export class DepotWorld {
       const yard = outside.clone();
       yard.position.set(side * 30.6, -0.01, (groundTop + groundEnd) / 2);
       scene.add(yard);
+      // Plowed banks along the yard's far side, clear of the bays the fleet drives out of.
+      for (const z of [-14, -2, 10, 22]) {
+        const bank = snowBank(9, 2.2, 0.9);
+        bank.position.set(side * 42, 0, z);
+        bank.rotation.y = Math.PI / 2;
+        scene.add(bank);
+      }
       const yardLight = new THREE.PointLight(0xffa64d, 22, 18, 1.6);
       yardLight.position.set(side * 21, 5, 3);
       scene.add(yardLight);
     }
+  }
+
+  /**
+   * Snow falls outside: in both yards beyond the open bays, and behind the
+   * receiving wall, where it shows above the wall from the follow camera.
+   */
+  private addSnow(quality: 'high' | 'low'): void {
+    const scale = quality === 'high' ? 1 : 0.3;
+    const groundEnd = toWorldZ(SHIFT_LAYOUT.bulkRearWall.y + SHIFT_LAYOUT.bulkRearWall.height / 2);
+    const backZ = toWorldZ(SHIFT_LAYOUT.worldTop) - 0.6;
+    for (const side of [-1, 1]) {
+      this.snow.push(snowfall([side < 0 ? -46 : 15.7, 0, -24], [side < 0 ? -15.7 : 46, 14, groundEnd], { count: Math.round(1600 * scale), size: 0.11 }));
+    }
+    this.snow.push(snowfall([-46, 0, -48], [46, 18, backZ], { count: Math.round(2600 * scale), size: 0.13 }));
+    // Behind the terminal wall, for the follow camera at the back of the depot.
+    this.snow.push(snowfall([-46, 0, groundEnd + 0.4], [46, 16, groundEnd + 20], { count: Math.round(1800 * scale), size: 0.13 }));
+    for (const flakes of this.snow) this.scene.add(flakes.points);
+  }
+
+  /** The Christmas layer: snow falls whenever the depot is shown; the wall piles follow the shift clock. */
+  public updateChristmas(dt: number, shiftElapsedMs: number, shiftDurationMs: number, reducedMotion: boolean): void {
+    for (const flakes of this.snow) flakes.update(dt, reducedMotion);
+    this.wallPiles.update(Math.min(1, shiftElapsedMs / shiftDurationMs), shiftDurationMs, reducedMotion);
+  }
+
+  /**
+   * Fades the terminal wall out as the camera approaches its inner face from
+   * the depot side, and hides it once the camera is behind it, so the follow
+   * camera keeps its oblique view at the back of the depot instead of being
+   * stopped against the wall. The overview, far above the wall, keeps it.
+   * The fade is a function of where the camera is, not of time, so the near
+   * plane never meets a visible wall. Returns the wall's opacity.
+   */
+  public fadeRearWall(camera: THREE.Vector3): number {
+    const wall = this.bulkRearWall;
+    const front = wall.position.z - SHIFT_LAYOUT.bulkRearWall.height * WORLD_SCALE / 2;
+    const above = camera.y > 7.4 + 16;
+    const opacity = above ? 1 : THREE.MathUtils.clamp((front - 1.0 - camera.z) / 1.8, 0, 1);
+    const material = wall.material as THREE.MeshStandardMaterial;
+    if (material.opacity !== opacity) {
+      material.opacity = opacity;
+      material.transparent = opacity < 1;
+    }
+    wall.visible = opacity > 0.01;
+    return opacity;
   }
 
   /** The raised loading platform: belt, both lanes, every truck's rear door and the bulk pile. */
@@ -509,6 +609,13 @@ export class DepotWorld {
       numbers.position.set(startX - direction * 0.9, PLATFORM_HEIGHT + 0.012, toWorldZ(stairs.centerY - 60));
       numbers.name = 'floor-street-range'; numbers.userData.keep = true;
       scene.add(numbers);
+      // A hazard-striped band painted along the top of each flight, where the deck ends.
+      const warning = new THREE.Mesh(new THREE.PlaneGeometry(flightDepth, 0.34), hazardMaterial(flightDepth / 0.34));
+      warning.rotation.x = -Math.PI / 2;
+      warning.rotation.z = Math.PI / 2;
+      warning.position.set(startX - direction * 0.23, PLATFORM_HEIGHT + 0.011, centerZ);
+      warning.userData.solid = false;
+      scene.add(warning);
     }
 
     // Short crew steps in the aisles between parked trucks: the outer-bay crew
@@ -709,14 +816,26 @@ export class DepotWorld {
     return toWorld({ x: truck.x + inward * -50, y: truck.y }, PLATFORM_HEIGHT + 0.5);
   }
 
+  /**
+   * A carton standing on `slot`'s origin: the code-built box, with the
+   * photographed `cardboard-box` model placed over it on GPU renderers.
+   */
+  private carton(slot: THREE.Object3D, w: number, h: number, d: number, color: number): void {
+    const crate = tiled(new THREE.Mesh(new THREE.BoxGeometry(w, h, d), cardboardMaterial(color, 0.9)), CARDBOARD_TILE);
+    crate.castShadow = crate.receiveShadow = true;
+    crate.position.y = h / 2;
+    slot.add(crate);
+    if (this.models) void placeProp(slot, 'cardboard-box', { fallback: crate, size: { x: w, y: h, z: d } });
+  }
+
   private addBulkCrates(): void {
     for (let index = 0; index < 12; index += 1) {
-      const crate = tiled(new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.42, 0.5), cardboardMaterial(index % 2 ? 0xb8875a : 0xa47650, 0.9)), CARDBOARD_TILE);
-      crate.castShadow = crate.receiveShadow = true;
-      crate.position.set(-0.6 + (index % 3) * 0.6, 0.21 + Math.floor(index / 6) * 0.43, -0.3 + (Math.floor(index / 3) % 2) * 0.6);
-      crate.rotation.y = (index * 0.37) % 0.3 - 0.15;
-      crate.visible = false;
-      this.bulkStack.add(crate);
+      const slot = new THREE.Group();
+      slot.position.set(-0.6 + (index % 3) * 0.6, Math.floor(index / 6) * 0.43, -0.3 + (Math.floor(index / 3) % 2) * 0.6);
+      slot.rotation.y = (index * 0.37) % 0.3 - 0.15;
+      slot.visible = false;
+      this.carton(slot, 0.55, 0.42, 0.5, index % 2 ? 0xb8875a : 0xa47650);
+      this.bulkStack.add(slot);
     }
   }
 
@@ -758,11 +877,11 @@ export class DepotWorld {
       const mark = new THREE.Mesh(new THREE.PlaneGeometry(0.56, depth - 0.5), new THREE.MeshStandardMaterial({ color: 0xc6ad62, transparent: true, opacity: 0.35 }));
       mark.rotation.x = -Math.PI / 2;
       mark.position.set(x, 0.985 + lift, 0);
-      const crate = tiled(new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.42, 0.5), cardboardMaterial(slot % 2 ? 0xb8875a : 0xa47650, 0.9)), CARDBOARD_TILE);
-      crate.position.set(x, 1.2 + lift, 0);
-      crate.castShadow = true;
+      const crate = new THREE.Group();
+      crate.position.set(x, 0.99 + lift, 0);
       crate.visible = false;
       crate.userData.keep = true;
+      this.carton(crate, 0.55, 0.42, 0.5, slot % 2 ? 0xb8875a : 0xa47650);
       truck.add(mark, crate);
       this.ralphLoad.push(crate);
     }
@@ -822,8 +941,10 @@ export class DepotWorld {
       deck.position.set(0, 0.275, 0.4);
       trailer.add(deck);
       for (let i = 0; i < 6; i += 1) {
-        const cargo = rounded(0.6, 0.5, 0.5, standard(i % 2 ? PALETTE.cardboard : 0xa47650, 0.9), 0.03);
-        cargo.position.set(-0.8 + (i % 3) * 0.8, 0.6 + Math.floor(i / 3) * 0.52, -0.6 - (i % 2) * 0.6);
+        const cargo = new THREE.Group();
+        cargo.position.set(-0.8 + (i % 3) * 0.8, 0.35 + Math.floor(i / 3) * 0.52, -0.6 - (i % 2) * 0.6);
+        cargo.rotation.y = (i * 0.61) % 0.4 - 0.2;
+        this.carton(cargo, 0.6, 0.5, 0.5, i % 2 ? PALETTE.cardboard : 0xa47650);
         trailer.add(cargo);
       }
       trailer.position.set(toWorldX(x), PLATFORM_HEIGHT - 0.35, backZ + 0.6);
@@ -904,15 +1025,7 @@ export class DepotWorld {
 
     // Recovery tray for missed freight, hazard-striped.
     const tray = toWorld(SHIFT_LAYOUT.recoveryPile);
-    const stripes = document.createElement('canvas');
-    stripes.width = 128; stripes.height = 16;
-    const sctx = stripes.getContext('2d')!;
-    sctx.fillStyle = '#e8c04a'; sctx.fillRect(0, 0, 128, 16);
-    sctx.fillStyle = '#1c1c1c';
-    for (let i = -16; i < 128; i += 16) { sctx.beginPath(); sctx.moveTo(i, 16); sctx.lineTo(i + 8, 0); sctx.lineTo(i + 16, 0); sctx.lineTo(i + 8, 16); sctx.fill(); }
-    const stripeTex = new THREE.CanvasTexture(stripes);
-    stripeTex.colorSpace = THREE.SRGBColorSpace;
-    stripeTex.wrapS = THREE.RepeatWrapping;
+    const stripeTex = hazardStripes();
     stripeTex.repeat.set(3, 1);
     const trayBase = rounded(3.4, 0.12, 1.6, standard(0x2c3a40, 0.8), 0.03);
     trayBase.position.set(tray.x, deck + 0.06, tray.z);
@@ -977,16 +1090,18 @@ export class DepotWorld {
       ['FRUIT LOOP', 716, first, 'right', 0xb08b5d], ['DORIS', 716, second, 'right', 0xa98a63],
       ['BRIAN', 716, third, 'right', 0x9f7e52], ['DONNA', 716, fourth, 'right', 0xb1916a],
     ];
-    for (const [name, x, y, side, color, cabColor] of crew) this.placeTruck(name, x, y, side, color, cabColor ?? 0xd4cbb4);
-    // Termite's and Skanky's four trucks back flush against the platform edge.
+    // Each crew truck is aluminium-white with its own colour on the cab and
+    // livery band; a truck given its own cab colour (Paula's purple) is painted all over.
+    for (const [name, x, y, side, color, cabColor] of crew) this.placeTruck(name, x, y, side, color, cabColor ?? color, cabColor !== undefined);
+    // Termite's and Skanky's four trucks back flush against the platform edge, in fleet brown.
     for (const { route } of PLAYER_TRUCKS) {
       const { x, y } = SHIFT_LAYOUT.playerTrucks[route];
-      this.placeTruck(ROUTE_INFO[route].name, x, y, x < 480 ? 'left' : 'right', 0x827a67, 0xc2bba4, route);
+      this.placeTruck(ROUTE_INFO[route].name, x, y, x < 480 ? 'left' : 'right', 0x4b3628, 0x4b3628, false, route);
     }
   }
 
-  private placeTruck(name: string, x: number, y: number, side: 'left' | 'right', color: number, cabColor: number, route?: PlayerTruckRoute): void {
-    const truck = createTruck(name, color, cabColor, side, route);
+  private placeTruck(name: string, x: number, y: number, side: 'left' | 'right', color: number, cabColor: number, fullBody: boolean, route?: PlayerTruckRoute): void {
+    const truck = createTruck(name, color, cabColor, side, route, false, fullBody);
     truck.position.copy(toWorld({ x, y }));
     this.scene.add(truck);
     this.trucks.push({
@@ -1267,11 +1382,18 @@ export class DepotWorld {
 }
 
 /**
- * A box truck parked against the platform. The cargo box's floor is at deck
- * height and its roll-up rear door is open onto the platform, so freight is
- * loaded straight through the back.
+ * A cab-over box truck parked against the platform. The cargo box's floor is
+ * at deck height and its roll-up rear door is open onto the platform, so
+ * freight is loaded straight through the back.
+ *
+ * The box is aluminium-white sheet with riveted seams, rub rails, marker
+ * lights and a band in the truck's own colour under its nameplate; the flat
+ * cab carries that colour too, with a raked windshield, mirrors, roof lights,
+ * a grille and a chrome bumper. `fullBody` paints the whole truck in `color`
+ * (Paula Abdul's purple). Dual rear wheels, a fuel tank, a battery box and
+ * mud flaps hang under the chassis.
  */
-export function createTruck(name: string, color: number, cabColor: number, side: 'left' | 'right', route?: PlayerTruckRoute, cutaway = false): THREE.Group {
+export function createTruck(name: string, color: number, cabColor: number, side: 'left' | 'right', route?: PlayerTruckRoute, cutaway = false, fullBody = false): THREE.Group {
   const truck = new THREE.Group();
   const length = 148 * WORLD_SCALE;
   const depth = (route ? SHIFT_LAYOUT.playerTruckDepth : SHIFT_LAYOUT.truckDepth) * WORLD_SCALE;
@@ -1281,7 +1403,12 @@ export function createTruck(name: string, color: number, cabColor: number, side:
   const floor = PLATFORM_HEIGHT;
   truck.userData.cargoFloorY = floor;
   const facing = side === 'left' ? 1 : -1; // the rear door faces the platform
-  const body = paint(color, 0.62, 0.1);
+  const bodyColor = fullBody ? color : 0xd9dcd7;
+  const body = paint(bodyColor, 0.5, 0.15);
+  const trimColor = new THREE.Color(bodyColor).multiplyScalar(0.72).getHex();
+  const accent = paint(color, 0.45, 0.15);
+  const dark = standard(0x1d2124, 0.85);
+  const chrome = steel(0xd4d9dc, 0.18, 0.95);
   const boxX = facing * (length / 2 - boxLength / 2);
   // The box is an open-backed shell so its rear opening reads as real depth.
   const wall = 0.08;
@@ -1339,9 +1466,9 @@ export function createTruck(name: string, color: number, cabColor: number, side:
     lining.rotation.y = z > 0 ? Math.PI : 0;
     truck.add(lining);
   }
-  // The rolled-up door at the top of the rear opening, and a bright door frame.
-  const rolled = tiled(new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.28, depth - 0.04), steel(0xb7bcbf, 0.4, 0.6)), STEEL_TILE);
-  rolled.position.set(facing * (length / 2 - 0.08), floor + boxHeight - 0.2, 0);
+  // The rolled-up door at the top of the rear opening, its tracks, and a bright door frame.
+  const rolled = tiled(new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.3, depth - 0.04), steel(0xb7bcbf, 0.4, 0.6)), STEEL_TILE);
+  rolled.position.set(facing * (length / 2 - 0.09), floor + boxHeight - 0.2, 0);
   const frame = new THREE.MeshStandardMaterial({ color: PALETTE.safety, emissive: PALETTE.safety, emissiveIntensity: 0.25, roughness: 0.5 });
   for (const z of [depth / 2 - 0.03, -depth / 2 + 0.03]) {
     const jamb = new THREE.Mesh(new THREE.BoxGeometry(0.06, boxHeight, 0.06), frame);
@@ -1349,80 +1476,151 @@ export function createTruck(name: string, color: number, cabColor: number, side:
     truck.add(jamb);
   }
   truck.add(rolled);
-  // Outer reinforcing ribs leave the cargo opening clear. A single box across
-  // the entire width here used to form eight solid barriers inside every truck.
-  const ribMaterial = paint(new THREE.Color(color).multiplyScalar(0.82), 0.7);
-  for (let i = 1; i < 9; i += 1) {
+  // Riveted panel seams every half metre, a rub rail along the bottom and a
+  // cap rail along the top, on both sides. Nothing crosses the cargo opening.
+  const seamMaterial = paint(trimColor, 0.55, 0.3);
+  const seams = Math.round(boxLength / 0.48);
+  for (let i = 1; i < seams; i += 1) {
     for (const side of [-1, 1]) {
-      const rib = tiled(new THREE.Mesh(new THREE.BoxGeometry(0.05, boxHeight - 0.2, 0.035), ribMaterial), PAINT_TILE);
-      rib.position.set(facing * (length / 2 - boxLength) + facing * boxLength * i / 9, floor + boxHeight / 2, side * (depth / 2 + 0.02));
-      truck.add(rib);
+      const seam = new THREE.Mesh(new THREE.BoxGeometry(0.022, boxHeight - 0.5, 0.016), seamMaterial);
+      seam.position.set(facing * (length / 2 - boxLength) + facing * boxLength * i / seams, floor + boxHeight / 2 + 0.08, side * (depth / 2 + 0.008));
+      truck.add(seam);
     }
   }
-  // The chassis rails carry the raised box over the wheels.
+  for (const side of [-1, 1]) {
+    const rubRail = new THREE.Mesh(new THREE.BoxGeometry(boxLength, 0.09, 0.05), dark);
+    rubRail.position.set(boxX, floor + 0.09, side * (depth / 2 + 0.02));
+    const capRail = new THREE.Mesh(new THREE.BoxGeometry(boxLength, 0.07, 0.04), seamMaterial);
+    capRail.position.set(boxX, floor + boxHeight - 0.03, side * (depth / 2 + 0.015));
+    // The livery band in the truck's colour, under the nameplate.
+    const band = tiled(new THREE.Mesh(new THREE.BoxGeometry(boxLength, 0.3, 0.012), accent), PAINT_TILE);
+    band.position.set(boxX, floor + boxHeight * 0.33, side * (depth / 2 + 0.006));
+    truck.add(rubRail, capRail, band);
+    // Amber side markers along the top edge, red at the rear.
+    for (let i = 0; i < 4; i += 1) {
+      const rear = i === 3;
+      const marker = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.045, 0.02), new THREE.MeshStandardMaterial({
+        color: rear ? 0xc62a1e : 0xe8902a, emissive: rear ? 0xc62a1e : 0xe8902a, emissiveIntensity: 0.9 }));
+      marker.position.set(boxX - facing * boxLength / 2 + facing * (0.25 + i * (boxLength - 0.5) / 3), floor + boxHeight - 0.14, side * (depth / 2 + 0.03));
+      truck.add(marker);
+    }
+  }
+  // The chassis rails carry the raised box over the wheels; a fuel tank and a
+  // battery box hang either side, and mud flaps behind the rear wheels.
   const chassis = tiled(new THREE.Mesh(new THREE.BoxGeometry(length - 0.3, floor - 0.45, depth - 0.5), steel(0x24292c, 0.6, 0.4)), STEEL_TILE);
   chassis.position.set(0, 0.45 + (floor - 0.45) / 2, 0);
   truck.add(chassis);
+  const tank = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.9, 14), steel(0xb9bfc2, 0.35, 0.8));
+  tank.rotation.z = Math.PI / 2;
+  tank.position.set(-facing * 0.25, 0.55, depth / 2 - 0.14);
+  const battery = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.36, 0.3), dark);
+  battery.position.set(-facing * 0.25, 0.55, -depth / 2 + 0.14);
+  truck.add(tank, battery);
+  for (const sz of [-1, 1]) {
+    const flap = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.42, 0.42), standard(0x111315, 0.95));
+    flap.position.set(facing * (length / 2 - 0.26), 0.3, sz * (depth / 2 - 0.3));
+    truck.add(flap);
+  }
   // Rubber dock bumpers where the truck meets the platform.
   for (const z of [depth / 2 - 0.25, -depth / 2 + 0.25]) {
     const bumper = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.3, 0.3), standard(0x111315, 0.9));
     bumper.position.set(facing * (length / 2 + 0.06), floor - 0.2, z);
     truck.add(bumper);
   }
-  const cabMaterial = paint(cabColor, 0.45, 0.25);
-  const cab = tiled(rounded(cabLength, 1.7, depth - 0.1, cabMaterial, 0.18), PAINT_TILE);
-  cab.position.set(-facing * (length / 2 - cabLength / 2), 1.2, 0);
-  const windshield = new THREE.Mesh(new THREE.PlaneGeometry(depth - 0.4, 0.62), new THREE.MeshStandardMaterial({ color: 0x9cc8dc, roughness: 0.05, metalness: 0.6, emissive: 0x16303c, emissiveIntensity: 0.6 }));
-  windshield.position.set(-facing * (length / 2 + 0.003), 1.55, 0);
+  // A flat-fronted cab in the truck's colour: raked windshield, doors with
+  // seams and handles, mirrors on arms, three roof markers, a grille and a chrome bumper.
+  const cabColorFinal = fullBody ? cabColor : color;
+  const cabMaterial = paint(cabColorFinal, 0.42, 0.25);
+  const cabHeight = 2.15;
+  const cabX = -facing * (length / 2 - cabLength / 2);
+  const cab = tiled(rounded(cabLength, cabHeight, depth - 0.1, cabMaterial, 0.14), PAINT_TILE);
+  cab.position.set(cabX, 0.45 + cabHeight / 2, 0);
+  truck.add(cab);
+  const glassMaterial = new THREE.MeshStandardMaterial({ color: 0x8fb8cc, roughness: 0.05, metalness: 0.6, emissive: 0x16303c, emissiveIntensity: 0.5 });
+  const windshield = new THREE.Mesh(new THREE.PlaneGeometry(depth - 0.42, 0.78), glassMaterial);
+  windshield.position.set(-facing * (length / 2 + 0.012), 1.92, 0);
   windshield.rotation.y = -facing * Math.PI / 2;
-  truck.add(cab, windshield);
+  windshield.rotation.x = -facing * 0.12;
+  const grille = new THREE.Mesh(new THREE.PlaneGeometry(depth - 0.8, 0.34), standard(0x101214, 0.6, 0.3));
+  grille.position.set(-facing * (length / 2 + 0.006), 0.95, 0);
+  grille.rotation.y = -facing * Math.PI / 2;
+  truck.add(windshield, grille);
+  for (let i = 0; i < 4; i += 1) {
+    const bar = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.03, depth - 0.84), chrome);
+    bar.position.set(-facing * (length / 2 + 0.012), 0.83 + i * 0.08, 0);
+    truck.add(bar);
+  }
   const doorTrim = standard(0x26333b, 0.75);
-  const reflective = standard(0xe5d9b3, 0.75);
   for (const side of [-1, 1]) {
-    const sideWindow = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.5), windshield.material);
-    sideWindow.position.set(-facing * (length / 2 - cabLength / 2 - 0.05), 1.58, side * (depth / 2 - 0.045));
+    const sideWindow = new THREE.Mesh(new THREE.PlaneGeometry(0.62, 0.56), glassMaterial);
+    sideWindow.position.set(cabX + facing * 0.08, 1.92, side * (depth / 2 - 0.045));
     sideWindow.rotation.y = side > 0 ? 0 : Math.PI;
+    const doorSeam = new THREE.Mesh(new THREE.BoxGeometry(0.014, cabHeight - 0.5, 0.012), seamMaterial);
+    doorSeam.position.set(cabX - facing * 0.4, 0.45 + cabHeight / 2 - 0.1, side * (depth / 2 - 0.04));
     const handle = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.035, 0.018), doorTrim);
-    handle.position.set(sideWindow.position.x + facing * 0.19, 1.19, side * (depth / 2 - 0.04));
-    const sill = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.08, 0.06), doorTrim);
-    sill.position.set(sideWindow.position.x, 0.5, side * (depth / 2 - 0.05));
-    truck.add(sideWindow, handle, sill);
-    for (let i = 0; i < 6; i += 1) {
-      const marker = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.065, 0.012), reflective);
-      marker.position.set(boxX - boxLength / 2 + 0.3 + i * (boxLength - 0.6) / 5, floor + 0.14, side * (depth / 2 + 0.006));
-      truck.add(marker);
-    }
+    handle.position.set(cabX + facing * 0.15, 1.3, side * (depth / 2 - 0.04));
+    const step = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.06, 0.16), dark);
+    step.position.set(cabX, 0.5, side * (depth / 2 - 0.02));
+    // The mirrors stay within 0.18 m of the body: the gags staged between the
+    // truck rows (the massage table, the Lego, the desk) need their clearance.
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.03, 0.22), dark);
+    arm.position.set(-facing * (length / 2 - 0.18), 1.95, side * (depth / 2 + 0.06));
+    const mirror = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.34, 0.12), dark);
+    mirror.position.set(-facing * (length / 2 - 0.18), 1.92, side * (depth / 2 + 0.12));
+    const mirrorGlass = new THREE.Mesh(new THREE.PlaneGeometry(0.12, 0.3), chrome);
+    mirrorGlass.position.set(-facing * (length / 2 - 0.145), 1.92, side * (depth / 2 + 0.12));
+    mirrorGlass.rotation.y = -facing * Math.PI / 2;
+    truck.add(sideWindow, doorSeam, handle, step, arm, mirror, mirrorGlass);
+  }
+  const roofMarker = new THREE.MeshStandardMaterial({ color: 0xe8902a, emissive: 0xe8902a, emissiveIntensity: 0.9 });
+  for (const z of [-0.5, 0, 0.5]) {
+    const light = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.05, 0.12), roofMarker);
+    light.position.set(-facing * (length / 2 - 0.05), 0.45 + cabHeight + 0.02, z * (depth - 0.6) / 1.4);
+    truck.add(light);
   }
   for (const sz of [-1, 1]) {
+    const housing = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.06, 14), chrome);
+    housing.rotation.z = Math.PI / 2;
+    housing.position.set(-facing * (length / 2 + 0.01), 0.7, sz * (depth / 2 - 0.3));
     const headlight = new THREE.Mesh(new THREE.CircleGeometry(0.1, 12), new THREE.MeshStandardMaterial({ color: 0xfff3c8, emissive: 0xfff0c0, emissiveIntensity: 0.04 }));
     headlight.name = 'truck-headlight'; headlight.userData.keep = true;
-    headlight.position.set(-facing * (length / 2 + 0.004), 0.7, sz * (depth / 2 - 0.3));
+    headlight.position.set(-facing * (length / 2 + 0.042), 0.7, sz * (depth / 2 - 0.3));
     headlight.rotation.y = -facing * Math.PI / 2;
-    truck.add(headlight);
+    const signal = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.07, 0.14), roofMarker);
+    signal.position.set(-facing * (length / 2 + 0.01), 0.7, sz * (depth / 2 - 0.1));
+    truck.add(housing, headlight, signal);
   }
   // Chrome exhaust stack behind the cab; the drivers' gag fills it with smoke.
-  const chrome = standard(0xc8ced2, 0.2, 0.9);
   const stack = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 1.5, 10), chrome);
   stack.position.set(-facing * (length / 2 - cabLength - 0.02), 2.0, -(depth / 2 - 0.25));
   const stackTop = new THREE.Object3D();
   stackTop.name = 'stack-top';
   stackTop.position.set(stack.position.x, 2.8, stack.position.z);
   truck.add(stack, stackTop);
-  const frontBumper = rounded(0.18, 0.2, depth, standard(0x30363a, 0.5, 0.5), 0.05);
+  const frontBumper = rounded(0.18, 0.22, depth, chrome, 0.05);
   frontBumper.position.set(-facing * (length / 2 + 0.02), 0.45, 0);
   truck.add(frontBumper);
-  const tyre = standard(0x161819, 0.9);
-  const hub = standard(0x9aa2a6, 0.3, 0.8);
-  for (const along of [-facing * (length / 2 - 0.55), facing * (length / 2 - 0.7), facing * (length / 2 - 1.5)]) {
+  // Treaded tyres on steel rims: single at the front, dual at the rear.
+  const tyre = standard(0x161819, 0.92);
+  const tread = standard(0x0e0f10, 0.98);
+  const hub = steel(0x9aa2a6, 0.3, 0.8);
+  const axles: [number, boolean][] = [[-facing * (length / 2 - 0.55), false], [facing * (length / 2 - 0.7), true], [facing * (length / 2 - 1.5), true]];
+  for (const [along, dual] of axles) {
     for (const sz of [-1, 1]) {
-      const wheel = new THREE.Group();
-      wheel.rotation.x = Math.PI / 2;
-      wheel.position.set(along, 0.38, sz * (depth / 2 - 0.16));
-      const tyreMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.38, 0.3, 18), tyre);
-      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.32, 12), hub);
-      const lug = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.34, 0.24), hub);
-      wheel.add(tyreMesh, cap, lug);
-      truck.add(wheel);
+      for (const inset of dual ? [0, 0.32] : [0]) {
+        const wheel = new THREE.Group();
+        wheel.rotation.x = Math.PI / 2;
+        wheel.position.set(along, 0.38, sz * (depth / 2 - 0.16 - inset));
+        const tyreMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.38, 0.3, 20), tyre);
+        const groove = new THREE.Mesh(new THREE.CylinderGeometry(0.385, 0.385, 0.16, 20), tread);
+        wheel.add(tyreMesh, groove);
+        if (inset === 0) {
+          const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.32, 14), hub);
+          const lug = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.34, 0.24), hub);
+          wheel.add(cap, lug);
+        }
+        truck.add(wheel);
+      }
     }
   }
   // Player destinations are identified by painted floor numbers only.
@@ -1437,7 +1635,7 @@ export function createTruck(name: string, color: number, cabColor: number, side:
   // An open-topped cutaway keeps the freight inside readable from above.
   roof.visible = !cutaway;
   const sideplate = textPlane(lines, boxLength * 0.7, 0.9, { ...plateOptions, height: 110 });
-  sideplate.position.set(boxX, floor + boxHeight * 0.55, depth / 2 + 0.045);
+  sideplate.position.set(boxX, floor + boxHeight * 0.62, depth / 2 + 0.045);
   truck.add(roof, sideplate);
   return shadowed(truck);
 }

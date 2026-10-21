@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { mergeStatic } from './merge.ts';
+import { createSedanInterior } from './vehicleInterior.ts';
+import { rigWheels } from './vehicleRig.ts';
 
 const loads = new Map<string, Promise<GLTF>>();
 function load(url: string): Promise<GLTF> {
@@ -36,18 +38,42 @@ export async function upgradeCar(car: THREE.Group, color: number): Promise<boole
         if (/headlights/i.test(sourceMaterial.name) && headMaterial) {
           mesh.name = 'model-headlight'; return headMaterial;
         }
-        const material = sourceMaterial.clone() as THREE.MeshStandardMaterial;
-        if (material.isMeshStandardMaterial) {
-          material.roughness = 0.65; material.metalness = 0.12;
-          if (/blue|red|paint/i.test(material.name)) material.color.setHex(color);
-          if (/windows/i.test(material.name)) { material.transparent = true; material.opacity = 0.3; material.depthWrite = false; }
-          if (/taillights/i.test(material.name)) { material.emissive.setHex(0xa81712); material.emissiveIntensity = 0.8; }
+        const source = sourceMaterial as THREE.MeshStandardMaterial;
+        if (!source.isMeshStandardMaterial) return sourceMaterial.clone();
+        if (/blue|red|paint/i.test(source.name)) {
+          // Car paint: a clear coat over the colour, which the scene's environment map now reflects.
+          const paint = new THREE.MeshPhysicalMaterial({ color, roughness: 0.42, metalness: 0.1, clearcoat: 1, clearcoatRoughness: 0.08 });
+          paint.name = source.name;
+          return paint;
         }
+        if (/windows/i.test(source.name)) {
+          // Glass: a dark tint with a sharp reflection, double-sided so the interior shows through both panes.
+          const glass = new THREE.MeshPhysicalMaterial({ color: 0x55636f, roughness: 0.05, metalness: 0, transparent: true, opacity: 0.28,
+            envMapIntensity: 1.2, side: THREE.DoubleSide, depthWrite: false });
+          glass.name = source.name;
+          return glass;
+        }
+        const material = source.clone();
+        material.roughness = 0.65; material.metalness = 0.12;
+        if (/grey/i.test(material.name)) { material.roughness = 0.38; material.metalness = 0.55; }
+        if (/taillights/i.test(material.name)) { material.emissive.setHex(0xa81712); material.emissiveIntensity = 0.8; }
         return material;
       };
       mesh.material = Array.isArray(mesh.material) ? mesh.material.map(prepare) : prepare(mesh.material);
     });
-    mergeStatic(model, object => object.name === 'model-headlight');
+    // The wheels are their own nodes: give them pivots at their centres so they roll and steer.
+    const wheelNodes = model.children.filter(child => /wheel/i.test(child.name)).map(node => ({ node, steered: /front/i.test(node.name) }));
+    const wheels = rigWheels(wheelNodes, { forward: 1, wheelbase: 2.7 });
+    if (wheels) car.userData.wheels = wheels;
+    mergeStatic(model, object => object.name === 'model-headlight' || object.userData.wheel === true);
+    // The generated interior sits inside the model, in the car's own frame: undo the fit scale and turn.
+    const unscale = new THREE.Group();
+    unscale.scale.set(1 / model.scale.x, 1 / model.scale.y, 1 / model.scale.z);
+    const holder = new THREE.Group();
+    holder.rotation.y = -model.rotation.y;
+    holder.position.y = -model.position.y;
+    const interior = createSedanInterior();
+    holder.add(interior); unscale.add(holder); model.add(unscale);
     // Retain hidden light controls: Brian's authored blink drives the imported lights too.
     for (const child of car.children) child.visible = false;
     car.add(model);
@@ -131,7 +157,9 @@ export class DevilModel {
  */
 export type PropId =
   | 'wall-lamp' | 'office-desk' | 'school-chair' | 'metal-stool'
-  | 'barrel' | 'wet-floor-sign' | 'fire-extinguisher' | 'hand-truck' | 'tool-chest' | 'storage-cart' | 'trash-can';
+  | 'barrel' | 'wet-floor-sign' | 'fire-extinguisher' | 'hand-truck' | 'tool-chest' | 'storage-cart' | 'trash-can'
+  | 'cardboard-box' | 'metal-rack' | 'chainlink-panel' | 'chainlink-post' | 'street-lamp'
+  | 'sofa' | 'armchair' | 'coffee-table' | 'bookshelf' | 'wall-clock' | 'side-table';
 
 export interface PropModelSource {
   /** The Poly Haven asset id; its 1k glTF is the conversion source. */
@@ -158,6 +186,19 @@ export const PROP_MODELS: Record<PropId, PropModelSource> = {
   'storage-cart': { polyHaven: 'industrial_storage_cart', textureSize: 512 },
   // The asset holds a clean and a rusty bin; the clean one, its handles and lid are kept.
   'trash-can': { polyHaven: 'metal_trash_can', textureSize: 512, nodes: /^metal_trash_can(_handle_left|_handle_right|_lid)?$/ },
+  // A worn shipping carton: the depot's bulk stock, Ralph's load, the receiving cargo and plain parcels.
+  'cardboard-box': { polyHaven: 'cardboard_box_01', textureSize: 512 },
+  'metal-rack': { polyHaven: 'worn_metal_rack', textureSize: 512 },
+  // The fence kit's two-metre panel and its post; the lot's run is assembled from copies.
+  'chainlink-panel': { polyHaven: 'modular_chainlink_fence', textureSize: 512, nodes: /^modular_chainlink_fence_double$/ },
+  'chainlink-post': { polyHaven: 'modular_chainlink_fence', textureSize: 256, nodes: /^modular_chainlink_fence_post$/ },
+  'street-lamp': { polyHaven: 'street_lamp_01', textureSize: 512 },
+  sofa: { polyHaven: 'sofa_02', textureSize: 512 },
+  armchair: { polyHaven: 'modern_arm_chair_01', textureSize: 512 },
+  'coffee-table': { polyHaven: 'modern_coffee_table_01', textureSize: 512 },
+  bookshelf: { polyHaven: 'wooden_bookshelf_worn', textureSize: 512 },
+  'wall-clock': { polyHaven: 'wall_clock', textureSize: 256 },
+  'side-table': { polyHaven: 'side_table_01', textureSize: 512 },
 };
 
 export const PROP_MODEL_URL = (id: PropId): string => `/models/props/${id}.glb`;
