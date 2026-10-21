@@ -86,6 +86,10 @@ export interface CharacterMotion {
   seated: boolean;
   /** On a stair flight with the feet planted on its treads, so a model's legs follow the figure. */
   stairs: boolean;
+  /** Seated with the hands placed on the seat's targets (the wheel, the lap), so a model's arms follow the figure. */
+  hands: boolean;
+  /** A turn on the spot in progress: when it began, how far it turns (radians, positive to the left) and from which facing. */
+  turn: { start: number; angle: number; from: number } | null;
 }
 
 export type ActionKind = 'lift' | 'drop' | 'throw';
@@ -103,9 +107,9 @@ export function triggerAction(character: Character, kind: ActionKind, time: numb
   character.action = { kind, start: time };
 }
 
-import { BODY } from './figure';
+import { BODY, TURN_MIN, TURN_SECONDS } from './figure';
 
-export { BODY } from './figure';
+export { BODY, TURN_MIN, TURN_SECONDS } from './figure';
 
 /**
  * Every cloth, skin and hair surface shares one roughness band, so the merge
@@ -595,7 +599,7 @@ export function animateCharacter(character: Character, dt: number, state: {
   const load = Math.max(0, Math.min(1, state.load ?? 0));
   const walking = moving && !state.reducedMotion;
   // For an imported model's clips; the pose code sets `pose`, `seated` and `holding` after this.
-  const motion = (character.motion ??= { time: state.time, moving: false, carrying: false, holding: false, reduced: false, pose: 'none', seated: false, stairs: false });
+  const motion = (character.motion ??= { time: state.time, moving: false, carrying: false, holding: false, reduced: false, pose: 'none', seated: false, stairs: false, hands: false, turn: null });
   motion.time = state.time;
   motion.moving = moving;
   motion.carrying = carrying;
@@ -604,6 +608,7 @@ export function animateCharacter(character: Character, dt: number, state: {
   motion.pose = 'none';
   motion.seated = false;
   motion.stairs = false;
+  motion.hands = false;
   if (walking) character.walkPhase += dt * 9 * speed;
   const phase = character.walkPhase;
   const swing = walking ? Math.sin(phase) : 0;
@@ -677,4 +682,63 @@ export function lookToward(character: Character, target: { x: number; z: number 
   const ease = Math.min(1, dt * 8);
   character.head.rotation.y += (yaw - character.head.rotation.y) * ease;
   character.head.rotation.x += (pitch - character.head.rotation.x) * ease;
+}
+
+
+/**
+ * Turns the root toward `target` (radians about y). A small change twists
+ * quickly, as before; a large one while standing still becomes a turn on the
+ * spot over `TURN_SECONDS`, noted on the motion record so an imported model
+ * steps round on a turn clip while the root comes round at the same pace.
+ */
+export function faceToward(character: Character, target: number, dt: number, moving: boolean, now: number): void {
+  const { root } = character;
+  const motion = character.motion;
+  const turn = motion?.turn ?? null;
+  if (turn) {
+    const progress = Math.min(1, (now - turn.start) / TURN_SECONDS);
+    // Ease in and out, the way a step round does.
+    const eased = progress * progress * (3 - 2 * progress);
+    root.rotation.y = turn.from + turn.angle * eased;
+    if (progress >= 1 && motion) motion.turn = null;
+    // A new target part way through: finish this turn first; the next frame picks the rest up.
+    return;
+  }
+  let delta = target - root.rotation.y;
+  delta = Math.atan2(Math.sin(delta), Math.cos(delta));
+  if (motion && !moving && !motion.reduced && Math.abs(delta) > TURN_MIN) {
+    motion.turn = { start: now, angle: delta, from: root.rotation.y };
+    return;
+  }
+  root.rotation.y += delta * Math.min(1, dt * 10);
+}
+
+/** Seconds a hand-built pose takes to settle in after a change. */
+export const POSE_BLEND_SECONDS = 0.22;
+
+interface PoseSnapshot { start: number; pivots: { pivot: THREE.Object3D; quaternion: THREE.Quaternion }[]; bodyY: number }
+const snapshots = new WeakMap<THREE.Object3D, PoseSnapshot>();
+const POSE_PIVOTS: (keyof Character)[] = ['head', 'leftArm', 'rightArm', 'leftForearm', 'rightForearm', 'leftHand', 'rightHand', 'leftLeg', 'rightLeg', 'leftShin', 'rightShin'];
+
+/**
+ * Remembers the figure's joints as they are, the moment a pose changes, so
+ * the new pose can be blended in from them instead of snapping.
+ */
+export function snapshotPose(character: Character, time: number): void {
+  snapshots.set(character.root, {
+    start: time,
+    pivots: POSE_PIVOTS.map((key) => { const pivot = character[key] as THREE.Object3D; return { pivot, quaternion: pivot.quaternion.clone() }; }),
+    bodyY: character.body.position.y,
+  });
+}
+
+/** Blends the joints from the last snapshot toward the pose just applied, over `POSE_BLEND_SECONDS`. */
+export function blendPose(character: Character, time: number): void {
+  const snapshot = snapshots.get(character.root);
+  if (!snapshot) return;
+  const w = (time - snapshot.start) / POSE_BLEND_SECONDS;
+  if (w >= 1 || w < 0) { snapshots.delete(character.root); return; }
+  const eased = w * w * (3 - 2 * w);
+  for (const { pivot, quaternion } of snapshot.pivots) pivot.quaternion.slerpQuaternions(quaternion, pivot.quaternion, eased);
+  character.body.position.y = snapshot.bodyY + (character.body.position.y - snapshot.bodyY) * eased;
 }

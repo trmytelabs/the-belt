@@ -2,6 +2,17 @@
 
 ## 0.1.0 — development snapshot
 
+- Loosen the 3D crew's motion (phase 5, after the owner found the gestures,
+  the house scene and the turns stiff). Seated passengers on the crew models play
+  Rocketbox seated idles, their legs kept on the seat, and look around now and
+  then (a driver keeps the whole figure so the hands stay on the wheel); standing idles are broken
+  every ten seconds or so by a look around, a scratch of the head or a stretch;
+  shouting and swearing play an angry gesture and a raised hand a wave; a big
+  change of facing while standing is a turn on the spot over 0.7 s, the model
+  stepping round on a turn clip (the converter strips the clip's own yaw) while
+  the root comes round at the same pace; and every hand-built pose now blends in
+  over 0.22 s from the joints' last positions instead of snapping, on the models
+  and the figures alike. Reduced motion keeps everything as it was.
 - Lift from the knees and climb the stairs on the treads (phase 4 of the
   models and animation plan). A grab, recovery, load or put-down on an
   imported crew model plays the Rocketbox crouch-in and crouch-out clips

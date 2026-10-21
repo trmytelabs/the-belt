@@ -5,7 +5,7 @@ import { LOT_LAYOUT, MALL_LAYOUT, type KeyReturnModel, type MallEvent } from '..
 import type { MallModel3D as MallModel } from './MallModel3D';
 import type { Cutscene } from '../game/slice/StoryModel';
 import type { StoryScene } from '../game/slice/StoryScript';
-import { animateCharacter, createCharacter, mergeCharacter, type Character, type CharacterSpec } from './characters';
+import { animateCharacter, blendPose, createCharacter, faceToward, mergeCharacter, snapshotPose, type Character, type CharacterSpec } from './characters';
 import { applyPose, type CrewLife, type Pose } from './crew';
 import { placeProp, upgradeCar } from './propModels';
 import { poseSeated, seatRootPosition, type SeatTargetPoints } from './seating';
@@ -76,16 +76,15 @@ export class StageActor {
   }
 
   public setPose(pose: Pose, time: number): void {
-    if (this.pose !== pose) { this.pose = pose; this.poseStart = time; }
+    if (this.pose !== pose) { snapshotPose(this.character, time); this.pose = pose; this.poseStart = time; }
   }
 
   public animate(dt: number, time: number, reducedMotion: boolean): void {
     const c = this.character;
-    const target = this.faceAngle ?? this.heading;
-    let delta = target - c.root.rotation.y;
-    delta = Math.atan2(Math.sin(delta), Math.cos(delta));
-    c.root.rotation.y += delta * Math.min(1, dt * 10);
     animateCharacter(c, dt, { moving: this.moved, carrying: this.carrying, time, reducedMotion });
+    // A seated figure turns with its car; a standing one turns on the spot for a big change of facing.
+    if (this.seatedIn) { if (c.motion) c.motion.turn = null; c.root.rotation.y = this.faceAngle ?? c.root.rotation.y; }
+    else faceToward(c, this.faceAngle ?? this.heading, dt, this.moved, time);
     if (c.motion) { c.motion.pose = this.pose; c.motion.seated = this.seatedIn !== null; }
     // A posed or seated figure owns its torso; a plain walk keeps the walk cycle's lean and sway.
     if (this.pose !== 'none' || this.seatedIn) c.body.rotation.set(0, 0, 0);
@@ -94,6 +93,7 @@ export class StageActor {
     // height and folded legs so they cannot stand a passenger through the roof.
     if (this.seatedIn) applyPose(c, 'sit', time - this.poseStart, reducedMotion);
     applyPose(c, this.pose, time - this.poseStart, reducedMotion);
+    blendPose(c, time);
     this.moved = false;
   }
 }
@@ -1723,7 +1723,11 @@ export class StoryStage {
     if (!targets) return;
     car.updateWorldMatrix(true, true);
     const points: SeatTargetPoints = {};
-    if (actor.pose === 'sit' && targets.hands) points.hands = { left: targets.hands.left.getWorldPosition(new THREE.Vector3()), right: targets.hands.right.getWorldPosition(new THREE.Vector3()) };
+    if (actor.pose === 'sit' && targets.hands) {
+      points.hands = { left: targets.hands.left.getWorldPosition(new THREE.Vector3()), right: targets.hands.right.getWorldPosition(new THREE.Vector3()) };
+      // The wheel is held exactly: the driver keeps the whole figure under the model (characterModels.ts).
+      if (actor.character.motion && actor.seat === 'driver') actor.character.motion.hands = true;
+    }
     if (targets.feet) points.feet = { left: targets.feet.left.getWorldPosition(new THREE.Vector3()), right: targets.feet.right.getWorldPosition(new THREE.Vector3()) };
     poseSeated(actor.character, points);
   }

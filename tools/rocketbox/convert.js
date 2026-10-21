@@ -320,7 +320,7 @@ function thinKeys(times, values, size, tolerance, quaternion) {
  * are dropped so each avatar keeps its own proportions. Returns the clip and
  * the root's natural ground speed in clip units (centimetres) per second.
  */
-function prepareClip(source, name, loop) {
+function prepareClip(source, name, loop, turn = false) {
   const tracks = [];
   let speed = 0;
   for (const track of source.tracks) {
@@ -328,8 +328,24 @@ function prepareClip(source, name, loop) {
     // Biped's footstep track and 3ds Max's motion-extraction helper are not bones of any avatar.
     if (/Footsteps|MotionExtractionHelper/.test(node)) continue;
     if (property === 'quaternion') {
-      const { times, values } = thinKeys(track.times, track.values, 4, 0.0025, true);
-      tracks.push(new THREE.QuaternionKeyframeTrack(track.name, times, values));
+      let values = track.values;
+      if (turn && node === ROOT) {
+        // A turn on the spot: the root's own yaw about the world's up axis is removed key by key, so the
+        // body keeps facing where it started while the feet step round; the game turns the character.
+        values = Float32Array.from(track.values);
+        const first = new THREE.Quaternion().fromArray(values, 0), inverse = first.clone().invert();
+        const q = new THREE.Quaternion(), relative = new THREE.Quaternion(), twist = new THREE.Quaternion();
+        for (let i = 0; i < track.times.length; i += 1) {
+          q.fromArray(values, i * 4);
+          relative.multiplyQuaternions(q, inverse);
+          // The swing-twist split about +Y: the twist is the part of the turn about the up axis.
+          twist.set(0, relative.y, 0, relative.w).normalize();
+          q.premultiply(twist.invert());
+          q.toArray(values, i * 4);
+        }
+      }
+      const thinned = thinKeys(track.times, values, 4, 0.0025, true);
+      tracks.push(new THREE.QuaternionKeyframeTrack(track.name, thinned.times, thinned.values));
     } else if (property === 'position' && node === ROOT) {
       const values = Float32Array.from(track.values);
       const n = track.times.length;
@@ -367,7 +383,7 @@ async function convertClips() {
       const group = await loadClip(path);
       skeleton ??= group;
       const raw = group.animations[0];
-      const { clip, speed } = prepareClip(raw, clipName(source.role, female), source.loop);
+      const { clip, speed } = prepareClip(raw, clipName(source.role, female), source.loop, source.turn === true);
       const keysBefore = raw.tracks.reduce((sum, track) => sum + track.times.length, 0);
       const keysAfter = clip.tracks.reduce((sum, track) => sum + track.times.length, 0);
       clips.push(clip);

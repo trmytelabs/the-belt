@@ -3,6 +3,7 @@ import { chromium } from 'playwright';
 import { preview } from 'vite';
 import { syntheticHumanoid, toGlb } from './fixtures/humanoid.mjs';
 import { ROCKETBOX_CAST } from '../src/three/rocketboxCast.ts';
+import { OPENERS } from '../src/game/slice/StoryScript.ts';
 
 // The production bundle loads a listed character model, swaps it in for the
 // procedural workers and drives it through real play. First use a synthetic
@@ -262,8 +263,75 @@ try {
   }
   assert.ok(clipRun.squatSpine < 0.02, `a pose without a clip hands the spine back to the figure (${clipRun.squatSpine})`);
   assert.ok(clipRun.reducedSpine < 0.02, `reduced motion hands the spine back to the figure (${clipRun.reducedSpine})`);
-  await page.evaluate(() => window.fixtureApp.useCharacterClips(false));
   console.log('PASS motion-captured clips move the real crew\'s spine and fingers in place, for both bodies, and hand back to the figure for unclipped poses and reduced motion');
+
+  // The loosened motion: a shout plays the angry gesture, an idle is broken by a fidget, a big change of facing
+  // steps round on a turn clip while the root comes round over the same span, and a hand-built pose blends in.
+  const loosened = await page.evaluate(() => {
+    const app = window.fixtureApp, actor = app.crew.actor('hussan'), c = actor.character;
+    let time = 200;
+    const step = (seconds, setup) => {
+      const roles = new Set();
+      for (let i = 0; i < seconds * 30; i++) {
+        time += 1 / 30;
+        setup(actor);
+        actor.animate(1 / 30, time, false); app.lastRender = -Infinity; app.draw();
+        roles.add(app.clipRoleOf(c));
+      }
+      return [...roles];
+    };
+    const out = {};
+    actor.faceAngle = c.root.rotation.y;
+    step(0.5, a => { a.pose = 'none'; a.carrying = false; });
+    out.shout = step(0.5, a => { a.pose = 'shout'; a.poseStart = time; });
+    step(0.5, a => { a.pose = 'none'; });
+    // Fourteen seconds of standing still: at least one fidget breaks the idle, then the idle returns.
+    const idleRoles = step(14, a => { a.pose = 'none'; });
+    out.fidgets = idleRoles.filter(role => ['lookAround', 'scratchHead', 'stretchArms'].includes(role));
+    // A fidget may be mid-way at the window's end; the idle returns within a few more seconds.
+    for (let guard = 0; guard < 8 && !['idle', 'idleAlt'].includes(app.clipRoleOf(c)); guard++) step(1, a => { a.pose = 'none'; });
+    out.idleBack = app.clipRoleOf(c);
+    // A half turn while standing: the root turns over about 0.7 s on a turn clip, not in a frame.
+    const facing = c.root.rotation.y;
+    actor.faceAngle = facing + Math.PI * 0.95;
+    const turnRoles = step(0.3, a => { a.pose = 'none'; });
+    out.turnRoles = turnRoles;
+    out.partWay = Math.abs(c.root.rotation.y - facing);
+    out.turning = Boolean(c.motion.turn);
+    step(0.6, a => { a.pose = 'none'; });
+    out.turned = Math.abs(Math.atan2(Math.sin(c.root.rotation.y - actor.faceAngle), Math.cos(c.root.rotation.y - actor.faceAngle)));
+    out.turnDone = c.motion.turn === null;
+    // A hand-built pose (the keys jingle has no clip) eases in from the joints' last positions.
+    const before = c.rightArm.quaternion.clone();
+    actor.setPoseAt('keys', time);
+    step(0.05, a => { a.pose = 'keys'; });
+    const early = c.rightArm.quaternion.angleTo(before);
+    step(0.5, a => { a.pose = 'keys'; });
+    const settled = c.rightArm.quaternion.angleTo(before);
+    out.blend = { early, settled };
+    return out;
+  });
+  assert.ok(loosened.shout.includes('angry'), `a shout plays the angry gesture: ${JSON.stringify(loosened.shout)}`);
+  assert.ok(loosened.fidgets.length >= 1 && ['idle', 'idleAlt'].includes(loosened.idleBack), `an idle fidgets and settles back: ${JSON.stringify(loosened)}`);
+  assert.ok(loosened.turning && loosened.turnRoles.some(role => /^turn/.test(role)) && loosened.partWay > 0.3 && loosened.partWay < 2.6, `a half turn steps round on a turn clip: ${JSON.stringify(loosened)}`);
+  assert.ok(loosened.turnDone && loosened.turned < 0.02, `and arrives facing the new way: ${JSON.stringify(loosened)}`);
+  assert.ok(loosened.blend.early < loosened.blend.settled * 0.7 && loosened.blend.settled > 0.2, `a hand-built pose blends in instead of snapping: ${JSON.stringify(loosened.blend)}`);
+  // Seated on the lot's contract seats the driver plays a seated idle with the hands kept on the wheel.
+  await page.evaluate(() => { window.fixtureApp.stage.stage('lot'); });
+  await page.waitForFunction(() => Object.entries(window.fixtureApp.stage.stages.lot.props).filter(([name]) => /^car-/.test(name)).every(([, car]) => car.userData.contract), null, { timeout: 90_000 });
+  const seated = await page.evaluate(scene => {
+    const app = window.fixtureApp;
+    app.playScene(scene);
+    const stage = app.stage.stages.lot;
+    for (let i = 0; i < 60; i++) { app.cutscene.index = 0; app.cutscene.elapsedMs = 500 + i * 30; app.stage.direct(app.cutscene, 1 / 30, 300 + i / 30); app.lastRender = -Infinity; app.draw(); }
+    const report = id => { const actor = stage.actors.get(id); return { seat: actor.seat, role: app.clipRoleOf(actor.character), hands: actor.character.motion.hands, model: Boolean(actor.root.getObjectByName('character-model')) }; };
+    return { driver: report('skanky'), passenger: report('termite') };
+  }, OPENERS[0]);
+  // The driver keeps the whole figure so the hands stay on the wheel; the passenger plays a seated idle.
+  assert.ok(seated.driver.model && seated.driver.seat === 'driver' && seated.driver.hands, `the seated driver holds the wheel on the figure: ${JSON.stringify(seated)}`);
+  assert.ok(seated.passenger.model && seated.passenger.seat === 'passenger' && !seated.passenger.hands && ['sitIdle', 'sitIdleAlt', 'sitLookAround'].includes(seated.passenger.role), `the seated passenger plays a seated idle: ${JSON.stringify(seated)}`);
+  await page.evaluate(() => window.fixtureApp.useCharacterClips(false));
+  console.log('PASS the loosened motion: angry shout, fidgets, turns on the spot, pose blending and seated idles');
   assert.deepEqual(errors, [], 'no page errors');
   console.log('PASS no page errors with imported character models');
 } finally {

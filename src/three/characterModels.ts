@@ -4,6 +4,7 @@ import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import type { Character, CharacterSpec } from './characters';
 import { ROCKETBOX_CAST } from './rocketboxCast.ts';
 import { CLIP_SPANS, CLIP_SPEEDS, CREW_CLIPS_URL, ROCKETBOX_CLIPS, clipName, type ClipRole } from './rocketboxClips.ts';
+import { TURN_SECONDS } from './figure.ts';
 
 /**
  * Imported character models (glTF/GLB with a humanoid skeleton).
@@ -110,6 +111,9 @@ interface ClipRig {
   legs: number;
   /** The lift or put-down the crouch clips are playing, by the figure action's start time. */
   lift: { start: number } | null;
+  /** The fidget breaking the idle, and when it ends; when the next may start. */
+  fidget: { role: ClipRole; until: number } | null;
+  fidgetAt: number;
   /** Every bone the figure does not drive, with its rest rotation, to blend toward the figure's (unposed) look. */
   free: { bone: THREE.Object3D; rest: THREE.Quaternion }[];
   /** `Bip01`: a bone on most avatars, a plain node on a few (it is not always a skin joint). */
@@ -124,12 +128,22 @@ interface ClipRig {
   phase: number;
 }
 
-/** Poses an imported model plays as a clip; every other pose (and seated, lying, squatting) stays the figure's. */
+/** Poses an imported model plays as a clip; every other pose (lying, squatting, the massage and the rest) stays the figure's. */
 const POSE_CLIPS: Partial<Record<string, ClipRole>> = {
   cheer: 'cheer', cough: 'cough', phone: 'phone', dance: 'dance', sip: 'sip', shrug: 'shrug', announce: 'announce', crouch: 'crouch',
+  shout: 'angry', swear: 'angry', handup: 'wave',
 };
 /** Seconds a lift or put-down takes on a model: down on the crouch-in clip, up on the crouch-out. */
 export const LIFT_SECONDS = 0.84;
+/** Seated idles for the car seats, the couch and the booths. */
+const SEATED_IDLES: ClipRole[] = ['sitIdle', 'sitIdleAlt'];
+/** Fidgets that break an idle every so often, and how long between them. */
+const STANDING_FIDGETS: ClipRole[] = ['lookAround', 'scratchHead', 'stretchArms'];
+const SEATED_FIDGETS: ClipRole[] = ['sitLookAround'];
+export const FIDGET_EVERY = 11;
+const FIDGET_MAX = 6;
+/** A turn beyond this many radians (about 135°) steps round on the 180° clip. */
+const TURN_SPLIT = 2.35;
 // Two long, lively standing idles; Rocketbox's "breathe" clips are nearly still and read as a statue.
 const IDLE_ROLES: ClipRole[] = ['idle', 'idleAlt'];
 const LOOPING = new Set(ROCKETBOX_CLIPS.filter((source) => source.loop).map((source) => source.role));
@@ -457,6 +471,8 @@ function buildClipRig(rig: ModelRig, name: string): ClipRig | null {
     arms: 1,
     legs: 1,
     lift: null,
+    fidget: null,
+    fidgetAt: FIDGET_EVERY * (0.3 + phaseOf(name)),
     free: bones.filter((bone) => !driven.has(bone)).map((bone) => ({ bone, rest: bone.quaternion.clone() })),
     root,
     rootRest: root.position.clone(),
@@ -488,23 +504,47 @@ function advanceClips(character: Character, rig: ModelRig, clips: ClipRig): void
   if (action && action.kind !== 'throw' && action.start !== clips.lift?.start && clipLibrary?.has(clipName('crouchIn', clips.female))) clips.lift = { start: action.start };
   const lift = clips.lift && now - clips.lift.start < LIFT_SECONDS && now >= clips.lift.start ? clips.lift : null;
   if (!lift) clips.lift = null;
-  // The figure's pose wins whenever a clip would be wrong: reduced motion, a seat, a throw, a pose without a clip.
+  // The figure's pose wins whenever a clip would be wrong: reduced motion, a throw, a gesture made in a seat,
+  // a pose without a clip.
   let role: ClipRole | null = null;
   let figure = 0;
-  if (!clipsWanted || !motion || motion.reduced || motion.seated || (action && !lift)) figure = 1;
+  const seated = motion?.seated === true;
+  const seatedPlain = seated && (motion!.pose === 'none' || motion!.pose === 'sit');
+  const has = (clip: ClipRole): boolean => clipLibrary?.has(clipName(clip, clips.female)) === true;
+  // A driver holding the wheel keeps the whole figure, so the hands stay exactly on the rim; a seated idle's swaying
+  // torso would carry the model's wrists off it. Other seats play the seated idle.
+  if (!clipsWanted || !motion || motion.reduced || (action && !lift) || (seated && !seatedPlain) || (seatedPlain && (motion.hands || !has('sitIdle')))) figure = 1;
   else if (lift) role = now - lift.start < LIFT_SECONDS / 2 ? 'crouchIn' : 'crouchOut';
-  else if (motion.pose !== 'none') {
+  else if (seatedPlain) role = null;
+  else if (motion.turn && has('turnLeft90')) {
+    const { angle } = motion.turn;
+    role = angle > 0 ? (angle > TURN_SPLIT ? 'turnLeft180' : 'turnLeft90') : (angle < -TURN_SPLIT ? 'turnRight180' : 'turnRight90');
+  } else if (motion.pose !== 'none') {
     role = POSE_CLIPS[motion.pose] ?? null;
     if (!role) figure = 1;
   }
   // The arms reach for the parcel from the figure while carrying, holding or lifting; the legs follow the
-  // figure's steps (and their planted feet) on a stair flight.
+  // figure's steps (and their planted feet) on a stair flight and its folded legs in a seat.
   const arms = motion && (motion.carrying || motion.holding || lift) ? 1 : 0;
-  const legs = motion?.stairs ? 1 : 0;
-  // Underneath, the walk or idle keeps playing, so a pose ends back in motion.
-  role ??= motion?.moving
-    ? clips.speed > 2.4 ? 'run' : clips.speed < 0.9 ? 'walkSlow' : 'walk'
-    : IDLE_ROLES[Math.floor(clips.phase * IDLE_ROLES.length)];
+  const legs = motion && (motion.stairs || seated) ? 1 : 0;
+  // Underneath, the walk or idle keeps playing, so a pose ends back in motion; an idle is broken every so
+  // often by a fidget, standing or seated.
+  if (!role && motion && !figure) {
+    const idle = seatedPlain ? SEATED_IDLES[Math.floor(clips.phase * SEATED_IDLES.length)]
+      : motion.moving ? (clips.speed > 2.4 ? 'run' : clips.speed < 0.9 ? 'walkSlow' : 'walk') : IDLE_ROLES[Math.floor(clips.phase * IDLE_ROLES.length)];
+    const still = seatedPlain || !motion.moving;
+    if (clips.fidget && (now >= clips.fidget.until || !still)) { clips.fidget = null; clips.fidgetAt = now + FIDGET_EVERY * (0.7 + clips.phase * 0.6); }
+    if (!clips.fidget && still && now >= clips.fidgetAt) {
+      const options = (seatedPlain ? SEATED_FIDGETS : STANDING_FIDGETS).filter(has);
+      if (options.length) {
+        const pick = options[Math.floor(((now * 7.31 + clips.phase * 13) % 1 + 1) % 1 * options.length) % options.length];
+        const duration = clipLibrary!.get(clipName(pick, clips.female))!.duration;
+        clips.fidget = { role: pick, until: now + Math.min(duration, FIDGET_MAX) };
+      } else clips.fidgetAt = now + FIDGET_EVERY;
+    }
+    role = clips.fidget?.role ?? idle;
+  }
+  role ??= IDLE_ROLES[0];
   const name = clipName(role, clips.female);
   const clip = clipLibrary?.get(name);
   if (clip && role !== clips.role) {
@@ -533,6 +573,10 @@ function advanceClips(character: Character, rig: ModelRig, clips: ClipRig): void
     // Each half of the lift plays its clip's movement in half the lift's time.
     const span = CLIP_SPANS[name];
     playing.timeScale = (span ? span[1] - span[0] : clip.duration) / (LIFT_SECONDS / 2);
+  } else if (playing && clip && role.startsWith('turn')) {
+    // The feet step round in the time the root takes to come round.
+    const span = CLIP_SPANS[name];
+    playing.timeScale = (span ? span[1] - span[0] : clip.duration) / TURN_SECONDS;
   } else if (playing) playing.timeScale = 1;
   clips.mixer.update(dt);
   const ease = clipsWanted ? Math.min(1, dt * BLEND_RATE) : 1;
@@ -601,4 +645,9 @@ function driveModel(character: Character, rig: ModelRig): void {
       );
     }
   }
+}
+
+/** The clip a character's model is playing, or null without a model or clips; for checks. */
+export function clipRoleOf(character: Character): string | null {
+  return tracked.get(character.root)?.rig?.clips?.role ?? null;
 }

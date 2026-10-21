@@ -9,7 +9,9 @@
 export type ClipRole =
   | 'idle' | 'idleAlt' | 'walk' | 'walkSlow' | 'run'
   | 'cough' | 'cheer' | 'clap' | 'wave' | 'phone' | 'crouch' | 'dance' | 'sip' | 'shrug' | 'announce'
-  | 'crouchIn' | 'crouchOut';
+  | 'crouchIn' | 'crouchOut'
+  | 'sitIdle' | 'sitIdleAlt' | 'sitLookAround' | 'lookAround' | 'scratchHead' | 'stretchArms' | 'angry'
+  | 'turnLeft90' | 'turnLeft180' | 'turnRight90' | 'turnRight180';
 
 export interface ClipSource {
   role: ClipRole;
@@ -18,6 +20,8 @@ export interface ClipSource {
   female: string;
   /** Plays on repeat; the others hold their last frame until the state changes. */
   loop: boolean;
+  /** A turn on the spot: the converter removes the root's own yaw so the game turns the character over the clip. */
+  turn?: boolean;
 }
 
 export const CREW_CLIPS_URL = '/models/animations/crew-clips.glb';
@@ -37,6 +41,21 @@ export const ROCKETBOX_CLIPS: ClipSource[] = [
   // Going down to the floor and standing back up: the lift and the put-down play these once over the figure's reach.
   { role: 'crouchIn', male: 'xy/m_crouch_in', female: 'static/f_crouch_in', loop: false },
   { role: 'crouchOut', male: 'xy/m_crouch_out', female: 'static/f_crouch_out', loop: false },
+  // Seated: two idles for the car seats, the couch and the booths, and a look around to break them.
+  { role: 'sitIdle', male: 'static/m_sit_chair_idle_neutral_01', female: 'static/f_sit_chair_idle_neutral_01', loop: true },
+  { role: 'sitIdleAlt', male: 'static/m_sit_chair_idle_relaxed_01', female: 'static/f_sit_chair_idle_relaxed_01', loop: true },
+  { role: 'sitLookAround', male: 'static/m_sit_chair_idle_look_around', female: 'static/f_sit_chair_idle_look_around', loop: false },
+  // Fidgets that break a standing idle every so often.
+  { role: 'lookAround', male: 'static/m_idle_look_around_01', female: 'static/f_idle_look_around_01', loop: false },
+  { role: 'scratchHead', male: 'static/m_idle_scratch_head_01', female: 'static/f_idle_scratch_head_01', loop: false },
+  { role: 'stretchArms', male: 'static/m_idle_stretch_arms_01', female: 'static/f_idle_stretch_arms_01', loop: false },
+  // Shouting and swearing.
+  { role: 'angry', male: 'xyz/m_gestic_talk_angry_01', female: 'static/f_gestic_talk_angry_01', loop: true },
+  // Turning on the spot; the converter strips the root's own turn so the game turns the character.
+  { role: 'turnLeft90', male: 'xyz/m_turn_left_90', female: 'xyz/f_turn_left_90', loop: false, turn: true },
+  { role: 'turnLeft180', male: 'xyz/m_turn_left_180', female: 'xyz/f_turn_left_180', loop: false, turn: true },
+  { role: 'turnRight90', male: 'xyz/m_turn_right_90', female: 'xyz/f_turn_right_90', loop: false, turn: true },
+  { role: 'turnRight180', male: 'xyz/m_turn_right_180', female: 'xyz/f_turn_right_180', loop: false, turn: true },
   { role: 'dance', male: 'static/m_dancing_cool', female: 'static/f_dancing_cool', loop: true },
   { role: 'sip', male: 'static/m_drink_drinking', female: 'static/f_drink_drinking', loop: true },
   { role: 'shrug', male: 'static/m_gestic_shrug_01', female: 'static/f_gestic_shrug_01', loop: true },

@@ -65,6 +65,13 @@ clip would be wrong:
   reach for the parcel;
 - a stair flight, where the legs follow the figure, whose feet are planted on
   the treads (`footing.ts`);
+- a seat other than a driver's, where the body plays a seated idle (and looks
+  around now and then) while the legs keep the figure's seat; a driver holding
+  the wheel, and a gesture made in a seat, keep the whole figure;
+- a turn on the spot, where the model steps round on a turn clip (its own yaw
+  stripped by the converter) while the game turns the root over the same
+  0.7 s; a standing or seated idle is broken every ten seconds or so by a
+  fidget (a look around, a scratch of the head, a stretch).
 - reduced motion, where the clips stop and the figure takes over.
 
 Termite and Skanky's head turn toward their work is added on top of the

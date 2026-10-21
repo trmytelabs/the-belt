@@ -66,8 +66,11 @@ their seats with their hands on the wheel or their lap and their feet on
 the pedals or the floor, and the body pitches under power and braking and
 leans out of a bend. On the road the 28 traffic sedans draw as three batched
 meshes that switch to a small shell at a distance, every building shows lit
-windows from one instanced draw, and the wet asphalt reflects the night. Lifts and put-downs on the crew models play the
-Rocketbox crouch clips, and on the stairs every foot stands on its own tread.
+windows from one instanced draw, and the wet asphalt reflects the night. Lifts
+and put-downs on the crew models play the Rocketbox crouch clips, on the stairs
+every foot stands on its own tread, seated crew play seated idles, standing
+idles fidget, a big turn steps round on a turn clip and every hand-built gesture
+blends in rather than snapping.
 
 The 3D game plays a whole snowy Christmas night: it starts at home, where Termite and Skanky decide whether
 to go in or quit UPS (quitting ends the night on the couch with a Wii; going in

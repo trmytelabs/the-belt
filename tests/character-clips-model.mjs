@@ -10,7 +10,8 @@ import { CLIP_SPEEDS, CREW_CLIPS_URL, ROCKETBOX_CLIPS, clipName } from '../src/t
 // the crew's own skeleton without retargeting, moves bones only by rotation
 // (each avatar keeps its proportions) and stays in place on the floor.
 const FILE = `public${CREW_CLIPS_URL}`;
-const MAX_BYTES = 6 * 1024 * 1024;
+// Forty-six clips for both bodies, the seated idles, fidgets and turns included.
+const MAX_BYTES = 8 * 1024 * 1024;
 
 /** The JSON chunk and binary chunk of a GLB file. */
 function readGlb(path) {
@@ -97,7 +98,8 @@ test('clips play in place: the game moves the character, the clip keeps only swa
   // Sway, a step's lean and a gesture's weight shift, never travel (the walk covered 150 cm a cycle before);
   // dancing moves about its spot the most. Bounds in centimetres either way across the floor.
   // Going down to the floor and standing back up shifts the hips the most after the dance.
-  const bound = (role) => (role === 'dance' ? 35 : role === 'crouchIn' || role === 'crouchOut' ? 30 : ['walk', 'walkSlow', 'run', 'idle', 'idleAlt', 'cough', 'crouch', 'shrug'].includes(role) ? 15 : 20);
+  // The angry gesture paces about; a turn on the spot steps round its own footprint.
+  const bound = (role) => (role === 'dance' ? 35 : role === 'angry' ? 50 : /^turn/.test(role) ? 40 : role === 'crouchIn' || role === 'crouchOut' ? 30 : ['walk', 'walkSlow', 'run', 'idle', 'idleAlt', 'cough', 'crouch', 'shrug'].includes(role) ? 15 : 20);
   for (const { role } of ROCKETBOX_CLIPS) {
     for (const female of [false, true]) {
       const name = clipName(role, female);

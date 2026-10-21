@@ -25,7 +25,7 @@ import {
   type StoryActor, type StoryBeat, type StoryScene,
 } from '../game/slice/StoryScript';
 import { audioSystem, type SoundEffect } from './audio';
-import { syncCharacterModels, useCharacterClips, useCharacterModels, type CharacterModelEntry } from './characterModels';
+import { clipRoleOf, syncCharacterModels, useCharacterClips, useCharacterModels, type CharacterModelEntry } from './characterModels';
 import { plantFeet } from './footing';
 import { animateCharacter, createCharacter, lookToward, mergeCharacter, triggerAction, type Character } from './characters';
 import { CrewLife } from './crew';
@@ -366,6 +366,11 @@ export class Belt3d {
   /** Turns the crew's animation clips on or off. For checks and rehearsal. */
   public useCharacterClips(enabled: boolean): Promise<void> {
     return useCharacterClips(enabled);
+  }
+
+  /** The clip a character's imported model is playing, for checks. */
+  public clipRoleOf(character: Character): string | null {
+    return clipRoleOf(character);
   }
 
   /** Fixes the next run's random choices (opener, break place, variant, time). For checks and rehearsal. */
