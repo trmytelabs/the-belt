@@ -105,10 +105,18 @@ export async function touchDriveToBay(page, cdp) {
   const steerPoint = { x: centreX, y: stick.y + stick.height / 2, id: 12 };
   let gasHeld = false, braking = false, lock = 0;
   const active = () => [...(gasHeld ? [gasPoint] : []), ...(lock ? [steerPoint] : []), ...(braking ? [brakePoint] : [])];
-  const touch = (type, touchPoints) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints });
+  // Touch events are sent without waiting for the page to handle them. On CI's
+  // software renderer each handled touch waited a frame or more, which held every
+  // decision back a second or two of driving (the trace showed the page a full
+  // decision behind the driver); the browser still delivers them in order.
+  let sent = Promise.resolve();
+  const touch = (type, touchPoints) => {
+    sent = cdp.send('Input.dispatchTouchEvent', { type, touchPoints: touchPoints.map(point => ({ ...point })) }).catch(() => {});
+  };
   // What the page registered for each contact, so a contact the page has lost is pressed again,
   // and a trace of the drive for the failure message.
   const lost = { gas: 0, brake: 0, steer: 0 }, repressed = { gas: 0, brake: 0, steer: 0 }, trace = [];
+  let settled = 0;
   const deadline = Date.now() + WALL_CAP_MS;
   try {
     for (let d = initial; withinBudget(initial, d, deadline);) {
@@ -117,29 +125,32 @@ export async function touchDriveToBay(page, cdp) {
       const input = driver(d);
       const wantGas = input.throttle > 0 && !input.reverse, wantBrake = input.brake > 0;
       const wantLock = Math.abs(input.steer) > STEER_THRESHOLD ? Math.sign(input.steer) : 0;
-      // A held contact the page no longer reports two reads running is pressed again.
-      lost.gas = gasHeld && d.touch.throttle !== 1 ? lost.gas + 1 : 0;
-      lost.brake = braking && d.touch.brake !== 1 ? lost.brake + 1 : 0;
-      lost.steer = lock && Math.sign(d.touch.x) !== lock ? lost.steer + 1 : 0;
-      if (lost.gas > 1) { gasHeld = false; repressed.gas++; await touch('touchEnd', [gasPoint]); }
-      if (lost.brake > 1) { braking = false; repressed.brake++; await touch('touchEnd', [brakePoint]); }
-      if (lost.steer > 1) { lock = 0; repressed.steer++; await touch('touchEnd', [steerPoint]); }
+      // A held contact the page still fails to report after the contacts have been
+      // steady for several reads is pressed again (a late page is not a lost contact).
+      const steady = wantGas === gasHeld && wantBrake === braking && wantLock === lock;
+      settled = steady ? settled + 1 : 0;
+      lost.gas = settled > 3 && gasHeld && d.touch.throttle !== 1 ? lost.gas + 1 : 0;
+      lost.brake = settled > 3 && braking && d.touch.brake !== 1 ? lost.brake + 1 : 0;
+      lost.steer = settled > 3 && lock && Math.sign(d.touch.x) !== lock ? lost.steer + 1 : 0;
+      if (lost.gas > 3) { gasHeld = false; lost.gas = 0; repressed.gas++; touch('touchEnd', [gasPoint]); }
+      if (lost.brake > 3) { braking = false; lost.brake = 0; repressed.brake++; touch('touchEnd', [brakePoint]); }
+      if (lost.steer > 3) { lock = 0; lost.steer = 0; repressed.steer++; touch('touchEnd', [steerPoint]); }
       if (wantGas !== gasHeld) {
         gasHeld = wantGas;
-        await touch(wantGas ? 'touchStart' : 'touchEnd', wantGas ? active() : [gasPoint]);
+        touch(wantGas ? 'touchStart' : 'touchEnd', wantGas ? active() : [gasPoint]);
       }
       if (wantBrake !== braking) {
         braking = wantBrake;
-        await touch(wantBrake ? 'touchStart' : 'touchEnd', wantBrake ? active() : [brakePoint]);
+        touch(wantBrake ? 'touchStart' : 'touchEnd', wantBrake ? active() : [brakePoint]);
       }
       if (wantLock !== lock) {
         // A held contact lifts before one lands on the other side, so the stick is never dragged.
-        if (lock) { lock = 0; await touch('touchEnd', [steerPoint]); }
+        if (lock) { lock = 0; touch('touchEnd', [steerPoint]); }
         if (wantLock) {
           lock = wantLock;
           // Just inside the rim: a press at the edge of the stick reads as full lock.
           steerPoint.x = centreX + lock * radius * 0.97;
-          await touch('touchStart', active());
+          touch('touchStart', active());
         }
       }
       if (!trace.length || d.elapsed - trace[trace.length - 1].t >= 2) {
@@ -149,7 +160,10 @@ export async function touchDriveToBay(page, cdp) {
       await page.waitForTimeout(55);
     }
     throw new Error(`The touch driver did not reach the bay: ${JSON.stringify(await readDrive(page))}\nre-pressed ${JSON.stringify(repressed)}\ntrace ${JSON.stringify(trace.slice(-80))}`);
-  } finally { await touch('touchEnd', []); }
+  } finally {
+    await sent;
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  }
 }
 
 /** Drive a direct street route with actual keys, then explicitly park. */
