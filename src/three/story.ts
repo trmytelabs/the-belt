@@ -8,7 +8,8 @@ import type { StoryScene } from '../game/slice/StoryScript';
 import { animateCharacter, createCharacter, mergeCharacter, type Character, type CharacterSpec } from './characters';
 import { applyPose, type CrewLife, type Pose } from './crew';
 import { placeProp, upgradeCar } from './propModels';
-import { followWheels, type WheelRig } from './vehicleRig';
+import { poseSeated, seatRootPosition, type SeatTargetPoints } from './seating';
+import { followWheels, type SeatName, type VehicleContract, type WheelRig } from './vehicleRig';
 import { PAVING_TILE, scaleUVs, surfaceMaterial, surfacesLoaded } from './textures';
 import { PuffField } from './fx';
 import { buildSouthgateMall, mallX, mallZ, type SouthgateMall } from './mall';
@@ -51,6 +52,8 @@ export class StageActor {
   public carrying = false;
   /** A seated passenger can contact their own vehicle; other solids still apply. */
   public seatedIn: THREE.Object3D | null = null;
+  /** Which of the vehicle's seats, so the hands and feet find their targets. */
+  public seat: SeatName | null = null;
   private readonly previous = new THREE.Vector3();
   private moved = false;
   private heading = 0;
@@ -63,6 +66,7 @@ export class StageActor {
 
   public at(x: number, z: number, y = 0): void {
     this.seatedIn = null;
+    this.seat = null;
     this.previous.copy(this.root.position);
     this.root.position.set(x, y, z);
     const dx = x - this.previous.x;
@@ -106,10 +110,15 @@ function specFor(id: string): CharacterSpec {
 }
 
 /**
- * Height of a car seat above the car's origin. The body hides the seated
- * legs, and a seated head stays under the roof (inside 1.52 m).
+ * Height of a seated figure's root above the procedural car's origin. The
+ * body hides the seated legs, and a seated head stays under the roof (inside
+ * 1.52 m). A loaded model's contract places the seats instead.
  */
 const SEAT_Y = 0.06;
+const PLAIN_SEATS: Record<SeatName, THREE.Vector3> = {
+  driver: new THREE.Vector3(-0.3, SEAT_Y, 0.36), passenger: new THREE.Vector3(-0.3, SEAT_Y, -0.36),
+  rearL: new THREE.Vector3(-0.98, SEAT_Y, -0.34), rearR: new THREE.Vector3(-0.98, SEAT_Y, 0.34),
+};
 
 /**
  * Where a car is along a path of waypoints at progress t (0..1), and which
@@ -1663,6 +1672,7 @@ export class StoryStage {
     else if (id === 'home-decision' || id === 'leave-house' || id === 'quit-night') this.directHouse(stage, cutscene, time);
     else if (id === 'mall-intro') this.directMallIntro(stage, cutscene);
     for (const actor of stage.actors.values()) if (actor.root.visible) actor.animate(dt, time, this.reducedMotion);
+    for (const actor of stage.actors.values()) if (actor.root.visible && actor.seatedIn && actor.seat) this.settleInSeat(actor);
     // Cars that moved this beat roll and steer their wheels to match.
     for (const prop of Object.values(stage.props)) if (prop.visible && prop.userData.wheels) followWheels(prop.userData.wheels as WheelRig, prop, dt);
     stage.puffs.update(dt);
@@ -1676,13 +1686,46 @@ export class StoryStage {
     this.camera.lookAt(this.cameraLook);
   }
 
-  private seat(actor: StageActor, car: THREE.Object3D, local: THREE.Vector3): void {
-    const world = car.localToWorld(local.clone());
+  /**
+   * Sits an actor in one of a car's seats. With the car's model loaded, its
+   * contract (vehicleRig.ts) says where the seat's hips are and the root
+   * stands the seat's drop below them; the procedural car keeps its old
+   * offsets, so the scene plays the same before a download lands.
+   */
+  private seat(actor: StageActor, car: THREE.Object3D, seat: SeatName): void {
+    const contract = car.userData.contract as VehicleContract | undefined;
+    const node = contract?.seats[seat]?.seat;
+    let world: THREE.Vector3;
+    if (node) {
+      car.updateWorldMatrix(true, true);
+      world = seatRootPosition(node, actor.root.scale.x);
+    } else world = car.localToWorld(PLAIN_SEATS[seat].clone());
     actor.root.visible = true;
     actor.at(world.x, world.z, world.y);
     actor.seatedIn = car;
+    actor.seat = seat;
     actor.faceAngle = car.rotation.y + Math.PI / 2;
+    // A seated figure turns with the car, not a few frames behind it: eased round, it would
+    // reach for the wheel and the pedals from the wrong way while the car swings into a stall.
+    actor.root.rotation.y = actor.faceAngle;
     actor.pose = 'sit';
+  }
+
+  /**
+   * Hands on the wheel or the lap and feet on the pedals or the floor, from
+   * the car's contract. A gesture (the phone, a hand up) keeps the arms it
+   * posed; only a plain seat puts the hands down. The procedural car has no
+   * contract and keeps the sit pose as it was.
+   */
+  private settleInSeat(actor: StageActor): void {
+    const car = actor.seatedIn!;
+    const targets = (car.userData.contract as VehicleContract | undefined)?.seats[actor.seat!];
+    if (!targets) return;
+    car.updateWorldMatrix(true, true);
+    const points: SeatTargetPoints = {};
+    if (actor.pose === 'sit' && targets.hands) points.hands = { left: targets.hands.left.getWorldPosition(new THREE.Vector3()), right: targets.hands.right.getWorldPosition(new THREE.Vector3()) };
+    if (targets.feet) points.feet = { left: targets.feet.left.getWorldPosition(new THREE.Vector3()), right: targets.feet.right.getWorldPosition(new THREE.Vector3()) };
+    poseSeated(actor.character, points);
   }
 
   private placeCar(car: THREE.Object3D, x: number, z: number, heading: number): void {
@@ -1710,8 +1753,8 @@ export class StoryStage {
       const run = ease(cueProgress(cutscene, 'pair-run'));
       const inside = ease(cueProgress(cutscene, 'walk-in'));
       if (run <= 0) {
-        this.seat(a('skanky'), car, new THREE.Vector3(-0.3, SEAT_Y, 0.36));
-        this.seat(a('termite'), car, new THREE.Vector3(-0.3, SEAT_Y, -0.36));
+        this.seat(a('skanky'), car, 'driver');
+        this.seat(a('termite'), car, 'passenger');
       } else {
         for (const [who, offset] of [['skanky', -0.6], ['termite', 0.6]] as const) {
           const actor = a(who);
@@ -1754,8 +1797,8 @@ export class StoryStage {
         : [[x, z], [x * 0.25, 3.8], [0, 2.6], [0, -3.6], [stall, -3.6], [stall, -8.4]];
       const at = go <= 0 ? { x, z, h: toGate } : alongPath(path, ease(go));
       this.placeCar(car, at.x, at.z, at.h);
-      this.seat(a(driver), car, new THREE.Vector3(-0.3, SEAT_Y, 0.36));
-      if (name === 'car-skanky') this.seat(a('termite'), car, new THREE.Vector3(-0.3, SEAT_Y, -0.36));
+      this.seat(a(driver), car, 'driver');
+      if (name === 'car-skanky') this.seat(a('termite'), car, 'passenger');
     });
     if (id === 'opener-1') {
       a('doris').setPose(cueProgress(cutscene, 'doris-smoke') > 0 ? 'phone' : 'sit', time);
@@ -1956,7 +1999,7 @@ export class StoryStage {
       skanky.faceAngle = null;
       const step = alongPath([[9.5, -12.8], [0.5, -3.0], [-8.3, -3.0], [-8.3, -4.9]], walk);
       skanky.at(step.x, step.z);
-    } else this.seat(skanky, car, new THREE.Vector3(-0.3, SEAT_Y, 0.36));
+    } else this.seat(skanky, car, 'driver');
     const phone = props.phoneGlow as THREE.PointLight;
     const phoneOn = cueProgress(cutscene, 'phone') > 0 && leave <= 0;
     phone.intensity = phoneOn ? 4 + Math.sin(time * 6) : 0;
@@ -2023,8 +2066,8 @@ export class StoryStage {
       outside = out > 0.42 || start > 0;
       props.door.rotation.y = out > 0.2 && out < 0.8 ? -1.4 * Math.sin((out - 0.2) / 0.6 * Math.PI) : 0;
       if (start > 0) {
-        this.seat(skanky, car, new THREE.Vector3(-0.3, SEAT_Y, 0.36));
-        this.seat(termite, car, new THREE.Vector3(-0.3, SEAT_Y, -0.36));
+        this.seat(skanky, car, 'driver');
+        this.seat(termite, car, 'passenger');
         headlights(true);
         if (start < 1 && Math.random() < 0.3) {
           stage.puffs.emit(car.localToWorld(new THREE.Vector3(-2.3, 0.3, 0.5)), { color: 0xb8bcc0, size: 0.14, life: 1.6, velocity: new THREE.Vector3(0, 0.3, -0.6), opacity: 0.35, grow: 3 });

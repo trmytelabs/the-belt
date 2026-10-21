@@ -2,6 +2,20 @@
 
 ## 0.1.0 — development snapshot
 
+- Seat the 3D crew properly in their cars (phase 2 of the models and
+  animation plan). The sedans' generated interior now carries a vehicle
+  contract of named empties: four seats, the steering wheel, the driver's
+  wrist targets on the rim, every seat's resting hands and feet, and a
+  suspension pivot. Drivers and passengers in the UPS lot and on the drive
+  in from home sit with their hips on the seats; two-bone inverse kinematics
+  on the figure's own pivots puts the driver's hands on the wheel (unless a
+  gesture owns the arms), the passengers' hands on their laps and everyone's
+  feet on the pedals or the floor, and the imported models follow their
+  figures as before. The steering wheel turns with the front wheels, and the
+  car and five-ton bodies pitch under power and braking, lean out of a bend
+  and jolt on a bump. Skanky and Termite ride in the car on the commute. A
+  clearance suite now checks every seated joint stays inside the cabin and
+  on its targets instead of only under the roof line.
 - Remove the 2D depot. The 3D depot is the only night shift; its briefing,
   results screen and WebGL fallback offer the original full shift
   (`?mode=classic`) instead of `?mode=2d`, which now opens the 3D depot like

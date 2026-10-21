@@ -244,6 +244,17 @@ Working days for one developer. Each phase is one or more PRs stacked on
 the current chain; every new path keeps the existing one as its fallback so
 the game stays playable at every merge.
 
+**Progress (2026-10-21).** Phase 0 (#36, #37, #38) and phase 1 (#39) are
+merged. Phase 2 is done: the contract loader and synthesis
+(`vehicleRig.ts`, `vehicleInterior.ts`), seats, the steering wheel, hand and
+foot IK on the figure's pivots (`seating.ts`), the suspension, and Skanky
+and Termite riding the commute. Seated occupants keep the figure's `sit`
+pose under the solver rather than a `steer_idle` clip, since the figure's
+pivots already drive the imported models and the software fallback alike;
+seated clips remain with the deferred turn and sit-down clips. The five-ton
+carries no occupant because the Kenney cab's windows are opaque in its
+single palette material.
+
 | Phase | Objective | Files | Actions | Depends on | Effort | Risks | Tests affected and replacement | Done when |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | **0 Quick wins** (PRs 0a lighting, 0b vehicles, 0c crew) | Visible gains, no architecture | `main3d.ts`, `story.ts`, `driving.ts`, `propModels.ts`, `world.ts`, `public/textures`, `tools/rocketbox` | Environment maps per scene; lot and road lights and shadows; chase camera reframe; unmerge and spin sedan wheels; clearcoat paint; generated interior; snow and asphalt PBR; crew reconvert with normal maps | HDRI and texture downloads (owner) | 6 days | Bloom and envMap over-brighten the sodium lamps; `character-cast.mjs` size cap | `driving-model.mjs` camera numbers re-baselined; `prop-model-browser.mjs` keeps the headlight-material and vertex checks, box test loosened to length; `character-cast.mjs` cap 2.5 MB; `three-textures.mjs` budget updated | Shots retaken; lighting, camera and vehicle ratings up by 2 |

@@ -1,12 +1,15 @@
 import * as THREE from 'three';
 import { DrivingModel, type DriveDestination } from './DrivingModel';
 import { CITY, CITY_BUILDINGS, CITY_SIGNALS, DESTINATIONS, TERMINALS, signalColor, streetExtent, type CityAxis, type CityPoint, type CitySignal } from './drivingCity';
-import { createTruck } from './world';
+import { SKANKY_SPEC, TERMITE_SPEC, createTruck } from './world';
 import { createCar } from './story';
 import { standard, textPlane } from './space';
 import { mergeStatic } from './merge';
 import { disposeObject3D } from './resources';
-import { followWheels, type WheelRig } from './vehicleRig';
+import { createSuspension, followWheels, settleSuspension, type SeatName, type VehicleContract, type WheelRig } from './vehicleRig';
+import { animateCharacter, createCharacter, mergeCharacter, type Character } from './characters';
+import { applyPose } from './crew';
+import { poseSeated, seatRootPosition, type SeatTargetPoints } from './seating';
 import { PAVING_TILE, scaleUVs, surfaceMaterial } from './textures';
 import { DrivingModels } from './drivingModels';
 import { DrivingNavigation } from './drivingNavigation';
@@ -40,10 +43,17 @@ export class DrivingView {
   private readonly reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   /** A decaying knock to the chase camera after a bump, in metres. */
   private jolting = 0;
+  /** The body's springs, and the kick a bump gives them this frame. */
+  private readonly springs = createSuspension();
+  private bump = 0;
+  /** Skanky at the wheel of his own car with Termite beside him on the drive in; the five-ton's cab is solid and carries no one. */
+  private readonly occupants: { name: string; character: Character; seat: SeatName }[] = [];
+  private readonly seatPoint = new THREE.Vector3();
 
-  /** Rattles the chase camera: a cone is a tap, a car or a building a thump. */
+  /** Rattles the chase camera and the suspension: a cone is a tap, a car or a building a thump. */
   public jolt(amount: number): void {
     this.jolting = Math.max(this.jolting, amount);
+    this.bump = Math.max(this.bump, amount);
   }
 
   constructor(quality: 'high' | 'low') {
@@ -184,6 +194,15 @@ export class DrivingView {
     rearBadge.position.set(-3.13, 1.95, 0); rearBadge.rotation.y = -Math.PI / 2; this.truck.add(rearBadge);
     scene.add(this.truck);
     this.car.userData.keep = true; this.car.visible = false; scene.add(this.car);
+    for (const [spec, seat] of [[SKANKY_SPEC, 'driver'], [TERMITE_SPEC, 'passenger']] as const) {
+      const character = createCharacter(spec);
+      mergeCharacter(character);
+      character.root.userData.keep = true;
+      character.root.visible = false;
+      character.nameTag.visible = false;
+      scene.add(character.root);
+      this.occupants.push({ name: spec.name, character, seat });
+    }
     this.headlight = new THREE.SpotLight(0xffe2ae, quality === 'high' ? 95 : 65, 40, 0.55, 0.65, 1.3);
     this.headlight.position.set(3.2, 1.1, 0);
     this.headlight.target.position.set(24, 0, 0);
@@ -249,6 +268,11 @@ export class DrivingView {
   /** The vehicle the player drives: the five-ton by default, or Skanky's car. */
   public get vehicle(): THREE.Group { return this.car.visible ? this.car : this.truck; }
 
+  /** Who is riding where, for checks. */
+  public occupantReport(): { name: string; seat: SeatName; character: Character }[] {
+    return this.occupants.map(({ name, seat, character }) => ({ name, seat, character }));
+  }
+
   public begin(model: DrivingModel, vehicle: 'truck' | 'car' = 'truck'): void {
     this.truck.visible = vehicle === 'truck';
     this.car.visible = vehicle === 'car';
@@ -301,6 +325,10 @@ export class DrivingView {
       if (object.userData.wheels) followWheels(object.userData.wheels as WheelRig, object, dt);
     }
     if (this.vehicle.userData.wheels) followWheels(this.vehicle.userData.wheels as WheelRig, this.vehicle, dt);
+    // The body settles on its springs: nose up under power, down under braking, leaning out of a bend; a bump kicks it.
+    settleSuspension(this.springs, (this.vehicle.userData.suspension as THREE.Object3D | undefined) ?? null, model.paused ? 0 : dt, { speed: model.speed, steer: model.steer, jolt: this.bump * 4 });
+    this.bump = 0;
+    this.seatOccupants(model, model.paused ? 0 : dt);
     // The moon's shadow camera follows the vehicle on a 2 m grid, so the shadows do not swim.
     const anchorX = Math.round(p.x / 2) * 2, anchorZ = Math.round(p.z / 2) * 2;
     this.moon.position.set(anchorX - 30, 50, anchorZ - 20);
@@ -320,6 +348,35 @@ export class DrivingView {
     this.snow.follow(this.vehicle.position);
     this.snow.update(model.paused ? 0 : dt, this.reducedMotion);
     this.navigation.update(model, this.camera);
+  }
+
+  /**
+   * Sits the occupants in the car from its contract (vehicleRig.ts): hips on
+   * the seats, the driver's hands on the wheel, everyone's feet on the floor.
+   * Until the car's model and contract have loaded, and in the five-ton, they
+   * stay hidden.
+   */
+  private seatOccupants(model: DrivingModel, dt: number): void {
+    const vehicle = this.vehicle;
+    const contract = this.car.visible ? vehicle.userData.contract as VehicleContract | undefined : undefined;
+    let placed = false;
+    for (const { character, seat } of this.occupants) {
+      const targets = contract?.seats[seat];
+      character.root.visible = targets !== undefined;
+      if (!targets) continue;
+      if (!placed) { vehicle.updateWorldMatrix(true, true); placed = true; }
+      character.root.position.copy(seatRootPosition(targets.seat, character.root.scale.x, this.seatPoint));
+      character.root.rotation.y = vehicle.rotation.y + Math.PI / 2;
+      animateCharacter(character, dt, { moving: false, time: model.elapsed, reducedMotion: this.reducedMotion });
+      if (character.motion) { character.motion.pose = 'sit'; character.motion.seated = true; }
+      character.body.rotation.set(0, 0, 0);
+      character.head.rotation.set(0, 0, 0);
+      applyPose(character, 'sit', model.elapsed, this.reducedMotion);
+      const points: SeatTargetPoints = {};
+      if (targets.hands) points.hands = { left: targets.hands.left.getWorldPosition(new THREE.Vector3()), right: targets.hands.right.getWorldPosition(new THREE.Vector3()) };
+      if (targets.feet) points.feet = { left: targets.feet.left.getWorldPosition(new THREE.Vector3()), right: targets.feet.right.getWorldPosition(new THREE.Vector3()) };
+      poseSeated(character, points);
+    }
   }
 
   public dispose(): void { this.disposed = true; this.models.dispose(); disposeObject3D(this.scene); this.traffic.clear(); this.cones.clear(); }

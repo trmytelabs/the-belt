@@ -77,6 +77,32 @@ try {
     const app = window.fixtureApp, view = app.drivingView;
     return { origin: app.driving.origin, destination: app.driving.destination, chapter: app.story.chapter, car: view.car.visible, truck: view.truck.visible };
   }), { origin: 'home', destination: 'ups', chapter: 'commute', car: true, truck: false }, "Skanky's car drives from home to UPS");
+  // Skanky is at the wheel with Termite beside him, sat on the car's contract: hands on the
+  // rim and the lap, feet on the pedals and the floor, nothing outside the cabin.
+  await wait(() => window.fixtureApp.drivingView.car.userData.contract);
+  const seated = await page.evaluate(() => {
+    const app = window.fixtureApp, view = app.drivingView, car = view.car, contract = car.userData.contract;
+    view.update(app.driving, 1 / 60);
+    car.updateWorldMatrix(true, true);
+    const vector = (x = 0, y = 0, z = 0) => car.position.clone().set(x, y, z);
+    const world = object => object.getWorldPosition(vector());
+    const ankle = shin => shin.localToWorld(vector(0, -0.4, 0));
+    return view.occupantReport().map(({ name, seat, character: c }) => {
+      const targets = contract.seats[seat];
+      const local = p => car.worldToLocal(p.clone()).toArray().map(v => +v.toFixed(2));
+      return { name, seat, visible: c.root.visible, tag: c.nameTag.visible,
+        hands: [world(c.leftHand).distanceTo(world(targets.hands.left)), world(c.rightHand).distanceTo(world(targets.hands.right))].map(d => +d.toFixed(3)),
+        feet: [ankle(c.leftShin).distanceTo(world(targets.feet.left)), ankle(c.rightShin).distanceTo(world(targets.feet.right))].map(d => +d.toFixed(3)),
+        head: local(world(c.head)), hips: local(world(c.leftLeg)) };
+    });
+  });
+  assert.equal(seated.length, 2, JSON.stringify(seated));
+  for (const person of seated) {
+    assert.ok(person.visible && !person.tag, `${person.name} rides without a floating name: ${JSON.stringify(person)}`);
+    assert.ok(person.hands.every(d => d <= 0.02) && person.feet.every(d => d <= 0.02), `${person.name}'s hands and feet on the ${person.seat} targets: ${JSON.stringify(person)}`);
+    assert.ok(person.head[1] < 1.45 - 0.14 && person.head[1] > 1.0 && Math.abs(person.head[2]) < 0.76 && person.hips[1] > 0.5, `${person.name} sits inside the cabin: ${JSON.stringify(person)}`);
+  }
+  assert.equal(seated[0].seat, 'driver'); assert.equal(seated[0].name, 'SKANKY'); assert.equal(seated[1].name, 'TERMITE');
   await page.keyboard.press('Enter');
   assert.equal(await page.evaluate(() => window.fixtureApp.state), 'driving', 'Enter cannot skip the drive');
   const keys = await driveToBay(page);
