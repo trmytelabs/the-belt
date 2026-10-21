@@ -114,6 +114,8 @@ const CSS = `
 .b3d-panel .grade ~ :nth-child(13) { animation-delay: 1.12s; }
 .b3d-panel .grade ~ :nth-child(14) { animation-delay: 1.19s; }
 .b3d-panel .grade ~ :nth-child(15) { animation-delay: 1.26s; }
+/* A long night's later lines (the mall run, the road, the sum and the total) rise together last rather than first. */
+.b3d-panel .grade ~ :nth-child(n+16) { animation-delay: 1.33s; }
 @keyframes b3d-stamp { 0% { transform: scale(2.6) rotate(-14deg); opacity: 0; } 60% { transform: scale(.92) rotate(2deg); opacity: 1; } 100% { transform: none; opacity: 1; } }
 @keyframes b3d-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .b3d-panel .grade, .b3d-panel .grade ~ * { animation: none; } }
@@ -139,6 +141,7 @@ const CSS = `
 .b3d-howto summary::-webkit-details-marker { display: none; }
 .b3d-howto summary::before { content: '▸ '; color: #edb765; }
 .b3d-howto[open] summary::before { content: '▾ '; }
+.b3d-panel p.b3d-sum { margin-top: 10px; padding-top: 8px; border-top: 1px solid #3b5a62; color: #9fb4b4; font-size: 13px; letter-spacing: .5px; }
 .b3d-trend { display: flex; align-items: flex-end; gap: 4px; height: 48px; margin: 4px 0 8px; border-bottom: 1px solid #3b5a62; }
 .b3d-trend span { flex: 1; min-width: 6px; border-radius: 2px 2px 0 0; background: #edb765; }
 .b3d-trend span.failed { background: #5d7173; }

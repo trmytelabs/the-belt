@@ -449,6 +449,9 @@ try {
   assert.match(results, /MALL RUN · 6\/6 delivered · 6\/6 signed · five-ton returned · \+300/);
   assert.match(results, /1 broken \(−150 points\)/);
   assert.match(results, /NIGHT TOTAL/);
+  // The line above the total adds it up: the shift, the goals, the mall run and par, less the road.
+  const sum = await read(() => { const app = window.fixtureApp; return { text: document.querySelector(".b3d-sum").textContent, parts: [app.model.score, app.goalBonus, app.mallBonus, app.driveBonus, app.drivingPenalty] }; });
+  assert.equal(sum.text, `SHIFT ${sum.parts[0]} + NIGHT GOALS ${sum.parts[1]} + MALL RUN ${sum.parts[2]} + ON PAR ${sum.parts[3]} − ROAD ${sum.parts[4]}`);
   // Tonight's goals: named in the results with a tick or a cross each, and paid into the night total.
   assert.match(results, /NIGHT GOALS · [0-3] OF 3 · [✓✗] Load 8 in a row · [✓✗] Finish with no wrong drops · [✓✗] Make 3 priority parcels on time · [+](0|150|300|450)/);
   // The first night in a fresh browser is a personal best, and the record is kept for the next.

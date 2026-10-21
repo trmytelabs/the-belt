@@ -2,6 +2,9 @@
 
 ## 0.1.0 — development snapshot
 
+- Add up the 3D night total on the results: a line above it lists the shift’s
+  points, the night goals, the mall run and the par bonus, less the road
+  deductions.
 - Play a short rising chime on the 3D results for a promotion or a new medal,
   one note longer for a new personal best (and for a new endless best).
 - Fold the 3D briefing's HOW TO PLAY section into its one-line summary once a
