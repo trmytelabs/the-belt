@@ -43,3 +43,21 @@ test('a short lamp below the line of sight is passed over', () => {
   const camera = v(-18, 6, 0);
   assert.equal(pullClear(v(0, 5, 0), camera, [blocker(-9, 0, 0.3, 0.3, 3, 0.4)]), false);
 });
+
+test('beside a building in a tight turn, the camera comes nearer than its minimum rather than stop inside the wall', () => {
+  // The wall's padded face is 2.5 m from the roof, inside the 3.5 m minimum: held there, the camera would be in the building.
+  const wall = blocker(-11.5, 0, 17, 10, 30, 0.5);
+  const camera = v(-9, 4.5, 0);
+  assert.equal(pullClear(v(0, 3.6, 0), camera, [wall], 0.4, 3.5), true);
+  assert.equal(wall.containsPoint(camera), false, `out of the wall: ${camera.toArray()}`);
+  assert.ok(camera.x > -2.5 && camera.x < -1.5, `just short of its face, less the margin: ${camera.x}`);
+  // With room to spare, the minimum still holds.
+  const far = blocker(-14, 0, 4, 10, 30, 0.5);
+  const roomy = v(-20, 4.5, 0);
+  pullClear(v(0, 3.6, 0), roomy, [far], 0.4, 3.5);
+  assert.ok(roomy.x < -10.9, `held well out: ${roomy.x}`);
+  const near = blocker(-5, 0, 2, 10, 30, 0.5);
+  const held = v(-9, 4.5, 0);
+  pullClear(v(0, 3.6, 0), held, [near], 0.4, 3.5);
+  assert.ok(Math.abs(held.distanceTo(v(0, 3.6, 0)) - 3.5) < 1e-9 && !near.containsPoint(held), 'kept at the minimum when that is clear');
+});

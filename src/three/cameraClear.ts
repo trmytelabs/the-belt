@@ -15,9 +15,10 @@ const point = new THREE.Vector3();
 
 /**
  * Pulls `camera` toward `anchor` (a point on the vehicle) until the segment
- * between them stays `margin` clear of every box, but never nearer the anchor
- * than `minDistance`; returns true when it moved. A camera already inside a
- * box comes out to that box's near side.
+ * between them stays `margin` clear of every box, but no nearer the anchor
+ * than `minDistance` unless that would still leave it inside a box (a
+ * building hard by the vehicle in a tight turn); returns true when it moved.
+ * A camera already inside a box comes out to that box's near side.
  */
 export function pullClear(anchor: THREE.Vector3, camera: THREE.Vector3, boxes: readonly THREE.Box3[], margin = 0.4, minDistance = 0.5): boolean {
   direction.subVectors(camera, anchor);
@@ -30,7 +31,10 @@ export function pullClear(anchor: THREE.Vector3, camera: THREE.Vector3, boxes: r
     if (hit !== null && hit < nearest) nearest = hit;
   }
   if (nearest === Infinity) return false;
-  const distance = Math.max(minDistance, nearest - margin);
+  const clear = Math.max(0, nearest - margin);
+  let distance = Math.max(minDistance, clear);
+  // Held at minDistance the camera can still be inside the box it was pulled from; then it comes as near as it has to.
+  if (distance > clear && boxes.some((box) => box.containsPoint(point.copy(anchor).addScaledVector(direction, distance)))) distance = clear;
   if (distance >= length) return false;
   camera.copy(point.copy(anchor).addScaledVector(direction, distance));
   return true;

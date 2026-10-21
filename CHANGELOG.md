@@ -2,6 +2,10 @@
 
 ## 0.1.0 — development snapshot
 
+- Keep the 3D chase camera out of a building in a tight turn beside it. The
+  camera stopped no nearer than 3.5 m from the truck's roof even when that
+  point was inside the wall, which showed as a moment of black; it now comes
+  as near as it has to in that case.
 - Show tonight’s perk on the 3D HUD as a gold chip after the goal chips
   (PERK · ROOMY RECOVERY, for example).
 - Pause the 3D game when the controller in use drops out mid-play (a flat
