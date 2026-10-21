@@ -7,13 +7,18 @@
  */
 
 import { MEDAL_IDS } from './medals.ts';
+import { cleanPace } from './pace.ts';
 
 export const RECORD_KEY = 'the-belt:3d-record:v1';
 export const OPENER_COUNT = 3;
 /** How many nights the recent list keeps, newest first. */
 export const RECENT_NIGHTS = 8;
 
-export interface BestNight { total: number; grade: string; sorted: number; date: string }
+export interface BestNight {
+  total: number; grade: string; sorted: number; date: string;
+  /** The shift's score every five seconds (`pace.ts`), for later nights to race; absent for a best set before it was kept. */
+  pace?: number[];
+}
 /** One night in the recent list: its number among the nights played, and how it went. */
 export interface RecentNight { night: number; won: boolean; total: number; grade: string; sorted: number; peak: boolean; date: string }
 /** The longest endless shift: freight dispatched (what ranks it), then seconds survived and points. */
@@ -33,7 +38,7 @@ export interface NightRecord {
   /** The last `RECENT_NIGHTS` nights, finished or failed, newest first. */
   recent: RecentNight[];
 }
-export interface NightResult { won: boolean; total: number; grade: string; sorted: number; opener: string; date: string; peak?: boolean }
+export interface NightResult { won: boolean; total: number; grade: string; sorted: number; opener: string; date: string; peak?: boolean; pace?: number[] }
 
 /** The subset of the Web Storage API the record needs, so the model tests can hand in a stand-in. */
 export interface RecordStorage { getItem(key: string): string | null; setItem(key: string, value: string): void }
@@ -48,8 +53,9 @@ export function loadRecord(storage: RecordStorage | null): NightRecord {
     const raw = storage?.getItem(RECORD_KEY);
     if (!raw) return emptyRecord();
     const data = JSON.parse(raw) as Partial<NightRecord>;
+    const bestPace = data.best && typeof data.best === 'object' ? cleanPace(data.best.pace) : undefined;
     const best = data.best && typeof data.best === 'object' && Number.isFinite(data.best.total)
-      ? { total: count(data.best.total), grade: String(data.best.grade ?? '').slice(0, 2), sorted: count(data.best.sorted), date: String(data.best.date ?? '').slice(0, 10) }
+      ? { total: count(data.best.total), grade: String(data.best.grade ?? '').slice(0, 2), sorted: count(data.best.sorted), date: String(data.best.date ?? '').slice(0, 10), ...(bestPace ? { pace: bestPace } : {}) }
       : null;
     const openers = Array.isArray(data.openers) ? [...new Set(data.openers.filter((id): id is string => typeof id === 'string' && /^opener-\d$/.test(id)))] : [];
     const played = count(data.played);
@@ -90,7 +96,7 @@ export function recordNight(record: NightRecord, night: NightResult): { record: 
     record: {
       played: record.played + 1,
       completed: record.completed + (night.won ? 1 : 0),
-      best: newBest ? { total: night.total, grade: night.grade, sorted: night.sorted, date: night.date } : previous,
+      best: newBest ? { total: night.total, grade: night.grade, sorted: night.sorted, date: night.date, ...(cleanPace(night.pace) ? { pace: cleanPace(night.pace) } : {}) } : previous,
       openers: record.openers.includes(night.opener) ? record.openers : [...record.openers, night.opener],
       medals: record.medals,
       endless: record.endless,

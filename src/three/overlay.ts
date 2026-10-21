@@ -31,6 +31,8 @@ const CSS = `
 .b3d-goal-chips span.perk { border-color: #edb76588; color: #edb765; }
 /* HUD feedback: the score rolls up and jumps on a gain, shakes on a loss; a streak warms up and catches fire; the last half minute ticks red. */
 .b3d-stat b { transition: color .25s; transform-origin: left center; }
+.b3d-pace { margin-top: 1px; font-size: 10px; font-weight: 700; letter-spacing: 1px; color: #8fdca5; }
+.b3d-pace.behind { color: #f19a8a; }
 .b3d-stat b.gain { color: #ffd98a; animation: b3d-bump .35s ease-out; }
 .b3d-stat b.loss { color: #ff7a5c; animation: b3d-shake .3s ease-out; }
 @keyframes b3d-bump { 0% { transform: scale(1.18); } 100% { transform: scale(1); } }
@@ -245,6 +247,8 @@ export interface HudState {
   phase: string; combo: number; worker: 'termite' | 'skanky'; hint: string; brake: string; overview: boolean; routes?: string; scanner?: string;
   /** The clock's label when it shows something other than the time left (the endless shift's time survived). */
   clockLabel?: string;
+  /** Tonight's score against the best night's at the same moment (`pace.ts`); null or absent hides it. */
+  pace?: number | null;
   /** Tonight's goals as HUD chips, and tonight's perk after them. */
   goals?: { text: string; state: 'met' | 'open' | 'lost' | 'perk' }[];
 }
@@ -297,7 +301,7 @@ export class Overlay {
       <div class="b3d-top">
         <div class="b3d-brand"><b>THE BELT</b><small>NIGHT SORT SIMULATOR</small></div>
         <div class="b3d-stat"><small>DISPATCHED</small><b data-f="sorted">00</b><div class="b3d-progress"><i data-f="bar"></i></div></div>
-        <div class="b3d-stat"><small>YOUR SCORE</small><b data-f="score">00000</b></div>
+        <div class="b3d-stat"><small>YOUR SCORE</small><b data-f="score">00000</b><span class="b3d-pace" data-f="pace" hidden></span></div>
         <div class="b3d-stat time"><small data-f="timelabel">TIME LEFT</small><b data-f="time">03:00</b></div>
         <div class="b3d-stat"><small>RECOVERY</small><div class="b3d-pips" data-f="pips"></div><span class="b3d-backlog" data-f="backlog"></span></div>
         <div class="b3d-phase"><span data-f="phase"></span><em data-f="combo"></em><div class="b3d-goal-chips" data-f="goals" aria-label="Tonight's goals and perk"></div></div>
@@ -476,6 +480,13 @@ export class Overlay {
     const label = state.clockLabel ?? 'TIME LEFT';
     if (f.timelabel.textContent !== label) f.timelabel.textContent = label;
     this.scoreTo(state.score);
+    const pace = state.pace ?? null;
+    f.pace.hidden = pace === null;
+    if (pace !== null) {
+      const text = `${pace >= 0 ? '+' : '−'}${Math.abs(pace)} VS BEST`;
+      if (f.pace.textContent !== text) f.pace.textContent = text;
+      f.pace.classList.toggle('behind', pace < 0);
+    }
     const seconds = Math.ceil(state.timeLeftMs / 1000);
     f.time.textContent = `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
     if (f.pips.childElementCount !== state.capacity) f.pips.innerHTML = '<i></i>'.repeat(state.capacity);

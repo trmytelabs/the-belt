@@ -5,6 +5,7 @@ import { GOAL_BONUS, judgeGoals, nightGoals, type NightGoal } from './nightGoals
 import { MEDALS, awardMedals, type NightFacts } from './medals';
 import { perkById, perkOffer, type Perk } from './perks';
 import { rankNeeds, seniority } from './seniority';
+import { PACE_STEP_MS, paceAt, samplePace } from './pace';
 import { sortingGuide } from './sortingGuide';
 import { pathLength, platformWalkPath, walkPath, type WalkPoint } from './walking';
 import * as THREE from 'three';
@@ -143,6 +144,8 @@ export class Belt3d {
   /** Tonight's three goals, chosen by the nights on record, and the live ones already announced. */
   public goals: NightGoal[] = nightGoals(this.record.played);
   private readonly goalsAnnounced = new Set<string>();
+  /** Tonight's shift score every five seconds, kept with the record if tonight becomes the best night. */
+  private paceSamples: number[] = [];
   /** Whether the streak was on fire last frame, so the faster walk is announced once per streak. */
   private wasOnFire = false;
   /** What the goals paid at the last results. */
@@ -1035,6 +1038,7 @@ export class Belt3d {
     this.model = new ShiftModel3D();
     this.goals = nightGoals(this.record.played);
     this.goalsAnnounced.clear();
+    this.paceSamples = [];
     this.goalBonus = 0;
     this.perk = null;
     this.perkInPlay = null;
@@ -1202,6 +1206,7 @@ export class Belt3d {
     if (this.state === 'playing') {
       m.laneObstacles = this.crew.patrolObstacles;
       m.update(dt * 1000, this.movement());
+      if (!m.endless) samplePace(this.paceSamples, m.elapsedMs, m.score);
       for (const event of m.drainEvents()) this.handleEvent(event);
       this.crew.watcher = m.inspection ? this.watcherName === 'VIC' ? 'vic' : 'shan' : null;
       this.announceGoals();
@@ -1307,6 +1312,14 @@ export class Belt3d {
     this.overlay.update(dt * 1000, speechClock, camera, size.x, size.y);
   }
 
+  /** Tonight's score less the best night's at the same moment of the shift, while sorting; null with nothing to race. */
+  private paceGap(): number | null {
+    const m = this.model;
+    if (this.state !== 'playing' || m.endless || m.elapsedMs < PACE_STEP_MS) return null;
+    const best = paceAt(this.record.best?.pace, m.elapsedMs);
+    return best === null ? null : Math.round(m.score - best);
+  }
+
   private updateHud(): void {
     const m = this.model;
     const held = m.heldPackage;
@@ -1326,6 +1339,7 @@ export class Belt3d {
     this.overlay.updateHud({
       sorted: m.sorted, goal: m.endless ? 0 : m.goal, score: m.score, timeLeftMs: m.endless ? m.elapsedMs : m.timeLeftMs, backlog: m.pileup, capacity: m.capacity,
       clockLabel: m.endless ? 'SURVIVED' : undefined,
+      pace: this.paceGap(),
       phase: this.state === 'interlude' ? 'BEN  /  DODGE TRAINING'
         : m.endless ? `ENDLESS  /  LEVEL ${m.endlessLevel}${m.inspection ? `  /  ${this.watcherName} WATCHING ${Math.ceil(m.inspectionRemainingMs / 1000)}s` : ''}`
         : `${PHASE_LABELS[m.phase] ?? ''}${m.inspection ? `  /  ${this.watcherName} WATCHING ${Math.ceil(m.inspectionRemainingMs / 1000)}s` : ''}`, combo: m.combo, worker: m.activeWorker.id,
@@ -2091,7 +2105,7 @@ export class Belt3d {
   /** Adds this night to the record and says how it compares with the best, and any promotion or medal it earned. */
   private recordResults(won: boolean, total: number, grade: string, night: Omit<NightFacts, 'openersSeen' | 'nightsPlayed'>): string {
     const before = seniority(this.record).level;
-    const result = recordNight(this.record, { won, total, grade, sorted: this.model.sorted, opener: this.story.opener.id, date: new Date().toISOString().slice(0, 10), peak: this.model.peak });
+    const result = recordNight(this.record, { won, total, grade, sorted: this.model.sorted, opener: this.story.opener.id, date: new Date().toISOString().slice(0, 10), peak: this.model.peak, pace: this.paceSamples });
     const awarded = awardMedals(result.record.medals, { ...night, openersSeen: result.record.openers.length, nightsPlayed: result.record.played });
     this.record = { ...result.record, medals: awarded.medals };
     this.medalsEarned = awarded.fresh.map((medal) => medal.id);
