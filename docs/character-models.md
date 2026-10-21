@@ -130,6 +130,25 @@ bald, clothed male avatar with glasses fitted in front of the face; the glasses
 remain visible when the procedural figure is hidden. These two recasts replace
 only their own GLBs and retain their existing dialogue, props and animations.
 
+## Strides and seats
+
+`animateCharacter` keeps a `gait` on each figure, 0 standing to 1 striding.
+It rises over `GAIT_START_SECONDS` (0.3 s) while the figure walks and falls over
+`GAIT_STOP_SECONDS` (0.35 s) once it stops, and every part of the walk cycle
+(the leg swing, the knee lift, the arm swing, the bob, the lean and the sway) is
+scaled by it; the walk phase keeps advancing while it winds down, so the step
+under way is finished. Reduced motion keeps it at 0. A model playing its clips
+still crossfades between walk and idle as before.
+
+`snapshotPose` takes a blend length and whether the hips blend too.
+`StageActor.animate` snapshots the joints when a figure sits down or stands up
+and blends over `SEAT_BLEND_SECONDS` (0.45 s). In a car seat the hips take the
+seat's height at once, since rising hips would put the head through the roof,
+and the contract's hand and foot targets still place the limbs exactly; on a
+bench or a couch the hips lower and rise with the legs. `blendPose` copies the
+applied pose out before slerping toward it: the first version slerped into the
+joint's own quaternion, which made every blend hold the old pose and then snap.
+
 ## Attention and footsteps
 
 Unposed characters look at things (`attention.ts`). In the depot

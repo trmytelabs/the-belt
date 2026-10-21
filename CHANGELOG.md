@@ -2,6 +2,16 @@
 
 ## 0.1.0 — development snapshot
 
+- Ease the 3D figures into and out of walks and seats. A walk now builds to
+  full stride over its first 0.3 s and winds down over 0.35 s, finishing the
+  step under way, instead of jumping to full stride or to a stand in a frame;
+  the arm swing, knee lift, bob, lean and sway all follow it. Sitting down and
+  standing up blend the joints over 0.45 s; off a bench or a couch the hips
+  lower and rise with them, while in a car they drop straight into the seat so
+  the head never passes through the roof. Fixes the hand-built pose blend added
+  in the motion-smoothing pass, which slerped into the joint's own quaternion
+  and so held the old pose for 0.22 s and then snapped; it now eases part way
+  each frame, and its browser check fails on a hold.
 - Fixes from the owner's play. The screen no longer flashes black on the
   drives. Two causes, both found by sampling every rendered frame of a drive:
   now and then a sub-sample of the multisampled scene resolved to

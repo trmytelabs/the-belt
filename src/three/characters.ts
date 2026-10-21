@@ -62,6 +62,8 @@ export interface Character {
   nameTag: THREE.Sprite;
   headHeight: number;
   walkPhase: number;
+  /** How far into a walk the stride is, 0 standing to 1 striding: it builds over the first steps and winds down over the last. */
+  gait?: number;
   /** A short one-shot motion (a lift, a put-down, a throw) layered over the walk cycle. */
   action?: CharacterAction;
   /**
@@ -609,9 +611,13 @@ export function animateCharacter(character: Character, dt: number, state: {
   motion.seated = false;
   motion.stairs = false;
   motion.hands = false;
-  if (walking) character.walkPhase += dt * 9 * speed;
+  // Into a walk over its first steps and out of it over the last, rather than at full stride in a frame;
+  // the step under way when the feet stop is finished as the stride winds down.
+  const gait = state.reducedMotion ? 0 : walking ? Math.min(1, (character.gait ?? 0) + dt / GAIT_START_SECONDS) : Math.max(0, (character.gait ?? 0) - dt / GAIT_STOP_SECONDS);
+  character.gait = gait;
+  if (gait > 0) character.walkPhase += dt * 9 * speed;
   const phase = character.walkPhase;
-  const swing = walking ? Math.sin(phase) : 0;
+  const swing = Math.sin(phase) * gait;
   const ease = (current: number, target: number): number => current + (target - current) * Math.min(1, dt * 14);
   // The one-shot motion's envelope: 0 outside it, rising and falling inside.
   const action = character.action;
@@ -632,8 +638,8 @@ export function animateCharacter(character: Character, dt: number, state: {
   character.rightLeg.rotation.x = ease(character.rightLeg.rotation.x, -swing * 0.5 - 0.45 * dip);
   character.leftLeg.rotation.z = ease(character.leftLeg.rotation.z, 0);
   character.rightLeg.rotation.z = ease(character.rightLeg.rotation.z, 0);
-  const leftKnee = (walking ? 0.08 + Math.max(0, -Math.cos(phase)) * 0.85 : 0.03) + 0.75 * dip;
-  const rightKnee = (walking ? 0.08 + Math.max(0, Math.cos(phase)) * 0.85 : 0.03) + 0.75 * dip;
+  const leftKnee = 0.03 + gait * (0.05 + Math.max(0, -Math.cos(phase)) * 0.85) + 0.75 * dip;
+  const rightKnee = 0.03 + gait * (0.05 + Math.max(0, Math.cos(phase)) * 0.85) + 0.75 * dip;
   character.leftShin.rotation.x = ease(character.leftShin.rotation.x, leftKnee);
   character.rightShin.rotation.x = ease(character.rightShin.rotation.x, rightKnee);
   // Carrying holds the parcel at the waist with bent elbows; otherwise the arms swing.
@@ -646,8 +652,8 @@ export function animateCharacter(character: Character, dt: number, state: {
   character.rightArm.rotation.y = ease(character.rightArm.rotation.y, 0);
   character.leftArm.rotation.z = ease(character.leftArm.rotation.z, carrying ? -0.12 : -0.1);
   character.rightArm.rotation.z = ease(character.rightArm.rotation.z, carrying ? 0.12 : 0.1);
-  const elbowLeft = (carrying ? -1.25 + 0.2 * load : walking ? -0.2 - Math.max(0, swing) * 0.12 : -0.12) * (1 - fling * 0.6);
-  const elbowRight = (carrying ? -1.25 + 0.2 * load : walking ? -0.2 - Math.max(0, -swing) * 0.12 : -0.12) * (1 - fling * 0.6);
+  const elbowLeft = (carrying ? -1.25 + 0.2 * load : -0.12 - 0.08 * gait - Math.max(0, swing) * 0.12) * (1 - fling * 0.6);
+  const elbowRight = (carrying ? -1.25 + 0.2 * load : -0.12 - 0.08 * gait - Math.max(0, -swing) * 0.12) * (1 - fling * 0.6);
   character.leftForearm.rotation.x = ease(character.leftForearm.rotation.x, elbowLeft);
   character.rightForearm.rotation.x = ease(character.rightForearm.rotation.x, elbowRight);
   character.leftForearm.rotation.y = ease(character.leftForearm.rotation.y, 0);
@@ -655,13 +661,13 @@ export function animateCharacter(character: Character, dt: number, state: {
   character.leftForearm.rotation.z = ease(character.leftForearm.rotation.z, 0);
   character.rightForearm.rotation.z = ease(character.rightForearm.rotation.z, 0);
   // A light rise and fall each step, slow breathing at rest, and a crouch for a lift.
-  const bob = walking ? Math.abs(Math.cos(phase)) * 0.025 : Math.sin(state.time * 1.8) * 0.005;
+  const bob = gait * Math.abs(Math.cos(phase)) * 0.025 + (1 - gait) * Math.sin(state.time * 1.8) * 0.005;
   character.body.position.y = bob - 0.13 * dip;
   // The torso leans into a walk, back under a heavy load and forward over a lift,
   // and sways a little from side to side with the steps.
-  const lean = (walking ? 0.055 : 0) - 0.07 * load * (carrying ? 1 : 0) + 0.1 * dip + 0.12 * fling;
+  const lean = 0.055 * gait - 0.07 * load * (carrying ? 1 : 0) + 0.1 * dip + 0.12 * fling;
   character.body.rotation.x = ease(character.body.rotation.x, lean);
-  character.body.rotation.z = ease(character.body.rotation.z, walking ? Math.sin(phase) * 0.022 : 0);
+  character.body.rotation.z = ease(character.body.rotation.z, Math.sin(phase) * 0.022 * gait);
 }
 
 export { lookToward } from './attention';
@@ -699,30 +705,42 @@ export function faceToward(character: Character, target: number, dt: number, mov
 
 /** Seconds a hand-built pose takes to settle in after a change. */
 export const POSE_BLEND_SECONDS = 0.22;
+/** Seconds to sit down or stand up from a seat: the hips and legs ease between standing and seated. */
+export const SEAT_BLEND_SECONDS = 0.45;
+/** Seconds a stride takes to build from standing, and to wind down to a stop. */
+export const GAIT_START_SECONDS = 0.3;
+export const GAIT_STOP_SECONDS = 0.35;
 
-interface PoseSnapshot { start: number; pivots: { pivot: THREE.Object3D; quaternion: THREE.Quaternion }[]; bodyY: number }
+interface PoseSnapshot { start: number; seconds: number; body: boolean; pivots: { pivot: THREE.Object3D; quaternion: THREE.Quaternion }[]; bodyY: number }
 const snapshots = new WeakMap<THREE.Object3D, PoseSnapshot>();
+const blendTarget = new THREE.Quaternion();
 const POSE_PIVOTS: (keyof Character)[] = ['head', 'leftArm', 'rightArm', 'leftForearm', 'rightForearm', 'leftHand', 'rightHand', 'leftLeg', 'rightLeg', 'leftShin', 'rightShin'];
 
 /**
  * Remembers the figure's joints as they are, the moment a pose changes, so
- * the new pose can be blended in from them instead of snapping.
+ * the new pose can be blended in from them instead of snapping. `seconds` sets
+ * how long the blend takes; `body: false` lets the hips take their new height
+ * at once (sitting down inside a car, where rising hips would put the head
+ * through the roof).
  */
-export function snapshotPose(character: Character, time: number): void {
+export function snapshotPose(character: Character, time: number, options: { seconds?: number; body?: boolean } = {}): void {
   snapshots.set(character.root, {
     start: time,
+    seconds: options.seconds ?? POSE_BLEND_SECONDS,
+    body: options.body ?? true,
     pivots: POSE_PIVOTS.map((key) => { const pivot = character[key] as THREE.Object3D; return { pivot, quaternion: pivot.quaternion.clone() }; }),
     bodyY: character.body.position.y,
   });
 }
 
-/** Blends the joints from the last snapshot toward the pose just applied, over `POSE_BLEND_SECONDS`. */
+/** Blends the joints from the last snapshot toward the pose just applied, over the snapshot's seconds. */
 export function blendPose(character: Character, time: number): void {
   const snapshot = snapshots.get(character.root);
   if (!snapshot) return;
-  const w = (time - snapshot.start) / POSE_BLEND_SECONDS;
+  const w = (time - snapshot.start) / snapshot.seconds;
   if (w >= 1 || w < 0) { snapshots.delete(character.root); return; }
   const eased = w * w * (3 - 2 * w);
-  for (const { pivot, quaternion } of snapshot.pivots) pivot.quaternion.slerpQuaternions(quaternion, pivot.quaternion, eased);
-  character.body.position.y = snapshot.bodyY + (character.body.position.y - snapshot.bodyY) * eased;
+  // The pose just applied is the target: copy it out first, since slerping into the pivot's own quaternion would overwrite it.
+  for (const { pivot, quaternion } of snapshot.pivots) pivot.quaternion.slerpQuaternions(quaternion, blendTarget.copy(pivot.quaternion), eased);
+  if (snapshot.body) character.body.position.y = snapshot.bodyY + (character.body.position.y - snapshot.bodyY) * eased;
 }

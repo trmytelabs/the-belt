@@ -316,7 +316,8 @@ try {
   assert.ok(loosened.fidgets.length >= 1 && ['idle', 'idleAlt'].includes(loosened.idleBack), `an idle fidgets and settles back: ${JSON.stringify(loosened)}`);
   assert.ok(loosened.turning && loosened.turnRoles.some(role => /^turn/.test(role)) && loosened.partWay > 0.3 && loosened.partWay < 2.6, `a half turn steps round on a turn clip: ${JSON.stringify(loosened)}`);
   assert.ok(loosened.turnDone && loosened.turned < 0.02, `and arrives facing the new way: ${JSON.stringify(loosened)}`);
-  assert.ok(loosened.blend.early < loosened.blend.settled * 0.7 && loosened.blend.settled > 0.2, `a hand-built pose blends in instead of snapping: ${JSON.stringify(loosened.blend)}`);
+  // Part way, not held: a blend that held the old joints and then snapped would read zero early on.
+  assert.ok(loosened.blend.early > loosened.blend.settled * 0.03 && loosened.blend.early < loosened.blend.settled * 0.7 && loosened.blend.settled > 0.2, `a hand-built pose blends in instead of snapping: ${JSON.stringify(loosened.blend)}`);
   // Seated on the lot's contract seats the driver plays a seated idle with the hands kept on the wheel.
   await page.evaluate(() => { window.fixtureApp.stage.stage('lot'); });
   await page.waitForFunction(() => Object.entries(window.fixtureApp.stage.stages.lot.props).filter(([name]) => /^car-/.test(name)).every(([, car]) => car.userData.contract), null, { timeout: 90_000 });

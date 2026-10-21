@@ -5,7 +5,7 @@ import { LOT_LAYOUT, MALL_LAYOUT, type KeyReturnModel, type MallEvent } from '..
 import type { MallModel3D as MallModel } from './MallModel3D';
 import type { Cutscene } from '../game/slice/StoryModel';
 import type { StoryScene } from '../game/slice/StoryScript';
-import { animateCharacter, blendPose, createCharacter, faceToward, lookToward, mergeCharacter, snapshotPose, type Character, type CharacterSpec } from './characters';
+import { animateCharacter, blendPose, createCharacter, faceToward, lookToward, mergeCharacter, SEAT_BLEND_SECONDS, snapshotPose, type Character, type CharacterSpec } from './characters';
 import { eyeHeight, gazeInFigureFrame, lookTargetFor, type Gaze } from './attention';
 import { windAt, type Wind } from './wind';
 import { DrivingModels } from './drivingModels';
@@ -62,6 +62,8 @@ export class StageActor {
   private readonly previous = new THREE.Vector3();
   private moved = false;
   private heading = 0;
+  /** Whether the figure sat last frame, so sitting down and standing up ease instead of snapping; null before the first frame. */
+  private wasSeated: boolean | null = null;
 
   constructor(character: Character) {
     this.character = character;
@@ -86,6 +88,13 @@ export class StageActor {
 
   public animate(dt: number, time: number, reducedMotion: boolean): void {
     const c = this.character;
+    // Sitting down or standing up: the joints ease from where they were. In a car the hips drop straight
+    // into the seat (rising hips would put the head through the roof); off a bench or a couch they ease too.
+    const seated = this.seatedIn !== null;
+    if (this.wasSeated !== null && seated !== this.wasSeated && !reducedMotion) {
+      snapshotPose(c, time, { seconds: SEAT_BLEND_SECONDS, body: !seated || this.seat === null });
+    }
+    this.wasSeated = seated;
     animateCharacter(c, dt, { moving: this.moved, carrying: this.carrying, time, reducedMotion });
     // A seated figure turns with its car; a standing one turns on the spot for a big change of facing.
     if (this.seatedIn) { if (c.motion) c.motion.turn = null; c.root.rotation.y = this.faceAngle ?? c.root.rotation.y; }
