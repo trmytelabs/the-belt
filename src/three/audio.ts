@@ -330,7 +330,7 @@ export class DepotAudio extends AudioSystem {
     }
   }
 
-/**
+  /**
    * The conveyor while it runs: a low motor hum whose pitch follows the belt's speed,
    * and a band of roller rattle that clacks at the rollers' rate and grows with the
    * freight riding it. `speed` is the belt's speed in depot pixels per second (50 at
