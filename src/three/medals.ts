@@ -1,8 +1,11 @@
 /**
- * Medals (the 3D game only): ten achievements kept with the night record on
- * this device. Each is earned once, at the results of the night that earns it,
- * and the briefing counts them.
+ * Medals (the 3D game only): twelve achievements kept with the night record
+ * on this device. Each is earned once, at the results of the night (or endless
+ * shift) that earns it, and the briefing counts them.
  */
+
+/** The endless shift's two medals: the level to reach, and the freight to dispatch in one run. */
+export const ENDLESS_MEDALS = { level: 5, sorted: 60 } as const;
 
 /** What a finished (or failed) night shows, with the record as it stands after it. */
 export interface NightFacts {
@@ -21,6 +24,9 @@ export interface NightFacts {
   safeDrive: boolean;
   openersSeen: number;
   nightsPlayed: number;
+  /** An endless shift's last level and freight dispatched; absent for a night. */
+  endlessLevel?: number;
+  endlessSorted?: number;
 }
 
 export interface Medal {
@@ -43,6 +49,8 @@ export const MEDALS: readonly Medal[] = [
   { id: 'safe-driver', title: 'SAFE DRIVER', detail: 'Bring the five-ton home with no bumps or red lights', earned: (f) => f.safeDrive },
   { id: 'seen-it-all', title: 'SEEN IT ALL', detail: 'See all three openers', earned: (f) => f.openersSeen >= 3 },
   { id: 'regular', title: 'REGULAR', detail: 'Work ten nights', earned: (f) => f.nightsPlayed >= 10 },
+  { id: 'long-haul', title: 'LONG HAUL', detail: `Reach level ${ENDLESS_MEDALS.level} in an endless shift`, earned: (f) => (f.endlessLevel ?? 0) >= ENDLESS_MEDALS.level },
+  { id: 'marathon', title: 'BELT MARATHON', detail: `Dispatch ${ENDLESS_MEDALS.sorted} in one endless shift`, earned: (f) => (f.endlessSorted ?? 0) >= ENDLESS_MEDALS.sorted },
 ];
 
 export const MEDAL_IDS: ReadonlySet<string> = new Set(MEDALS.map((medal) => medal.id));

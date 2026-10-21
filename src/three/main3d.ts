@@ -2125,16 +2125,24 @@ export class Belt3d {
     const m = this.model;
     const seconds = Math.floor(m.elapsedMs / 1000), clock = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
     const result = recordEndless(this.record, { sorted: m.sorted, seconds, score: m.score, date: new Date().toISOString().slice(0, 10) });
-    this.record = result.record;
+    // The endless shift earns its own two medals, and a streak or a priority run can earn the night medals that do not need a finished shift.
+    const awarded = awardMedals(result.record.medals, {
+      won: false, grade: '', peak: false, goalsMet: 0, goalsTotal: 0, priorityCount: m.priorityCount, priorityOnTime: m.priorityOnTime,
+      bestCombo: m.bestCombo, wrongDrops: m.wrongDrops, damaged: m.damaged, missed: m.missed, safeDrive: false,
+      openersSeen: result.record.openers.length, nightsPlayed: result.record.played, endlessLevel: m.endlessLevel, endlessSorted: m.sorted,
+    });
+    this.record = { ...result.record, medals: awarded.medals };
+    this.medalsEarned = awarded.fresh.map((medal) => medal.id);
     saveRecord(browserStorage(), this.record);
-    if (result.newBest) audioSystem.fanfare(true);
+    if (result.newBest || awarded.fresh.length) audioSystem.fanfare(result.newBest);
+    const medals = awarded.fresh.map((medal) => `<p class="b3d-medal"><b>MEDAL · ${medal.title}</b> · ${escapeHtml(medal.detail)}</p>`).join('');
     const best = this.record.endless!;
     const bestClock = `${Math.floor(best.seconds / 60)}:${String(best.seconds % 60).padStart(2, '0')}`;
     this.overlay.showPanel(`
       <div class="grade">∞</div>
       <div class="kicker">ENDLESS SHIFT / LEVEL ${m.endlessLevel}</div>
       <h1>THE BELT WINS</h1>
-      <p class="b3d-best">${result.newBest ? `<b>NEW ENDLESS BEST</b>${result.previous ? ` · beat ${result.previous.sorted} dispatched` : ''}` : `BEST ENDLESS · ${best.sorted} dispatched · ${bestClock}`}</p>
+      <p class="b3d-best">${result.newBest ? `<b>NEW ENDLESS BEST</b>${result.previous ? ` · beat ${result.previous.sorted} dispatched` : ''}` : `BEST ENDLESS · ${best.sorted} dispatched · ${bestClock}`}</p>${medals}
       <p><b>${m.sorted} DISPATCHED · ${String(m.score).padStart(5, '0')} POINTS · SURVIVED ${clock}</b></p>
       <p>${m.bestCombo} best streak · ${m.priorityOnTime} of ${m.priorityCount} priority on time · ${m.wrongDrops} wrong drops · ${m.damaged} broken</p>
       <p>Recovery overflowed at level ${m.endlessLevel}. Endless shifts keep their own best and leave your nights' record alone.</p>

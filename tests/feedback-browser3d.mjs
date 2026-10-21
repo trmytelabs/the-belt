@@ -236,6 +236,18 @@ try {
   await wait(() => document.querySelector('[data-f="pace"]').textContent === '−50 VS BEST' && document.querySelector('[data-f="pace"]').classList.contains('behind'));
   await read((kept) => { const app = window.fixtureApp; app.record = kept; app.model.paused = false; }, recordKept);
   await wait(() => document.querySelector('[data-f="pace"]').hidden === (window.fixtureApp.record.best?.pace === undefined));
+  // An endless run that reaches level 5 with 60 dispatched earns both endless medals on its results, kept with the record.
+  const endlessMedals = await read(() => {
+    const app = window.fixtureApp, kept = app.record, Model = app.model.constructor;
+    app.model = new Model({ endless: true }); app.state = 'playing';
+    Object.assign(app.model, { elapsedMs: 306_000, sorted: 60, paused: true });
+    app.showResults();
+    const result = { text: document.querySelector('.b3d-panel').innerText, medals: app.record.medals, stored: JSON.parse(localStorage.getItem('the-belt:3d-record:v1')).medals };
+    app.record = kept; localStorage.setItem('the-belt:3d-record:v1', JSON.stringify(kept)); app.restart();
+    return result;
+  });
+  assert.ok(endlessMedals.text.includes('MEDAL · LONG HAUL') && endlessMedals.text.includes('MEDAL · BELT MARATHON'), endlessMedals.text);
+  assert.ok(['long-haul', 'marathon'].every((id) => endlessMedals.medals.includes(id) && endlessMedals.stored.includes(id)), JSON.stringify(endlessMedals));
   // An endless shift names the endless best to beat.
   const endlessKept = await read(() => {
     const app = window.fixtureApp, kept = app.record, Model = app.model.constructor;

@@ -136,8 +136,9 @@ SORT!** countdown starts the shift.
   time. A gold ring around it runs down over 15 seconds, turning red for the
   last five. Load it yourself before it empties for a 100-point bonus; late, or
   loaded by your partner, it is an ordinary parcel. Results show how many made it.
-- Medals: ten achievements, each earned once and kept with the record on this
-  device (for example an S, a peak night, all three goals in one night, 20 in
+- Medals: twelve achievements, each earned once and kept with the record on
+  this device (two are for the endless shift: reach level 5, or dispatch 60 in
+  one run; others include an S, a peak night, all three goals in one night, 20 in
   a row, or bringing the five-ton home with no bumps or red lights). The
   results name new ones; the briefing counts them and MEDALS lists them all,
   with your last eight nights below (a bar for each total, then grade, total

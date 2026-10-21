@@ -2,6 +2,11 @@
 
 ## 0.1.0 — development snapshot
 
+- Give the 3D endless shift two medals, making twelve: LONG HAUL (reach level
+  5) and BELT MARATHON (dispatch 60 in one run). The endless results now award
+  medals too, including the night medals that need no finished shift (TWENTY
+  STRAIGHT, ON THE DOT), name them and play the chime. BELT LEGEND still
+  needs every medal.
 - Name the endless best to beat on the 3D endless shift’s HUD (ENDLESS /
   LEVEL 3 / BEST 42).
 - Race your best 3D night: the best night now keeps its shift score every five
