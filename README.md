@@ -133,8 +133,8 @@ SORT!** countdown starts the shift.
   See [address sorting and loading](docs/address-sorting.md).
 - Priority freight: through the flow and the rush, every third parcel your worker
   could take is marked urgent (never bulk, heavy freight or the Mesa), one at a
-  time. A gold ring around it runs down over 15 seconds, turning red for the
-  last five. Load it yourself before it empties for a 100-point bonus; late, or
+  time. A gold ring around it runs down over 15 seconds (20 with the PRIORITY
+  GRACE perk), turning red for the last five. Load it yourself before it empties for a 100-point bonus; late, or
   loaded by your partner, it is an ordinary parcel. Results show how many made it.
 - Medals: twelve achievements, each earned once and kept with the record on
   this device (two are for the endless shift: reach level 5, or dispatch 60 in
@@ -153,22 +153,24 @@ SORT!** countdown starts the shift.
   and on later nights a small line under YOUR SCORE shows how far ahead (green)
   or behind (red) of that pace you are at the same moment of the shift.
 - Inspections: twice a night the supervisor on your side (Vic or Shan) watches
-  you for 20 seconds. Each load meanwhile earns 50 points; a wrong drop costs
-  30 more.
+  you for 20 seconds, with a WATCHING tag over them and a countdown on the HUD.
+  Each load meanwhile earns 50 points (75 with the SUPERVISOR'S FAVOURITE
+  perk); a wrong drop costs 30 more.
 - Perks: once a night is finished, the briefing offers three perks for the
-  night (1, 2 or 3 picks one; LB / RB on a controller), such as a fourth belt stop, more time on
-  priority freight or quicker feet. They last that night only.
+  night (1, 2 or 3 picks one; LB / RB on a controller), such as a fourth belt
+  stop, more time on priority freight or quicker feet. They last that night
+  only, and the HUD shows tonight's as a gold chip after the goal chips.
 - Endless shift: once a night is finished, N (or ENDLESS SHIFT) starts a shift
   with no clock and no story. Each minute from the rush the freight comes
   sooner and the belt runs faster, until recovery overflows. It keeps its own
-  best, apart from your nights.
+  best, apart from your nights, and the HUD names that best to beat.
 - Night goals: each night sets three optional goals, named in the briefing
   (for example, load 8 in a row, finish with nothing broken, make 3 priority
   parcels on time). They rotate with the nights recorded on this device, and the HUD tracks each one. A goal
   you reach mid-shift is announced at once; goals about a clean shift are judged
   when it ends. Each goal met adds 150 points to the night total.
-- E / STOP THE BELT stops it for two seconds. You get three stops per 3D run,
-  with a 15-second cooldown starting on each use. The controls show stops left
+- E / STOP THE BELT stops it for two seconds. You get three stops per 3D run
+  (four with the ONE MORE STOP perk), with a 15-second cooldown starting on each use. The controls show stops left
   and cooldown time; starting another night restores all three.
 - Controllers with the standard layout work too: stick or d-pad to move, A to
   grab and deliver, B to throw, X to stop the belt, Y to switch, Back for the
@@ -176,7 +178,8 @@ SORT!** countdown starts the shift.
   briefing Y starts a peak night, X the endless shift, and LB / RB step through
   the perks. On the briefing, pause and results screens the d-pad or stick
   highlights a button or setting, A presses it, left and right move a slider,
-  and B goes back. A controller that drops out mid-play pauses the game.
+  and B goes back. A controller that drops out mid-play pauses the game. Pads
+  with rumble shake on a wrong drop, a breakage and a bump on the road.
 - Escape pauses; M toggles sound. SETTINGS on the pause screen sets the music
   and effects levels and the resolution (down to half, for a smoother game on a
   slow or very sharp screen) and turns the breakage camera shake on or off; they are
