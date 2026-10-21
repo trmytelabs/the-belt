@@ -148,6 +148,9 @@ SORT!** countdown starts the shift.
   PART-TIMER, LOADER, SENIOR LOADER and PRELOAD LEAD to BELT LEGEND (15
   finished nights and every medal). The briefing names yours and what the next
   takes; the results announce a promotion.
+- Racing your best: the best night keeps its shift score every five seconds,
+  and on later nights a small line under YOUR SCORE shows how far ahead (green)
+  or behind (red) of that pace you are at the same moment of the shift.
 - Inspections: twice a night the supervisor on your side (Vic or Shan) watches
   you for 20 seconds. Each load meanwhile earns 50 points; a wrong drop costs
   30 more.
