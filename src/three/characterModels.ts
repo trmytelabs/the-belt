@@ -91,6 +91,8 @@ interface ModelRig {
   clips: ClipRig | null;
   /** True once a clip rig was tried, so a model that cannot play the clips is not retried every frame. */
   clipsTried: boolean;
+  /** The foot bones (left, right), whose world heights say when a foot lands. */
+  feet: [THREE.Bone, THREE.Bone];
 }
 
 /**
@@ -234,6 +236,11 @@ function loadModel(url: string): Promise<GLTF | null> {
  * Attaches loaded models and poses them from their figures. Call once per
  * frame, after all animation and before rendering `scene`.
  */
+/** An attached model's foot bones (left, right), for footstep detection; null while the figure itself shows. */
+export function modelFeet(character: Character): readonly [THREE.Object3D, THREE.Object3D] | null {
+  return tracked.get(character.root)?.rig?.feet ?? null;
+}
+
 export function syncCharacterModels(scene: THREE.Object3D): void {
   if (entries.length === 0 && attached === 0) return;
   scene.traverseVisible((object) => {
@@ -374,6 +381,7 @@ export function attachModel(character: Character, source: THREE.Object3D, entry:
     clipSet: entry.clips ?? null,
     clips: null,
     clipsTried: false,
+    feet: [foot.neg, foot.pos],
   };
   driveModel(character, rig);
   return rig;

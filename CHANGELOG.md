@@ -2,6 +2,16 @@
 
 ## 0.1.0 — development snapshot
 
+- Give the whole 3D crew eye contact and the depot its footsteps. Every
+  unposed character turns its head to the nearest person speaking within
+  earshot, else to a worker passing close by, and eases back when nothing holds
+  its attention; in the story scenes the cast look at whoever is speaking and
+  the speaker at the nearest listener (`attention.ts`). Footsteps are read off
+  the feet themselves, an imported model's foot bones or the figure's ankles,
+  so each sound lands when the visible foot does, softer with distance from the
+  camera and hollower on the steel deck than on the concrete; the crew's lifts
+  off the belt and set-downs are heard the same way (`footsteps.ts`,
+  `DepotAudio.footstep`/`playNear`). The classic game's cue list is unchanged.
 - Loosen the 3D crew's motion (phase 5, after the owner found the gestures,
   the house scene and the turns stiff). Seated passengers on the crew models play
   Rocketbox seated idles, their legs kept on the seat, and look around now and

@@ -5,7 +5,8 @@ import { LOT_LAYOUT, MALL_LAYOUT, type KeyReturnModel, type MallEvent } from '..
 import type { MallModel3D as MallModel } from './MallModel3D';
 import type { Cutscene } from '../game/slice/StoryModel';
 import type { StoryScene } from '../game/slice/StoryScript';
-import { animateCharacter, blendPose, createCharacter, faceToward, mergeCharacter, snapshotPose, type Character, type CharacterSpec } from './characters';
+import { animateCharacter, blendPose, createCharacter, faceToward, lookToward, mergeCharacter, snapshotPose, type Character, type CharacterSpec } from './characters';
+import { eyeHeight, gazeInFigureFrame, lookTargetFor, type Gaze } from './attention';
 import { applyPose, type CrewLife, type Pose } from './crew';
 import { placeProp, upgradeCar } from './propModels';
 import { poseSeated, seatRootPosition, type SeatTargetPoints } from './seating';
@@ -49,6 +50,8 @@ export class StageActor {
   public pose: Pose = 'none';
   public poseStart = 0;
   public faceAngle: number | null = null;
+  /** What has this person's attention (the speaker, a listener), in world coordinates; the head turns to it while unposed. */
+  public look: Gaze | null = null;
   public carrying = false;
   /** A seated passenger can contact their own vehicle; other solids still apply. */
   public seatedIn: THREE.Object3D | null = null;
@@ -88,7 +91,9 @@ export class StageActor {
     if (c.motion) { c.motion.pose = this.pose; c.motion.seated = this.seatedIn !== null; }
     // A posed or seated figure owns its torso; a plain walk keeps the walk cycle's lean and sway.
     if (this.pose !== 'none' || this.seatedIn) c.body.rotation.set(0, 0, 0);
-    c.head.rotation.set(0, 0, 0);
+    // Unposed (seated or standing), the head turns to whoever has this person's attention; a gesture owns the head.
+    if (this.pose === 'none') lookToward(c, this.look ? gazeInFigureFrame(c, this.look) : null, dt, reducedMotion);
+    else c.head.rotation.set(0, 0, 0);
     // Smoking/phone gestures are upper-body actions. Preserve the seat's hip
     // height and folded legs so they cannot stand a passenger through the roof.
     if (this.seatedIn) applyPose(c, 'sit', time - this.poseStart, reducedMotion);
@@ -1671,12 +1676,32 @@ export class StoryStage {
     else if (id === 'go-home') this.directHome(stage, cutscene, time);
     else if (id === 'home-decision' || id === 'leave-house' || id === 'quit-night') this.directHouse(stage, cutscene, time);
     else if (id === 'mall-intro') this.directMallIntro(stage, cutscene);
+    this.updateLooks(stage.actors, cutscene, time);
     for (const actor of stage.actors.values()) if (actor.root.visible) actor.animate(dt, time, this.reducedMotion);
     for (const actor of stage.actors.values()) if (actor.root.visible && actor.seatedIn && actor.seat) this.settleInSeat(actor);
     // Cars that moved this beat roll and steer their wheels to match.
     for (const prop of Object.values(stage.props)) if (prop.visible && prop.userData.wheels) followWheels(prop.userData.wheels as WheelRig, prop, dt);
     stage.puffs.update(dt);
     for (const flakes of stage.snow) flakes.update(dt, this.reducedMotion, this.active === 'road' ? this.roadWind : 0);
+  }
+
+  /** In a scene the cast look at whoever is speaking, and the speaker at the nearest of the others. */
+  private updateLooks(actors: Map<string, StageActor>, cutscene: Cutscene, time: number): void {
+    const speaker = cutscene.beat.speaker;
+    const heads = [...actors].filter(([, actor]) => actor.root.visible)
+      .map(([id, actor]) => ({ id, until: Infinity, x: actor.root.position.x, z: actor.root.position.z, y: actor.root.position.y + eyeHeight(actor.character.headHeight) }));
+    for (const [id, actor] of actors) {
+      if (!actor.root.visible) { actor.look = null; continue; }
+      const self = { id, x: actor.root.position.x, z: actor.root.position.z, facing: actor.root.rotation.y };
+      const voice = speaker && speaker !== id ? heads.filter((head) => head.id === speaker) : [];
+      const listeners = speaker === id ? heads.filter((head) => head.id !== id) : [];
+      actor.look = lookTargetFor(self, time, voice, listeners, { other: 6 });
+    }
+  }
+
+  /** The cast of the active stage, for the footsteps. */
+  public castActors(): StageActor[] {
+    return this.active ? [...this.stage(this.active).actors.values()] : [];
   }
 
   private cameraTo(position: THREE.Vector3, look: THREE.Vector3, dt: number, snap = false): void {
