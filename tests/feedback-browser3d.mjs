@@ -172,6 +172,14 @@ try {
   await wait(() => { const app = window.fixtureApp; return app.priorityMarkers.get(app.model.packages[0].id)?.seconds >= 14; });
   const fresh = await priorityMarker();
   assert.ok(fresh.attached && fresh.draw >= 46 * 6 && fresh.color === 'ffc23a' && fresh.seconds >= 14 && fresh.ring && fresh.label, `a nearly full gold ring and a label on a fresh priority parcel: ${JSON.stringify(fresh)}`);
+  // The countdown hangs in front of the parcel, below it on screen, clear of its address tag and the grab prompt.
+  const placement = await read(() => {
+    const app = window.fixtureApp, id = app.model.packages[0].id, view = app.parcels.get(id), marker = app.priorityMarkers.get(id);
+    const Vec = app.camera.position.constructor, label = marker.label.getWorldPosition(new Vec()), parcel = view.root.getWorldPosition(new Vec()), tag = view.tag.getWorldPosition(new Vec());
+    for (const point of [label, parcel, tag]) point.project(app.camera);
+    return { label: label.y, parcel: parcel.y, tag: tag.y };
+  });
+  assert.ok(placement.label < placement.parcel && placement.parcel < placement.tag, `label below the parcel, tag above: ${JSON.stringify(placement)}`);
   await read(() => { window.fixtureApp.model.elapsedMs += 11_000; });
   await wait(() => { const app = window.fixtureApp; const seconds = app.priorityMarkers.get(app.model.packages[0].id)?.seconds; return seconds > 0 && seconds <= 4; });
   const urgent = await priorityMarker();

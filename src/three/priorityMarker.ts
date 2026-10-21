@@ -33,7 +33,8 @@ export function createPriorityMarker(footprint: number): PriorityMarker {
   ring.userData.baseScale = ring.scale.x;
   const label = new THREE.Sprite(new THREE.SpriteMaterial({ depthTest: false, depthWrite: false, transparent: true }));
   label.name = 'priority-label';
-  label.center.set(0.5, 0);
+  // Hung from its top, so it reads below the ring rather than over it.
+  label.center.set(0.5, 1);
   label.renderOrder = 9;
   root.add(ring, label);
   return { root, ring, label, seconds: -1 };
@@ -46,18 +47,19 @@ export function priorityRingSegments(remainingMs: number, windowMs: number): num
 
 /**
  * Show `remainingMs` of the window: the ring's lit arc, the label's seconds, and the
- * urgent colour and pulse in the last five seconds. `labelY` is where the label sits
- * (just above the parcel's own tag); `carried` hides the ring, which would float at the hands.
+ * urgent colour and pulse in the last five seconds. `label` is where the label sits in
+ * the parcel's own frame (in front of it, clear of its address tag and the grab prompt);
+ * `carried` hides the ring, which would float at the hands.
  */
 export function updatePriorityMarker(marker: PriorityMarker, remainingMs: number, windowMs: number, time: number,
-  options: { labelY: number; carried: boolean; reducedMotion: boolean }): void {
+  options: { label: { x: number; y: number; z: number }; carried: boolean; reducedMotion: boolean }): void {
   const urgent = remainingMs < PRIORITY_URGENT_MS;
   marker.ring.visible = !options.carried;
   marker.ring.geometry.setDrawRange(0, priorityRingSegments(remainingMs, windowMs) * 6);
   marker.ring.material.color.setHex(urgent ? URGENT : GOLD);
   const pulse = urgent && !options.reducedMotion ? 1 + 0.08 * Math.sin(time * 12) : 1;
   marker.ring.scale.setScalar(marker.ring.userData.baseScale * pulse);
-  marker.label.position.y = options.labelY;
+  marker.label.position.set(options.label.x, options.label.y, options.label.z);
   const seconds = Math.ceil(remainingMs / 1000);
   if (seconds === marker.seconds) return;
   marker.seconds = seconds;

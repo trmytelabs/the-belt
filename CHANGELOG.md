@@ -2,6 +2,10 @@
 
 ## 0.1.0 — development snapshot
 
+- Tidy two labels over the 3D belt's freight, found in a QA pass: the priority
+  countdown now hangs in front of the parcel, below it on screen, instead of
+  over its address tag; and the SPACE · GRAB prompt sits clear above the tag on
+  tall freight instead of overlapping its top.
 - Give the 3D conveyor its sound. While sorting goes on, a low motor hum whose
   pitch follows the belt's speed and a band of roller rattle that clacks at
   the rollers' rate and grows with the freight riding it play under the
