@@ -2,6 +2,10 @@
 
 ## 0.1.0 — development snapshot
 
+- Harden dependency updates now that CI runs on the owner's PC: Dependabot
+  waits seven days after a release before proposing it (npm and GitHub
+  Actions), and both CI jobs install with `npm ci --ignore-scripts`. No
+  dependency uses an install script today, so nothing else changes.
 - Settle the 3D chase camera's escape from walls. Hemmed in, it rises over
   the truck no steeper than about 45 degrees, so the road and lights ahead stay
   in view, and if no height is clear it holds its 3.5 m; it never drops onto

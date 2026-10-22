@@ -4,10 +4,16 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
   - package-ecosystem: npm
     directory: /
     schedule:
       interval: weekly
+    # A new release waits a week before it is proposed. Hijacked versions are usually
+    # caught and pulled within days, and CI runs every proposal on the owner's PC.
+    cooldown:
+      default-days: 7
     ignore:
       - dependency-name: '*'
         update-types: [version-update:semver-major]
