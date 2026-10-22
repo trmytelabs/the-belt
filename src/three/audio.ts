@@ -351,6 +351,17 @@ export class DepotAudio extends AudioSystem {
     }
   }
 
+  /** A rush wave's siren: two rising and falling wails, about two seconds; synthesised, like the whistle. */
+  public rushSiren(): void {
+    const context = this.getContext();
+    if (!context || context.state !== 'running' || this.muted) return;
+    const now = context.currentTime + 0.01;
+    for (const offset of [0, 1]) {
+      this.voice(560, 0.5, now + offset, 0.08, { type: 'triangle', end: 940, attack: 0.04, cutoff: 2400 });
+      this.voice(940, 0.46, now + offset + 0.5, 0.08, { type: 'triangle', end: 560, attack: 0.02, cutoff: 2400 });
+    }
+  }
+
   /**
    * The conveyor while it runs: a low motor hum whose pitch follows the belt's speed,
    * and a band of roller rattle that clacks at the rollers' rate and grows with the

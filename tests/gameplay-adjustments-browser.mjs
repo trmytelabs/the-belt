@@ -310,6 +310,43 @@ try {
   await wait(() => window.fixtureApp.settings.twoPlayers === false);
   assert.deepEqual(errors, []);
   console.log('PASS 3D two players: C on the briefing, WASD and SPACE play Termite, the arrows and ENTER play Skanky, nobody switches; no script errors');
+
+  // SURPRISE FREIGHT: a labelled mystery box and fragile crate, the rush wave on the HUD, a refused throw and a box opened by real keys.
+  await read(() => window.fixtureApp.restart());
+  await wait(() => window.fixtureApp.state === 'briefing');
+  await page.keyboard.press('KeyJ');
+  await wait(() => window.fixtureApp.state === 'playing');
+  await read(() => {
+    const m = window.fixtureApp.model, w = m.activeWorker;
+    m.paused = false; m.eventStopped = true;
+    for (const parcel of m.packages) if (parcel.state === 'belt') parcel.state = 'delivered';
+    m.packages.push({ ...m.packages[0], id: 9400, route: 'A', kind: 'standard', size: 'normal', state: 'belt', workerId: null, flight: null, x: 480, y: 420, beltOffset: 0 });
+    m.packages.push({ ...m.packages[0], id: 9401, route: 'A', kind: 'smallbox', size: 'normal', state: 'held', workerId: w.id, flight: null });
+    Object.assign(w, { x: 330, y: 470, heldId: 9401 });
+    // As the shift marks them (the rules are covered by the model tests).
+    m.surprises.set(9400, 'mystery'); m.surprises.set(9401, 'fragile');
+  });
+  await wait(() => ['9400', '9401'].every(id => window.fixtureApp.parcels.get(Number(id))?.root.getObjectByName(id === '9400' ? 'surprise-mystery' : 'surprise-fragile')));
+  await page.keyboard.press('KeyF');
+  await wait(() => window.fixtureApp.hint?.includes('FRAGILE · carry it in gently'));
+  assert.equal(await read(() => window.fixtureApp.model.packages.find(parcel => parcel.id === 9401).state), 'held', 'a fragile crate stays in hand');
+  // The siren: a rush wave starts and the HUD counts it down.
+  await read(() => { const m = window.fixtureApp.model; m.eventStopped = false; m.elapsedMs = 89_990; m.inspectionsHeld = 2; });
+  await wait(() => /RUSH WAVE 1[45]s/.test(document.querySelector('[data-f=phase]')?.textContent ?? ''));
+  // SPACE opens the mystery box at its drop.
+  await read(() => {
+    const m = window.fixtureApp.model, w = m.activeWorker, box = m.packages.find(parcel => parcel.id === 9400), crate = m.packages.find(parcel => parcel.id === 9401);
+    Object.assign(crate, { state: 'delivered', workerId: null });
+    Object.assign(box, { state: 'held', workerId: w.id });
+    Object.assign(w, { x: m.layout.dropAreas.A.x, y: m.layout.dropAreas.A.y, heldId: 9400 });
+    m.prizeRandom = () => 0.1;
+  });
+  await page.keyboard.press('Space');
+  await wait(() => window.fixtureApp.model.mysteriesOpened === 1);
+  await wait(() => document.querySelector('.b3d-toast')?.textContent.includes('JACKPOT'));
+  await wait(() => !window.fixtureApp.parcels.get(9400)?.root.getObjectByName('surprise-mystery'));
+  assert.deepEqual(errors, []);
+  console.log('PASS 3D surprise freight: labelled mystery box and fragile crate, a refused fragile throw, the rush wave on the HUD and a box opened by SPACE; no script errors');
 } finally {
   await browser?.close();
   if (server) await new Promise(resolve=>server.httpServer.close(resolve));

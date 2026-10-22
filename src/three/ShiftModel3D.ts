@@ -4,6 +4,7 @@ import {
 } from '../game/slice/ShiftModel.ts';
 import { ROUTE_INFO, PARCEL_LABELS, PARCEL_SEQUENCE, EVERYDAY_FREIGHT, parcelAddress, MESA_CATCH_PENALTY } from './addresses.ts';
 import { DEPOT_3D_LAYOUT, platformLevelAt, onLowerFloor, floorPileSlot, stairAt, truckInteriorAt, TRUCK_ROUTES, type TruckRoute } from './layout.ts';
+import type { SurpriseKind } from './surpriseMarker.ts';
 import { BELT_SOLID_WIDTH, receivingBlocked } from './receivingCollision.ts';
 
 export const WRONG_DROP_PENALTY = 10;
@@ -16,6 +17,28 @@ export const TRICK_SHOTS = {
   long: { px: 160, bonus: 25, title: 'LONG THROW' },
   trick: { px: 240, bonus: 50, title: 'TRICK SHOT' },
 } as const;
+
+/**
+ * Surprise freight. Twice a night a siren starts a RUSH WAVE: for `waveMs` freight arrives at `waveGap` of its usual
+ * gap, and if none of the wave's freight reaches recovery it pays `waveBonus`. Three times a night the next parcel the
+ * player could take becomes a MYSTERY BOX, which pays one of `MYSTERY_PRIZES` when the player delivers it; twice a
+ * night one becomes a FRAGILE crate, which cannot be thrown, slows its carrier to `fragilePace` and pays
+ * `fragileBonus` when the player carries it in. An endless shift repeats each every `repeatMs` after its last time.
+ */
+export const SURPRISE_3D = {
+  waves: [90_000, 130_000], waveMs: 15_000, waveGap: 0.5, waveBonus: 150,
+  mystery: [44_000, 110_000, 160_000],
+  fragile: [80_000, 150_000], fragileBonus: 75, fragilePace: 0.75,
+  repeatMs: 60_000,
+} as const;
+/** What a mystery box holds, by chance (`share`, summing to 1). */
+export const MYSTERY_PRIZES = [
+  { id: 'jackpot', share: 0.3, points: 200 },
+  { id: 'stop', share: 0.25, points: 0 },
+  { id: 'fire', share: 0.3, points: 0 },
+  { id: 'socks', share: 0.15, points: 25 },
+] as const;
+export type MysteryPrize = (typeof MYSTERY_PRIZES)[number]['id'];
 
 export const WORKER_SPEED_3D = 265;
 export const MIN_CARRY_SPEED_3D = 0.82;
@@ -37,7 +60,12 @@ export const ENDLESS_3D = { rushAt: 126_000, levelMs: 60_000, sooner: 0.08, soon
 /** The endless shift's level at `elapsedMs`: 1 before the rush, 2 as it starts, then one more each minute. */
 export const endlessLevelAt = (elapsedMs: number): number =>
   elapsedMs < ENDLESS_3D.rushAt ? 1 : 2 + Math.floor((elapsedMs - ENDLESS_3D.rushAt) / ENDLESS_3D.levelMs);
-export interface Shift3DOptions extends ShiftOptions { peak?: boolean; endless?: boolean }
+export interface Shift3DOptions extends ShiftOptions {
+  peak?: boolean;
+  endless?: boolean;
+  /** What a mystery box holds (`MYSTERY_PRIZES`), apart from the freight's own random source. Tests and the daily challenge inject one. */
+  prizeRandom?: () => number;
+}
 /**
  * Priority freight. Through the flow and the rush, every third parcel the player
  * could take (their own side's trucks and floor routes, not bulk, heavy freight or
@@ -111,18 +139,42 @@ export class ShiftModel3D extends ShiftModel {
   public inspectionsHeld = 0;
   public inspectionLoads = 0;
   public inspectionBonus = 0;
+  /** Surprise freight (`SURPRISE_3D`): the rush wave under way (its end, and the parcels it brought), and tonight's tallies. */
+  private waveUntilMs = 0;
+  private waveParcels: Set<number> | null = null;
+  private waveFrom = 0;
+  private wavesDue = 0;
+  public wavesRun = 0;
+  public wavesCleared = 0;
+  private readonly surprises = new Map<number, SurpriseKind>();
+  private surpriseScanned = 0;
+  private mysteriesMarked = 0;
+  private fragileMarked = 0;
+  public mysteriesOpened = 0;
+  public fragileDelivered = 0;
+  /** The last mystery box's prize, for tests and the results. */
+  public lastPrize: MysteryPrize | null = null;
+  public prizeRandom: () => number;
   constructor(options: Shift3DOptions = {}) {
     super(options);
     this.peak = options.peak === true;
     this.capacity = this.peak ? PEAK_NIGHT.capacity : 7;
     this.endless = options.endless === true;
+    this.prizeRandom = options.prizeRandom ?? Math.random;
     this.durationMs = this.endless ? Infinity : 180_000;
   }
 
   /** The endless shift's level now (1 on an ordinary night). */
   public get endlessLevel(): number { return this.endless ? endlessLevelAt(this.elapsedMs) : 1; }
-  // Read during the base constructor too, before `peak` is set: the first parcel keeps the lesson's pace either way.
+  // Read during the base constructor too, before the wave's fields are set: no wave runs then.
   protected override get freightFlow() {
+    const flow = this.baseFlow;
+    if (!((this.waveUntilMs ?? 0) > this.elapsedMs)) return flow;
+    return { ...flow, flowMs: flow.flowMs * SURPRISE_3D.waveGap, rushMs: flow.rushMs * SURPRISE_3D.waveGap };
+  }
+
+  // Read during the base constructor too, before `peak` is set: the first parcel keeps the lesson's pace either way.
+  private get baseFlow() {
     if (this.endless) {
       const gap = Math.max(ENDLESS_3D.soonest, 1 - ENDLESS_3D.sooner * Math.max(0, this.endlessLevel - 2));
       return { ...ARRIVALS_3D, rushMs: ARRIVALS_3D.rushMs * gap };
@@ -204,7 +256,94 @@ export class ShiftModel3D extends ShiftModel {
 
   public override update(deltaMs: number, move: { x: number; y: number } = { x: 0, y: 0 }): void {
     super.update(deltaMs, move);
-    if (!this.paused && !this.ended) { this.updatePriority(); this.updateInspection(); this.updateLevel(); }
+    if (!this.paused && !this.ended) { this.updatePriority(); this.updateInspection(); this.updateLevel(); this.updateSurprises(); }
+  }
+
+  /** The surprise a parcel carries (`SURPRISE_3D`), or null. */
+  public surpriseOf(id: number): SurpriseKind | null { return this.surprises.get(id) ?? null; }
+
+  /** Time left on the rush wave under way, or 0. */
+  public get waveRemainingMs(): number { return this.waveParcels ? Math.max(0, this.waveUntilMs - this.elapsedMs) : 0; }
+
+  /** The `index`th time of a surprise's schedule tonight, or undefined once they are all used. */
+  private surpriseAt(times: readonly number[], index: number): number | undefined {
+    if (index < times.length) return times[index];
+    return this.endless ? times[times.length - 1] + (index - times.length + 1) * SURPRISE_3D.repeatMs : undefined;
+  }
+
+  private updateSurprises(): void {
+    const working = this.phase === 'flow' || this.phase === 'rush';
+    const waveAt = this.surpriseAt(SURPRISE_3D.waves, this.wavesDue);
+    if (!this.waveParcels && waveAt !== undefined && this.elapsedMs >= waveAt) {
+      this.wavesDue += 1;
+      if (working) {
+        this.wavesRun += 1;
+        this.waveUntilMs = this.elapsedMs + SURPRISE_3D.waveMs;
+        this.waveParcels = new Set();
+        this.waveFrom = this.packages.length;
+        this.emit('surprise', `RUSH WAVE · freight twice as fast for ${SURPRISE_3D.waveMs / 1000} seconds · keep it all out of recovery for +${SURPRISE_3D.waveBonus}`, { x: 480, y: 122 });
+      }
+    }
+    const wave = this.waveParcels;
+    if (wave) {
+      // The freight that arrives while it lasts is the wave's; it is judged once none of it rides the belt.
+      if (this.elapsedMs < this.waveUntilMs) for (; this.waveFrom < this.packages.length; this.waveFrom++) wave.add(this.packages[this.waveFrom].id);
+      else {
+        const parcels = this.packages.filter(parcel => wave.has(parcel.id));
+        if (!parcels.some(parcel => parcel.state === 'belt')) {
+          this.waveParcels = null;
+          const missed = parcels.filter(parcel => parcel.missCounted).length;
+          if (parcels.length && !missed) {
+            this.wavesCleared += 1;
+            this.score += SURPRISE_3D.waveBonus;
+            this.emit('surprise', `WAVE CLEARED · ${parcels.length} parcels, none in recovery · +${SURPRISE_3D.waveBonus}`, { x: 480, y: 122 }, undefined, SURPRISE_3D.waveBonus);
+          } else this.emit('surprise', `WAVE OVER · ${missed} reached recovery · no bonus`, { x: 480, y: 122 }, undefined, 0);
+        }
+      }
+    }
+    // Mystery boxes and fragile crates: once one is due, the next parcel the player could take (as for priority
+    // freight, and never a priority parcel itself) becomes it as it lands on the belt.
+    for (; this.surpriseScanned < this.packages.length; this.surpriseScanned++) {
+      const parcel = this.packages[this.surpriseScanned];
+      if (parcel.state !== 'belt' || !working || this.priorityDue.has(parcel.id)) continue;
+      if (parcel.route === 'C' || parcel.size === 'heavy' || parcel.kind === 'mesa') continue;
+      if (!this.coop && ROUTE_INFO[parcel.route].side !== this.activeWorker.side) continue;
+      const mysteryAt = this.surpriseAt(SURPRISE_3D.mystery, this.mysteriesMarked);
+      const fragileAt = this.surpriseAt(SURPRISE_3D.fragile, this.fragileMarked);
+      const kind: SurpriseKind | null = mysteryAt !== undefined && this.elapsedMs >= mysteryAt ? 'mystery'
+        : fragileAt !== undefined && this.elapsedMs >= fragileAt ? 'fragile' : null;
+      if (!kind) continue;
+      if (kind === 'mystery') this.mysteriesMarked += 1;
+      else this.fragileMarked += 1;
+      this.surprises.set(parcel.id, kind);
+      this.emit('surprise', kind === 'mystery' ? `MYSTERY BOX · ${ROUTE_INFO[parcel.route].name} · deliver it to open it`
+        : `FRAGILE · ${ROUTE_INFO[parcel.route].name} · no throwing · carry it in gently for +${SURPRISE_3D.fragileBonus}`, parcel, parcel);
+    }
+    for (const id of this.surprises.keys()) {
+      if (this.packages.find(parcel => parcel.id === id)?.state === 'damaged') this.surprises.delete(id);
+    }
+  }
+
+  /** A surprise the player delivered: a fragile crate's bonus, or a mystery box's prize. */
+  private openSurprise(kind: SurpriseKind, parcel: Parcel): void {
+    if (kind === 'fragile') {
+      this.fragileDelivered += 1;
+      this.score += SURPRISE_3D.fragileBonus;
+      this.emit('surprise', `HANDLED WITH CARE +${SURPRISE_3D.fragileBonus}`, parcel, parcel, SURPRISE_3D.fragileBonus);
+      return;
+    }
+    this.mysteriesOpened += 1;
+    const roll = this.prizeRandom();
+    let total = 0;
+    const prize = MYSTERY_PRIZES.find(item => roll < (total += item.share)) ?? MYSTERY_PRIZES[MYSTERY_PRIZES.length - 1];
+    this.lastPrize = prize.id;
+    this.score += prize.points;
+    if (prize.id === 'stop') this.beltStopsRemaining += 1;
+    if (prize.id === 'fire') this.combo = Math.max(this.combo + 5, FLOW_3D.combo);
+    const message = prize.id === 'jackpot' ? `MYSTERY · JACKPOT +${prize.points}`
+      : prize.id === 'stop' ? `MYSTERY · A SPARE BELT STOP · ${this.beltStopsRemaining} left`
+        : prize.id === 'fire' ? `MYSTERY · ON FIRE · streak ${this.combo}` : `MYSTERY · JUST SOCKS +${prize.points}`;
+    this.emit('surprise', message, parcel, parcel, prize.points);
   }
 
   /** An endless shift announces each new level as a phase. */
@@ -212,7 +351,7 @@ export class ShiftModel3D extends ShiftModel {
     const level = this.endlessLevel;
     if (!this.endless || level <= this.levelShown) return;
     this.levelShown = level;
-    this.emit('phase', `LEVEL ${level} · freight every ${(this.freightFlow.rushMs / 1000).toFixed(1)} seconds · the belt speeds up`, { x: 480, y: 122 });
+    this.emit('phase', `LEVEL ${level} · freight every ${(this.baseFlow.rushMs / 1000).toFixed(1)} seconds · the belt speeds up`, { x: 480, y: 122 });
   }
 
   /** Time left on the inspection under way, or 0. */
@@ -365,7 +504,8 @@ export class ShiftModel3D extends ShiftModel {
     const result: ThrowTarget = { ok: false, route, ...target, distance: separation,
       breakChance: stairThrow ? THROWING.stairBreakChance : THROWING.fragileKinds.includes(held.kind)
         ? THROWING.breakChance.fragile : THROWING.breakChance.ordinary, reason: '' };
-    if (held.size === 'heavy') result.reason = 'TOO HEAVY TO THROW · carry it';
+    if (this.surprises.get(held.id) === 'fragile') result.reason = 'FRAGILE · carry it in gently';
+    else if (held.size === 'heavy') result.reason = 'TOO HEAVY TO THROW · carry it';
     else if (ROUTE_INFO[route].kind === 'truck') result.reason = 'TRUCK LOAD · carry it inside and press SPACE';
     else if (this.currentDock(worker) && !stairThrow) result.reason = 'AT A DROP · SPACE attempts delivery';
     else if (onLowerFloor(worker) && ROUTE_INFO[route].kind !== 'floor') result.reason = "CAN'T THROW UP ONTO THE PLATFORM · carry it";
@@ -419,7 +559,8 @@ export class ShiftModel3D extends ShiftModel {
       return Math.hypot(dx, dy) < 32 && dx * x + dy * y > 0 && Math.abs(dx * y - dy * x) / magnitude < 22;
     });
     const flow = (worker === this.activeWorker || this.coop) && this.onFire ? FLOW_3D.pace : 1;
-    const speed = WORKER_SPEED_3D * this.walkPace * flow * (held ? Math.max(MIN_CARRY_SPEED_3D, CARRY_MULTIPLIER[held.kind]) : 1)
+    const careful = held && this.surprises.get(held.id) === 'fragile' ? SURPRISE_3D.fragilePace : 1;
+    const speed = WORKER_SPEED_3D * this.walkPace * flow * careful * (held ? Math.max(MIN_CARRY_SPEED_3D, CARRY_MULTIPLIER[held.kind]) : 1)
       * deltaMs / 1000 * requestedSpeed / magnitude * (squeezed ? 0.75 : 1);
     const previousX = worker.x, previousY = worker.y;
     const maxY = held ? this.layout.stairs.maxY - this.layout.carriedClearance : this.layout.workerMaxY;
@@ -591,7 +732,11 @@ export class ShiftModel3D extends ShiftModel {
   protected override deliver(parcel: Parcel, assisted = false): void {
     const due = this.priorityDue.get(parcel.id);
     this.priorityDue.delete(parcel.id);
+    const surprise = this.surprises.get(parcel.id);
+    this.surprises.delete(parcel.id);
     super.deliver(parcel, assisted);
+    // The partner's deliveries never score, so a surprise only pays in the player's hands.
+    if (surprise && !assisted) this.openSurprise(surprise, parcel);
     // A long throw that lands clean pays a bonus: a LONG THROW, or from further a TRICK SHOT (`TRICK_SHOTS`).
     const span = parcel.thrownDelivery ? this.throwSpans.get(parcel.id) : undefined;
     if (span !== undefined) {

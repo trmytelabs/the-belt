@@ -1,6 +1,7 @@
 import { DEPOT_3D_LAYOUT as SHIFT_LAYOUT, floorPileSlot, truckInteriorAt } from './layout';
-import { ARRIVALS_3D, FLOW_3D, INSPECTION_3D, PEAK_NIGHT, PRIORITY_3D, ShiftModel3D, TRICK_SHOTS } from './ShiftModel3D';
+import { ARRIVALS_3D, FLOW_3D, INSPECTION_3D, PEAK_NIGHT, PRIORITY_3D, ShiftModel3D, SURPRISE_3D, TRICK_SHOTS } from './ShiftModel3D';
 import { createPriorityMarker, updatePriorityMarker, type PriorityMarker } from './priorityMarker';
+import { createSurpriseMarker, SURPRISE_PROMPT_LIFT, updateSurpriseMarker, type SurpriseMarker } from './surpriseMarker';
 import { GOAL_BONUS, judgeGoals, nightGoals, type NightGoal } from './nightGoals';
 import { MEDALS, awardMedals, type NightFacts } from './medals';
 import { perkById, perkOffer, type Perk } from './perks';
@@ -167,6 +168,8 @@ export class Belt3d {
   private readonly broken = new Map<number, number>();
   /** The countdown rings on live priority parcels, by parcel id. */
   private readonly priorityMarkers = new Map<number, PriorityMarker>();
+  /** The labels on mystery boxes and fragile crates, by parcel id. */
+  private readonly surpriseMarkers = new Map<number, SurpriseMarker>();
   private readonly throwers = new Map<number, WorkerId>();
   private readonly throwStarts = new Map<number, THREE.Vector3>();
   private readonly seenRoutes = new Set<Route>();
@@ -958,6 +961,7 @@ export class Belt3d {
       ['STOP THE BELT', `${touch ? 'STOP THE BELT' : pad ? 'X' : 'E'} holds the belt for two seconds, ${stops} a night, with 15 seconds between.`],
       ['THROW', `${touch ? 'THROW' : pad ? 'B' : 'F'} throws to the nearest drop to save the walk. Fragile freight can break, and a throw down the stairs risks more.`],
       ['PRIORITY', `A gold ring marks urgent freight. Load it yourself before the ring runs out for +${PRIORITY_3D.bonus}.`],
+      ['SURPRISES', `Twice a night a siren starts a RUSH WAVE: freight twice as fast for ${SURPRISE_3D.waveMs / 1000} seconds, +${SURPRISE_3D.waveBonus} if none of it reaches recovery. A MYSTERY BOX pays a random prize when you deliver it. A FRAGILE crate cannot be thrown and slows you down: carry it in for +${SURPRISE_3D.fragileBonus}.`],
       ['INSPECTIONS', `Twice a night a supervisor watches for ${INSPECTION_3D.durationMs / 1000} seconds. Each clean load while they watch pays +${m.inspectionPay}; a wrong drop costs ${INSPECTION_3D.penalty} more than usual.`],
       ['STREAKS', `Each clean load in a row adds 15 more points, up to +150. From ${FLOW_3D.combo} in a row you are ON FIRE and walk ${Math.round((FLOW_3D.pace - 1) * 100)}% faster. A wrong drop or a miss ends the streak.`],
       ['GOALS', `Each night sets three goals, shown on the briefing and as chips on the HUD. Each one met pays +${GOAL_BONUS}.`],
@@ -1089,6 +1093,7 @@ export class Belt3d {
     this.departing.length = 0;
     this.broken.clear();
     this.priorityMarkers.clear();
+    this.surpriseMarkers.clear();
     this.throwers.clear();
     this.throwStarts.clear();
     this.seenRoutes.clear();
@@ -1463,8 +1468,8 @@ export class Belt3d {
       clockLabel: m.endless ? 'SURVIVED' : undefined,
       pace: this.paceGap(),
       phase: this.state === 'interlude' ? 'BEN  /  DODGE TRAINING'
-        : m.endless ? `ENDLESS  /  LEVEL ${m.endlessLevel}${this.record.endless ? `  /  BEST ${this.record.endless.sorted}` : ''}${m.inspection ? `  /  ${this.watcherName} WATCHING ${Math.ceil(m.inspectionRemainingMs / 1000)}s` : ''}`
-        : `${PHASE_LABELS[m.phase] ?? ''}${m.inspection ? `  /  ${this.watcherName} WATCHING ${Math.ceil(m.inspectionRemainingMs / 1000)}s` : ''}`, combo: m.combo, worker: m.activeWorker.id,
+        : m.endless ? `ENDLESS  /  LEVEL ${m.endlessLevel}${this.record.endless ? `  /  BEST ${this.record.endless.sorted}` : ''}${this.underWay()}`
+        : `${PHASE_LABELS[m.phase] ?? ''}${this.underWay()}`, combo: m.combo, worker: m.activeWorker.id,
       partner: m.coop ? m.partnerWorker.id : undefined,
       hint: this.state === 'interlude' ? 'Belt held · your freight is safe' : this.state === 'mesa' ? 'Y steals the Mesa · N leaves it'
         : scannerSelected ? `${this.touch.enabled ? 'RESET SCANNER' : 'SPACE resets scanner'} · carried freight stays in hand`
@@ -1573,6 +1578,7 @@ export class Belt3d {
 
   private handleEvent(event: ShiftEvent): void {
     if (event.type === 'priority') { this.handlePriority(event); return; }
+    if (event.type === 'surprise') { this.handleSurprise(event); return; }
     if (event.type === 'inspection') { this.handleInspection(event); return; }
     const sound = event.assisted || event.type === 'wrong' && !event.message.startsWith('WRONG DROP') ? undefined : EVENT_SOUNDS[event.type];
     if (sound) audioSystem.play(sound);
@@ -1657,6 +1663,48 @@ export class Belt3d {
       audioSystem.play('register');
       this.overlay.pop(`PRIORITY +${event.score}`, '#ffc23a', toWorld(event, surfaceAt(event.x, event.y) + 2.6), 1.2);
     } else this.overlay.showToast(event.message, 2400);
+  }
+
+  /** The HUD's note of an inspection or a rush wave under way, with its seconds left. */
+  private underWay(): string {
+    const m = this.model;
+    return `${m.inspection ? `  /  ${this.watcherName} WATCHING ${Math.ceil(m.inspectionRemainingMs / 1000)}s` : ''}${m.waveRemainingMs > 0 ? `  /  RUSH WAVE ${Math.ceil(m.waveRemainingMs / 1000)}s` : ''}`;
+  }
+
+  /**
+   * Surprise freight: a rush wave starts (no parcel, no score: the siren) or is judged (no parcel, its bonus), a parcel
+   * becomes a mystery box or a fragile crate (a parcel, no score), or one pays as the player delivers it.
+   */
+  private handleSurprise(event: ShiftEvent): void {
+    if (event.packageId === undefined) {
+      if (event.score === undefined) {
+        audioSystem.rushSiren();
+        this.gamepad.rumble(0.35, 260);
+      } else if (event.score > 0) audioSystem.play('register');
+      this.overlay.showToast(event.message, 3600);
+    } else if (event.score === undefined) {
+      audioSystem.play('event-alert');
+      this.overlay.showToast(event.message, 3200);
+    } else {
+      audioSystem.play(event.score > 0 ? 'register' : 'event-alert');
+      const fragile = event.message.startsWith('HANDLED');
+      this.overlay.pop(event.message.replace('MYSTERY · ', ''), fragile ? '#ff9f8f' : '#c9a8ff', toWorld(event, surfaceAt(event.x, event.y) + 2.6), 1.3);
+      if (!fragile) this.overlay.showToast(event.message, 2600);
+    }
+  }
+
+  /** A mystery box or fragile crate wears its label until it is delivered or broken. */
+  private syncSurprise(parcel: Parcel, view: ParcelView): void {
+    const kind = this.model.surpriseOf(parcel.id);
+    if (!kind) return;
+    let marker = this.surpriseMarkers.get(parcel.id);
+    if (!marker) {
+      marker = createSurpriseMarker(kind);
+      this.surpriseMarkers.set(parcel.id, marker);
+    }
+    if (marker.root.parent !== view.root) view.root.add(marker.root);
+    marker.root.visible = view.tag.visible;
+    updateSurpriseMarker(marker, view.tag.position.y + view.tag.scale.y, this.time, this.reducedMotion);
   }
 
   /** The supervisor on the player's side: Vic on Termite's, Shan on Skanky's. */
@@ -1829,7 +1877,8 @@ export class Belt3d {
       const reachView = reach ? this.parcels.get(reach.id) : null;
       if (reachView && this.state === 'playing') {
         this.partnerPrompt.visible = true;
-        this.partnerPrompt.position.copy(reachView.root.position).y += Math.max(reachView.height + 1.75, reachView.tag.position.y + reachView.tag.scale.y + 0.55);
+        this.partnerPrompt.position.copy(reachView.root.position).y += Math.max(reachView.height + 1.75, reachView.tag.position.y + reachView.tag.scale.y + 0.55
+          + (this.surpriseMarkers.has(reach!.id) ? SURPRISE_PROMPT_LIFT : 0));
       }
     }
 
@@ -1840,12 +1889,14 @@ export class Belt3d {
     this.pickupHalo.visible = this.pickupPrompt.visible = this.marker.visible;
     for (const [id, parcelView] of this.parcels) parcelView.root.userData.pickable = this.marker.visible && id === nearest?.id;
     if (view) {
-      this.marker.position.copy(view.root.position).add(new THREE.Vector3(0, view.height + 1.55 + Math.sin(this.time * 6) * 0.06, 0));
+      this.marker.position.copy(view.root.position).add(new THREE.Vector3(0, view.height + 1.55 + Math.sin(this.time * 6) * 0.06
+        + (this.surpriseMarkers.has(nearest!.id) ? SURPRISE_PROMPT_LIFT : 0), 0));
       this.marker.rotation.y += dt * 3;
       this.pickupHalo.position.copy(view.root.position).y += 0.025;
       this.pickupHalo.scale.setScalar(Math.max(0.8, view.width, view.depth) + 0.2);
       // Above the address tag, never over it: the tag stands taller than the parcel on tall freight.
-      this.pickupPrompt.position.copy(view.root.position).y += Math.max(view.height + 1.75, view.tag.position.y + view.tag.scale.y + 0.55);
+      this.pickupPrompt.position.copy(view.root.position).y += Math.max(view.height + 1.75, view.tag.position.y + view.tag.scale.y + 0.55
+        + (this.surpriseMarkers.has(nearest!.id) ? SURPRISE_PROMPT_LIFT : 0));
     }
     const offered = this.mesa.offered, mesaView = offered ? this.parcels.get(offered.id) : undefined;
     this.mesaRing.visible = this.mesaTag.visible = mesaView !== undefined;
@@ -2049,6 +2100,13 @@ export class Belt3d {
       }
       this.animateParcel(view, parcel, dt);
       this.syncPriority(parcel, view);
+      this.syncSurprise(parcel, view);
+    }
+    for (const [id, marker] of this.surpriseMarkers) {
+      if (m.surpriseOf(id) !== null && marker.root.parent === this.parcels.get(id)?.root) continue;
+      marker.root.removeFromParent();
+      disposeObject3D(marker.root);
+      this.surpriseMarkers.delete(id);
     }
     for (const [id, marker] of this.priorityMarkers) {
       if (m.priorityRemainingMs(id) !== null && marker.root.parent === this.parcels.get(id)?.root) continue;
@@ -2390,6 +2448,7 @@ export class Belt3d {
       ${m.priorityCount ? `<p>${m.priorityOnTime} of ${m.priorityCount} priority parcels on time · +${m.priorityOnTime * PRIORITY_3D.bonus}</p>` : ''}
       ${this.perkInPlay ? `<p class="b3d-goals">PERK · ${escapeHtml(this.perkInPlay.title)} · ${escapeHtml(this.perkInPlay.detail)}</p>` : ''}
       <p class="b3d-goals">NIGHT GOALS · ${judged.met.length} OF ${this.goals.length} · ${goals} · +${judged.bonus}</p>
+      ${m.wavesRun || m.mysteriesOpened || m.fragileDelivered ? `<p>SURPRISES · ${m.wavesCleared} of ${m.wavesRun} rush ${m.wavesRun === 1 ? 'wave' : 'waves'} cleared · ${m.mysteriesOpened} mystery ${m.mysteriesOpened === 1 ? 'box' : 'boxes'} opened · ${m.fragileDelivered} fragile ${m.fragileDelivered === 1 ? 'crate' : 'crates'} carried in</p>` : ''}
       ${m.inspectionsHeld ? `<p>INSPECTIONS · ${m.inspectionLoads} clean ${m.inspectionLoads === 1 ? 'load' : 'loads'} watched · +${m.inspectionBonus}</p>` : ''}
       <p>${m.thrownDeliveries} thrown in clean · ${m.damaged} broken (−${m.breakagePenalty} points${m.damaged > THROWING.gradeForgivenBreaks ? `, ${m.gradedBreaks} counted against the grade` : ''})</p>
       ${mall ? `<p>MALL RUN · ${mall.delivered}/6 delivered · ${mall.signatures}/6 signed · five-ton ${home ? 'returned' : 'not returned'} · +${this.mallBonus}</p>
