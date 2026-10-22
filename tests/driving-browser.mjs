@@ -100,7 +100,11 @@ try {
   assert.equal(await page.evaluate(() => window.fixtureApp.state), 'driving', 'Enter cannot skip driving');
   await page.keyboard.down('KeyW');
   await page.waitForFunction(() => window.fixtureApp.driving.speed > 10, null, { polling: 10 });
-  await page.keyboard.down('KeyA'); await page.waitForTimeout(220); await page.keyboard.up('KeyA');
+  // A is held for the usual tap, and on until the truck has turned: a software renderer under load can run only a tick
+  // or two in 220 ms (CI once saw too little turn), but a few seconds without turning still fails.
+  await page.keyboard.down('KeyA'); await page.waitForTimeout(220);
+  await page.waitForFunction(() => window.fixtureApp.driving.heading > Math.PI / 2 + 0.1, null, { polling: 10, timeout: 3000 }).catch(() => {});
+  await page.keyboard.up('KeyA');
   assert.ok(await page.evaluate(() => window.fixtureApp.driving.heading > Math.PI / 2 + 0.1), 'A changes actual world heading to the left');
   // The camera and cab checks below steer the truck about; it goes back where it was after them, so the checks that follow
   // (the synthetic cone five metres ahead) start from the same place as before, not beside a building.
