@@ -449,6 +449,9 @@ const parentFrame = new THREE.Quaternion();
 const boneFrame = new THREE.Quaternion();
 const lookTurn = new THREE.Quaternion();
 const handWorld = new THREE.Vector3();
+const hipWant = new THREE.Vector3();
+const hipHave = new THREE.Vector3();
+const rootScale = new THREE.Vector3();
 const IDENTITY = new THREE.Quaternion();
 
 /** A stable 0-1 value from a name, so each person idles a little out of step with the rest. */
@@ -636,6 +639,17 @@ function driveModel(character: Character, rig: ModelRig): void {
     // Bones the figure has no pivot for (spine, clavicles, fingers) return toward rest as the figure takes over.
     for (const { bone, rest } of clips.free) bone.quaternion.slerp(rest, figure);
     clips.root.position.lerp(clips.rootRest, figure);
+  }
+  // Seated on a clip (a passenger's seated idle), the clip's hips sit at the height of the chair it was made on,
+  // which put a car passenger's head through the roof: raise or lower the model so its hips sit on this seat, where
+  // the figure's are.
+  if (clips && figure < 1 && character.motion?.seated) {
+    const hip = rig.drives.find((drive) => drive.pivot === character.leftLeg);
+    if (hip) {
+      character.root.updateMatrixWorld(true);
+      const offset = hip.pivot.getWorldPosition(hipWant).y - hip.bone.getWorldPosition(hipHave).y;
+      rig.container.position.y += offset / Math.max(1e-6, character.root.getWorldScale(rootScale).y) * (1 - figure);
+    }
   }
   for (const { pivot, bone, rest, arm, leg } of rig.drives) {
     const weight = arm ? arms : leg ? legs : figure;
