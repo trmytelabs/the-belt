@@ -17,9 +17,16 @@ export interface Speaker extends Gaze { id: string; until: number }
 /** How far a voice carries the crew's attention, in metres. */
 export const VOICE_RANGE = 9;
 /** How close a passing worker must come to be looked at, in metres. */
-export const PASSING_RANGE = 3.2;
-/** Beyond this angle off the facing (radians) a target would need the body to turn, so the head stays put. */
-export const LOOK_CONE = 1.75;
+export const PASSING_RANGE = 2.2;
+/**
+ * Beyond this angle off the facing (radians, about 63 degrees) a target would need the body to turn,
+ * so the head stays put. At 1.75 heads swung to their limit and back whenever someone passed beside.
+ */
+export const LOOK_CONE = 1.1;
+/** How far the head turns either way (radians, about 40 degrees). */
+export const HEAD_TURN = 0.7;
+/** How quickly the head eases toward its target, per second: about a third of a second to get most of the way. */
+const HEAD_EASE = 3;
 /** Nobody looks at something closer than this: it is under their nose, or themselves. */
 const TOO_CLOSE = 0.3;
 
@@ -74,7 +81,7 @@ export const eyeHeight = (headHeight: number): number => headHeight * 0.92;
 
 /**
  * Eases the head toward `target` in the figure's own frame (facing +z, left −x): yaw
- * clamped to a radian either way, pitch from the target's height when given, else
+ * clamped to `HEAD_TURN` either way, pitch from the target's height when given, else
  * down at the belt. Reduced motion, or no target, eases the head back to centre.
  */
 export function lookToward(character: Character, target: { x: number; z: number; y?: number } | null, dt: number, reducedMotion = false): void {
@@ -84,12 +91,12 @@ export function lookToward(character: Character, target: { x: number; z: number;
     const distance = Math.hypot(target.x, target.z);
     if (distance > 1e-3) {
       // The figure faces +Z and its left side is -X: a point straight ahead has yaw 0, to its left negative.
-      yaw = Math.max(-1.0, Math.min(1.0, Math.atan2(target.x, target.z)));
+      yaw = Math.max(-HEAD_TURN, Math.min(HEAD_TURN, Math.atan2(target.x, target.z)));
       // Work on the belt is looked down at; a point with a height (another head) sets its own pitch, down positive.
       pitch = target.y === undefined ? distance < 2.8 ? 0.2 : 0.08 : Math.max(-0.5, Math.min(0.6, -Math.atan2(target.y, distance)));
     }
   }
-  const ease = Math.min(1, dt * 8);
+  const ease = Math.min(1, dt * HEAD_EASE);
   character.head.rotation.y += (yaw - character.head.rotation.y) * ease;
   character.head.rotation.x += (pitch - character.head.rotation.x) * ease;
 }

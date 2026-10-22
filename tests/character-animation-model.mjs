@@ -112,13 +112,13 @@ test('a lift never starts the walk cycle, and a walk keeps its arm swing through
 
 test('the head turns toward a point within the neck\'s range, looks down at close work and eases back', () => {
   const c = figure();
-  for (let frame = 0; frame < 90; frame++) lookToward(c, { x: 1, z: 1 }, FRAME);
-  assert.ok(Math.abs(c.head.rotation.y - Math.PI / 4) < 0.01, 'a point ahead and to the right turns the head 45 degrees right');
+  for (let frame = 0; frame < 90; frame++) lookToward(c, { x: 1, z: 2 }, FRAME);
+  assert.ok(Math.abs(c.head.rotation.y - Math.atan2(1, 2)) < 0.01, 'a point ahead and to the right turns the head toward it');
   assert.ok(c.head.rotation.x > 0.15, 'close work tips the head down');
-  for (let frame = 0; frame < 90; frame++) lookToward(c, { x: -10, z: 0.1 }, FRAME);
-  assert.ok(Math.abs(c.head.rotation.y + 1.0) < 0.01, 'a point far to the left turns the head only as far as the neck allows');
+  for (let frame = 0; frame < 120; frame++) lookToward(c, { x: -10, z: 0.1 }, FRAME);
+  assert.ok(Math.abs(c.head.rotation.y + 0.7) < 0.01, 'a point far to the left turns the head only as far as the neck allows');
   assert.ok(c.head.rotation.x < 0.1, 'distant work keeps the head nearly level');
-  for (let frame = 0; frame < 90; frame++) lookToward(c, null, FRAME);
+  for (let frame = 0; frame < 120; frame++) lookToward(c, null, FRAME);
   assert.ok(Math.abs(c.head.rotation.y) < 0.01 && Math.abs(c.head.rotation.x) < 0.01, 'with nothing to look at the head returns to centre');
   for (let frame = 0; frame < 30; frame++) lookToward(c, { x: 1, z: 0 }, FRAME, true);
   assert.ok(Math.abs(c.head.rotation.y) < 1e-3, 'reduced motion keeps the head still');
@@ -178,4 +178,12 @@ test('a hand-built pose blends part way, not held then snapped', () => {
   assert.ok(early < -0.05 && early > -1.2, `a twentieth of a second in, the arm is on its way: ${early.toFixed(3)}`);
   assert.ok(middle < early && middle > -2.3, `half way, further: ${middle.toFixed(3)}`);
   assert.ok(Math.abs(late + 2.4) < 1e-6, `after the blend, there: ${late.toFixed(3)}`);
+});
+
+test('the head turns at a calm pace: a third of a second gets it most of the way, never a snap', () => {
+  const c = figure();
+  const steps = [];
+  for (let frame = 0; frame < 20; frame++) { lookToward(c, { x: -10, z: 0.1 }, FRAME); steps.push(c.head.rotation.y); }
+  assert.ok(Math.abs(steps[0]) < 0.05, `the first frame turns only a little: ${steps[0]}`);
+  assert.ok(steps[19] < -0.4 && steps[19] > -0.7, `about a third of a second in, most of the way: ${steps[19]}`);
 });
