@@ -227,6 +227,41 @@ try {
   assert.deepEqual(errors, []);
   console.log('PASS 3D break: all six exchanges (three at 7-Eleven, three inside Tim Hortons) by real keys, shift and held freight preserved, once per shift; no script errors');
 
+  // ---- JUST PLAY: the night without its story scenes. J goes from the briefing straight to the countdown; the lunch
+  // break and Ben's robbery pass without stopping the shift; the shift's end goes straight on to the drive to the mall.
+  await freshRun({ opener: 0, breakAtMs: 30_000 });
+  assert.match(await page.locator('[data-action=play]').innerText(), /JUST PLAY/);
+  await read(() => {
+    window.justPlayStates = new Set();
+    window.justPlaySampler = setInterval(() => window.justPlayStates.add(window.fixtureApp.state), 5);
+  });
+  await page.keyboard.press('KeyJ');
+  await toShift();
+  await clearFreight();
+  // Past the lunch break and Ben's robbery: neither stops the shift.
+  await read(() => { window.fixtureApp.model.elapsedMs = 30_100; });
+  await wait(() => window.fixtureApp.story.breakTaken);
+  await read(() => { window.fixtureApp.model.elapsedMs = 68_100; });
+  await wait(() => window.fixtureApp.benStarted);
+  await page.waitForTimeout(300);
+  assert.deepEqual(await read(() => ({ state: window.fixtureApp.state, paused: window.fixtureApp.model.paused })), { state: 'playing', paused: false },
+    'the break and Ben go by without stopping the shift');
+  await read(() => {
+    const m = window.fixtureApp.model;
+    m.workers[0].heldId = null;
+    for (const parcel of m.packages) if (parcel.state !== 'damaged') parcel.state = 'delivered';
+    m.sorted = m.goal;
+    m.elapsedMs = m.durationMs - 20;
+  });
+  await wait(() => window.fixtureApp.state === 'celebrating');
+  await read(() => { window.fixtureApp.crew.celebrationMs = 12_950; });
+  await wait(() => window.fixtureApp.state === 'driving');
+  const justPlay = await read(() => { clearInterval(window.justPlaySampler); return { states: [...window.justPlayStates], destination: window.fixtureApp.driving.destination }; });
+  assert.equal(justPlay.destination, 'mall');
+  for (const state of ['story', 'break-alert', 'interlude', 'decision']) assert.ok(!justPlay.states.includes(state), `JUST PLAY never shows ${state}: ${JSON.stringify(justPlay.states)}`);
+  assert.deepEqual(errors, []);
+  console.log('PASS 3D JUST PLAY: J goes straight to the shift, the break and Ben pass without stopping it, and the shift ends straight into the drive; no story scene shows; no script errors');
+
   // ---- Throwing and breakage with the real F key; the belt keeps moving while Shan yells.
   await freshRun({ opener: 0, breakAtMs: 1e12 });
   await page.keyboard.press('Enter');

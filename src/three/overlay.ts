@@ -160,8 +160,11 @@ const CSS = `
 .b3d-recent li span { color: #9fb4b4; }
 .b3d-panel p.b3d-medal { color: #f3e6c6; border-left: 3px solid #edb765; padding-left: 10px; }
 .b3d-panel p.b3d-medal b { color: #edb765; letter-spacing: 1px; }
-/* A long briefing scrolls, but START THE NIGHT stays in view at the bottom of the panel. */
-.b3d-panel button[data-action="night"] { position: sticky; bottom: 0; z-index: 1; box-shadow: 0 -10px 18px #142a31; }
+/* A long briefing scrolls, but the start buttons stay in view at the bottom of the panel: START THE NIGHT, and JUST PLAY beside it. */
+.b3d-panel .b3d-start { position: sticky; bottom: 0; z-index: 1; display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; background: #142a31; box-shadow: 0 -10px 18px #142a31; }
+.b3d-panel .b3d-start button { margin-top: 0; flex: 2 1 220px; }
+.b3d-panel .b3d-start button[data-action="play"] { flex: 1 1 160px; background: transparent; border: 1px solid #edb765; color: #edb765; }
+.b3d-panel .b3d-start button[data-action="play"] small { display: block; margin-top: 3px; font-size: 10px; letter-spacing: 1.5px; opacity: 0.8; }
 .b3d-setting { display: grid; grid-template-columns: 90px 1fr 48px; align-items: center; gap: 12px; margin: 12px 0; font-size: 13px; letter-spacing: 1.5px; color: #c9dcdc; }
 .b3d-setting input[type=range] { width: 100%; accent-color: #edb765; }
 .b3d-setting output { text-align: right; font-variant-numeric: tabular-nums; color: #edb765; }
