@@ -171,6 +171,8 @@ try {
     const samples = await page.evaluate(() => {
       const app = window.fixtureApp, actor = app.crew.actor('hussan');
       const out = [];
+      // A change of pose blends in over a fifth of a second; settle into the swear before sampling it.
+      actor.pose = 'swear'; actor.animate(0.1, -1, false);
       for (const time of [0,0.35,0.7,1.05]) {
         actor.pose = 'swear'; actor.poseStart = 0; actor.carrying = false;
         actor.animate(0.1,time,false); app.lastRender = -Infinity; app.draw();
