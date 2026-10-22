@@ -23,9 +23,11 @@ const CRANE_STEPS = 8;
  * than `minDistance`; returns true when it moved. A camera already inside a
  * box comes out to that box's near side. Hemmed in (a building hard by the
  * vehicle in a tight turn, so even `minDistance` is inside it), the camera
- * rises over the vehicle at that distance instead; if no height is clear it
- * holds `minDistance`, inside the box's padding at worst. It never drops
- * nearer: on the roof, the truck fills the view and the frame reads as black.
+ * rises over the vehicle at that distance instead, or swings round it to the
+ * open side; if neither is clear it holds `minDistance`, stepping aside out of
+ * a thin blocker such as a lamp post, and inside a box's padding at worst. It
+ * never drops nearer: on the roof, the truck fills the view and the frame
+ * reads as black.
  */
 export function pullClear(anchor: THREE.Vector3, camera: THREE.Vector3, boxes: readonly THREE.Box3[], margin = 0.4, minDistance = 0.5): boolean {
   direction.subVectors(camera, anchor);
@@ -41,8 +43,13 @@ export function pullClear(anchor: THREE.Vector3, camera: THREE.Vector3, boxes: r
   const clear = Math.max(0, nearest - margin);
   const distance = Math.max(minDistance, clear);
   if (distance > clear && boxes.some((box) => box.containsPoint(point.copy(anchor).addScaledVector(direction, distance)))) {
-    // Held at minDistance the camera would be inside the box: crane up over the vehicle, or failing that hold the minimum.
-    if (craneUp(anchor, boxes, margin, minDistance, camera)) return true;
+    // Held at minDistance the camera would be inside the box: crane up over the vehicle, or swing round it to the open
+    // side (scraping along a wall, or a lamp post just behind in a hard turn, too tall to crane over: either held the
+    // camera inside), or failing both hold the minimum, stepping across the line of sight out of a thin blocker there.
+    if (craneUp(anchor, boxes, margin, minDistance, camera) || swingRound(anchor, boxes, margin, minDistance, camera)) return true;
+    const held = distance < length;
+    if (held) camera.copy(point.copy(anchor).addScaledVector(direction, distance));
+    return sidestep(anchor, camera, boxes, minDistance) || held;
   }
   if (distance >= length) return false;
   camera.copy(point.copy(anchor).addScaledVector(direction, distance));
@@ -66,6 +73,59 @@ function craneUp(anchor: THREE.Vector3, boxes: readonly THREE.Box3[], margin: nu
     return true;
   }
   return false;
+}
+
+/** How far round the vehicle a hemmed-in camera may swing each way (a quarter turn, so it stays behind), and in how many steps. */
+const SWING_TOP = Math.PI / 2;
+const SWING_STEPS = 6;
+
+/**
+ * Puts `camera` at `distance` from `anchor` on its line of sight swung round the vehicle, a step each way at a time up
+ * to `SWING_TOP`, at the first place whose line to the anchor stays `margin` clear of every box; false when none does.
+ */
+function swingRound(anchor: THREE.Vector3, boxes: readonly THREE.Box3[], margin: number, distance: number, camera: THREE.Vector3): boolean {
+  if (Math.hypot(direction.x, direction.z) < 1e-6) return false;
+  for (let step = 1; step <= SWING_STEPS; step += 1) {
+    for (const sign of [1, -1]) {
+      const angle = sign * SWING_TOP * step / SWING_STEPS, c = Math.cos(angle), s = Math.sin(angle);
+      arc.set(direction.x * c - direction.z * s, direction.y, direction.x * s + direction.z * c);
+      if (boxes.some((box) => entry(anchor, arc, distance + margin, box) !== null)) continue;
+      camera.copy(anchor).addScaledVector(arc, distance);
+      return true;
+    }
+  }
+  return false;
+}
+
+/** The farthest a held camera steps aside: enough to leave a padded lamp post or signal, never to cross a building. */
+const SIDESTEP = 1.5;
+
+/**
+ * Moves a held `camera` out of the box it sits in through a side face, across its line of sight to `anchor` (never
+ * behind the blocker, which would then stand between the camera and the vehicle), no nearer the anchor than
+ * `minDistance` and at most `SIDESTEP`; true when it moved.
+ */
+function sidestep(anchor: THREE.Vector3, camera: THREE.Vector3, boxes: readonly THREE.Box3[], minDistance: number): boolean {
+  const flat = Math.hypot(direction.x, direction.z);
+  let moved = false;
+  for (let pass = 0; pass < 3; pass += 1) {
+    const box = boxes.find((item) => item.containsPoint(camera));
+    if (!box) return moved;
+    let best: { axis: 'x' | 'z'; to: number; by: number } | null = null;
+    for (const [axis, to] of [['x', box.min.x - 0.01], ['x', box.max.x + 0.01], ['z', box.min.z - 0.01], ['z', box.max.z + 0.01]] as const) {
+      const by = Math.abs(to - camera[axis]);
+      // Across the line of sight: the step makes more than 45 degrees with it, seen from above.
+      const along = flat < 1e-6 ? 0 : Math.abs(direction[axis]) / flat;
+      if (by > SIDESTEP || along > Math.SQRT1_2 + 1e-9 || (best && by >= best.by)) continue;
+      point.copy(camera)[axis] = to;
+      if (point.distanceTo(anchor) < minDistance - 1e-9) continue;
+      best = { axis, to, by };
+    }
+    if (!best) return moved;
+    camera[best.axis] = best.to;
+    moved = true;
+  }
+  return moved;
 }
 
 /** Where a ray from `origin` along `direction` first enters `box` within `length`, or null; an origin inside the box enters at 0. */

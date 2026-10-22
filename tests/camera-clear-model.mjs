@@ -72,3 +72,32 @@ test('beside a building in a tight turn, the camera rises over the vehicle rathe
   pullClear(v(0, 3.6, 0), held, [near], 0.4, 3.5);
   assert.ok(Math.abs(held.distanceTo(v(0, 3.6, 0)) - 3.5) < 1e-9 && !near.containsPoint(held), 'kept at the minimum when that is clear');
 });
+
+/** True when the line from `a` to `b` misses `box`. */
+const clearLine = (a, b, box) => new THREE.Ray(a, b.clone().sub(a).normalize()).intersectBox(box, v(0, 0, 0)) === null
+  || new THREE.Ray(a, b.clone().sub(a).normalize()).intersectBox(box, v(0, 0, 0)).distanceTo(a) > a.distanceTo(b);
+
+test('a lamp post just behind the vehicle, too tall to crane over, swings the camera round the truck, not behind the pole or nearer the roof', () => {
+  // As CI's driving check found it: 3.5 m behind the roof is half a metre from the pole, inside its padding.
+  const roof = v(0, 3.6, 0), lamp = blocker(-3.3, 0.1, 0.4, 0.4, 8, 0.9);
+  const camera = v(-9, 4.5, 0.3);
+  assert.equal(pullClear(roof, camera, [lamp], 0.4, 3.5), true);
+  assert.equal(lamp.containsPoint(camera), false, `out of the pole's padding: ${camera.toArray()}`);
+  assert.ok(Math.abs(camera.distanceTo(roof) - 3.5) < 1e-9, `the minimum away: ${camera.distanceTo(roof)}`);
+  assert.ok(clearLine(roof, camera, lamp), `the pole is not between the camera and the truck: ${camera.toArray()}`);
+  assert.ok(camera.x < -2.5, `still behind the truck: ${camera.toArray()}`);
+});
+
+test('scraping along a low wall, the camera swings round to the open side rather than sit inside the building', () => {
+  // As the stress probe found it: the roof a third of a metre off a 5 m building's padding, too close for any crane angle.
+  const roof = v(0, 3.6, 0), building = blocker(0, 9.06, 17, 16, 5, 0.7);
+  const camera = v(-8, 4.5, 2.4);
+  assert.equal(pullClear(roof, camera, [building], 0.4, 3.5), true);
+  assert.equal(building.containsPoint(camera), false, `out of the building: ${camera.toArray()}`);
+  assert.ok(clearLine(roof, camera, building) && camera.z < 0.36, `on the road side of the truck: ${camera.toArray()}`);
+  assert.ok(Math.abs(camera.distanceTo(roof) - 3.5) < 1e-9);
+  // A box round the roof itself leaves nowhere to go: the camera holds the minimum.
+  const hemmed = new THREE.Box3(v(-20, -1, -20), v(20, 30, 20)), held = v(-9, 4.5, 0);
+  pullClear(roof, held, [hemmed], 0.4, 3.5);
+  assert.ok(Math.abs(held.distanceTo(roof) - 3.5) < 1e-9, `held at the minimum: ${held.toArray()}`);
+});
