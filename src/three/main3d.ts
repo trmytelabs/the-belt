@@ -204,6 +204,12 @@ export class Belt3d {
   public driveBonus = 0;
   public driveTimes: number[] = [];
   private breakAlertMs = 0;
+  /**
+   * JUST PLAY on the briefing: tonight runs without its story scenes. Each scene is passed over as a skip would pass
+   * it, the lunch break and Ben's robbery go by without stopping the shift, and stealing the Mesa skips the dream.
+   * The shift, the drives, the mall run, the key return and the results are all still played.
+   */
+  private justPlay = false;
   /** Each worker's smoothed velocity in world metres per second, for the camera's look-ahead. */
   private readonly motion: Record<WorkerId, { previous: THREE.Vector3 | null; velocity: THREE.Vector3 }> = {
     termite: { previous: null, velocity: new THREE.Vector3() }, skanky: { previous: null, velocity: new THREE.Vector3() },
@@ -518,6 +524,8 @@ export class Belt3d {
         if (event.code === 'Space') this.lot?.action();
       } else if (this.state === 'briefing' && event.code === 'KeyP') {
         if (this.record.completed > 0) this.startNight(true);
+      } else if (this.state === 'briefing' && event.code === 'KeyJ') {
+        this.startNight(false, true);
       } else if (this.state === 'briefing' && event.code === 'KeyN') {
         this.startEndless();
       } else if (this.state === 'briefing' && /^Digit[123]$/.test(event.code)) {
@@ -583,7 +591,7 @@ export class Belt3d {
       <p>STOP THE BELT gives you a moment to catch up. VIEW shows the whole warehouse. In story scenes, NEXT or SKIP.</p>` : `
       <p>WASD / arrows move. TAB or right-click switches. SPACE or click grabs and delivers.</p>
       <p>F throws toward the nearest drop. At the top of the stairs, throw down with a 30% break risk. E stops the belt. V overview.</p>
-      <p>Story scenes: SPACE next line, ENTER skips the scene, ESC pauses.</p>`}
+      <p>Story scenes: SPACE next line, ENTER skips the scene, ESC pauses. JUST PLAY (J) skips every one.</p>`}
       <p>The night starts at home: go in to work, or quit UPS. After the shift, drive the five-ton to Southgate Mall and finish the deliveries. Driving controls appear when you get there.</p>
       </details>
       ${this.recordLine()}
@@ -591,18 +599,19 @@ export class Belt3d {
       ${this.goalsLine()}
       ${this.perkLine()}
       ${this.record.completed > 0 ? `<p class="b3d-record">PEAK NIGHT UNLOCKED · in the flow and the rush freight comes a fifth sooner, the belt runs faster and recovery holds ${PEAK_NIGHT.capacity}. ${this.touch.enabled ? 'Tap PEAK NIGHT.' : 'Press P or click PEAK NIGHT.'} ENDLESS SHIFT${this.touch.enabled ? '' : ' (N)'} has no clock: the belt speeds up every minute until recovery overflows.</p>` : ''}
-      <button type="button" data-action="night">START THE NIGHT  ↵</button>
+      <div class="b3d-start"><button type="button" data-action="night">START THE NIGHT  ↵</button><button type="button" data-action="play" title="The shift, the drives and the mall run, without the story scenes">JUST PLAY${this.touch.enabled ? '' : '  J'}<small>NO STORY SCENES</small></button></div>
       ${this.record.completed > 0 ? '<button type="button" data-action="peak">PEAK NIGHT  P</button><button type="button" data-action="endless">ENDLESS SHIFT  N</button>' : ''}
       ${this.record.played > 0 ? `<button type="button" class="b3d-medals-link" data-action="medals">MEDALS · ${this.record.medals.length} OF ${MEDALS.length} · RECENT NIGHTS</button>` : ''}
       <a href="${window.location.pathname}?mode=3d&amp;drive=mall">TRY JUST THE DRIVE · EXPLORE THE CITY</a>
-      <a href="${window.location.pathname}?mode=classic">PLAY THE ORIGINAL FULL SHIFT</a>`, { night: () => this.startNight(), peak: () => this.startNight(true), medals: () => this.showMedals(), endless: () => this.startEndless(),
+      <a href="${window.location.pathname}?mode=classic">PLAY THE ORIGINAL FULL SHIFT</a>`, { night: () => this.startNight(), play: () => this.startNight(false, true), peak: () => this.startNight(true), medals: () => this.showMedals(), endless: () => this.startEndless(),
         'perk-0': () => this.pickPerk(0), 'perk-1': () => this.pickPerk(1), 'perk-2': () => this.pickPerk(2) });
   }
 
   // ---------------------------------------------------------------- story flow
 
-  private startNight(peak = false): void {
+  private startNight(peak = false, justPlay = false): void {
     if (this.state !== 'briefing') return;
+    this.justPlay = justPlay && !this.practiceDestination;
     // A peak night, once a night has been finished: a fresh shift with the peak rules (nothing has read the briefing's yet).
     if (peak && this.record.completed > 0 && !this.practiceDestination) this.model = new ShiftModel3D({ peak: true });
     // Tonight's perk changes the shift's rules before it starts.
@@ -614,7 +623,7 @@ export class Belt3d {
     audioSystem.startMusic('game');
     if (this.practiceDestination) { this.beginDriving(this.practiceDestination); return; }
     this.overlay.clearCenter();
-    if (this.playPrologue) {
+    if (this.playPrologue && !this.justPlay) {
       this.story.go('prologue');
       this.playScene(HOME_DECISION);
       return;
@@ -641,6 +650,13 @@ export class Belt3d {
   }
 
   private playScene(scene: StoryScene): void {
+    // Just playing: the scene is passed over as a skip would pass it, straight to what follows.
+    if (this.justPlay) {
+      this.state = 'story';
+      this.cutscene = new Cutscene(scene);
+      this.finishScene();
+      return;
+    }
     scene = { ...scene, title: scene.title.replace('MALLWOOD CENTRE', 'SOUTHGATE MALL') };
     // The 3D road now has a playable journey after the departure and original quip.
     // Keep shared cutscenes intact for both legacy versions.
@@ -757,6 +773,8 @@ export class Belt3d {
   /** The random mid-shift break: the shift, belt and every parcel freeze until the crew is back. */
   private beginBreak(): void {
     this.story.takeBreak(this.model.elapsedMs);
+    // Just playing, the break goes by without stopping the shift.
+    if (this.justPlay) return;
     this.story.go('break');
     this.model.paused = true;
     audioSystem.stopMusic();
@@ -982,6 +1000,8 @@ export class Belt3d {
   /** Ben's robbery freezes the shift, belt, freight and crew until Paula leaves. */
   private beginInterlude(): void {
     this.benStarted = true;
+    // Just playing, Ben's scene is over before it starts (as ENTER would leave it) and the shift never stops.
+    if (this.justPlay) { this.setPieces.skipBen(this.time); return; }
     this.state = 'interlude';
     this.model.paused = true;
     this.benClock = BEN_START;
@@ -1011,6 +1031,8 @@ export class Belt3d {
   }
 
   private beginDream(): void {
+    // Just playing, the stolen Mesa goes home without the dream, straight back to the shift.
+    if (this.justPlay) { this.mesa.dreamFinished(); return; }
     this.state = 'dream';
     this.overlay.root.classList.add('dreaming');
     this.dream.start();
@@ -1025,6 +1047,7 @@ export class Belt3d {
   /** A replay starts clean: no leftover scenes, parcels, timers, speech or input. */
   private restart(): void {
     audioSystem.stopMusic();
+    this.justPlay = false;
     for (const view of this.parcels.values()) disposeObject3D(view.root);
     for (const item of this.departing) disposeObject3D(item.view.root);
     this.parcels.clear();
