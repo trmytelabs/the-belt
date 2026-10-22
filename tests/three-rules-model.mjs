@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { ShiftModel, SHIFT_LAYOUT } from '../src/game/slice/ShiftModel.ts';
-import { ENDLESS_3D, FLOW_3D, INSPECTION_3D, PEAK_NIGHT, PRIORITY_3D, ShiftModel3D, TRICK_SHOTS, WRONG_DROP_PENALTY, WORKER_SPEED_3D } from '../src/three/ShiftModel3D.ts';
+import { ARRIVALS_3D, ENDLESS_3D, FLOW_3D, INSPECTION_3D, PEAK_NIGHT, PRIORITY_3D, ShiftModel3D, SURPRISE_3D, TRICK_SHOTS, WRONG_DROP_PENALTY, WORKER_SPEED_3D } from '../src/three/ShiftModel3D.ts';
 import { ROUTE_INFO } from '../src/three/addresses.ts';
 import { DEPOT_3D_LAYOUT as L, platformLevelAt, onLowerFloor, truckInteriorAt } from '../src/three/layout.ts';
 import { platformWalkPath, pathLength, walkPath } from '../src/three/walking.ts';
@@ -800,4 +800,153 @@ test('on fire: from ten clean loads in a row the controlled worker walks 8% fast
   broken.combo = 12;
   broken.combo = 0;
   assert.equal(broken.onFire, false, 'a broken streak walks at the ordinary pace again');
+});
+
+// Surprise freight: run the shift with the recovery limit lifted until the next parcel becomes a `kind`.
+const untilSurprise = (m, kind, limitMs = 200_000) => {
+  for (let t = 0; t < limitMs && !m.ended; t += 10) {
+    m.update(10);
+    const marked = m.drainEvents().find(event => event.type === 'surprise' && event.packageId !== undefined && event.score === undefined
+      && m.surpriseOf(event.packageId) === kind);
+    if (marked) return m.packages.find(parcel => parcel.id === marked.packageId);
+  }
+  return null;
+};
+
+test('twice a night a siren starts a rush wave: freight comes twice as fast for fifteen seconds, and a wave kept out of recovery pays', () => {
+  const run = (collect) => {
+    const m = new ShiftModel3D({ freightRandom: seededFreight(41) }); m.capacity = 999;
+    const starts = [], ends = [], arrivals = [];
+    let count = m.packages.length;
+    for (let t = 0; t < 182_000 && !m.ended; t += 10) {
+      // Synthetic collection takes every parcel off the belt before it reaches recovery.
+      if (collect) for (const parcel of m.packages) if (parcel.state === 'belt' && parcel.y > 500) parcel.state = 'delivered';
+      m.update(10);
+      if (m.packages.length > count) { arrivals.push(m.elapsedMs); count = m.packages.length; }
+      for (const event of m.drainEvents().filter(item => item.type === 'surprise' && item.packageId === undefined)) {
+        (event.score === undefined ? starts : ends).push({ at: m.elapsedMs, event, phase: m.phase, remaining: m.waveRemainingMs });
+      }
+    }
+    return { m, starts, ends, arrivals };
+  };
+  const clean = run(true);
+  assert.deepEqual(clean.starts.map(({ at }) => at - at % 1000), [...SURPRISE_3D.waves], 'on schedule');
+  assert.deepEqual(clean.starts.map(({ phase }) => phase), ['flow', 'rush']);
+  assert.ok(clean.starts.every(({ remaining }) => remaining === SURPRISE_3D.waveMs));
+  const gaps = (from, to) => {
+    const times = clean.arrivals.filter(at => at > from && at <= to);
+    return times.slice(1).map((at, index) => at - times[index]);
+  };
+  // Past each wave's first arrival (which keeps the gap already under way), freight comes at half its usual gap.
+  for (const [index, usual] of [[0, ARRIVALS_3D.flowMs], [1, ARRIVALS_3D.rushMs]]) {
+    const at = SURPRISE_3D.waves[index];
+    const inside = gaps(at + usual, at + SURPRISE_3D.waveMs);
+    assert.ok(inside.length >= 3 && inside.every(gap => Math.abs(gap - usual * SURPRISE_3D.waveGap) <= 20), `half gaps in wave ${index}: ${inside}`);
+  }
+  const [flowWave] = SURPRISE_3D.waves, usual = ARRIVALS_3D.flowMs;
+  for (const gap of [...gaps(flowWave - 3 * usual, flowWave), ...gaps(flowWave + SURPRISE_3D.waveMs + 2 * usual, flowWave + SURPRISE_3D.waveMs + 6 * usual)]) {
+    assert.ok(Math.abs(gap - usual) <= 20, `the usual gap before and after: ${gap}`);
+  }
+  assert.deepEqual(clean.ends.map(({ event }) => event.score), [SURPRISE_3D.waveBonus, SURPRISE_3D.waveBonus]);
+  assert.ok(clean.ends.every(({ event }) => /^WAVE CLEARED · \d+ parcels, none in recovery · \+150$/.test(event.message)));
+  assert.ok(clean.ends.every(({ at }, index) => at >= clean.starts[index].at + SURPRISE_3D.waveMs));
+  assert.deepEqual([clean.m.wavesRun, clean.m.wavesCleared, clean.m.score], [2, 2, 2 * SURPRISE_3D.waveBonus], 'only the waves scored');
+  assert.equal(clean.m.waveRemainingMs, 0);
+  // Idle, the player's half of each wave reaches recovery: no bonus.
+  const idle = run(false);
+  assert.deepEqual(idle.ends.map(({ event }) => event.score), [0, 0]);
+  assert.ok(idle.ends.every(({ event }) => /^WAVE OVER · [1-9]\d* reached recovery · no bonus$/.test(event.message)));
+  assert.deepEqual([idle.m.wavesRun, idle.m.wavesCleared], [2, 0]);
+});
+
+test('three mystery boxes and two fragile crates a night, each the next parcel the player could take, never priority freight', () => {
+  const m = new ShiftModel3D({ freightRandom: seededFreight(43) }); m.capacity = 999;
+  const marked = [];
+  for (let t = 0; t < 182_000 && !m.ended; t += 10) {
+    m.update(10);
+    for (const event of m.drainEvents().filter(item => item.type === 'surprise' && item.packageId !== undefined && item.score === undefined)) {
+      const parcel = m.packages.find(item => item.id === event.packageId);
+      marked.push({ parcel, kind: m.surpriseOf(parcel.id), state: parcel.state, at: m.elapsedMs, phase: m.phase,
+        priority: m.priorityRemainingMs(parcel.id), side: m.activeWorker.side });
+    }
+  }
+  for (const [kind, times] of [['mystery', SURPRISE_3D.mystery], ['fragile', SURPRISE_3D.fragile]]) {
+    const ofKind = marked.filter(item => item.kind === kind);
+    assert.equal(ofKind.length, times.length, `${kind}: ${ofKind.map(item => item.at)}`);
+    ofKind.forEach((item, index) => assert.ok(item.at >= times[index] && item.at < (times[index + 1] ?? Infinity), `${kind} ${index} after ${times[index]}, before the next: ${item.at}`));
+  }
+  for (const { parcel, state, phase, priority, side } of marked) {
+    assert.equal(state, 'belt', 'marked as it lands');
+    assert.ok(phase === 'flow' || phase === 'rush');
+    assert.notEqual(parcel.route, 'C'); assert.equal(parcel.size, 'normal'); assert.notEqual(parcel.kind, 'mesa');
+    assert.equal(ROUTE_INFO[parcel.route].side, side, 'only freight the player can take');
+    assert.equal(priority, null, 'never a priority parcel');
+  }
+});
+
+test('a mystery box pays its prize when the player delivers it, and the partner opens nothing', () => {
+  const open = (roll) => {
+    const m = new ShiftModel3D({ freightRandom: seededFreight(47) }); m.capacity = 999;
+    const box = untilSurprise(m, 'mystery');
+    assert.ok(box && box.state === 'belt', 'a mystery box arrives');
+    m.prizeRandom = () => roll;
+    const before = { score: m.score, stops: m.beltStopsRemaining };
+    carryToDrop(m, box);
+    const events = m.drainEvents(), sort = events.find(event => event.type === 'sort'), prize = events.find(event => event.type === 'surprise');
+    assert.equal(box.state, 'delivered');
+    assert.equal(m.surpriseOf(box.id), null, 'no longer a mystery once open');
+    assert.equal(m.mysteriesOpened, 1);
+    return { m, prize, gained: m.score - before.score - sort.score, stops: m.beltStopsRemaining - before.stops };
+  };
+  const jackpot = open(0.1);
+  assert.deepEqual([jackpot.prize.message, jackpot.prize.score, jackpot.gained, jackpot.m.lastPrize], ['MYSTERY · JACKPOT +200', 200, 200, 'jackpot']);
+  const stop = open(0.4);
+  assert.deepEqual([stop.prize.message, stop.gained, stop.stops], ['MYSTERY · A SPARE BELT STOP · 4 left', 0, 1]);
+  const fire = open(0.6);
+  assert.deepEqual([fire.prize.message, fire.gained, fire.m.onFire], ['MYSTERY · ON FIRE · streak 10', 0, true]);
+  const socks = open(0.9);
+  assert.deepEqual([socks.prize.message, socks.gained], ['MYSTERY · JUST SOCKS +25', 25]);
+  const m = new ShiftModel3D({ freightRandom: seededFreight(47) }); m.capacity = 999;
+  const box = untilSurprise(m, 'mystery');
+  const score = m.score;
+  m.deliver(box, true);
+  assert.equal(m.drainEvents().filter(event => event.type === 'surprise').length, 0, 'the partner opens nothing');
+  assert.deepEqual([m.score, m.mysteriesOpened, m.surpriseOf(box.id)], [score, 0, null]);
+});
+
+test('a fragile crate cannot be thrown, slows its carrier to a careful walk and pays its bonus carried in', () => {
+  const m = new ShiftModel3D({ freightRandom: seededFreight(53) }); m.capacity = 999;
+  const crate = untilSurprise(m, 'fragile');
+  assert.ok(crate, 'a fragile crate arrives');
+  const w = m.activeWorker;
+  Object.assign(crate, { state: 'held', workerId: w.id, flight: null });
+  w.heldId = crate.id;
+  const target = m.throwTarget();
+  assert.deepEqual([target.ok, target.reason], [false, 'FRAGILE · carry it in gently']);
+  m.throwHeld();
+  assert.equal(crate.state, 'held', 'still in hand');
+  assert.equal(m.drainEvents().find(event => event.type === 'wrong')?.message, 'FRAGILE · carry it in gently');
+  const walk = (fragile) => {
+    const model = new ShiftModel3D({ autonomousCoworker: false });
+    const parcel = hold(model, 'A', { x: model.activeWorker.x, y: model.activeWorker.y });
+    if (fragile) model.surprises.set(parcel.id, 'fragile');
+    const start = model.activeWorker.y;
+    for (let i = 0; i < 50; i++) model.update(10, { x: 0, y: 1 });
+    return model.activeWorker.y - start;
+  };
+  const ordinary = walk(false), careful = walk(true);
+  assert.ok(ordinary > 0 && Math.abs(careful / ordinary - SURPRISE_3D.fragilePace) < 0.01, `a careful walk: ${careful} vs ${ordinary}`);
+  const score = m.score;
+  carryToDrop(m, crate);
+  const events = m.drainEvents(), sort = events.find(event => event.type === 'sort'), care = events.find(event => event.type === 'surprise');
+  assert.equal(crate.state, 'delivered');
+  assert.deepEqual([care?.message, care?.score], ['HANDLED WITH CARE +75', SURPRISE_3D.fragileBonus]);
+  assert.equal(m.score, score + sort.score + SURPRISE_3D.fragileBonus);
+  assert.deepEqual([m.fragileDelivered, m.surpriseOf(crate.id)], [1, null]);
+});
+
+test('an endless shift repeats each surprise a minute after its last', () => {
+  const m = new ShiftModel3D({ endless: true, freightRandom: seededFreight(59) }); m.capacity = 999;
+  advance(m, SURPRISE_3D.waves.at(-1) + SURPRISE_3D.repeatMs + 1_000);
+  assert.equal(m.wavesRun, SURPRISE_3D.waves.length + 1);
 });
