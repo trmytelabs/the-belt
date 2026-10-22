@@ -120,7 +120,7 @@ try {
   const saved = await read(() => ({ settings: window.fixtureApp.settings, stored: JSON.parse(localStorage.getItem('the-belt:3d-settings:v1')),
     output: document.querySelector('[data-setting="music"]').nextElementSibling.textContent, state: window.fixtureApp.state,
     worker: { x: window.fixtureApp.model.activeWorker.x, y: window.fixtureApp.model.activeWorker.y } }));
-  assert.deepEqual(saved.settings, { music: 0.4, effects: 1, shake: false, resolution: 0.5 });
+  assert.deepEqual(saved.settings, { music: 0.4, effects: 1, shake: false, resolution: 0.5, twoPlayers: false });
   assert.deepEqual(saved.stored, saved.settings, 'kept on this device');
   assert.equal(saved.output, '40%');
   assert.equal(saved.state, 'paused', 'arrow keys on a slider do not resume');

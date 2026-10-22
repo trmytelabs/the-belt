@@ -1,5 +1,5 @@
 import { DEPOT_3D_LAYOUT as SHIFT_LAYOUT, floorPileSlot, truckInteriorAt } from './layout';
-import { ARRIVALS_3D, FLOW_3D, INSPECTION_3D, PEAK_NIGHT, PRIORITY_3D, ShiftModel3D } from './ShiftModel3D';
+import { ARRIVALS_3D, FLOW_3D, INSPECTION_3D, PEAK_NIGHT, PRIORITY_3D, ShiftModel3D, TRICK_SHOTS } from './ShiftModel3D';
 import { createPriorityMarker, updatePriorityMarker, type PriorityMarker } from './priorityMarker';
 import { GOAL_BONUS, judgeGoals, nightGoals, type NightGoal } from './nightGoals';
 import { MEDALS, awardMedals, type NightFacts } from './medals';
@@ -69,7 +69,7 @@ const PHASE_LABELS: Record<string, string> = {
 const EVENT_SOUNDS: Partial<Record<ShiftEvent['type'], SoundEffect>> = {
   grab: 'grab', drop: 'drop', sort: 'correct', wrong: 'wrong', miss: 'pile-up',
   recover: 'dig', brake: 'belt-stop', switch: 'switch', phase: 'event-alert', end: 'shift-end',
-  brian: 'event-alert', spill: 'drop', throw: 'throw', damage: 'smash', scanner: 'event-alert',
+  brian: 'event-alert', spill: 'drop', throw: 'throw', damage: 'smash', scanner: 'event-alert', trick: 'correct',
 };
 const BEAT_SOUNDS: Record<NonNullable<StoryBeat['sound']>, SoundEffect> = {
   engine: 'engine', cough: 'cough', horn: 'horn', gate: 'gate', door: 'button', spill: 'splash', register: 'register', truck: 'truck', sign: 'sign',
@@ -171,6 +171,11 @@ export class Belt3d {
   private readonly throwStarts = new Map<number, THREE.Vector3>();
   private readonly seenRoutes = new Set<Route>();
   private readonly activeRing: THREE.Mesh;
+  /** With two players, the ring under player 2's worker, and the grab prompt over the parcel they would take. */
+  private readonly partnerRing: THREE.Mesh;
+  /** A stand-in for the camera, for fitting both players into the view before moving the real one. */
+  private readonly framing = new THREE.PerspectiveCamera();
+  private readonly partnerPrompt: THREE.Sprite;
   private readonly mesaRing: THREE.Mesh;
   private readonly mesaTag: THREE.Sprite;
   private readonly sleepTag: THREE.Sprite;
@@ -185,6 +190,9 @@ export class Belt3d {
   /** A connected controller, read once a frame. */
   private readonly gamepad = new GamepadInput();
   public pad: PadFrame = { ...IDLE_PAD };
+  /** The second controller, with two players: it plays Skanky. */
+  private readonly gamepad2 = new GamepadInput();
+  public pad2: PadFrame = { ...IDLE_PAD };
   private overview = false;
   private hint = 'Approach the belt · read the street address';
   private chapterHint = '';
@@ -353,6 +361,11 @@ export class Belt3d {
     this.activeRing = new THREE.Mesh(new THREE.RingGeometry(0.42, 0.5, 40), new THREE.MeshBasicMaterial({ color: 0xf3e6c6, transparent: true, opacity: 0.85 }));
     this.activeRing.rotation.x = -Math.PI / 2;
     this.world.scene.add(this.activeRing);
+    this.partnerRing = new THREE.Mesh(new THREE.RingGeometry(0.42, 0.5, 40), new THREE.MeshBasicMaterial({ color: 0x7fd6e0, transparent: true, opacity: 0.85 }));
+    this.partnerRing.rotation.x = -Math.PI / 2; this.partnerRing.visible = false;
+    this.world.scene.add(this.partnerRing);
+    this.partnerPrompt = textSprite(['ENTER · GRAB'], 0.19, { width: 150, height: 30, color: '#d9f6fa', background: '#172b30' });
+    this.partnerPrompt.visible = false; this.world.scene.add(this.partnerPrompt);
     this.sleepTag = textSprite(['SORTING'], 0.22, { width: 110, height: 30, color: '#d8e2d0' });
     this.world.scene.add(this.sleepTag);
     this.marker = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.4, 4), new THREE.MeshStandardMaterial({ color: 0xffd47c, emissive: 0xffd47c, emissiveIntensity: 0.8 }));
@@ -507,6 +520,7 @@ export class Belt3d {
         }
         else if (this.state === 'paused') this.resume();
         else if (this.state === 'interlude') this.skipInterlude();
+        else if (this.state === 'playing' && this.model.coop) this.model.action(this.model.partnerWorker);
       } else if (event.code === 'KeyM') {
         audioSystem.toggleMuted();
       } else if (event.code === 'Escape') {
@@ -524,6 +538,8 @@ export class Belt3d {
         if (event.code === 'Space') this.lot?.action();
       } else if (this.state === 'briefing' && event.code === 'KeyP') {
         if (this.record.completed > 0) this.startNight(true);
+      } else if (this.state === 'briefing' && event.code === 'KeyC' && !this.touch.enabled) {
+        this.togglePlayers();
       } else if (this.state === 'briefing' && event.code === 'KeyJ') {
         this.startNight(false, true);
       } else if (this.state === 'briefing' && event.code === 'KeyN') {
@@ -539,6 +555,7 @@ export class Belt3d {
         else if (event.code === 'Tab') this.model.switchWorker();
         else if (event.code === 'KeyE') this.model.brake();
         else if (event.code === 'KeyF') this.model.throwHeld();
+        else if (event.code === 'ShiftRight' && this.model.coop) this.model.throwHeld(this.model.partnerWorker);
       }
     }, { signal: this.inputAbort.signal });
     window.addEventListener('keyup', (event) => this.keys.delete(event.code), { signal: this.inputAbort.signal });
@@ -560,6 +577,7 @@ export class Belt3d {
   }
 
   private routeLegend(): string {
+    if (this.model.coop) return 'P1 WASD · SPACE GRAB · F THROW   ·   P2 ARROWS · ENTER GRAB · RIGHT SHIFT THROW';
     return 'READ THE ADDRESS · MATCH THE STREET TO A TRUCK RANGE · TAB SWITCHES · COWORKER SORTS';
   }
 
@@ -591,7 +609,8 @@ export class Belt3d {
       <p>STOP THE BELT gives you a moment to catch up. VIEW shows the whole warehouse. In story scenes, NEXT or SKIP.</p>` : `
       <p>WASD / arrows move. TAB or right-click switches. SPACE or click grabs and delivers.</p>
       <p>F throws toward the nearest drop. At the top of the stairs, throw down with a 30% break risk. E stops the belt. V overview.</p>
-      <p>Story scenes: SPACE next line, ENTER skips the scene, ESC pauses. JUST PLAY (J) skips every one.</p>`}
+      <p>Story scenes: SPACE next line, ENTER skips the scene, ESC pauses. JUST PLAY (J) skips every one.</p>
+      <p>TWO PLAYERS (C): player 1 is Termite on WASD, SPACE grabs, F throws; player 2 is Skanky on the arrows, ENTER grabs, RIGHT SHIFT throws. A second controller plays Skanky.</p>`}
       <p>The night starts at home: go in to work, or quit UPS. After the shift, drive the five-ton to Southgate Mall and finish the deliveries. Driving controls appear when you get there.</p>
       </details>
       ${this.recordLine()}
@@ -599,11 +618,11 @@ export class Belt3d {
       ${this.goalsLine()}
       ${this.perkLine()}
       ${this.record.completed > 0 ? `<p class="b3d-record">PEAK NIGHT UNLOCKED · in the flow and the rush freight comes a fifth sooner, the belt runs faster and recovery holds ${PEAK_NIGHT.capacity}. ${this.touch.enabled ? 'Tap PEAK NIGHT.' : 'Press P or click PEAK NIGHT.'} ENDLESS SHIFT${this.touch.enabled ? '' : ' (N)'} has no clock: the belt speeds up every minute until recovery overflows.</p>` : ''}
-      <div class="b3d-start"><button type="button" data-action="night">START THE NIGHT  ↵</button><button type="button" data-action="play" title="The shift, the drives and the mall run, without the story scenes">JUST PLAY${this.touch.enabled ? '' : '  J'}<small>NO STORY SCENES</small></button></div>
+      <div class="b3d-start">${this.touch.enabled ? '' : `<button type="button" data-action="players" class="b3d-players">${this.settings.twoPlayers ? '2 PLAYERS' : '1 PLAYER'}  C<small>${this.settings.twoPlayers ? 'P2 · ARROWS · ENTER' : 'C FOR TWO PLAYERS'}</small></button>`}<button type="button" data-action="night">START THE NIGHT  ↵</button><button type="button" data-action="play" title="The shift, the drives and the mall run, without the story scenes">JUST PLAY${this.touch.enabled ? '' : '  J'}<small>NO STORY SCENES</small></button></div>
       ${this.record.completed > 0 ? '<button type="button" data-action="peak">PEAK NIGHT  P</button><button type="button" data-action="endless">ENDLESS SHIFT  N</button>' : ''}
       ${this.record.played > 0 ? `<button type="button" class="b3d-medals-link" data-action="medals">MEDALS · ${this.record.medals.length} OF ${MEDALS.length} · RECENT NIGHTS</button>` : ''}
       <a href="${window.location.pathname}?mode=3d&amp;drive=mall">TRY JUST THE DRIVE · EXPLORE THE CITY</a>
-      <a href="${window.location.pathname}?mode=classic">PLAY THE ORIGINAL FULL SHIFT</a>`, { night: () => this.startNight(), play: () => this.startNight(false, true), peak: () => this.startNight(true), medals: () => this.showMedals(), endless: () => this.startEndless(),
+      <a href="${window.location.pathname}?mode=classic">PLAY THE ORIGINAL FULL SHIFT</a>`, { night: () => this.startNight(), play: () => this.startNight(false, true), players: () => this.togglePlayers(), peak: () => this.startNight(true), medals: () => this.showMedals(), endless: () => this.startEndless(),
         'perk-0': () => this.pickPerk(0), 'perk-1': () => this.pickPerk(1), 'perk-2': () => this.pickPerk(2) });
   }
 
@@ -612,6 +631,7 @@ export class Belt3d {
   private startNight(peak = false, justPlay = false): void {
     if (this.state !== 'briefing') return;
     this.justPlay = justPlay && !this.practiceDestination;
+    this.applyPlayers();
     // A peak night, once a night has been finished: a fresh shift with the peak rules (nothing has read the briefing's yet).
     if (peak && this.record.completed > 0 && !this.practiceDestination) this.model = new ShiftModel3D({ peak: true });
     // Tonight's perk changes the shift's rules before it starts.
@@ -640,6 +660,7 @@ export class Belt3d {
     if (this.state !== 'briefing' || this.record.completed === 0 || this.practiceDestination) return;
     this.model = new ShiftModel3D({ endless: true });
     this.story = new StoryRun(Math.random, { ...this.forcedStory, breakAtMs: Infinity });
+    this.applyPlayers();
     this.renderer.domElement.focus({ preventScroll: true });
     void audioSystem.unlock();
     audioSystem.play('ui-start');
@@ -647,6 +668,20 @@ export class Belt3d {
     this.overlay.clearCenter();
     this.story.go('countdown');
     this.startCountdown();
+  }
+
+  /** C on the briefing: one player or two, remembered on this device. */
+  private togglePlayers(): void {
+    if (this.state !== 'briefing' || this.touch.enabled) return;
+    this.settings.twoPlayers = !this.settings.twoPlayers;
+    saveSettings(browserStorage(), this.settings);
+    audioSystem.play('ui-start');
+    this.showBriefing();
+  }
+
+  /** Tonight's model plays with two players when the setting asks (not on a touch screen, which has one stick). */
+  private applyPlayers(): void {
+    this.model.coop = this.settings.twoPlayers && !this.touch.enabled;
   }
 
   private playScene(scene: StoryScene): void {
@@ -1107,12 +1142,35 @@ export class Belt3d {
   }
 
   private movement(): { x: number; y: number } {
-    const keyX = (this.keys.has('KeyD') || this.keys.has('ArrowRight') ? 1 : 0) - (this.keys.has('KeyA') || this.keys.has('ArrowLeft') ? 1 : 0);
-    const keyY = (this.keys.has('KeyS') || this.keys.has('ArrowDown') ? 1 : 0) - (this.keys.has('KeyW') || this.keys.has('ArrowUp') ? 1 : 0);
+    // With two players on the belt, the arrows are player 2's.
+    const arrows = !(this.model.coop && this.state === 'playing');
+    const keyX = (this.keys.has('KeyD') || (arrows && this.keys.has('ArrowRight')) ? 1 : 0) - (this.keys.has('KeyA') || (arrows && this.keys.has('ArrowLeft')) ? 1 : 0);
+    const keyY = (this.keys.has('KeyS') || (arrows && this.keys.has('ArrowDown')) ? 1 : 0) - (this.keys.has('KeyW') || (arrows && this.keys.has('ArrowUp')) ? 1 : 0);
     return {
       x: Math.max(-1, Math.min(1, keyX + this.touch.move.x + this.pad.move.x)),
       y: Math.max(-1, Math.min(1, keyY + this.touch.move.y + this.pad.move.y)),
     };
+  }
+
+  /**
+   * The shift's time scale this frame: a long throw (`TRICK_SHOTS`) plays the end of its flight at a third of the speed,
+   * so the landing (or the break) is seen. Reduced motion never slows it.
+   */
+  private throwTime(): number {
+    if (this.reducedMotion) return 1;
+    const slow = this.model.packages.some((parcel) => {
+      const flight = parcel.state === 'thrown' ? parcel.flight : null;
+      return !!flight && flight.elapsedMs / flight.durationMs >= 0.45
+        && Math.hypot(flight.toX - flight.fromX, flight.toY - flight.fromY) >= TRICK_SHOTS.long.px;
+    });
+    return slow ? 0.33 : 1;
+  }
+
+  /** Player 2's arrows and second controller, with two players. */
+  private partnerMovement(): { x: number; y: number } {
+    const keyX = (this.keys.has('ArrowRight') ? 1 : 0) - (this.keys.has('ArrowLeft') ? 1 : 0);
+    const keyY = (this.keys.has('ArrowDown') ? 1 : 0) - (this.keys.has('ArrowUp') ? 1 : 0);
+    return { x: Math.max(-1, Math.min(1, keyX + this.pad2.move.x)), y: Math.max(-1, Math.min(1, keyY + this.pad2.move.y)) };
   }
 
   /** With a controller in use, the HUD and the grab prompt name its buttons; without one, the keyboard's again. */
@@ -1137,6 +1195,15 @@ export class Belt3d {
     // A controller that drops out mid-play (a flat battery, a pulled cable) pauses the game, as a console does.
     if (!frame.connected && this.pad.connected && this.canPause()) this.pause();
     this.pad = frame;
+    const frame2 = this.model.coop ? this.gamepad2.poll(pads, 1) : { ...IDLE_PAD, move: { x: 0, y: 0 }, pressed: [] };
+    if (frame2.connected && !this.pad2.connected) this.overlay.showToast('SECOND CONTROLLER · PLAYER 2 IS SKANKY · A grab · B throw', 3500);
+    this.pad2 = frame2;
+    for (const button of frame2.pressed) {
+      if (button === 'start') { window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape' })); window.dispatchEvent(new KeyboardEvent('keyup', { code: 'Escape' })); continue; }
+      if (this.state !== 'playing') continue;
+      if (button === 'a') this.model.action(this.model.partnerWorker);
+      else if (button === 'b') this.model.throwHeld(this.model.partnerWorker);
+    }
     for (const button of frame.pressed) {
       if (this.padMenu(button)) continue;
       const code = padKey(this.state, button);
@@ -1229,7 +1296,8 @@ export class Belt3d {
         m.paused = false;
         this.renderer.domElement.focus({ preventScroll: true });
         this.story.go('shift');
-        this.overlay.showToast(`${m.peak ? 'PEAK NIGHT · ' : ''}You are ${m.activeWorker.id.toUpperCase()} · ${this.touch.enabled ? 'SWITCH' : 'TAB'} changes worker · follow the package guide`, 3200);
+        this.overlay.showToast(m.coop ? `${m.peak ? 'PEAK NIGHT · ' : ''}P1 ${m.activeWorker.id.toUpperCase()}: WASD · SPACE · F   ·   P2 ${m.partnerWorker.id.toUpperCase()}: ARROWS · ENTER · RIGHT SHIFT`
+          : `${m.peak ? 'PEAK NIGHT · ' : ''}You are ${m.activeWorker.id.toUpperCase()} · ${this.touch.enabled ? 'SWITCH' : 'TAB'} changes worker · follow the package guide`, m.coop ? 5000 : 3200);
         audioSystem.startMusic('game');
       }
     }
@@ -1241,7 +1309,8 @@ export class Belt3d {
     }
     if (this.state === 'playing') {
       m.laneObstacles = this.crew.patrolObstacles;
-      m.update(dt * 1000, this.movement());
+      m.partnerMove = m.coop ? this.partnerMovement() : { x: 0, y: 0 };
+      m.update(dt * 1000 * this.throwTime(), this.movement());
       if (!m.endless) samplePace(this.paceSamples, m.elapsedMs, m.score);
       this.watchFrameRate(dt);
       for (const event of m.drainEvents()) this.handleEvent(event);
@@ -1396,6 +1465,7 @@ export class Belt3d {
       phase: this.state === 'interlude' ? 'BEN  /  DODGE TRAINING'
         : m.endless ? `ENDLESS  /  LEVEL ${m.endlessLevel}${this.record.endless ? `  /  BEST ${this.record.endless.sorted}` : ''}${m.inspection ? `  /  ${this.watcherName} WATCHING ${Math.ceil(m.inspectionRemainingMs / 1000)}s` : ''}`
         : `${PHASE_LABELS[m.phase] ?? ''}${m.inspection ? `  /  ${this.watcherName} WATCHING ${Math.ceil(m.inspectionRemainingMs / 1000)}s` : ''}`, combo: m.combo, worker: m.activeWorker.id,
+      partner: m.coop ? m.partnerWorker.id : undefined,
       hint: this.state === 'interlude' ? 'Belt held · your freight is safe' : this.state === 'mesa' ? 'Y steals the Mesa · N leaves it'
         : scannerSelected ? `${this.touch.enabled ? 'RESET SCANNER' : 'SPACE resets scanner'} · carried freight stays in hand`
         : held ? `${parcelAddress(held)} · ${held.label}${throwHint}${loadingHint ? ` · ${loadingHint}` : ''}` : loadingHint || this.hint,
@@ -1524,6 +1594,19 @@ export class Belt3d {
         for (let i = 0; i < 9; i += 1) {
           this.world.puffs.emit(at, { color: 0xffd98a, size: 0.11, life: 0.55 + Math.random() * 0.25, opacity: 0.9, grow: 0.35, spread: 0.5,
             velocity: new THREE.Vector3((Math.random() - 0.5) * 1.6, 1.4 + Math.random() * 0.8, (Math.random() - 0.5) * 1.6) });
+        }
+      }
+    }
+    if (event.type === 'trick') {
+      const big = (event.score ?? 0) >= TRICK_SHOTS.trick.bonus;
+      this.overlay.pop(`${big ? 'TRICK SHOT' : 'LONG THROW'} +${event.score ?? 0}`, '#ffd56a', toWorld(event, surfaceAt(event.x, event.y) + 2.2), big ? 1.6 : 1.3);
+      this.overlay.showToast(event.message, 2600);
+      this.gamepad.rumble(big ? 0.7 : 0.4, 220);
+      if (!this.reducedMotion) {
+        const at = toWorld(event, surfaceAt(event.x, event.y) + 0.6);
+        for (let i = 0; i < (big ? 26 : 14); i += 1) {
+          this.world.puffs.emit(at, { color: 0xffd56a, size: 0.13, life: 0.7 + Math.random() * 0.35, opacity: 0.95, grow: 0.4, spread: 0.6,
+            velocity: new THREE.Vector3((Math.random() - 0.5) * 2.4, 2 + Math.random() * 1.4, (Math.random() - 0.5) * 2.4) });
         }
       }
     }
@@ -1734,7 +1817,21 @@ export class Belt3d {
     this.activeRing.visible = this.state !== 'story';
     const idle = this.workers[m.activeIndex === 0 ? 'skanky' : 'termite'];
     this.sleepTag.position.set(idle.root.position.x + 0.3, idle.root.position.y + 2.5 + Math.sin(this.time * 2) * 0.08, idle.root.position.z);
-    this.sleepTag.visible = this.state === 'playing' && m.autonomousCoworker;
+    this.sleepTag.visible = this.state === 'playing' && m.autonomousCoworker && !m.coop;
+    this.partnerRing.visible = m.coop && this.state !== 'story';
+    this.partnerPrompt.visible = false;
+    if (m.coop) {
+      const partner = this.workers[m.partnerWorker.id].root.position;
+      this.partnerRing.position.set(partner.x, partner.y + 0.02, partner.z);
+      const beat = 1 + Math.sin(this.time * (m.onFire ? 9 : 4) + 1.3) * (m.onFire ? 0.09 : 0.05);
+      this.partnerRing.scale.set(beat, beat, 1);
+      const reach = m.partnerWorker.heldId === null ? m.nearestPackage(m.partnerWorker) : null;
+      const reachView = reach ? this.parcels.get(reach.id) : null;
+      if (reachView && this.state === 'playing') {
+        this.partnerPrompt.visible = true;
+        this.partnerPrompt.position.copy(reachView.root.position).y += Math.max(reachView.height + 1.75, reachView.tag.position.y + reachView.tag.scale.y + 0.55);
+      }
+    }
 
     // A marker above the parcel the active worker would grab.
     const nearest = m.heldPackage ? null : m.nearestPackage();
@@ -2042,6 +2139,29 @@ export class Belt3d {
     } else if (this.overview || this.state === 'briefing' || this.state === 'celebrating') {
       look = new THREE.Vector3(0, 0, toWorldZ((SHIFT_LAYOUT.worldTop + SHIFT_LAYOUT.worldBottom) / 2));
       position = look.clone().add(new THREE.Vector3(0, Math.max(portrait ? 104 : 80, 58 / this.camera.aspect), portrait ? 39 : 27));
+    } else if (this.model.coop && (state === 'playing' || state === 'countdown' || state === 'ended')) {
+      // Two players: the usual angle over the point between them, backed off until both stand inside the view
+      // (clear of the guide and HUD along the bottom), up to the whole warehouse.
+      const a = this.workers[this.model.activeWorker.id].root.position, b = this.workers[this.model.partnerWorker.id].root.position;
+      look = new THREE.Vector3((a.x + b.x) / 4, (a.y + b.y) / 2 + 0.4, (a.z + b.z) / 2);
+      const direction = (portrait ? new THREE.Vector3(0, 15, 9) : new THREE.Vector3(0, 10.5, 9.4)).normalize();
+      const probe = this.framing;
+      probe.fov = this.camera.fov; probe.aspect = this.camera.aspect; probe.near = this.camera.near; probe.far = this.camera.far;
+      probe.updateProjectionMatrix();
+      const head = new THREE.Vector3();
+      const inView = (p: THREE.Vector3, lift: number): boolean => {
+        head.copy(p).setY(p.y + lift).project(probe);
+        return Math.abs(head.x) < 0.86 && head.y < 0.82 && head.y > -0.5;
+      };
+      let distance = portrait ? 17.5 : 14.1;
+      for (let i = 0; i < 24; i += 1) {
+        probe.position.copy(look).addScaledVector(direction, distance);
+        probe.lookAt(look); probe.updateMatrixWorld(true);
+        if ([a, b].every((p) => inView(p, 0) && inView(p, 2.2))) break;
+        distance *= 1.1;
+      }
+      position = look.clone().addScaledVector(direction, Math.min(distance, 95));
+      follow = true;
     } else {
       const active = this.model.activeWorker;
       const worker = this.workers[active.id].root.position;
@@ -2205,7 +2325,7 @@ export class Belt3d {
     // The endless shift earns its own two medals, and a streak or a priority run can earn the night medals that do not need a finished shift.
     const awarded = awardMedals(result.record.medals, {
       won: false, grade: '', peak: false, goalsMet: 0, goalsTotal: 0, priorityCount: m.priorityCount, priorityOnTime: m.priorityOnTime,
-      bestCombo: m.bestCombo, wrongDrops: m.wrongDrops, damaged: m.damaged, missed: m.missed, safeDrive: false,
+      bestCombo: m.bestCombo, wrongDrops: m.wrongDrops, damaged: m.damaged, missed: m.missed, safeDrive: false, longestThrowM: m.longestThrowPx / 32,
       openersSeen: result.record.openers.length, nightsPlayed: result.record.played, endlessLevel: m.endlessLevel, endlessSorted: m.sorted,
     });
     this.record = { ...result.record, medals: awarded.medals };
@@ -2255,6 +2375,7 @@ export class Belt3d {
       won: m.won, grade: m.won ? m.grade : 'F', peak: m.peak, goalsMet: judged.met.length, goalsTotal: this.goals.length,
       priorityCount: m.priorityCount, priorityOnTime: m.priorityOnTime, bestCombo: m.bestCombo, wrongDrops: m.wrongDrops,
       damaged: m.damaged, missed: m.missed, safeDrive: home && this.drivingCollisions === 0 && this.drivingRedLights === 0,
+      longestThrowM: m.longestThrowPx / 32,
     });
     this.overlay.showPanel(`
       <div class="grade">${m.won ? m.grade : 'F'}</div>
@@ -2263,6 +2384,7 @@ export class Belt3d {
       ${record}
       <p><b>${m.sorted} DISPATCHED · ${String(m.score).padStart(5, '0')} POINTS · ${m.bestCombo} BEST STREAK</b></p>
       <p>${rate}% of freight dispatched · ${m.recoveredDeliveries} recovered and dispatched · ${m.bulkSorted} to bulk</p>
+      ${m.longestThrowPx > 0 ? `<p>LONGEST THROW ${(m.longestThrowPx / 32).toFixed(1)} m${m.trickShots ? ` · ${m.trickShots} long ${m.trickShots === 1 ? 'throw' : 'throws'} for a bonus` : ''}</p>` : ''}
       <p>${m.unshipped} left behind · ${m.wrongDrops} wrong drops · GRADE ${m.accuracy.toFixed(1)}% (S: 95%+)</p>
       <p>${escapeHtml(routes)}</p>
       ${m.priorityCount ? `<p>${m.priorityOnTime} of ${m.priorityCount} priority parcels on time · +${m.priorityOnTime * PRIORITY_3D.bonus}</p>` : ''}

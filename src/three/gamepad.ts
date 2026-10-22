@@ -55,9 +55,12 @@ export class GamepadInput {
     } catch { /* a pad without rumble, or one that went away */ }
   }
 
-  /** Reads the first connected pad. A button already held when a pad appears never counts as a press. */
-  public poll(pads: readonly (PadLike | null | undefined)[]): PadFrame {
-    const pad = pads.find((candidate): candidate is PadLike => !!candidate && candidate.connected);
+  /**
+   * Reads the first connected pad, or with `which` 1 the second (a second player's). A button already held when a
+   * pad appears never counts as a press.
+   */
+  public poll(pads: readonly (PadLike | null | undefined)[], which = 0): PadFrame {
+    const pad = pads.filter((candidate): candidate is PadLike => !!candidate && candidate.connected)[which];
     this.pad = pad ?? null;
     if (!pad) {
       this.held.clear();

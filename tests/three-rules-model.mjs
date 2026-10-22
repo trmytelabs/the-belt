@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { ShiftModel, SHIFT_LAYOUT } from '../src/game/slice/ShiftModel.ts';
-import { ENDLESS_3D, FLOW_3D, INSPECTION_3D, PEAK_NIGHT, PRIORITY_3D, ShiftModel3D, WRONG_DROP_PENALTY, WORKER_SPEED_3D } from '../src/three/ShiftModel3D.ts';
+import { ENDLESS_3D, FLOW_3D, INSPECTION_3D, PEAK_NIGHT, PRIORITY_3D, ShiftModel3D, TRICK_SHOTS, WRONG_DROP_PENALTY, WORKER_SPEED_3D } from '../src/three/ShiftModel3D.ts';
 import { ROUTE_INFO } from '../src/three/addresses.ts';
 import { DEPOT_3D_LAYOUT as L, platformLevelAt, onLowerFloor, truckInteriorAt } from '../src/three/layout.ts';
 import { platformWalkPath, pathLength, walkPath } from '../src/three/walking.ts';
@@ -130,6 +130,67 @@ test('empty hands walk where they are pointed beside the stairs and trucks; a ca
     // A carried box is still lined up with the stair flight.
     assert.ok(walk({ x: 440, y: 1060 }, { x: 0, y: 1 }, true).x < 420, `${side}: a carried box is steered toward the stairs`);
   }
+});
+
+test("two players: the partner walks on the second player's input, takes bulk and throws; nobody switches", () => {
+  const m = new ShiftModel3D();
+  m.coop = true;
+  const p1 = m.activeWorker, p2 = m.partnerWorker;
+  assert.notEqual(p1, p2);
+  // Left alone, the second player's worker stands still: no coworker sorting for them.
+  const start = { x: p2.x, y: p2.y };
+  m.update(2000);
+  assert.deepEqual({ x: p2.x, y: p2.y }, start, 'the partner waits for the second player');
+  // The second player's stick walks them.
+  m.partnerMove = { x: 0, y: 1 };
+  for (let i = 0; i < 30; i++) m.update(1000 / 60);
+  assert.ok(p2.y > start.y + 50 && p2.moving, `the second player walks the partner: ${JSON.stringify({ start, now: { x: p2.x, y: p2.y } })}`);
+  m.partnerMove = { x: 0, y: 0 };
+  // Nobody switches: each player keeps their worker.
+  m.switchWorker();
+  assert.equal(m.activeWorker, p1);
+  // Either player takes bulk freight off the belt (alone, only the played worker can).
+  const template = m.packages[0];
+  const bulk = { ...template, id: 900, route: 'C', kind: 'standard', size: 'normal', state: 'belt', workerId: null, flight: null, x: 480, y: p2.y };
+  const own = { ...template, id: 901, route: 'A', kind: 'standard', size: 'normal', state: 'held', workerId: p1.id, flight: null };
+  m.packages.push(bulk, own);
+  m.action(p2);
+  assert.equal(p2.heldId, bulk.id, 'the partner picks up bulk');
+  // And throws their own parcel, at bulk within range, leaving the first player's alone.
+  p1.heldId = own.id;
+  Object.assign(p2, { x: 580, y: 1080 });
+  m.throwHeld(p2);
+  assert.equal(bulk.state, 'thrown', "the partner's throw");
+  assert.equal(own.state, 'held', "the first player's parcel stays in hand");
+});
+
+test('a long throw into bulk that lands clean pays a trick-shot bonus and is remembered', () => {
+  const throwFrom = (at) => {
+    const m = new ShiftModel3D({ autonomousCoworker: false, random: () => 0.99 });
+    m.eventStopped = true;
+    const worker = m.activeWorker;
+    const parcel = { ...m.packages[0], id: 950, route: 'C', kind: 'standard', size: 'normal', state: 'held', workerId: worker.id, flight: null };
+    m.packages.push(parcel);
+    Object.assign(worker, at, { heldId: parcel.id });
+    const target = m.throwTarget();
+    const score = m.score;
+    m.throwHeld();
+    advance(m, 2000);
+    const trick = m.drainEvents().find((event) => event.type === 'trick');
+    return { target, state: parcel.state, bonus: m.score - score, trick, longest: m.longestThrowPx, tricks: m.trickShots };
+  };
+  // From far up the deck, bulk freight still goes to bulk (a truck drop is nearer, but trucks take no throws).
+  const far = throwFrom({ x: 440, y: 900 });
+  assert.equal(far.target.route, 'C', JSON.stringify(far.target));
+  assert.equal(far.state, 'delivered');
+  assert.match(far.trick?.message ?? '', /^TRICK SHOT · 7\.\d m · \+50$/);
+  assert.ok(far.longest >= TRICK_SHOTS.trick.px && far.tricks === 1);
+  const mid = throwFrom({ x: 420, y: 960 });
+  assert.match(mid.trick?.message ?? '', /^LONG THROW · 5\.\d m · \+25$/);
+  const short = throwFrom({ x: 410, y: 1060 });
+  assert.equal(short.state, 'delivered');
+  assert.equal(short.trick, undefined, 'a short throw pays no bonus');
+  assert.ok(short.longest > 0 && short.tricks === 0, 'but still counts as the longest so far');
 });
 
 test('3D keeps truck rows before rear bulk, outward stairs and every drop before the terminal wall', () => {

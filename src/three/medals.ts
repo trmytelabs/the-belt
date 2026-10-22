@@ -1,5 +1,5 @@
 /**
- * Medals (the 3D game only): twelve achievements kept with the night record
+ * Medals (the 3D game only): thirteen achievements kept with the night record
  * on this device. Each is earned once, at the results of the night (or endless
  * shift) that earns it, and the briefing counts them.
  */
@@ -20,6 +20,8 @@ export interface NightFacts {
   wrongDrops: number;
   damaged: number;
   missed: number;
+  /** Tonight's longest throw that landed clean, in metres (0 for none). */
+  longestThrowM?: number;
   /** The five-ton came home to UPS with no bumps and no red lights all night. */
   safeDrive: boolean;
   openersSeen: number;
@@ -50,6 +52,7 @@ export const MEDALS: readonly Medal[] = [
   { id: 'seen-it-all', title: 'SEEN IT ALL', detail: 'See all three openers', earned: (f) => f.openersSeen >= 3 },
   { id: 'regular', title: 'REGULAR', detail: 'Work ten nights', earned: (f) => f.nightsPlayed >= 10 },
   { id: 'long-haul', title: 'LONG HAUL', detail: `Reach level ${ENDLESS_MEDALS.level} in an endless shift`, earned: (f) => (f.endlessLevel ?? 0) >= ENDLESS_MEDALS.level },
+  { id: 'trick-shot', title: 'TRICK SHOT', detail: 'Land a throw of 7.5 m or more', earned: (f) => (f.longestThrowM ?? 0) >= 7.5 },
   { id: 'marathon', title: 'BELT MARATHON', detail: `Dispatch ${ENDLESS_MEDALS.sorted} in one endless shift`, earned: (f) => (f.endlessSorted ?? 0) >= ENDLESS_MEDALS.sorted },
 ];
 
