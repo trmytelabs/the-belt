@@ -216,6 +216,16 @@ const CSS = `
 .b3d-chapterhud .stat b { font: 800 20px 'Segoe UI', Arial, sans-serif; }
 .b3d-chapterhud .objective { flex: 1; min-width: 200px; font-weight: 700; font-size: 14px; color: #f3e6c6; }
 .b3d-chapterhud .keys { color: #8eaaae; font-size: 11px; letter-spacing: 1px; }
+.b3d-coffee { position: absolute; z-index: 3; right: 22px; bottom: 96px; width: 150px; text-align: center; pointer-events: none; }
+.b3d-coffee[hidden] { display: none; }
+.b3d-coffee .dish { position: relative; width: 132px; height: 132px; margin: 0 auto; border-radius: 50%; background: radial-gradient(#3b2414 0 34%, #1d130c 35% 62%, #0b171cdd 63%);
+  border: 3px solid #e9dcc2; box-shadow: 0 0 0 2px #0b171c99; }
+.b3d-coffee.danger .dish { border-color: #ff6a4f; }
+.b3d-coffee .dot { position: absolute; left: 50%; top: 50%; width: 22px; height: 22px; margin: -11px 0 0 -11px; border-radius: 50%; background: #c98a4b; box-shadow: 0 0 8px #e7b47a; }
+.b3d-coffee.danger .dot { background: #ff8a5a; box-shadow: 0 0 10px #ff6a4f; }
+.b3d-coffee .tilt { position: absolute; left: 50%; top: 50%; width: 10px; height: 10px; margin: -5px 0 0 -5px; border: 2px solid #9fe3a5; border-radius: 50%; }
+.b3d-coffee .cups { margin-top: 6px; font-size: 15px; letter-spacing: 2px; color: #f3e6c6; text-shadow: 0 2px 4px #000; }
+.b3d-coffee small { display: block; font-size: 10px; letter-spacing: 2px; color: #8eaaae; text-shadow: 0 2px 4px #000; }
 .b3d-drive-nav { position: absolute; z-index: 3; top: 118px; left: 50%; transform: translateX(-50%); width: 210px; text-align: center; pointer-events: none; text-shadow: 0 2px 6px #000; }
 .b3d-drive-nav[hidden] { display: none; }
 .b3d-drive-nav b, .b3d-drive-nav small { display: block; width: max-content; max-width: 100%; margin: 2px auto 0; background: #0b171cdd; border-radius: 4px; padding: 3px 7px; }
@@ -345,6 +355,9 @@ export class Overlay {
       + '<button type="button" class="skip" data-story="skip">SKIP SCENE ⏭ <small>ENTER</small></button>';
     this.chapterhud = this.div('b3d-chapterhud', this.root);
     this.driveNav = this.div('b3d-drive-nav', this.root);
+    this.coffee = this.div('b3d-coffee', this.root);
+    this.coffee.hidden = true;
+    this.coffee.innerHTML = '<small>THE COFFEE</small><div class="dish"><div class="tilt"></div><div class="dot"></div></div><div class="cups"></div>';
     this.driveNav.hidden = true;
     this.driveNav.innerHTML = '<b></b><small></small>';
     this.lunchAlert = this.div('b3d-lunch-alert', this.root);
@@ -358,6 +371,7 @@ export class Overlay {
   private readonly storykeys: HTMLDivElement;
   private readonly chapterhud: HTMLDivElement;
   private readonly driveNav: HTMLDivElement;
+  private readonly coffee: HTMLDivElement;
   private readonly lunchAlert: HTMLDivElement;
   public setLunchAlert(visible: boolean): void { this.lunchAlert.hidden = !visible; }
   /** Every subtitle direction or caption shown, for the checks. */
@@ -470,6 +484,22 @@ export class Overlay {
     }
     (this.chapterhud.querySelector('.objective') as HTMLElement).textContent = objective;
     (this.chapterhud.querySelector('.keys') as HTMLElement).textContent = keys;
+  }
+
+  /**
+   * The Timmies run's gauge (seen from above, the car's nose up): the coffee's slosh as a dot that spills at the dish's
+   * rim, the trays' tilt as a ring, and the eight cups, or hidden (null).
+   */
+  public coffeeGauge(state: { forward: number; right: number; tiltForward: number; tiltRight: number; danger: boolean; cups: readonly boolean[] } | null): void {
+    this.coffee.hidden = state === null;
+    if (!state) return;
+    const reach = 55, clamp = (value: number): number => Math.max(-1.1, Math.min(1.1, value));
+    (this.coffee.querySelector('.dot') as HTMLElement).style.transform = `translate(${clamp(state.right) * reach}px, ${-clamp(state.forward) * reach}px)`;
+    (this.coffee.querySelector('.tilt') as HTMLElement).style.transform = `translate(${state.tiltRight * 30}px, ${-state.tiltForward * 30}px)`;
+    this.coffee.classList.toggle('danger', state.danger);
+    const cups = state.cups.map((full) => (full ? '●' : '○')).join('');
+    const label = this.coffee.querySelector('.cups') as HTMLElement;
+    if (label.textContent !== cups) { label.textContent = cups; label.setAttribute('aria-label', `${state.cups.filter(Boolean).length} coffees left`); }
   }
 
   public drivingNavigation(nav: { destination: string; distance: number; instruction: string } | null): void {

@@ -342,6 +342,48 @@ export class DrivingView {
     this.ghost.rotation.y = pose.heading;
   }
 
+  /**
+   * The Timmies run (`coffeeRunView.ts`) borrows the city and Skanky's car: while it rides, the drive's own props
+   * (the truck and its ghost, the traffic, the cones, the bays' beacons, the arrow, the home drive's riders) are hidden.
+   * The next drive's `begin` and `update` put them back.
+   */
+  public setRide(riding: boolean): void {
+    this.truck.visible = !riding;
+    this.car.visible = riding;
+    this.ghost.visible = false;
+    for (const object of [...this.traffic.values(), ...this.cones.values()]) object.visible = !riding;
+    if (this.trafficBatch) this.trafficBatch.root.visible = !riding;
+    for (const beacon of this.goalBeacons.values()) beacon.visible = false;
+    this.navigation.root.visible = !riding;
+    for (const { character } of this.occupants) character.root.visible = false;
+    if (!riding) return;
+    this.view = 'chase';
+    this.car.add(this.headlight, this.headlight.target);
+    this.headlight.position.set(2.2, 0.8, 0);
+  }
+
+  /**
+   * The scenery round a vehicle the drive does not move itself (the Timmies run's car): the street light's pool,
+   * the signals at `clock` seconds (`signals` holds any by id), the moon's shadows and the snow.
+   */
+  public followScenery(pose: { x: number; z: number; heading: number }, clock: number, dt: number, signals: Record<string, 'red' | 'amber' | 'green'> = {}): void {
+    this.pool.position.set(pose.x, 7, pose.z);
+    for (const { signal, axis, bulbs } of this.signalProps) {
+      const color = signals[signal.id] ?? signalColor(signal, clock, axis);
+      bulbs.forEach((bulb, i) => { bulb.material.emissiveIntensity = i === ['red', 'amber', 'green'].indexOf(color) ? 4 : 0.04; });
+    }
+    const anchorX = Math.round(pose.x / 2) * 2, anchorZ = Math.round(pose.z / 2) * 2;
+    this.moon.position.set(anchorX - 30, 50, anchorZ - 20);
+    this.moon.target.position.set(anchorX, 0, anchorZ);
+    this.moon.target.updateMatrixWorld();
+    this.snow.follow(new THREE.Vector3(pose.x, 0, pose.z));
+    this.beam.follow(new THREE.Vector3(pose.x + Math.cos(pose.heading) * 7, 0, pose.z - Math.sin(pose.heading) * 7));
+    this.weatherClock += dt;
+    const wind = windAt(this.weatherClock);
+    this.snow.update(dt, this.reducedMotion, wind.x, wind.z);
+    this.beam.update(dt, this.reducedMotion, wind.x, wind.z);
+  }
+
   /** Switches between the chase camera and the cab; the cab view is the five-ton's, so Skanky's car keeps the chase camera. */
   public toggleView(): 'chase' | 'cab' {
     this.view = this.view === 'chase' && this.vehicle === this.truck ? 'cab' : 'chase';
