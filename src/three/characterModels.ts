@@ -152,6 +152,13 @@ export const FIDGET_EVERY = 11;
 const FIDGET_MAX = 6;
 /** A turn beyond this many radians (about 135°) steps round on the 180° clip. */
 const TURN_SPLIT = 2.35;
+/**
+ * Someone moving faster than RUN_FROM metres a second runs, and keeps running until below RUN_UNTIL. The crew
+ * amble at 2 to 2.7 m/s: with the line at 2.4 most of them ran, and those near it flicked between the walk and
+ * the run every few steps, their arms jerking with each cross-fade.
+ */
+const RUN_FROM = 3.4;
+const RUN_UNTIL = 2.9;
 // Two long, lively standing idles; Rocketbox's "breathe" clips are nearly still and read as a statue.
 const IDLE_ROLES: ClipRole[] = ['idle', 'idleAlt'];
 const LOOPING = new Set([...ROCKETBOX_CLIPS, ...UAL_CLIPS].filter((source) => source.loop).map((source) => source.role));
@@ -449,6 +456,9 @@ const parentFrame = new THREE.Quaternion();
 const boneFrame = new THREE.Quaternion();
 const lookTurn = new THREE.Quaternion();
 const handWorld = new THREE.Vector3();
+const hipWant = new THREE.Vector3();
+const hipHave = new THREE.Vector3();
+const rootScale = new THREE.Vector3();
 const IDENTITY = new THREE.Quaternion();
 
 /** A stable 0-1 value from a name, so each person idles a little out of step with the rest. */
@@ -557,11 +567,11 @@ function advanceClips(character: Character, rig: ModelRig, clips: ClipRig): void
     const formal = rig.walk === 'formal' && has('walkFormal');
     const talking = !seatedPlain && !motion.moving && motion.speaking === true && has('talking');
     const idle = seatedPlain ? SEATED_IDLES[Math.floor(clips.phase * SEATED_IDLES.length)]
-      : motion.moving ? (clips.speed > 2.4 ? 'run' : formal ? 'walkFormal' : clips.speed < 0.9 ? 'walkSlow' : 'walk')
+      : motion.moving ? (clips.speed > (clips.role === 'run' ? RUN_UNTIL : RUN_FROM) ? 'run' : formal ? 'walkFormal' : clips.speed < 0.9 ? 'walkSlow' : 'walk')
       : talking ? 'talking' : IDLE_ROLES[Math.floor(clips.phase * IDLE_ROLES.length)];
     const still = seatedPlain || !motion.moving;
     if (clips.fidget && (now >= clips.fidget.until || !still || talking)) { clips.fidget = null; clips.fidgetAt = now + FIDGET_EVERY * (0.7 + clips.phase * 0.6); }
-    if (!clips.fidget && still && !talking && now >= clips.fidgetAt) {
+    if (!clips.fidget && still && !talking && motion.fidgets !== false && now >= clips.fidgetAt) {
       const options = (seatedPlain ? SEATED_FIDGETS : STANDING_FIDGETS).filter(has);
       if (options.length) {
         const pick = options[Math.floor(((now * 7.31 + clips.phase * 13) % 1 + 1) % 1 * options.length) % options.length];
@@ -637,6 +647,17 @@ function driveModel(character: Character, rig: ModelRig): void {
     for (const { bone, rest } of clips.free) bone.quaternion.slerp(rest, figure);
     clips.root.position.lerp(clips.rootRest, figure);
   }
+  // Seated on a clip (a passenger's seated idle), the clip's hips sit at the height of the chair it was made on,
+  // which put a car passenger's head through the roof: raise or lower the model so its hips sit on this seat, where
+  // the figure's are.
+  if (clips && figure < 1 && character.motion?.seated) {
+    const hip = rig.drives.find((drive) => drive.pivot === character.leftLeg);
+    if (hip) {
+      character.root.updateMatrixWorld(true);
+      const offset = hip.pivot.getWorldPosition(hipWant).y - hip.bone.getWorldPosition(hipHave).y;
+      rig.container.position.y += offset / Math.max(1e-6, character.root.getWorldScale(rootScale).y) * (1 - figure);
+    }
+  }
   for (const { pivot, bone, rest, arm, leg } of rig.drives) {
     const weight = arm ? arms : leg ? legs : figure;
     if (weight <= 0) continue;
@@ -675,6 +696,24 @@ function driveModel(character: Character, rig: ModelRig): void {
       );
     }
   }
+}
+
+const knuckle = new THREE.Vector3();
+
+/**
+ * Where a held thing sits in a character's hand, in world metres: the imported model's palm, most of the way from
+ * the wrist to the knuckles (the hand bone's finger roots), else a little down the figure's hand. The figure's hand
+ * pivot is the model's wrist, so cups placed at it, or a fixed drop below it, floated beside the fingers.
+ */
+export function palmOf(character: Character, side: 'left' | 'right', out = new THREE.Vector3()): THREE.Vector3 {
+  const pivot = side === 'left' ? character.leftHand : character.rightHand;
+  const bone = tracked.get(character.root)?.rig?.hands.find((hand) => hand.pivot === pivot)?.bone;
+  const fingers = bone && bone.parent ? bone.children.filter((child) => (child as THREE.Bone).isBone) : [];
+  if (!bone || !fingers.length) return pivot.localToWorld(out.set(0, -0.08, 0.02));
+  const knuckles = new THREE.Vector3();
+  for (const finger of fingers) knuckles.add(finger.getWorldPosition(knuckle));
+  knuckles.divideScalar(fingers.length);
+  return bone.getWorldPosition(out).lerp(knuckles, 0.8);
 }
 
 /** The clip a character's model is playing, or null without a model or clips; for checks. */

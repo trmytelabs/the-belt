@@ -94,6 +94,10 @@ const CSS = `
 .b3d-bubble.edge::after { display: none; }
 .b3d-pop { position: absolute; transform: translate(-50%, -50%); font: 900 18px "Segoe UI", Arial, sans-serif; text-shadow: 0 2px 6px #000c; white-space: nowrap; }
 .b3d-center { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
+.b3d-panel.docked { align-self: end; margin-bottom: 64px; padding: 16px 22px; width: min(560px, calc(100vw - 32px)); max-height: 46dvh; }
+.b3d-panel.docked h1 { font-size: 24px; margin: 4px 0 6px; }
+.b3d-panel.docked p { margin: 3px 0; font-size: 13px; }
+.b3d-panel.docked .b3d-choices button { margin-top: 10px; padding: 11px; }
 .b3d-panel { pointer-events: auto; width: min(620px, calc(100vw - 32px)); background: #142a31f2; border: 1px solid #3b5a62; border-radius: 12px;
   max-height: calc(100dvh - 24px); overflow: auto; box-sizing: border-box; padding: 28px 34px; box-shadow: 0 30px 80px #000a; }
 .b3d-panel h1 { font: 800 34px/1.1 "Segoe UI", Arial, sans-serif; margin: 6px 0 16px; }
@@ -680,9 +684,10 @@ export class Overlay {
   }
 
   /** A centred panel; one handler for its button, or handlers by data-action. */
-  public showPanel(html: string, onButton?: (() => void) | Record<string, () => void>): void {
-    // A dialog named by its heading, so assistive technology announces what the panel is.
-    this.center.innerHTML = `<div class="b3d-panel" role="dialog" aria-labelledby="b3d-panel-title">${html}</div>`;
+  public showPanel(html: string, onButton?: (() => void) | Record<string, () => void>, options: { docked?: boolean } = {}): void {
+    // A dialog named by its heading, so assistive technology announces what the panel is. A docked panel sits at
+    // the foot of the screen, leaving the scene it is about in view.
+    this.center.innerHTML = `<div class="b3d-panel${options.docked ? ' docked' : ''}" role="dialog" aria-labelledby="b3d-panel-title">${html}</div>`;
     const heading = this.center.querySelector('.b3d-panel h1');
     if (heading) heading.id = 'b3d-panel-title';
     else this.center.querySelector('.b3d-panel')?.removeAttribute('aria-labelledby');

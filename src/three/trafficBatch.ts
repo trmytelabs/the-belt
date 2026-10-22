@@ -9,8 +9,8 @@ import { SimplifyModifier } from 'three/examples/jsm/modifiers/SimplifyModifier.
  * Traffic is only ever seen from the chase camera, so it is baked once per
  * sedan variant into three batches, one per material class:
  *
- * - paint, tinted per instance, which also holds a 600-triangle shell each
- *   car switches to beyond `LOD_DISTANCE`;
+ * - paint, tinted per instance, which also holds an 1,800-triangle shell each
+ *   car switches to beyond `LOD_DISTANCE` (most of the way into the fog);
  * - trim: glass, black plastic and chrome by vertex colour, and the four
  *   wheels as their own instances so they roll;
  * - lights: unlit head and tail lamps, so they glow at night.
@@ -24,10 +24,13 @@ export interface TrafficPose { x: number; z: number; heading: number }
 export type TrafficVariant = 'sedan' | 'sedan-wide';
 export const TRAFFIC_VARIANTS: TrafficVariant[] = ['sedan', 'sedan-wide'];
 export const TRAFFIC_COLOURS = [0xa74132, 0x7a7a70, 0xc6b58c, 0x467b91, 0x698560, 0xd8d4c8];
-/** Beyond this many metres from the camera a car draws its shell with no trim or lights. */
-export const LOD_DISTANCE = 45;
+/**
+ * Beyond this many metres from the camera a car draws its shell with no trim; its lights stay on. At 45 m the
+ * switch showed in plain view (the owner saw cars look low-poly until they came close); the fog starts at 75 m.
+ */
+export const LOD_DISTANCE = 110;
 /** Triangles the shell keeps. */
-const SHELL_TRIANGLES = 600;
+const SHELL_TRIANGLES = 1800;
 /** The fitted size every sedan takes, as the full models do. */
 const FIT = { length: 4.2, height: 1.5, width: 1.8 };
 const TRIM_COLOURS: [RegExp, number][] = [[/windows/i, 0x1b2430], [/grey/i, 0x9aa0a4], [/black/i, 0x14161a]];
@@ -110,7 +113,7 @@ function recentre(geometry: THREE.BufferGeometry): { geometry: THREE.BufferGeome
   return { geometry, centre, radius: (box.max.y - box.min.y) / 2 };
 }
 
-/** A 600-triangle shell of the body for distant cars, in the paint's colour. */
+/** An 1,800-triangle shell of the body for distant cars, in the paint's colour. */
 function shellOf(parts: THREE.BufferGeometry[]): THREE.BufferGeometry {
   const whole = mergeVertices(mergeGeometries(parts.map((part) => { const copy = part.clone(); copy.deleteAttribute('color'); copy.deleteAttribute('normal'); return copy; }), false), 1e-3);
   const triangles = (whole.index ? whole.index.count : whole.attributes.position.count) / 3;
@@ -314,7 +317,6 @@ export class TrafficBatch {
       slot.far = far;
       this.paint.setGeometryIdAt(slot.body, far ? variant.ids.shell : variant.ids.full);
       this.trim.setVisibleAt(slot.trimBody, !far);
-      this.lights.setVisibleAt(slot.lights, !far);
       for (const wheel of slot.wheels) this.trim.setVisibleAt(wheel, !far);
     }
     this.paint.setMatrixAt(slot.body, carMatrix);

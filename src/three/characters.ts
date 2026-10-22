@@ -92,6 +92,11 @@ export interface CharacterMotion {
   hands: boolean;
   /** Saying a line right now, so a model standing still gestures as it talks. */
   speaking?: boolean;
+  /**
+   * False for the player's own workers: a stretch or a head scratch while the player holds them still
+   * reads as the controls misbehaving. The crew fidget as before.
+   */
+  fidgets?: boolean;
   /** A turn on the spot in progress: when it began, how far it turns (radians, positive to the left) and from which facing. */
   turn: { start: number; angle: number; from: number } | null;
 }
@@ -668,6 +673,9 @@ export function animateCharacter(character: Character, dt: number, state: {
   // A light rise and fall each step, slow breathing at rest, and a crouch for a lift.
   const bob = gait * Math.abs(Math.cos(phase)) * 0.025 + (1 - gait) * Math.sin(state.time * 1.8) * 0.005;
   character.body.position.y = bob - 0.13 * dip;
+  // A seated hunch shifts the body to turn about the hips (crew.ts hunchSeated); undone here each frame.
+  character.body.position.x = 0;
+  character.body.position.z = 0;
   // The torso leans into a walk, back under a heavy load and forward over a lift,
   // and sways a little from side to side with the steps.
   const lean = 0.055 * gait - 0.07 * load * (carrying ? 1 : 0) + 0.1 * dip + 0.12 * fling;

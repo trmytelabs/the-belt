@@ -86,14 +86,18 @@ test('a voice in earshot wins over a passing worker, which wins over nothing; fa
   const self = { id: 'hussan', x: 0, z: 0, facing: 0 };
   const voice = (id, x, z, until = 99) => ({ id, x, z, y: 1.7, until });
   const worker = (x, z) => ({ x, z, y: 1.6 });
-  assert.deepEqual(lookTargetFor(self, 5, [voice('shan', 2, 6)], [worker(1, 2)]), voice('shan', 2, 6), 'the speaker, though the worker is nearer');
-  assert.deepEqual(lookTargetFor(self, 5, [voice('shan', 0, VOICE_RANGE + 1)], [worker(1, 2)]), worker(1, 2), 'a voice out of earshot leaves the worker');
+  assert.deepEqual(lookTargetFor(self, 5, [voice('shan', 2, 6)], [worker(1, 1.8)]), voice('shan', 2, 6), 'the speaker, though the worker is nearer');
+  assert.deepEqual(lookTargetFor(self, 5, [voice('shan', 0, VOICE_RANGE + 1)], [worker(1, 1.8)]), worker(1, 1.8), 'a voice out of earshot leaves the worker');
   assert.deepEqual(lookTargetFor(self, 5, [voice('hussan', 0, 3)], [worker(0, PASSING_RANGE + 0.5)]), null, 'never oneself, and a worker out of reach is nothing');
   assert.deepEqual(lookTargetFor(self, 5, [voice('shan', 0, 3, 4)], []), null, 'a line that has ended no longer draws the eye');
   assert.deepEqual(lookTargetFor(self, 5, [voice('shan', 0, -4)], []), null, 'nobody looks over their own shoulder');
   assert.deepEqual(lookTargetFor({ ...self, facing: Math.PI }, 5, [voice('shan', 0, -4)], []), voice('shan', 0, -4), 'facing the other way, the same point is ahead');
   assert.deepEqual(lookTargetFor(self, 5, [voice('shan', 2, 6), voice('john', 1, 2)], []), voice('john', 1, 2), 'the nearer of two voices');
-  assert.ok(Math.abs(bearingOf(self, { x: 1, z: 1, y: 0 }) - Math.PI / 4) < 1e-9 && LOOK_CONE > Math.PI / 2);
+  assert.ok(Math.abs(bearingOf(self, { x: 1, z: 1, y: 0 }) - Math.PI / 4) < 1e-9);
+  // Someone passing beside (90 degrees off the facing) is not looked at: the head would swing to its limit and back.
+  assert.ok(LOOK_CONE > Math.PI / 4 && LOOK_CONE < Math.PI / 2);
+  assert.deepEqual(lookTargetFor(self, 5, [], [worker(2, 0)]), null, 'a worker straight to one side');
+  assert.deepEqual(lookTargetFor(self, 5, [voice('shan', 2, 0.2)], []), voice('shan', 2, 0.2), 'a voice straight to one side still turns the head');
 });
 
 test("a gaze in the figure's frame turns the head the right way, up to another head and down to a parcel", () => {

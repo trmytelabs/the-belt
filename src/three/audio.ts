@@ -381,11 +381,12 @@ export class DepotAudio extends AudioSystem {
       rollers.buffer = this.noiseBuffer; rollers.loop = true;
       rollerFilter.type = 'bandpass'; rollerFilter.frequency.value = 1100; rollerFilter.Q.value = 0.8;
       rattleGain.gain.value = 0;
-      // The clack: a slow square wave opens and closes the rattle as each roller passes.
+      // The rollers' sway: a gentle sine lifts and lowers the rattle. A square wave here clacked it on and off six to
+      // nine times a second, which the owner heard as a constant drum beat under everything.
       clack.gain.value = 0.5;
       const pulse = context.createOscillator(), pulseDepth = context.createGain();
-      pulse.type = 'square'; pulse.frequency.value = 6;
-      pulseDepth.gain.value = 0.35;
+      pulse.type = 'sine'; pulse.frequency.value = 2.5;
+      pulseDepth.gain.value = 0.12;
       pulse.connect(pulseDepth); pulseDepth.connect(clack.gain);
       rollers.connect(rollerFilter); rollerFilter.connect(clack); clack.connect(rattleGain); rattleGain.connect(this.sfxGain);
       const nodes = [motorFilter, motorGain, rollerFilter, clack, rattleGain, pulseDepth];
@@ -398,9 +399,10 @@ export class DepotAudio extends AudioSystem {
     const rate = Math.min(2.5, speed / 50);
     const now = context.currentTime;
     this.belt.motor.frequency.setTargetAtTime(44 + 22 * rate, now, 0.25);
-    this.belt.pulse.frequency.setTargetAtTime(4 + 5 * rate, now, 0.25);
-    this.fade(this.belt.motorGain, 0.012 + 0.006 * Math.min(1.5, rate), 0.25);
-    this.fade(this.belt.rattleGain, (0.008 + 0.014 * Math.min(6, load)) * Math.min(1.4, rate), 0.2);
+    this.belt.pulse.frequency.setTargetAtTime(2 + rate, now, 0.25);
+    // Background machinery, under the foley and the music: quieter than it first shipped.
+    this.fade(this.belt.motorGain, 0.007 + 0.004 * Math.min(1.5, rate), 0.25);
+    this.fade(this.belt.rattleGain, (0.005 + 0.009 * Math.min(6, load)) * Math.min(1.4, rate), 0.2);
   }
 
   /** The depot's distant sounds: a forklift backing up, the PA chime, a pallet set down. */

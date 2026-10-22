@@ -6,7 +6,8 @@ import {
 import { DRIVERS, SHAN_BREAKAGE_LINES } from '../game/slice/StoryScript';
 import type { Parcel, ShiftEvent, ShiftModel } from '../game/slice/ShiftModel';
 import { audioSystem } from './audio';
-import { animateCharacter, bendElbows, bendKnees, blendPose, createCharacter, faceToward, lookToward, mergeCharacter, snapshotPose, type Character } from './characters';
+import { palmOf } from './characterModels';
+import { BODY, animateCharacter, bendElbows, bendKnees, blendPose, createCharacter, faceToward, lookToward, mergeCharacter, snapshotPose, type Character } from './characters';
 import { eyeHeight, gazeInFigureFrame, lookTargetFor, type Gaze, type Speaker } from './attention';
 import { plantFeet } from './footing';
 import { SEATED_BODY_DROP } from './figure';
@@ -27,7 +28,7 @@ import { CrewPatrols, type PatrolId } from './crewPatrols';
  * Times are shift milliseconds unless named otherwise.
  */
 export type Say = (id: string, copy: string, durationMs: number) => void;
-export type Pose = 'none' | 'shout' | 'crouch' | 'squat' | 'massage' | 'dance' | 'swear' | 'cough' | 'cheer' | 'announce' | 'push' | 'phone' | 'keys' | 'aim' | 'carry' | 'press' | 'handup' | 'sit' | 'shrug' | 'wii' | 'sip';
+export type Pose = 'none' | 'shout' | 'crouch' | 'squat' | 'massage' | 'dance' | 'swear' | 'cough' | 'cheer' | 'announce' | 'push' | 'phone' | 'keys' | 'aim' | 'carry' | 'press' | 'handup' | 'sit' | 'shrug' | 'wii' | 'sip' | 'queasy' | 'retch';
 
 const RESIDENT_IDS = ['hussan', 'aj', 'ben', 'bannerman', 'fruitloop', 'doris', 'brian', 'donna'] as const;
 const TRUCK_DOORS: Record<string, { x: number; y: number }> = {
@@ -95,6 +96,24 @@ export class Actor {
   }
 }
 
+const hipTurn = new THREE.Vector3();
+
+/**
+ * Bends a seated figure forward by `hunch` and out to its right by `lean` (radians) about the hips. The figure's
+ * body turns about the floor and carries the legs, so tipping it as is (the old seated cough) slid the hips off
+ * the seat and drove the thighs down through it: the body is shifted back under the hips and the thighs turned
+ * back level on the seat.
+ */
+function hunchSeated(c: Character, hunch: number, lean: number): void {
+  c.body.rotation.set(hunch, 0, lean);
+  hipTurn.set(0, BODY.hipY, 0).applyEuler(c.body.rotation);
+  c.body.position.x -= hipTurn.x;
+  c.body.position.z -= hipTurn.z;
+  c.body.position.y += BODY.hipY - hipTurn.y;
+  c.leftLeg.rotation.set(-1.5 - hunch, 0, -lean);
+  c.rightLeg.rotation.set(-1.5 - hunch, 0, -lean);
+}
+
 export function applyPose(c: Character, pose: Pose, t: number, still: boolean): void {
   const wave = (speed: number, amount: number): number => still ? 0 : Math.sin(t * speed) * amount;
   switch (pose) {
@@ -155,6 +174,25 @@ export function applyPose(c: Character, pose: Pose, t: number, still: boolean): 
       c.head.rotation.y = wave(3, 0.1);
       c.body.rotation.x = -0.06;
       break;
+    case 'queasy':
+      // Seated and feeling it: hunched over the knees, a hand on the stomach, head down; a slow sway.
+      hunchSeated(c, 0.26 + wave(1.6, 0.04), 0);
+      c.head.rotation.set(0.35, 0, wave(1.1, 0.05));
+      c.leftArm.rotation.set(-0.55, 0, 0.12);
+      c.rightArm.rotation.set(-0.7, 0, -0.25);
+      bendElbows(c, -0.7, -1.6);
+      break;
+    case 'retch': {
+      // Seated and sick: leaning out over the arm of the couch on the right, head hanging, the left hand braced
+      // on the knee and the right on the couch arm; a slow heave rather than a shudder.
+      const heave = still ? 0.5 : (1 - Math.cos(t * Math.PI * 2 / 1.4)) / 2;
+      hunchSeated(c, 0.32 + 0.12 * heave, 0.3);
+      c.head.rotation.set(0.5 + 0.2 * heave, -0.3, 0);
+      c.leftArm.rotation.set(-0.7, 0, 0.1);
+      c.rightArm.rotation.set(-0.35, 0, -0.45);
+      bendElbows(c, -0.55, -0.25);
+      break;
+    }
     case 'cough':
       // Doubled over with a hand to the mouth.
       c.body.rotation.x = 0.38 + Math.abs(wave(15, 0.12));
@@ -239,6 +277,7 @@ export function applyPose(c: Character, pose: Pose, t: number, still: boolean): 
 
 export class CrewLife {
   public readonly actors = new Map<string, Actor>();
+  private readonly kylieCup: THREE.Mesh;
   /** Inspection state for the browser checks. */
   public snakeState: 'waiting' | 'belt' | 'collecting' | 'dancing' | 'done' = 'waiting';
   public massageStage: 'waiting' | 'arriving' | 'lying' | 'leaving' | 'done' = 'waiting';
@@ -296,10 +335,10 @@ export class CrewLife {
       world.scene.add(character.root);
       this.actors.set(id, new Actor(character));
     }
-    // Kylie carries an (empty) coffee cup on his search.
-    const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.045, 0.16, 12), standard(0xc23a2e, 0.6));
-    cup.position.set(0, -0.085, 0.05);
-    this.actor('kylie').character.rightHand.add(cup);
+    // Kylie carries an (empty) coffee cup on his search, in his palm (placed each update; see holdKylieCup).
+    this.kylieCup = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.045, 0.16, 12), standard(0xc23a2e, 0.6));
+    this.kylieCup.position.set(0, -0.085, 0.05);
+    this.actor('kylie').character.rightHand.add(this.kylieCup);
 
     this.towel = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.06, 0.7), standard(0xf2efe6, 0.95));
     this.towel.visible = false;
@@ -582,8 +621,16 @@ export class CrewLife {
     this.updateWatcher(model);
   }
 
+  /** Keeps Kylie's cup in his palm: his model's hand is not where the figure's hand pivot puts a fixed offset. */
+  private holdKylieCup(): void {
+    const kylie = this.actor('kylie');
+    if (!kylie.root.visible) return;
+    kylie.character.rightHand.worldToLocal(palmOf(kylie.character, 'right', this.kylieCup.position));
+  }
+
   public update(dt: number, model: ShiftModel, wallTime: number): void {
     this.wallTime = wallTime;
+    this.holdKylieCup();
     const t = model.elapsedMs;
     const reserved = this.advanceWorkWalk(dt);
 
