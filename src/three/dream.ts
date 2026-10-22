@@ -22,13 +22,30 @@ const rounded = (w: number, h: number, d: number, material: THREE.Material, r = 
 /** Seat height of the stool and armchair cushion. */
 const SEAT_HEIGHT = 0.48;
 
-/** Where the hands go on the held things, in each one's own frame: the guitar's neck and sound hole, the controller's grips. */
-const HAND_POINTS = {
-  fret: new THREE.Vector3(0.5, 0.13, 0.05),
-  strum: new THREE.Vector3(-0.02, -0.01, 0.1),
-  gripA: new THREE.Vector3(0.08, 0.012, 0.03),
-  gripB: new THREE.Vector3(-0.08, 0.012, 0.03),
+/**
+ * A hand on a held thing, in the thing's own frame: where the wrist goes, the point the fingers reach for, and a turn
+ * of the hand about its fingers (radians) where the palm would otherwise face away from the thing.
+ */
+interface Grip { wrist: THREE.Vector3; aim: THREE.Vector3; twist?: number }
+
+/**
+ * Where the hands go on the held things. With the wrist alone placed, a hand carried on along its forearm's line:
+ * limp past the controller's ends, and open over the guitar's neck. The guitar's neck runs along +x (rising), its
+ * fretboard toward +z; the controller is 0.19 m across x, its top +y, its far side +z.
+ */
+const HAND_POINTS: Record<'fret' | 'strum' | 'gripA' | 'gripB', Grip> = {
+  // Under and behind the neck, the fingers coming up round over the fretboard.
+  fret: { wrist: new THREE.Vector3(0.5, 0.06, -0.05), aim: new THREE.Vector3(0.53, 0.17, 0.05) },
+  // Just above the sound hole, the fingers down across the strings.
+  strum: { wrist: new THREE.Vector3(-0.02, 0.08, 0.08), aim: new THREE.Vector3(-0.03, -0.08, 0.03), twist: Math.PI },
+  // Each end held from outside and behind, the fingers wrapping in under it.
+  gripA: { wrist: new THREE.Vector3(0.15, -0.01, -0.06), aim: new THREE.Vector3(0.05, -0.02, 0.03) },
+  gripB: { wrist: new THREE.Vector3(-0.15, -0.01, -0.06), aim: new THREE.Vector3(-0.05, -0.02, 0.03) },
 };
+const shifted = (grip: Grip, x: number, y: number): Grip =>
+  ({ wrist: grip.wrist.clone().add(new THREE.Vector3(x, y, 0)), aim: grip.aim.clone().add(new THREE.Vector3(x, y, 0)), twist: grip.twist });
+/** A hand pivot hangs along its local -y. */
+const FINGERS = new THREE.Vector3(0, -1, 0);
 
 export class MesaDream {
   public readonly scene = new THREE.Scene();
@@ -391,18 +408,30 @@ export class MesaDream {
   private poseHands(seconds: number, still: boolean): void {
     const strum = still ? 0 : Math.sin(seconds * 18) * 0.03;
     const slide = still ? 0 : Math.sin(seconds * 0.9) * 0.05;
-    this.handsOn(this.skanky, this.guitar, HAND_POINTS.fret.clone().setX(HAND_POINTS.fret.x + slide), HAND_POINTS.strum.clone().setY(HAND_POINTS.strum.y + strum));
+    this.handsOn(this.skanky, this.guitar, shifted(HAND_POINTS.fret, slide, slide * 0.2), shifted(HAND_POINTS.strum, 0, strum));
     const tap = still ? 0 : Math.sin(seconds * 11) * 0.006;
-    this.handsOn(this.trmyte, this.controller, HAND_POINTS.gripA.clone().setY(HAND_POINTS.gripA.y + tap), HAND_POINTS.gripB.clone().setY(HAND_POINTS.gripB.y - tap));
+    this.handsOn(this.trmyte, this.controller, shifted(HAND_POINTS.gripA, 0, tap), shifted(HAND_POINTS.gripB, 0, -tap));
   }
 
-  /** Puts a character's hands on two points of a held object (in its own frame), each hand on the nearer one. */
-  private handsOn(c: Character, held: THREE.Object3D, a: THREE.Vector3, b: THREE.Vector3): void {
+  /**
+   * Puts a character's hands on two grips of a held object, each hand on the nearer one: the wrists by the seated
+   * reach solver, then each hand turned so its fingers reach for the grip's aim point.
+   */
+  private handsOn(c: Character, held: THREE.Object3D, a: Grip, b: Grip): void {
     c.root.updateMatrixWorld(true);
-    held.localToWorld(a); held.localToWorld(b);
+    const wa = held.localToWorld(a.wrist.clone()), wb = held.localToWorld(b.wrist.clone());
     const left = c.leftArm.getWorldPosition(new THREE.Vector3()), right = c.rightArm.getWorldPosition(new THREE.Vector3());
-    const straight = left.distanceTo(a) + right.distanceTo(b), crossed = left.distanceTo(b) + right.distanceTo(a);
-    poseSeated(c, { hands: straight <= crossed ? { left: a, right: b } : { left: b, right: a } });
+    const straight = left.distanceTo(wa) + right.distanceTo(wb) <= left.distanceTo(wb) + right.distanceTo(wa);
+    poseSeated(c, { hands: straight ? { left: wa, right: wb } : { left: wb, right: wa } });
+    c.root.updateMatrixWorld(true);
+    const frame = new THREE.Quaternion();
+    for (const [forearm, hand, grip] of [[c.leftForearm, c.leftHand, straight ? a : b], [c.rightForearm, c.rightHand, straight ? b : a]] as const) {
+      // Into the forearm's frame, the hand pivot's parent.
+      const reach = held.localToWorld(grip.aim.clone()).sub(hand.getWorldPosition(new THREE.Vector3())).normalize()
+        .applyQuaternion(forearm.getWorldQuaternion(frame).invert());
+      hand.quaternion.setFromUnitVectors(FINGERS, reach);
+      if (grip.twist) hand.quaternion.multiply(frame.setFromAxisAngle(FINGERS, grip.twist));
+    }
   }
 
   private resetLumines(): void {
