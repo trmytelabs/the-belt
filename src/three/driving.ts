@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { DrivingModel, type DriveDestination } from './DrivingModel';
+import { createCityFacades } from './cityFacades';
 import { CITY, CITY_BUILDINGS, CITY_SIGNALS, DESTINATIONS, TERMINALS, signalColor, streetExtent, type CityAxis, type CityPoint, type CitySignal } from './drivingCity';
 import { SKANKY_SPEC, TERMITE_SPEC, createTruck } from './world';
 import { createCar } from './story';
@@ -149,21 +150,22 @@ export class DrivingView {
     for (const building of CITY_BUILDINGS) {
       const { x, z, width, depth, height, variant } = building, index = this.buildingCount++;
       this.blockers.push(blocker(x, z, width, depth, height, 0.7));
-      const slot = new THREE.Group(); slot.name = 'city-building'; slot.userData.keep = true; slot.position.set(x, 0, z);
-      const fallback = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), standard(index % 2 ? 0x47515c : 0x5e605e, 0.9));
-      fallback.position.y = height / 2; slot.add(fallback); scene.add(slot);
-      loads.push(this.models.place(slot, (['shop', 'apartments', 'offices', 'tower', 'lowShop'] as const)[variant], { x: width, y: height, z: depth }, [fallback]));
+      // The block itself is drawn by the merged facades below; its slot holds its signs.
+      const slot = new THREE.Group(); slot.name = 'city-building'; slot.userData.keep = true; slot.userData.modelReady = true; slot.position.set(x, 0, z);
+      scene.add(slot);
       const landmark = ({ 0: 'NIGHT COFFEE', 12: 'CORNER SHOP', 32: 'MARKET HALL', 44: 'CAR WASH' } as Record<number, string>)[index];
       if (landmark) {
         const sign = textPlane([landmark], 10, 1.1, { width: 520, height: 64, background: '#263d40', color: '#f3d292' });
-        sign.position.set(0, 3, depth / 2 + 0.025); slot.add(sign);
+        sign.position.set(0, 3, depth / 2 + 0.09); slot.add(sign);
       }
       if (variant === 1) {
         const sign = textPlane(['APARTMENTS'], Math.min(11, width - 2), 1.2, { width: 512, height: 64, background: '#344950', color: '#e7dbb7' });
-        sign.position.set(0, 3.3, depth / 2 + 0.03); slot.add(sign);
+        sign.position.set(0, 3.3, depth / 2 + 0.09); slot.add(sign);
       }
     }
-    // Lit windows on every block, one draw call; the facades themselves carry none.
+    // Every block as two merged meshes (tinted walls and window panels on one grid), and the lit windows on that
+    // same grid, one draw call: the Kenney models before these were stretched to each block, windows and all.
+    scene.add(createCityFacades(CITY_BUILDINGS));
     scene.add(createCityWindows(CITY_BUILDINGS));
     this.terminal(TERMINALS.ups, 'UPS', 'DEPOT 07', 0x443b32, 1);
     this.terminal(TERMINALS.mall, 'SOUTHGATE MALL', 'LOADING DOCK', 0x4d5354, -1);
