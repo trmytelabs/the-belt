@@ -471,6 +471,35 @@ try {
     assert.ok(m.seated === true && m.holding === true && m.time > 0, `${who} in the dream is seated and holding, with a running clock: ${JSON.stringify(m)}`);
     if (m.model) assert.ok(['sitIdle', 'sitIdleAlt', 'sitLookAround'].includes(m.role), `${who}'s model plays a seated idle in the dream: ${JSON.stringify(m)}`);
   }
+  // Each hand closes on what it holds: a point a hand's length along its fingers lies on the guitar or the controller.
+  // With only the wrists placed, Trmyte's hands hung past the controller's ends and Skanky's lay open over the neck.
+  const grips = await read(() => {
+    const app = window.fixtureApp, d = app.dream, out = {};
+    const V = (x = 0, y = 0, z = 0) => app.camera.position.clone().set(x, y, z);
+    const Box = app.world.physicalBounds(d.controller).constructor;
+    // The held things' parts in their own frames (the guitar's meshes are merged into Skanky's body; its group keeps the
+    // frame): the guitar's body and its neck, tilted 0.2 rad about its centre, and the controller's shell.
+    const parts = {
+      guitar: [{ box: new Box(V(-0.25, -0.25, -0.04), V(0.36, 0.26, 0.04)) },
+        { box: new Box(V(-0.35, -0.03, -0.02), V(0.35, 0.03, 0.02)), at: V(0.55, 0.12, 0), turn: 0.2 }],
+      controller: [{ box: new Box(V(-0.095, -0.025, -0.05), V(0.095, 0.025, 0.05)) }],
+    };
+    for (const [who, c, held, name] of [['skanky', d.skanky, d.guitar, 'guitar'], ['trmyte', d.trmyte, d.controller, 'controller']]) {
+      held.updateWorldMatrix(true, false);
+      for (const side of ['left', 'right']) {
+        const hand = c[`${side}Hand`];
+        hand.updateWorldMatrix(true, false);
+        const tip = held.worldToLocal(hand.localToWorld(V(0, -0.09, 0)));
+        out[`${who} ${side}`] = +Math.min(...parts[name].map(({ box, at, turn }) => {
+          const p = tip.clone();
+          if (at) p.sub(at).applyAxisAngle(V(0, 0, 1), -turn);
+          return box.distanceToPoint(p);
+        })).toFixed(3);
+      }
+    }
+    return out;
+  });
+  for (const [hand, gap] of Object.entries(grips)) assert.ok(gap < 0.025, `${hand} hand closes on what it holds: ${JSON.stringify(grips)}`);
   if (process.env.BELT_SCREENSHOT_DIR) {
     await page.waitForTimeout(1200);
     await page.screenshot({ path: join(process.env.BELT_SCREENSHOT_DIR, 'after-3d-dream.png') });
