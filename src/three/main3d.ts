@@ -5,6 +5,7 @@ import { createSurpriseMarker, SURPRISE_PROMPT_LIFT, updateSurpriseMarker, type 
 import { GOAL_BONUS, judgeGoals, nightGoals, type NightGoal } from './nightGoals';
 import { MEDALS, awardMedals, type NightFacts } from './medals';
 import { perkById, perkOffer, type Perk } from './perks';
+import { dailyDate, dailyNight, loadDaily, recordDaily, saveDaily, type DailyNight } from './daily';
 import { rankNeeds, seniority } from './seniority';
 import { PACE_STEP_MS, paceAt, samplePace } from './pace';
 import { sortingGuide } from './sortingGuide';
@@ -221,6 +222,8 @@ export class Belt3d {
    * The shift, the drives, the mall run, the key return and the results are all still played.
    */
   private justPlay = false;
+  /** Tonight's daily challenge (`daily.ts`), when that is what is being played. */
+  private daily: DailyNight | null = null;
   /** Each worker's smoothed velocity in world metres per second, for the camera's look-ahead. */
   private readonly motion: Record<WorkerId, { previous: THREE.Vector3 | null; velocity: THREE.Vector3 }> = {
     termite: { previous: null, velocity: new THREE.Vector3() }, skanky: { previous: null, velocity: new THREE.Vector3() },
@@ -547,6 +550,8 @@ export class Belt3d {
         this.startNight(false, true);
       } else if (this.state === 'briefing' && event.code === 'KeyN') {
         this.startEndless();
+      } else if (this.state === 'briefing' && event.code === 'KeyY') {
+        this.startDaily();
       } else if (this.state === 'briefing' && /^Digit[123]$/.test(event.code)) {
         this.pickPerk(Number(event.code.slice(5)) - 1);
       } else if (this.state === 'briefing' && (event.code === 'BracketLeft' || event.code === 'BracketRight')) {
@@ -622,10 +627,11 @@ export class Belt3d {
       ${this.perkLine()}
       ${this.record.completed > 0 ? `<p class="b3d-record">PEAK NIGHT UNLOCKED · in the flow and the rush freight comes a fifth sooner, the belt runs faster and recovery holds ${PEAK_NIGHT.capacity}. ${this.touch.enabled ? 'Tap PEAK NIGHT.' : 'Press P or click PEAK NIGHT.'} ENDLESS SHIFT${this.touch.enabled ? '' : ' (N)'} has no clock: the belt speeds up every minute until recovery overflows.</p>` : ''}
       <div class="b3d-start">${this.touch.enabled ? '' : `<button type="button" data-action="players" class="b3d-players">${this.settings.twoPlayers ? '2 PLAYERS' : '1 PLAYER'}  C<small>${this.settings.twoPlayers ? 'P2 · ARROWS · ENTER' : 'C FOR TWO PLAYERS'}</small></button>`}<button type="button" data-action="night">START THE NIGHT  ↵</button><button type="button" data-action="play" title="The shift, the drives and the mall run, without the story scenes">JUST PLAY${this.touch.enabled ? '' : '  J'}<small>NO STORY SCENES</small></button></div>
+      ${this.dailyButton()}
       ${this.record.completed > 0 ? '<button type="button" data-action="peak">PEAK NIGHT  P</button><button type="button" data-action="endless">ENDLESS SHIFT  N</button>' : ''}
       ${this.record.played > 0 ? `<button type="button" class="b3d-medals-link" data-action="medals">MEDALS · ${this.record.medals.length} OF ${MEDALS.length} · RECENT NIGHTS</button>` : ''}
       <a href="${window.location.pathname}?mode=3d&amp;drive=mall">TRY JUST THE DRIVE · EXPLORE THE CITY</a>
-      <a href="${window.location.pathname}?mode=classic">PLAY THE ORIGINAL FULL SHIFT</a>`, { night: () => this.startNight(), play: () => this.startNight(false, true), players: () => this.togglePlayers(), peak: () => this.startNight(true), medals: () => this.showMedals(), endless: () => this.startEndless(),
+      <a href="${window.location.pathname}?mode=classic">PLAY THE ORIGINAL FULL SHIFT</a>`, { night: () => this.startNight(), play: () => this.startNight(false, true), players: () => this.togglePlayers(), peak: () => this.startNight(true), medals: () => this.showMedals(), endless: () => this.startEndless(), daily: () => this.startDaily(),
         'perk-0': () => this.pickPerk(0), 'perk-1': () => this.pickPerk(1), 'perk-2': () => this.pickPerk(2) });
   }
 
@@ -638,7 +644,7 @@ export class Belt3d {
     // A peak night, once a night has been finished: a fresh shift with the peak rules (nothing has read the briefing's yet).
     if (peak && this.record.completed > 0 && !this.practiceDestination) this.model = new ShiftModel3D({ peak: true });
     // Tonight's perk changes the shift's rules before it starts.
-    this.perkInPlay = this.record.completed > 0 && !this.practiceDestination ? perkById(this.perk) : null;
+    this.perkInPlay = this.daily ? this.daily.perk : this.record.completed > 0 && !this.practiceDestination ? perkById(this.perk) : null;
     this.perkInPlay?.apply(this.model);
     this.renderer.domElement.focus({ preventScroll: true });
     void audioSystem.unlock();
@@ -671,6 +677,40 @@ export class Belt3d {
     this.overlay.clearCenter();
     this.story.go('countdown');
     this.startCountdown();
+  }
+
+  /**
+   * The daily challenge: today's seeded night (`daily.ts`), played like JUST PLAY, with the day's freight, goals and
+   * rule. It counts as a night like any other, and keeps today's best and the days in a row besides.
+   */
+  private startDaily(): void {
+    if (this.state !== 'briefing' || this.practiceDestination) return;
+    const night = dailyNight(dailyDate());
+    this.daily = night;
+    this.model = new ShiftModel3D({ freightRandom: night.random.freight, random: night.random.throws, prizeRandom: night.random.prizes });
+    this.goals = night.goals;
+    this.story = new StoryRun(night.random.story, this.forcedStory);
+    this.startNight(false, true);
+  }
+
+  /** The briefing's daily challenge button: today's rule, and today's best once there is one. */
+  private dailyButton(): string {
+    if (this.practiceDestination) return '';
+    const date = dailyDate(), night = dailyNight(date), today = loadDaily(browserStorage(), date);
+    const best = today.best === null ? '' : ` · BEST ${formatTotal(today.best)}`;
+    const run = today.streak > 1 ? ` · ${today.streak} DAYS IN A ROW` : '';
+    return `<button type="button" data-action="daily" title="One night a day, the same on every device: the date picks the freight, the surprises, the goals and a rule">DAILY CHALLENGE${this.touch.enabled ? '' : '  Y'}<small>TODAY: ${escapeHtml(night.perk.title)}${best}${run}</small></button>`;
+  }
+
+  /** The daily challenge's line on the results: this try against today's best, and the days in a row. */
+  private dailyResult(total: number, grade: string): string {
+    const daily = this.daily;
+    if (!daily) return '';
+    const storage = browserStorage();
+    const { record, newBest } = recordDaily(loadDaily(storage, daily.date), total, grade);
+    saveDaily(storage, record);
+    const verdict = record.tries === 1 ? 'FIRST TRY TODAY' : newBest ? 'NEW BEST TODAY' : `TODAY'S BEST ${formatTotal(record.best ?? 0)}`;
+    return `<p class="b3d-best"><b>DAILY CHALLENGE ${daily.date} · ${verdict}</b> · try ${record.tries} · ${record.streak} ${record.streak === 1 ? 'day' : 'days'} in a row · rule: ${escapeHtml(daily.perk.title)}</p>`;
   }
 
   /** C on the briefing: one player or two, remembered on this device. */
@@ -966,6 +1006,7 @@ export class Belt3d {
       ['STREAKS', `Each clean load in a row adds 15 more points, up to +150. From ${FLOW_3D.combo} in a row you are ON FIRE and walk ${Math.round((FLOW_3D.pace - 1) * 100)}% faster. A wrong drop or a miss ends the streak.`],
       ['GOALS', `Each night sets three goals, shown on the briefing and as chips on the HUD. Each one met pays +${GOAL_BONUS}.`],
       ['PERKS', `Once you finish a night, the briefing offers three perks: pick one${touch ? '' : pad ? ' with LB / RB' : ' with 1, 2 or 3'} to bend that night's rules.`],
+      ['DAILY CHALLENGE', `One night a day, the same on every device: the date picks the freight, the surprises, the goals and a rule. It plays without the story scenes${this.touch.enabled ? '' : ' (Y on the briefing)'}; today's best and the days in a row are kept on this device.`],
       ['ENDLESS SHIFT', 'Also unlocked by a finished night: no clock. From the rush on, freight comes sooner and the belt runs faster every minute until recovery overflows. It keeps its own best.'],
       ['CONTROLS', touch ? 'The stick moves; SWITCH changes worker; GRAB / DELIVER, THROW and STOP THE BELT do what they say; VIEW shows the whole warehouse.'
         : pad ? 'Left stick or d-pad moves · A grabs and delivers · B throws · X stops the belt · Y switches worker · BACK overview · START pause. On menus the d-pad or stick picks, A presses and B goes back.'
@@ -1117,6 +1158,7 @@ export class Belt3d {
     this.goalBonus = 0;
     this.perk = null;
     this.perkInPlay = null;
+    this.daily = null;
     this.story = new StoryRun(Math.random, this.forcedStory);
     this.cutscene = null;
     this.mall = null;
@@ -2435,10 +2477,12 @@ export class Belt3d {
       damaged: m.damaged, missed: m.missed, safeDrive: home && this.drivingCollisions === 0 && this.drivingRedLights === 0,
       longestThrowM: m.longestThrowPx / 32,
     });
+    const daily = this.dailyResult(total, m.won ? m.grade : 'F');
     this.overlay.showPanel(`
       <div class="grade">${m.won ? m.grade : 'F'}</div>
-      <div class="kicker">${m.won ? `SHIFT COMPLETE / GRADE ${m.grade}` : 'SHIFT TERMINATED / YOU FAILED THE SORT'}${m.peak ? ' · PEAK NIGHT' : ''}</div>
+      <div class="kicker">${m.won ? `SHIFT COMPLETE / GRADE ${m.grade}` : 'SHIFT TERMINATED / YOU FAILED THE SORT'}${m.peak ? ' · PEAK NIGHT' : ''}${this.daily ? ' · DAILY CHALLENGE' : ''}</div>
       <h1>${overflow ? 'PILE-UP OVERFLOW' : home ? 'HOME. FINALLY.' : m.gradeQuote}</h1>
+      ${daily}
       ${record}
       <p><b>${m.sorted} DISPATCHED · ${String(m.score).padStart(5, '0')} POINTS · ${m.bestCombo} BEST STREAK</b></p>
       <p>${rate}% of freight dispatched · ${m.recoveredDeliveries} recovered and dispatched · ${m.bulkSorted} to bulk</p>

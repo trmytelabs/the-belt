@@ -3,6 +3,8 @@ import { join } from 'node:path';
 import { chromium } from 'playwright';
 import { preview } from 'vite';
 import { ROCKETBOX_CAST } from '../src/three/rocketboxCast.ts';
+import { dailyDate, dailyNight } from '../src/three/daily.ts';
+import { ShiftModel3D } from '../src/three/ShiftModel3D.ts';
 
 const server = process.env.BELT_TEST_BASE_URL ? null : await preview({ preview: { host: '127.0.0.1', port: 0 }, logLevel: 'silent' });
 let browser;
@@ -347,6 +349,26 @@ try {
   await wait(() => !window.fixtureApp.parcels.get(9400)?.root.getObjectByName('surprise-mystery'));
   assert.deepEqual(errors, []);
   console.log('PASS 3D surprise freight: labelled mystery box and fragile crate, a refused fragile throw, the rush wave on the HUD and a box opened by SPACE; no script errors');
+
+  // THE DAILY CHALLENGE: Y on the briefing plays today's seeded night, with today's rule and goals and the same
+  // freight as any other device, and the results keep today's best.
+  await read(() => window.fixtureApp.restart());
+  await wait(() => window.fixtureApp.state === 'briefing');
+  const today = dailyNight(dailyDate());
+  assert.match(await page.locator('[data-action=daily]').innerText(), new RegExp(`DAILY CHALLENGE[\\s\\S]*TODAY: ${today.perk.title}`));
+  await page.keyboard.press('KeyY');
+  await wait(() => window.fixtureApp.state === 'playing');
+  const expected = new ShiftModel3D({ freightRandom: today.random.freight, random: today.random.throws, prizeRandom: today.random.prizes });
+  const played = await read(() => { const app = window.fixtureApp; return { first: app.model.packages[0].address, kind: app.model.packages[0].kind, perk: app.perkInPlay?.id, goals: app.goals.map((goal) => goal.id) }; });
+  assert.deepEqual(played, { first: expected.packages[0].address, kind: expected.packages[0].kind, perk: today.perk.id, goals: today.goals.map((goal) => goal.id) });
+  await read(() => window.fixtureApp.showResults());
+  await wait(() => document.querySelector('.b3d-panel')?.textContent.includes('DAILY CHALLENGE'));
+  assert.match(await page.locator('.b3d-panel').innerText(), new RegExp(`DAILY CHALLENGE ${today.date} · FIRST TRY TODAY[\\s\\S]*try 1 · 1 day in a row`));
+  await read(() => window.fixtureApp.restart());
+  await wait(() => window.fixtureApp.state === 'briefing');
+  assert.match(await page.locator('[data-action=daily]').innerText(), /BEST \d{5}/);
+  assert.deepEqual(errors, []);
+  console.log('PASS 3D daily challenge: Y plays today\'s seeded night with its rule, goals and freight, and the results keep today\'s best; no script errors');
 } finally {
   await browser?.close();
   if (server) await new Promise(resolve=>server.httpServer.close(resolve));
