@@ -328,6 +328,9 @@ Browser checks use a
 loopback server, real opening inputs and isolated synthetic clock/cargo fixtures
 for later events and edge cases. TypeScript strict checking is enabled. Dependabot maintains
 compatible dependencies; major upgrades require a separate planned review.
+Dependabot waits a week after each release before proposing it, and CI installs
+packages with `--ignore-scripts`, so a hijacked update has a smaller window and
+cannot run an install script on the PC that hosts the runner.
 
 CI runs on the owner's own Windows PC, a self-hosted GitHub Actions runner
 labelled `belt-pc`, so checks use no GitHub Actions minutes; that PC has to be on

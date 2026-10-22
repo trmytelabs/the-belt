@@ -35,7 +35,9 @@ jobs:
           node-version-file: .node-version
           cache: npm
           cache-dependency-path: package-lock.json
-      - run: npm ci
+      # No dependency runs an install script today. --ignore-scripts keeps a hijacked
+      # update from running one on the owner's PC, where this runner lives.
+      - run: npm ci --ignore-scripts
       - run: npm run build
       - run: npm run test:model
       - run: npm run test:browser
@@ -55,7 +57,7 @@ jobs:
           node-version-file: .node-version
           cache: npm
           cache-dependency-path: package-lock.json
-      - run: npm ci
+      - run: npm ci --ignore-scripts
       - run: npm run build
       # The 3D suites run in the build job above; this job keeps the original
       # game's smoke and audio checks as their own required check.
