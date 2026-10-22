@@ -2192,7 +2192,10 @@ export class StoryStage {
       screen = movie > 0 ? 'movie' : play > 0 ? 'game' : 'menu';
       props.eggs.visible = play > 0;
       emptyCups = Math.min(12, Math.round(2 * play + 3 * movie + 2 * cueProgress(cutscene, 'round') + 2 * woozy + vomit + 2 * morning));
-      sit(skanky, -0.55);
+      const sick = vomit > 0 && vomit < 1;
+      // Being sick, Skanky slides to the arm of the couch on his right and leans out over it, then back.
+      const overArm = sick ? ease(Math.min(1, vomit * 4)) * Math.min(1, (1 - vomit) / 0.15) : 0;
+      sit(skanky, -0.55 - 0.3 * overArm);
       // Termite comes over from the door and takes the other end of the couch.
       const seated = pour >= 0.5;
       if (!seated) {
@@ -2203,13 +2206,13 @@ export class StoryStage {
       // Zelda until Heavy Metal goes on; after that, just the beer.
       const zelda = movie <= 0;
       termite.setPose(!seated ? 'none' : onPhone ? 'phone' : zelda ? 'wii' : 'sip', time);
-      const sick = vomit > 0 && vomit < 1;
-      // Skanky turns to the side of the couch to be sick.
-      skanky.faceAngle = sick ? Math.PI : -Math.PI / 2;
+      // He stays facing the TV: turning a seated figure a quarter turn swung his legs through the couch.
       const queasy = sick || woozy > 0 && vomit <= 0;
-      skanky.setPose(queasy ? 'cough' : zelda ? 'wii' : 'sip', time);
-      if (sick && vomit < 0.7 && Math.random() < 0.7) {
-        stage.puffs.emit(new THREE.Vector3(0.4, 0.9, -1.2), { color: 0xa8a838, size: 0.07, life: 0.6, velocity: new THREE.Vector3((Math.random() - 0.5) * 0.3, -1.3, -0.5), opacity: 0.95, grow: 1.4 });
+      skanky.setPose(sick ? 'retch' : queasy ? 'queasy' : zelda ? 'wii' : 'sip', time);
+      if (sick && vomit > 0.12 && vomit < 0.7 && Math.random() < 0.7) {
+        // From his mouth, out over the arm and down to the floor beyond it.
+        const mouth = skanky.character.head.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(-0.08, -0.1, -0.12));
+        stage.puffs.emit(mouth, { color: 0xa8a838, size: 0.06, life: 0.6, velocity: new THREE.Vector3((Math.random() - 0.5) * 0.2, -1.3, -0.45), opacity: 0.95, grow: 1.4 });
       }
       props.puddle.visible = vomit > 0.25;
       props.puddle.scale.setScalar(Math.min(1, 0.2 + (vomit - 0.25) * 1.6));
