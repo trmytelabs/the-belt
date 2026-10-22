@@ -1201,7 +1201,8 @@ export class Belt3d {
       }
     }
     if (this.state === 'playing') {
-      if (!this.benStarted && m.elapsedMs >= BEN_START && !m.ended) this.beginInterlude();
+      // Ben's big moment is a story scene; the endless shift has none.
+      if (!this.benStarted && !m.endless && m.elapsedMs >= BEN_START && !m.ended) this.beginInterlude();
       else if (this.mesa.check(m)) this.state = 'mesa';
       else if (this.story.breakDue(m.elapsedMs) && !m.ended) this.beginBreak();
     }
