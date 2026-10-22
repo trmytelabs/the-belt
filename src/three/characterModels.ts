@@ -141,6 +141,12 @@ const POSE_CLIPS: Partial<Record<string, ClipRole>> = {
   // From the Quaternius library: a button press and pushing.
   press: 'interact', push: 'push',
 };
+/**
+ * Gestures of the arms alone. Made on the move, the legs keep the walk or run clip and the arms take the figure's
+ * pose: their clips are made standing still, so playing one on the move slid the model along on planted feet
+ * (Termite catching his hat as he ran from the car). Standing still, each plays its clip as before.
+ */
+const ARM_GESTURES = new Set(['handup', 'phone', 'sip', 'cough', 'shout', 'swear', 'announce', 'shrug', 'press']);
 /** Seconds a lift or put-down takes on a model: down on the crouch-in clip, up on the crouch-out. */
 export const LIFT_SECONDS = 0.84;
 /** Seated idles for the car seats, the couch and the booths. */
@@ -544,6 +550,7 @@ function advanceClips(character: Character, rig: ModelRig, clips: ClipRig): void
   const seated = motion?.seated === true;
   const seatedPlain = seated && (motion!.pose === 'none' || motion!.pose === 'sit');
   const has = (clip: ClipRole): boolean => clipLibrary?.has(clipName(clip, clips.female)) === true;
+  const gestureOnTheMove = motion?.moving === true && ARM_GESTURES.has(motion.pose);
   // A driver holding the wheel keeps the whole figure, so the hands stay exactly on the rim; a seated idle's swaying
   // torso would carry the model's wrists off it. Other seats play the seated idle.
   if (!clipsWanted || !motion || motion.reduced || (action && !lift) || (seated && !seatedPlain) || (seatedPlain && (motion.hands || !has('sitIdle')))) figure = 1;
@@ -552,13 +559,13 @@ function advanceClips(character: Character, rig: ModelRig, clips: ClipRig): void
   else if (motion.turn && has('turnLeft90')) {
     const { angle } = motion.turn;
     role = angle > 0 ? (angle > TURN_SPLIT ? 'turnLeft180' : 'turnLeft90') : (angle < -TURN_SPLIT ? 'turnRight180' : 'turnRight90');
-  } else if (motion.pose !== 'none') {
+  } else if (motion.pose !== 'none' && !gestureOnTheMove) {
     role = POSE_CLIPS[motion.pose] ?? null;
     if (!role || !has(role)) { role = null; figure = 1; }
   }
-  // The arms reach for the parcel from the figure while carrying, holding or lifting; the legs follow the
-  // figure's steps (and their planted feet) on a stair flight and its folded legs in a seat.
-  const arms = motion && (motion.carrying || motion.holding || lift) ? 1 : 0;
+  // The arms reach for the parcel from the figure while carrying, holding or lifting, and make a gesture on the
+  // move; the legs follow the figure's steps (and their planted feet) on a stair flight and its folded legs in a seat.
+  const arms = motion && (motion.carrying || motion.holding || lift || gestureOnTheMove) ? 1 : 0;
   const legs = motion && (motion.stairs || seated) ? 1 : 0;
   // Underneath, the walk or idle keeps playing, so a pose ends back in motion; an idle is broken every so
   // often by a fidget, standing or seated.
