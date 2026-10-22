@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 import { preview } from 'vite';
 import { OPENERS } from '../src/game/slice/StoryScript.ts';
+import { LEAVE_HOUSE } from '../src/three/homeScript.ts';
 
 // Authored arrivals run under deterministic clock fixtures. Local solid bounds
 // are transformed as oriented rectangles; rotated cars do not get the false
@@ -39,6 +40,8 @@ try {
       let standingSamples = 0;
       let passengerSamples = 0;
       let contractSamples = 0;
+      // Consecutive samples each person has spent out of a seat with the hips still down at seat height.
+      const crouched = new Map();
       const localCache = new Map();
       const shape = (object, animatedBody) => {
         let bounds = !animatedBody && localCache.get(object);
@@ -101,6 +104,15 @@ try {
             if (targets.feet && !(near(ankleWorld(c.leftShin), targets.feet.left, 0.02) && near(ankleWorld(c.rightShin), targets.feet.right, 0.02)) && failures.length < 50) failures.push(`${scene.id} beat ${beat} at ${fraction}/20: seated ${name}'s feet off their targets`);
           }
         }
+        // Out of a seat, the hips are back up within the stand-up blend (0.45 s, nine samples here, the hips
+        // above 0.3 m down after four): a gesture set every frame once froze Termite in his seated crouch as
+        // he ran from the car.
+        for (const [name, actor] of stage.actors) {
+          if (!actor.root.visible || actor.seatedIn || ['sit', 'crouch', 'squat'].includes(actor.pose)) { crouched.delete(name); continue; }
+          const y = actor.character.body.position.y, n = y < -0.3 ? (crouched.get(name) ?? 0) + 1 : 0;
+          crouched.set(name, n);
+          if (n > 4 && failures.length < 50) failures.push(`${scene.id} beat ${beat} at ${fraction}/20: ${name} out of the seat but still crouched at seat height (${y.toFixed(2)} m)`);
+        }
         const check = (a, b) => {
           samples++;
           if (overlaps(a.shape, b.shape) && failures.length < 50) failures.push(`${scene.id} beat ${beat} at ${fraction}/20: ${a.name} intersects ${b.name}`);
@@ -124,6 +136,45 @@ try {
     totalBreaths += result.breaths;
     console.log(`PASS ${scene.id}: ${result.samples} oriented solid checks, ${result.standingSamples} standing and ${result.passengerSamples} seated actor samples (${result.contractSamples} on the cars' contracts)`);
   }
+  // Leaving the house, standing feet stay out of the couch and the car, in each one's own frame: standing up
+  // where his hips had been once left Skanky's legs inside the couch, and both walks to the car ended inside its
+  // sides. The hips take a quarter second to come off the seat, so a sample or two of that is allowed.
+  const house = await page.evaluate(scene => {
+    const app = window.fixtureApp;
+    app.playScene(scene);
+    const stage = app.stage.stages.house;
+    const local = new Map();
+    const inside = (prop, point, radius) => {
+      let bounds = local.get(prop);
+      if (!bounds) {
+        const position = prop.position.clone(); const rotation = prop.rotation.clone(); const scale = prop.scale.clone();
+        prop.position.set(0, 0, 0); prop.rotation.set(0, 0, 0); prop.scale.set(1, 1, 1);
+        bounds = app.world.physicalBounds(prop);
+        prop.position.copy(position); prop.rotation.copy(rotation); prop.scale.copy(scale);
+        local.set(prop, bounds);
+      }
+      prop.updateWorldMatrix(true, false);
+      const p = prop.worldToLocal(point.clone());
+      return p.x > bounds.min.x - radius && p.x < bounds.max.x + radius && p.z > bounds.min.z - radius && p.z < bounds.max.z + radius;
+    };
+    const counts = {};
+    let samples = 0;
+    for (let beat = 0; beat < scene.beats.length; beat++) for (let fraction = 0; fraction <= 20; fraction++) {
+      app.cutscene.index = beat; app.cutscene.elapsedMs = app.cutscene.beat.ms * fraction / 20;
+      app.stage.direct(app.cutscene, 0.05, beat * 2 + fraction / 20);
+      for (const [name, actor] of stage.actors) {
+        if (!actor.root.visible || actor.seatedIn) continue;
+        samples++;
+        for (const [solid, prop] of [['couch', stage.props.couch], ['car', stage.props.homeCar]]) {
+          if (inside(prop, actor.root.getWorldPosition(actor.root.position.clone()), 0.12)) counts[`${name} in the ${solid}`] = (counts[`${name} in the ${solid}`] ?? 0) + 1;
+        }
+      }
+    }
+    return { samples, counts };
+  }, LEAVE_HOUSE);
+  assert.ok(house.samples > 40, `leave-house: standing samples (${house.samples})`);
+  for (const [who, n] of Object.entries(house.counts)) assert.ok(n <= 2, `leave-house: ${who} for ${n} samples`);
+  console.log(`PASS leave-house: ${house.samples} standing samples keep their feet out of the couch and the car`);
   // Out in the cold the standing cast breathe out; the openers between them show it several times (a late arrival may barely have time for one).
   assert.ok(totalBreaths >= 4, `the cast standing in the cold breathe out: ${totalBreaths} clouds over three openers`);
   assert.deepEqual(errors, []);

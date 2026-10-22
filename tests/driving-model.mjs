@@ -157,6 +157,37 @@ test('traffic positions and headings stay continuous through every turn and loop
   }
 });
 
+test('traffic never stops inside another car, queues behind the truck and keeps moving', () => {
+  // Oriented boxes: traffic sedans 4.2 by 1.8 m, the truck 6 by 2.4 m.
+  const overlaps = (a, b) => [a.heading, a.heading + Math.PI / 2, b.heading, b.heading + Math.PI / 2].every((angle) => {
+    const x = Math.cos(angle), z = -Math.sin(angle);
+    const r = (box) => Math.abs(Math.cos(box.heading) * x - Math.sin(box.heading) * z) * box.length / 2
+      + Math.abs(Math.sin(box.heading) * x + Math.cos(box.heading) * z) * box.width / 2;
+    return r(a) + r(b) - Math.abs((a.x - b.x) * x + (a.z - b.z) * z) > 0.05;
+  });
+  const coast = { steer: 0, throttle: 0, brake: 0 };
+  // Idle at the depot for three minutes (two routes merge into each other's street by then), and
+  // stopped in route 0's lane, where cars come up behind the truck within a minute.
+  for (const [scenario, seconds] of [['idle', 180], ['in-lane', 75]]) {
+    const m = new DrivingModel('mall');
+    if (scenario === 'in-lane') Object.assign(m, trafficPose(0, 300));
+    const truck = { x: m.x, z: m.z, heading: m.heading, length: 6, width: 2.4 };
+    const cars = m.obstacles.filter((o) => o.kind === 'car'), start = cars.map((car) => car.travel);
+    for (let t = 1; t <= seconds; t += 1) {
+      advance(m, 1, coast);
+      const boxes = cars.map((car) => ({ id: car.id, x: car.x, z: car.z, heading: car.heading, length: 4.2, width: 1.8 }));
+      for (const [i, a] of boxes.entries()) {
+        if (scenario === 'in-lane') assert.ok(!overlaps(a, truck), `${a.id} drives into the stopped truck at ${t} s`);
+        for (const b of boxes.slice(i + 1)) assert.ok(!overlaps(a, b), `${a.id} and ${b.id} overlap at ${t} s (${scenario})`);
+      }
+    }
+    if (scenario === 'idle') {
+      const speed = cars.reduce((sum, car, i) => sum + Math.abs(car.travel - start[i]), 0) / cars.length / seconds;
+      assert.ok(speed > 6.5, `traffic flows instead of jamming: ${speed.toFixed(2)} m/s`);
+    }
+  }
+});
+
 test('both loading bays are beyond the public road, inside separate paved yards', () => {
   for (const destination of ['mall', 'ups']) {
     const m = new DrivingModel(destination), terminal = TERMINALS[destination];

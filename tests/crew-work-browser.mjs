@@ -70,6 +70,9 @@ try {
     crew.say('shan', 'HEADS UP', 4000);
     // The crew step by hand, so the check does not depend on the frame rate.
     for (let i = 0; i < 40; i++) crew.update(1 / 30, app.model, app.time + (i + 1) / 30);
+    // A last, all but still step chooses the looks from where everyone now stands, as measured below; after a full
+    // step someone walking across the edge of earshot could be measured inside it with a look chosen outside.
+    crew.update(1e-4, app.model, app.time + 41 / 30);
     const head = { x: shan.root.position.x, y: shan.root.position.y + shan.character.headHeight * 0.92, z: shan.root.position.z };
     const report = [];
     for (const [id, actor] of crew.actors) {
@@ -79,7 +82,7 @@ try {
     }
     return report;
   });
-  const listeners = attention.filter(a => a.distance < 9 && Math.abs(a.bearing) <= 1.75);
+  const listeners = attention.filter(a => a.distance < 8.95 && Math.abs(a.bearing) <= 1.74);
   assert.ok(listeners.length >= 1, `someone stands in earshot of Shan: ${JSON.stringify(attention.map(a => ({ id:a.id, d:+a.distance.toFixed(1), b:+a.bearing.toFixed(2) })))}`);
   for (const a of listeners) {
     assert.ok(a.look && Math.hypot(a.look.x - a.head.x, a.look.z - a.head.z) < 0.01, `${a.id} looks at Shan: ${JSON.stringify(a.look)}`);

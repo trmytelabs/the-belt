@@ -67,6 +67,8 @@ export class StageActor {
   private heading = 0;
   /** Whether the figure sat last frame, so sitting down and standing up ease instead of snapping; null before the first frame. */
   private wasSeated: boolean | null = null;
+  /** The pose the figure showed last frame. */
+  private shown: Pose = 'none';
 
   constructor(character: Character) {
     this.character = character;
@@ -85,8 +87,15 @@ export class StageActor {
     if (this.moved) this.heading = Math.atan2(dx, dz);
   }
 
+  /**
+   * Changes pose, blending in from the joints and restarting the gesture only when it differs from the pose
+   * shown last frame. Scenes reset `pose` (to 'none', or 'sit' in a seat) before setting a gesture each frame;
+   * compared with that reset, the gesture restarted every frame and froze part way in, from the seat or the
+   * last pose: Termite ran from the car still sitting, and Shan's press at the gate never moved.
+   */
   public setPose(pose: Pose, time: number): void {
-    if (this.pose !== pose) { snapshotPose(this.character, time); this.pose = pose; this.poseStart = time; }
+    if (pose !== this.shown && (pose !== this.pose || this.poseStart !== time)) { snapshotPose(this.character, time); this.poseStart = time; }
+    this.pose = pose;
   }
 
   public animate(dt: number, time: number, reducedMotion: boolean): void {
@@ -114,6 +123,7 @@ export class StageActor {
     applyPose(c, this.pose, time - this.poseStart, reducedMotion);
     blendPose(c, time);
     this.moved = false;
+    this.shown = this.pose;
   }
 }
 
@@ -134,6 +144,12 @@ function specFor(id: string): CharacterSpec {
  * 1.52 m). A loaded model's contract places the seats instead.
  */
 const SEAT_Y = 0.06;
+/**
+ * Where Skanky's wrists go on the mall cart's handle bar (x -0.58, 1.15 m up, in the cart's frame, the deck
+ * toward +x): shoulder width apart, a little behind and above the bar so the palms close over it.
+ */
+const CART_GRIPS = [new THREE.Vector3(-0.64, 1.18, -0.19), new THREE.Vector3(-0.64, 1.18, 0.19)] as const;
+
 const PLAIN_SEATS: Record<SeatName, THREE.Vector3> = {
   // Left-hand drive, as on the detailed sedans: the driver on the car's left (−z; the nose is +x).
   driver: new THREE.Vector3(-0.3, SEAT_Y, -0.36), passenger: new THREE.Vector3(-0.3, SEAT_Y, 0.36),
@@ -2167,13 +2183,18 @@ export class StoryStage {
           skanky.setPose('sit', time);
         } else {
           skanky.seatedIn = null;
-          // Round the car's nose to the driver's door, on its left (world +x: the car faces +z here).
-          const path = alongPath([[-0.4, -0.55], [-0.5, 1.8], [3.6, 1.6], [5.0, 1.4], [6.6, 2.0], [9.2, 3.3], [10.0, 2.6], [10.0, 0.6]], out);
-          stand(skanky, out > 0 ? path.x : mix(0.45, -0.4, up), out > 0 ? path.z : -0.55, out <= 0 ? -Math.PI / 2 : out >= 1 ? Math.PI / 2 : null);
+          // Round the car's nose to the driver's door, on its left (world +x: the car faces +z here). The car's
+          // body spans x 8.3 to 10.1 and reaches z 2.7; both of them wait at their doors clear of its sides.
+          const path = alongPath([[-0.4, -0.55], [-0.5, 1.8], [3.6, 1.6], [5.0, 1.4], [6.6, 2.0], [9.2, 3.4], [10.55, 2.8], [10.55, 0.4]], out);
+          // Standing, the hips come forward off the seat to stand clear of the couch's front (x 0.15) as the
+          // model's seated clip fades to standing (a quarter second, the first 3% of the eased 2.4 s cue); stood
+          // up where his hips had been, his legs were inside the couch.
+          const off = up < 0.03 ? mix(0.45, -0.05, up / 0.03) : mix(-0.05, -0.4, (up - 0.03) / 0.97);
+          stand(skanky, out > 0 ? path.x : off, out > 0 ? path.z : -0.55, out <= 0 ? -Math.PI / 2 : out >= 1 ? Math.PI / 2 : null);
           skanky.setPose(cueProgress(cutscene, 'keys') > 0 ? 'keys' : 'none', time);
         }
         if (up <= 0) gaming = new Set(['skanky']);
-        const path = alongPath([[2.6, 1.4], [4.4, 1.4], [5.0, 1.4], [6.6, 1.4], [8.4, 1.4], [8.45, 0.6]], Math.max(0, (out - 0.1) / 0.9));
+        const path = alongPath([[2.6, 1.4], [4.4, 1.4], [5.0, 1.4], [6.6, 1.4], [7.85, 1.4], [7.85, 0.4]], Math.max(0, (out - 0.1) / 0.9));
         stand(termite, path.x, path.z, out <= 0 || out >= 1 ? -Math.PI / 2 : null);
         termite.setPose('none', time);
       }
@@ -2357,6 +2378,22 @@ export class StoryStage {
       }
     });
     for (const actor of actors.values()) if (actor.root.visible) actor.animate(dt, time, this.reducedMotion);
+    // Pushing, the hands hold the handle bar; the carry pose's fixed reach put them past it, over the deck.
+    if (model.cart.pushed && !model.carrying) {
+      skanky.root.updateMatrixWorld(true);
+      cart.updateMatrixWorld(true);
+      const [a, b] = CART_GRIPS.map((grip) => cart.localToWorld(grip.clone()));
+      const left = skanky.character.leftArm.getWorldPosition(new THREE.Vector3());
+      poseSeated(skanky.character, { hands: left.distanceTo(a) <= left.distanceTo(b) ? { left: a, right: b } : { left: b, right: a } });
+      // The hands close over the bar, bent forward and down at the wrist, rather than carrying on up the forearms' line.
+      const over = new THREE.Vector3(1, 0, 0).transformDirection(cart.matrixWorld).multiplyScalar(Math.cos(0.6)).add(new THREE.Vector3(0, -Math.sin(0.6), 0));
+      const c = skanky.character, frame = new THREE.Quaternion();
+      for (const [forearm, hand] of [[c.leftForearm, c.leftHand], [c.rightForearm, c.rightHand]] as const) {
+        // A hand hangs along its pivot's -y and bends toward -z about x.
+        const local = over.clone().applyQuaternion(forearm.getWorldQuaternion(frame).invert());
+        hand.rotation.set(Math.atan2(-local.z, -local.y), 0, 0);
+      }
+    }
     const target = skanky.root.position;
     // Kept inside the anchor wall at the concourse's east end.
     const cameraX = Math.min(target.x + 1.0, mallX(1260) - 0.4);

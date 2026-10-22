@@ -49,6 +49,16 @@ function penetration(a: Box, b: Box): CityPoint | null {
   return push;
 }
 
+/** Traffic keeps CAR_GAP metres between centres behind a car within CAR_LANE of its line and 9 m ahead;
+ * TRUCK_GAP behind the truck (6 m long, 2.4 m wide) within TRUCK_LANE and TRUCK_REACH. */
+const CAR_LANE = 2.2, CAR_GAP = 7, TRUCK_LANE = 2.6, TRUCK_REACH = 11, TRUCK_GAP = 6;
+
+/** How far `other` is ahead along `pose`'s heading when it is in the lane in front (within `lane` of the line), else null. */
+function inLane(pose: Pick<CityPose, 'x' | 'z' | 'tx' | 'tz'>, other: CityPoint, lane: number, reach = 9): number | null {
+  const dx = other.x - pose.x, dz = other.z - pose.z, ahead = dx * pose.tx + dz * pose.tz;
+  return ahead > 0 && ahead < reach && Math.abs(dx * -pose.tz + dz * pose.tx) < lane ? ahead : null;
+}
+
 /** Free Cartesian driving. Roads are scenery and guidance, never a player rail. */
 export class DrivingModel {
   public readonly destination: DriveDestination;
@@ -175,7 +185,7 @@ export class DrivingModel {
         }
       } else if (separation(this, signal) > 24) this.enteredSignals.delete(signal.id);
     }
-    for (const obstacle of this.obstacles) {
+    for (const [self, obstacle] of this.obstacles.entries()) {
       if (obstacle.kind === 'car') {
         const old = trafficPose(obstacle.route, obstacle.travel, obstacle.speed < 0);
         let move = Math.abs(obstacle.speed) * dt;
@@ -184,12 +194,19 @@ export class DrivingModel {
           const dx = signal.x - old.x, dz = signal.z - old.z, along = dx * old.tx + dz * old.tz;
           if (Math.abs(dx * -old.tz + dz * old.tx) < 6 && along >= 11 && along - move < 11) move = Math.max(0, along - 11);
         }
-        for (const other of this.obstacles) {
+        for (const [index, other] of this.obstacles.entries()) {
           if (other === obstacle || other.kind !== 'car') continue;
-          const alignment = old.tx * Math.cos(other.heading) - old.tz * Math.sin(other.heading);
-          const dx = other.x - old.x, dz = other.z - old.z, ahead = dx * old.tx + dz * old.tz;
-          if (alignment > 0.7 && ahead > 0 && ahead < 9 && Math.abs(dx * -old.tz + dz * old.tx) < 2.2) move = Math.min(move, Math.max(0, ahead - 7));
+          const ahead = inLane(old, other, CAR_LANE);
+          if (ahead === null) continue;
+          // Two cars that each have the other ahead (side by side where routes merge, or nose to nose across a
+          // junction) would both stop, inside each other, for good: the one further back waits for the other.
+          const back = inLane({ x: other.x, z: other.z, tx: Math.cos(other.heading), tz: -Math.sin(other.heading) }, obstacle, CAR_LANE);
+          if (back !== null && (back > ahead || (back === ahead && self < index))) continue;
+          move = Math.min(move, Math.max(0, ahead - CAR_GAP));
         }
+        // Traffic queues behind the truck rather than driving through it.
+        const truck = inLane(old, this, TRUCK_LANE, TRUCK_REACH);
+        if (truck !== null) move = Math.min(move, Math.max(0, truck - TRUCK_GAP));
         obstacle.travel += Math.sign(obstacle.speed) * move;
         Object.assign(obstacle, trafficPose(obstacle.route, obstacle.travel, obstacle.speed < 0));
       }

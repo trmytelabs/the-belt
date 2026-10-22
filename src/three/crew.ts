@@ -55,6 +55,8 @@ export class Actor {
   private readonly previous = new THREE.Vector3();
   private moved = false;
   private heading = 0;
+  /** The pose the figure showed last frame. */
+  private shown: Pose = 'none';
 
   constructor(character: Character) {
     this.character = character;
@@ -79,6 +81,12 @@ export class Actor {
 
   public animate(dt: number, time: number, reducedMotion: boolean): void {
     const c = this.character;
+    // However the pose was set (most gags set it directly), a change blends in from where the joints were
+    // rather than snapping in a frame. Sitting down and standing up keep their instant hip height.
+    if (this.pose !== this.shown) {
+      if (this.pose !== 'sit' && this.shown !== 'sit') snapshotPose(c, time);
+      this.shown = this.pose;
+    }
     animateCharacter(c, dt, { moving: this.moved, carrying: this.carrying, time, reducedMotion });
     // A big change of facing while standing is a turn on the spot; a small one a quick twist.
     faceToward(c, this.faceAngle ?? this.heading, dt, this.moved, time);
