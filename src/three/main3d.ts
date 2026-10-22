@@ -45,6 +45,7 @@ import { BEN_CAST, BEN_END, BEN_START, SetPieces } from './setpieces';
 import { StoryStage, directDepot } from './story';
 import { breakScene3d } from './breakScenes3d';
 import { DRIVE_PAR, DrivingModel, driveClock, parBonus, type DriveDestination, type DriveOrigin } from './DrivingModel';
+import { GhostRecorder, ghostPose, keepFaster, loadGhosts, saveGhosts, type GhostDrive } from './ghostDrive';
 import { DECISION, HOME_DECISION, LEAVE_HOUSE, QUIT_ENDING, QUIT_NIGHT, type HomeBeat } from './homeScript';
 import { DrivingView } from './driving';
 import { BELT_SOLID_WIDTH, HEAD_DRIVE, clearReceiving } from './receivingCollision';
@@ -215,6 +216,9 @@ export class Belt3d {
   /** What tonight's delivery drives earned against par, and their times in seconds. */
   public driveBonus = 0;
   public driveTimes: number[] = [];
+  /** The fastest earlier drive to this yard, raced as a ghost, and this drive's own recording (`ghostDrive.ts`); none in the car. */
+  private ghost: GhostDrive | null = null;
+  private ghostRecorder: GhostRecorder | null = null;
   private breakAlertMs = 0;
   /**
    * JUST PLAY on the briefing: tonight runs without its story scenes. Each scene is passed over as a skip would pass
@@ -891,6 +895,8 @@ export class Belt3d {
 
   private beginDriving(destination: DriveDestination, origin: DriveOrigin = 'depot'): void {
     this.driving = new DrivingModel(destination, origin);
+    this.ghost = origin === 'home' ? null : loadGhosts(browserStorage())[destination] ?? null;
+    this.ghostRecorder = origin === 'home' ? null : new GhostRecorder();
     if (!this.drivingView) {
       this.drivingView = new DrivingView(this.quality);
       this.drivingView.scene.environment = this.nightEnvironment.texture;
@@ -910,8 +916,24 @@ export class Belt3d {
     audioSystem.startMusic('game');
   }
 
+  /** A five-ton drive that parked: kept as the ghost when it is the first or the fastest, and how it compares. */
+  private keepGhost(): string {
+    const drive = this.driving, recorder = this.ghostRecorder;
+    this.ghostRecorder = null;
+    this.drivingView?.setGhost(null);
+    if (!drive || !recorder || drive.origin === 'home' || !drive.parked) return '';
+    const run = recorder.finish(drive.elapsed, drive.pose);
+    if (!run) return '';
+    const storage = browserStorage();
+    const { store, newBest, previous } = keepFaster(loadGhosts(storage), drive.destination, run);
+    if (newBest) saveGhosts(storage, store);
+    if (!previous) return 'GHOST SAVED · race it next time';
+    return newBest ? `BEAT YOUR GHOST BY ${(previous.seconds - run.seconds).toFixed(1)} s` : `${(run.seconds - previous.seconds).toFixed(1)} s BEHIND YOUR GHOST`;
+  }
+
   private finishDrive(): void {
     const destination = this.driving?.destination;
+    const ghostNote = this.keepGhost();
     audioSystem.setDriving(null);
     this.keys.clear(); this.touch.reset();
     if (this.practiceDestination && this.driving) {
@@ -920,6 +942,7 @@ export class Belt3d {
       this.state = 'ended';
       this.overlay.showPanel(`<div class="kicker">DRIVING PRACTICE · PARKED AT ${destination === 'mall' ? 'SOUTHGATE MALL' : 'UPS'}</div>
         <h1>TRUCK PARKED. NICE.</h1><p>${drive.elapsed.toFixed(1)} seconds · ${drive.collisions} bumps · ${drive.redLights} red lights · −${drive.penalty} points · cargo safe.</p>
+        ${ghostNote ? `<p class="b3d-best"><b>${ghostNote}</b></p>` : ''}
         <p>Try the road in the other direction, or take the same drive again.</p>
         <button type="button">DRIVE BACK  ↵</button>
         <a href="${window.location.pathname}?mode=3d&amp;drive=${destination}">TRY THIS DRIVE AGAIN</a>
@@ -931,7 +954,7 @@ export class Belt3d {
       const seconds = this.driving.elapsed, bonus = parBonus(seconds);
       this.driveBonus += bonus;
       this.driveTimes.push(seconds);
-      this.overlay.showToast(bonus ? `PARKED IN ${driveClock(seconds)} · UNDER ${seconds <= DRIVE_PAR.fast ? 'PAR' : 'TIME'} · +${bonus}` : `PARKED IN ${driveClock(seconds)} · over par`, 2600);
+      this.overlay.showToast(`${bonus ? `PARKED IN ${driveClock(seconds)} · UNDER ${seconds <= DRIVE_PAR.fast ? 'PAR' : 'TIME'} · +${bonus}` : `PARKED IN ${driveClock(seconds)} · over par`}${ghostNote ? ` · ${ghostNote}` : ''}`, ghostNote ? 3400 : 2600);
       if (bonus) audioSystem.play('register');
     }
     if (this.driving?.origin === 'home') {
@@ -1007,6 +1030,7 @@ export class Belt3d {
       ['GOALS', `Each night sets three goals, shown on the briefing and as chips on the HUD. Each one met pays +${GOAL_BONUS}.`],
       ['PERKS', `Once you finish a night, the briefing offers three perks: pick one${touch ? '' : pad ? ' with LB / RB' : ' with 1, 2 or 3'} to bend that night's rules.`],
       ['DAILY CHALLENGE', `One night a day, the same on every device: the date picks the freight, the surprises, the goals and a rule. It plays without the story scenes${this.touch.enabled ? '' : ' (Y on the briefing)'}; today's best and the days in a row are kept on this device.`],
+      ['GHOST DRIVES', 'Your fastest drive to each yard in the five-ton is kept on this device and drives beside you next time as a see-through truck. Beat it to keep the new one.'],
       ['ENDLESS SHIFT', 'Also unlocked by a finished night: no clock. From the rush on, freight comes sooner and the belt runs faster every minute until recovery overflows. It keeps its own best.'],
       ['CONTROLS', touch ? 'The stick moves; SWITCH changes worker; GRAB / DELIVER, THROW and STOP THE BELT do what they say; VIEW shows the whole warehouse.'
         : pad ? 'Left stick or d-pad moves · A grabs and delivers · B throws · X stops the belt · Y switches worker · BACK overview · START pause. On menus the d-pad or stick picks, A presses and B goes back.'
@@ -1166,6 +1190,7 @@ export class Belt3d {
     this.driving = null;
     this.drivingPenalty = this.drivingCollisions = this.drivingRedLights = 0;
     this.driveBonus = 0; this.driveTimes = [];
+    this.ghost = null; this.ghostRecorder = null;
     this.mallBonus = 0;
     this.breakAlertMs = 0;
     this.overlay.setLunchAlert(false);
@@ -1413,6 +1438,8 @@ export class Belt3d {
           this.overlay.showToast(`RED LIGHT · −${event.points} points · brake before the line`, 1800);
         }
       }
+      this.ghostRecorder?.sample(drive.elapsed, drive.pose);
+      this.drivingView?.setGhost(this.ghost ? ghostPose(this.ghost, drive.elapsed) : null);
       this.drivingView?.update(drive, dt);
       if (drive.parked) this.finishDrive();
     } else if (this.state === 'mall' && this.mall) {
@@ -1533,7 +1560,7 @@ export class Belt3d {
       this.overlay.chapterHud([
         ['SPEED', `${Math.round(Math.abs(drive.speed) * 3.6)} km/h`], ['TO BAY', `${Math.ceil(drive.remaining)} m`],
         [this.practiceDestination ? 'PENALTY' : 'NIGHT SCORE', this.practiceDestination ? `−${drive.penalty} PTS` : String(Math.max(0, m.score + this.mallBonus - this.drivingPenalty + this.driveBonus))],
-        ...(drive.origin === 'home' ? [] : [['TIME', `${driveClock(drive.elapsed)} · PAR ${driveClock(DRIVE_PAR.fast)}`] as [string, string]]),
+        ...(drive.origin === 'home' ? [] : [['TIME', `${driveClock(drive.elapsed)} · PAR ${driveClock(DRIVE_PAR.fast)}${this.ghost ? ` · GHOST ${driveClock(this.ghost.seconds)}` : ''}`] as [string, string]]),
         drive.origin === 'home' ? ['IN THE CAR', 'TERMITE + SKANKY']
           : ['CARGO', this.practiceDestination ? 'PRACTICE · SAFE' : drive.destination === 'mall' ? '6 BUNDLES · SAFE' : '6 / 6 SIGNED'],
       ], hint,

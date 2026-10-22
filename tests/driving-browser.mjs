@@ -100,7 +100,11 @@ try {
   assert.equal(await page.evaluate(() => window.fixtureApp.state), 'driving', 'Enter cannot skip driving');
   await page.keyboard.down('KeyW');
   await page.waitForFunction(() => window.fixtureApp.driving.speed > 10, null, { polling: 10 });
-  await page.keyboard.down('KeyA'); await page.waitForTimeout(220); await page.keyboard.up('KeyA');
+  // A is held for the usual tap, and on until the truck has turned: a software renderer under load can run only a tick
+  // or two in 220 ms (CI once saw too little turn), but a few seconds without turning still fails.
+  await page.keyboard.down('KeyA'); await page.waitForTimeout(220);
+  await page.waitForFunction(() => window.fixtureApp.driving.heading > Math.PI / 2 + 0.1, null, { polling: 10, timeout: 3000 }).catch(() => {});
+  await page.keyboard.up('KeyA');
   assert.ok(await page.evaluate(() => window.fixtureApp.driving.heading > Math.PI / 2 + 0.1), 'A changes actual world heading to the left');
   // The camera and cab checks below steer the truck about; it goes back where it was after them, so the checks that follow
   // (the synthetic cone five metres ahead) start from the same place as before, not beside a building.
@@ -337,6 +341,8 @@ try {
   await practice.keyboard.press('Space');
   await practice.getByRole('heading', { name: 'TRUCK PARKED. NICE.', exact: true }).waitFor();
   assert.deepEqual(await practice.evaluate(() => ({ time: window.fixtureApp.model.elapsedMs, mall: window.fixtureApp.mall, lot: window.fixtureApp.lot })), { time: 0, mall: null, lot: null });
+  // The first drive to each yard is kept as its ghost.
+  assert.match(await practice.locator('.b3d-panel').innerText(), /GHOST SAVED/);
   await practice.getByRole('button', { name: 'DRIVE BACK', exact: false }).click();
   assert.equal(await practice.evaluate(() => window.fixtureApp.driving.destination), 'ups');
   await driveToBay(practice);
@@ -344,6 +350,10 @@ try {
   await practice.getByRole('heading', { name: 'TRUCK PARKED. NICE.', exact: true }).waitFor();
   await practice.keyboard.press('Enter');
   assert.deepEqual(await practice.evaluate(() => ({ destination: window.fixtureApp.driving.destination, bumps: window.fixtureApp.driving.collisions, penalty: window.fixtureApp.driving.penalty })), { destination: 'mall', bumps: 0, penalty: 0 });
+  // The replay races the first drive to the mall: its see-through five-ton starts beside the truck and its time is on the HUD.
+  await practice.waitForFunction(() => window.fixtureApp.drivingView.scene.getObjectByName('ghost-truck')?.visible === true, null, { polling: 10 });
+  assert.ok(await practice.evaluate(() => window.fixtureApp.ghost?.seconds > 45));
+  assert.match(await practice.locator('.b3d-chapterhud').innerText(), /GHOST \d+:\d\d/);
   assert.deepEqual(errors, []);
   console.log('PASS real multitouch gas/steering/brake, portrait parking, both journeys, driving-only round trip, key-return gate, focus pause and clean replay');
 } finally { await browser.close(); await server.httpServer.close(); }

@@ -43,6 +43,8 @@ export class DrivingView {
   /** The procedural five-ton's own parts, shown until the downloaded model replaces them. */
   private readonly truckBody: THREE.Object3D[];
   private readonly signalProps: { signal: CitySignal; axis: CityAxis; root: THREE.Group; bulbs: THREE.Mesh<THREE.SphereGeometry, THREE.MeshStandardMaterial>[] }[] = [];
+  /** The see-through five-ton of the player's fastest drive to this yard (`ghostDrive.ts`), built when first needed. */
+  private ghost: THREE.Group | null = null;
   /** Procedural stand-ins for the traffic, shown until the batched sedans are built. */
   private readonly traffic = new Map<string, THREE.Group>();
   /** The 28 sedans as three batched draws with distance-based detail; null on renderers that keep the stand-ins. */
@@ -306,6 +308,35 @@ export class DrivingView {
 
   /** The vehicle the player drives: the five-ton by default, or Skanky's car. */
   public get vehicle(): THREE.Group { return this.car.visible ? this.car : this.truck; }
+
+  /**
+   * Shows the ghost five-ton at `pose`, or hides it (null). It is only a picture: no collisions, no shadow, and the
+   * chase camera never avoids it.
+   */
+  public setGhost(pose: { x: number; z: number; heading: number } | null): void {
+    if (!pose) {
+      if (this.ghost) this.ghost.visible = false;
+      return;
+    }
+    if (!this.ghost) {
+      const ghost = createTruck('5 TON', 0x5a4632, 0x4a3a2a, 'right');
+      const material = new THREE.MeshBasicMaterial({ color: 0x9fdcff, transparent: true, opacity: 0.3, depthWrite: false });
+      ghost.traverse((object) => {
+        const mesh = object as THREE.Mesh;
+        if (!mesh.isMesh) return;
+        mesh.material = material;
+        mesh.castShadow = mesh.receiveShadow = false;
+      });
+      ghost.name = 'ghost-truck';
+      ghost.userData.keep = true;
+      ghost.userData.solid = false;
+      this.scene.add(ghost);
+      this.ghost = ghost;
+    }
+    this.ghost.visible = true;
+    this.ghost.position.set(pose.x, 0, pose.z);
+    this.ghost.rotation.y = pose.heading;
+  }
 
   /** Switches between the chase camera and the cab; the cab view is the five-ton's, so Skanky's car keeps the chase camera. */
   public toggleView(): 'chase' | 'cab' {
