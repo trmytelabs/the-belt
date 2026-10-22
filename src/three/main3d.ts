@@ -1,5 +1,5 @@
 import { DEPOT_3D_LAYOUT as SHIFT_LAYOUT, floorPileSlot, truckInteriorAt } from './layout';
-import { ARRIVALS_3D, FLOW_3D, INSPECTION_3D, PEAK_NIGHT, PRIORITY_3D, ShiftModel3D } from './ShiftModel3D';
+import { ARRIVALS_3D, FLOW_3D, INSPECTION_3D, PEAK_NIGHT, PRIORITY_3D, ShiftModel3D, TRICK_SHOTS } from './ShiftModel3D';
 import { createPriorityMarker, updatePriorityMarker, type PriorityMarker } from './priorityMarker';
 import { GOAL_BONUS, judgeGoals, nightGoals, type NightGoal } from './nightGoals';
 import { MEDALS, awardMedals, type NightFacts } from './medals';
@@ -69,7 +69,7 @@ const PHASE_LABELS: Record<string, string> = {
 const EVENT_SOUNDS: Partial<Record<ShiftEvent['type'], SoundEffect>> = {
   grab: 'grab', drop: 'drop', sort: 'correct', wrong: 'wrong', miss: 'pile-up',
   recover: 'dig', brake: 'belt-stop', switch: 'switch', phase: 'event-alert', end: 'shift-end',
-  brian: 'event-alert', spill: 'drop', throw: 'throw', damage: 'smash', scanner: 'event-alert',
+  brian: 'event-alert', spill: 'drop', throw: 'throw', damage: 'smash', scanner: 'event-alert', trick: 'correct',
 };
 const BEAT_SOUNDS: Record<NonNullable<StoryBeat['sound']>, SoundEffect> = {
   engine: 'engine', cough: 'cough', horn: 'horn', gate: 'gate', door: 'button', spill: 'splash', register: 'register', truck: 'truck', sign: 'sign',
@@ -1152,6 +1152,20 @@ export class Belt3d {
     };
   }
 
+  /**
+   * The shift's time scale this frame: a long throw (`TRICK_SHOTS`) plays the end of its flight at a third of the speed,
+   * so the landing (or the break) is seen. Reduced motion never slows it.
+   */
+  private throwTime(): number {
+    if (this.reducedMotion) return 1;
+    const slow = this.model.packages.some((parcel) => {
+      const flight = parcel.state === 'thrown' ? parcel.flight : null;
+      return !!flight && flight.elapsedMs / flight.durationMs >= 0.45
+        && Math.hypot(flight.toX - flight.fromX, flight.toY - flight.fromY) >= TRICK_SHOTS.long.px;
+    });
+    return slow ? 0.33 : 1;
+  }
+
   /** Player 2's arrows and second controller, with two players. */
   private partnerMovement(): { x: number; y: number } {
     const keyX = (this.keys.has('ArrowRight') ? 1 : 0) - (this.keys.has('ArrowLeft') ? 1 : 0);
@@ -1296,7 +1310,7 @@ export class Belt3d {
     if (this.state === 'playing') {
       m.laneObstacles = this.crew.patrolObstacles;
       m.partnerMove = m.coop ? this.partnerMovement() : { x: 0, y: 0 };
-      m.update(dt * 1000, this.movement());
+      m.update(dt * 1000 * this.throwTime(), this.movement());
       if (!m.endless) samplePace(this.paceSamples, m.elapsedMs, m.score);
       this.watchFrameRate(dt);
       for (const event of m.drainEvents()) this.handleEvent(event);
@@ -1580,6 +1594,19 @@ export class Belt3d {
         for (let i = 0; i < 9; i += 1) {
           this.world.puffs.emit(at, { color: 0xffd98a, size: 0.11, life: 0.55 + Math.random() * 0.25, opacity: 0.9, grow: 0.35, spread: 0.5,
             velocity: new THREE.Vector3((Math.random() - 0.5) * 1.6, 1.4 + Math.random() * 0.8, (Math.random() - 0.5) * 1.6) });
+        }
+      }
+    }
+    if (event.type === 'trick') {
+      const big = (event.score ?? 0) >= TRICK_SHOTS.trick.bonus;
+      this.overlay.pop(`${big ? 'TRICK SHOT' : 'LONG THROW'} +${event.score ?? 0}`, '#ffd56a', toWorld(event, surfaceAt(event.x, event.y) + 2.2), big ? 1.6 : 1.3);
+      this.overlay.showToast(event.message, 2600);
+      this.gamepad.rumble(big ? 0.7 : 0.4, 220);
+      if (!this.reducedMotion) {
+        const at = toWorld(event, surfaceAt(event.x, event.y) + 0.6);
+        for (let i = 0; i < (big ? 26 : 14); i += 1) {
+          this.world.puffs.emit(at, { color: 0xffd56a, size: 0.13, life: 0.7 + Math.random() * 0.35, opacity: 0.95, grow: 0.4, spread: 0.6,
+            velocity: new THREE.Vector3((Math.random() - 0.5) * 2.4, 2 + Math.random() * 1.4, (Math.random() - 0.5) * 2.4) });
         }
       }
     }
@@ -2298,7 +2325,7 @@ export class Belt3d {
     // The endless shift earns its own two medals, and a streak or a priority run can earn the night medals that do not need a finished shift.
     const awarded = awardMedals(result.record.medals, {
       won: false, grade: '', peak: false, goalsMet: 0, goalsTotal: 0, priorityCount: m.priorityCount, priorityOnTime: m.priorityOnTime,
-      bestCombo: m.bestCombo, wrongDrops: m.wrongDrops, damaged: m.damaged, missed: m.missed, safeDrive: false,
+      bestCombo: m.bestCombo, wrongDrops: m.wrongDrops, damaged: m.damaged, missed: m.missed, safeDrive: false, longestThrowM: m.longestThrowPx / 32,
       openersSeen: result.record.openers.length, nightsPlayed: result.record.played, endlessLevel: m.endlessLevel, endlessSorted: m.sorted,
     });
     this.record = { ...result.record, medals: awarded.medals };
@@ -2348,6 +2375,7 @@ export class Belt3d {
       won: m.won, grade: m.won ? m.grade : 'F', peak: m.peak, goalsMet: judged.met.length, goalsTotal: this.goals.length,
       priorityCount: m.priorityCount, priorityOnTime: m.priorityOnTime, bestCombo: m.bestCombo, wrongDrops: m.wrongDrops,
       damaged: m.damaged, missed: m.missed, safeDrive: home && this.drivingCollisions === 0 && this.drivingRedLights === 0,
+      longestThrowM: m.longestThrowPx / 32,
     });
     this.overlay.showPanel(`
       <div class="grade">${m.won ? m.grade : 'F'}</div>
@@ -2356,6 +2384,7 @@ export class Belt3d {
       ${record}
       <p><b>${m.sorted} DISPATCHED · ${String(m.score).padStart(5, '0')} POINTS · ${m.bestCombo} BEST STREAK</b></p>
       <p>${rate}% of freight dispatched · ${m.recoveredDeliveries} recovered and dispatched · ${m.bulkSorted} to bulk</p>
+      ${m.longestThrowPx > 0 ? `<p>LONGEST THROW ${(m.longestThrowPx / 32).toFixed(1)} m${m.trickShots ? ` · ${m.trickShots} long ${m.trickShots === 1 ? 'throw' : 'throws'} for a bonus` : ''}</p>` : ''}
       <p>${m.unshipped} left behind · ${m.wrongDrops} wrong drops · GRADE ${m.accuracy.toFixed(1)}% (S: 95%+)</p>
       <p>${escapeHtml(routes)}</p>
       ${m.priorityCount ? `<p>${m.priorityOnTime} of ${m.priorityCount} priority parcels on time · +${m.priorityOnTime * PRIORITY_3D.bonus}</p>` : ''}

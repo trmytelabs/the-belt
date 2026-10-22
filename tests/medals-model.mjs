@@ -2,16 +2,16 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { ENDLESS_MEDALS, MEDALS, MEDAL_IDS, awardMedals } from '../src/three/medals.ts';
 
-// Medals: twelve achievements, each earned once, kept with the record.
+// Medals: thirteen achievements, each earned once, kept with the record.
 
 const facts = (over = {}) => ({
   won: true, grade: 'B', peak: false, goalsMet: 1, goalsTotal: 3, priorityCount: 4, priorityOnTime: 2, bestCombo: 6,
   wrongDrops: 1, damaged: 0, missed: 2, safeDrive: false, openersSeen: 1, nightsPlayed: 1, ...over,
 });
 
-test('twelve medals with distinct ids, each with a title and how it is earned', () => {
-  assert.equal(MEDALS.length, 12);
-  assert.equal(MEDAL_IDS.size, 12);
+test('thirteen medals with distinct ids, each with a title and how it is earned', () => {
+  assert.equal(MEDALS.length, 13);
+  assert.equal(MEDAL_IDS.size, 13);
   for (const medal of MEDALS) assert.ok(medal.title && medal.detail, medal.id);
 });
 

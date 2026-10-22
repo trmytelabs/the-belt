@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { ShiftModel, SHIFT_LAYOUT } from '../src/game/slice/ShiftModel.ts';
-import { ENDLESS_3D, FLOW_3D, INSPECTION_3D, PEAK_NIGHT, PRIORITY_3D, ShiftModel3D, WRONG_DROP_PENALTY, WORKER_SPEED_3D } from '../src/three/ShiftModel3D.ts';
+import { ENDLESS_3D, FLOW_3D, INSPECTION_3D, PEAK_NIGHT, PRIORITY_3D, ShiftModel3D, TRICK_SHOTS, WRONG_DROP_PENALTY, WORKER_SPEED_3D } from '../src/three/ShiftModel3D.ts';
 import { ROUTE_INFO } from '../src/three/addresses.ts';
 import { DEPOT_3D_LAYOUT as L, platformLevelAt, onLowerFloor, truckInteriorAt } from '../src/three/layout.ts';
 import { platformWalkPath, pathLength, walkPath } from '../src/three/walking.ts';
@@ -162,6 +162,35 @@ test("two players: the partner walks on the second player's input, takes bulk an
   m.throwHeld(p2);
   assert.equal(bulk.state, 'thrown', "the partner's throw");
   assert.equal(own.state, 'held', "the first player's parcel stays in hand");
+});
+
+test('a long throw into bulk that lands clean pays a trick-shot bonus and is remembered', () => {
+  const throwFrom = (at) => {
+    const m = new ShiftModel3D({ autonomousCoworker: false, random: () => 0.99 });
+    m.eventStopped = true;
+    const worker = m.activeWorker;
+    const parcel = { ...m.packages[0], id: 950, route: 'C', kind: 'standard', size: 'normal', state: 'held', workerId: worker.id, flight: null };
+    m.packages.push(parcel);
+    Object.assign(worker, at, { heldId: parcel.id });
+    const target = m.throwTarget();
+    const score = m.score;
+    m.throwHeld();
+    advance(m, 2000);
+    const trick = m.drainEvents().find((event) => event.type === 'trick');
+    return { target, state: parcel.state, bonus: m.score - score, trick, longest: m.longestThrowPx, tricks: m.trickShots };
+  };
+  // From far up the deck, bulk freight still goes to bulk (a truck drop is nearer, but trucks take no throws).
+  const far = throwFrom({ x: 440, y: 900 });
+  assert.equal(far.target.route, 'C', JSON.stringify(far.target));
+  assert.equal(far.state, 'delivered');
+  assert.match(far.trick?.message ?? '', /^TRICK SHOT · 7\.\d m · \+50$/);
+  assert.ok(far.longest >= TRICK_SHOTS.trick.px && far.tricks === 1);
+  const mid = throwFrom({ x: 420, y: 960 });
+  assert.match(mid.trick?.message ?? '', /^LONG THROW · 5\.\d m · \+25$/);
+  const short = throwFrom({ x: 410, y: 1060 });
+  assert.equal(short.state, 'delivered');
+  assert.equal(short.trick, undefined, 'a short throw pays no bonus');
+  assert.ok(short.longest > 0 && short.tricks === 0, 'but still counts as the longest so far');
 });
 
 test('3D keeps truck rows before rear bulk, outward stairs and every drop before the terminal wall', () => {

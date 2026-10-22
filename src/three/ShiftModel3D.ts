@@ -8,6 +8,15 @@ import { BELT_SOLID_WIDTH, receivingBlocked } from './receivingCollision.ts';
 
 export const WRONG_DROP_PENALTY = 10;
 export const ARRIVALS_3D = { lessonMs: 4_800, flowMs: 3_600, rushMs: 2_800, brianMs: 2_800 } as const;
+/**
+ * Long throws that land clean (into bulk, or down the stairs to a floor drop): from 5 m a LONG THROW, from 7.5 m a
+ * TRICK SHOT (the furthest throw is about 9.4 m). The app slows a throw this long for the end of its flight.
+ */
+export const TRICK_SHOTS = {
+  long: { px: 160, bonus: 25, title: 'LONG THROW' },
+  trick: { px: 240, bonus: 50, title: 'TRICK SHOT' },
+} as const;
+
 export const WORKER_SPEED_3D = 265;
 export const MIN_CARRY_SPEED_3D = 0.82;
 export const BELT_STOPS_3D = { limit: 3, durationMs: 2_000, cooldownMs: 15_000 } as const;
@@ -69,6 +78,11 @@ export class ShiftModel3D extends ShiftModel {
   public override readonly durationMs: number;
   private levelShown = 1;
   public override readonly cleanupMs = 25_000;
+  /** How far each parcel in the air was thrown, in model pixels, until it lands. */
+  private readonly throwSpans = new Map<number, number>();
+  /** Tonight's longest throw that landed clean, in model pixels (32 to the metre), and the trick shots among them. */
+  public longestThrowPx = 0;
+  public trickShots = 0;
   /**
    * Two players: the partner walks on the second player's input (`partnerMove`) instead of sorting by themselves,
    * either worker takes bulk freight and rides the flow, priority freight comes for either side, and nobody switches.
@@ -339,7 +353,10 @@ export class ShiftModel3D extends ShiftModel {
     const stairs = this.layout.stairs;
     const atStairTop = !onLowerFloor(worker) && Math.abs(worker.x - stairs[worker.side].topX) <= 28
       && Math.abs(worker.y - stairs.centerY) <= 8;
-    const route = atStairTop ? worker.side === 'left' ? 'T' : 'S'
+    // Bulk freight goes to bulk whenever bulk is in range. The truck drops beside the bulk area can never take a
+    // throw, but the nearest-drop rule picked them, which kept every bulk throw under about six metres.
+    const toBulk = !atStairTop && held.route === 'C' && distance(worker, this.destinationCenter('C', worker.side)) <= THROWING.rangePx;
+    const route = atStairTop ? worker.side === 'left' ? 'T' : 'S' : toBulk ? 'C'
       : [...WORKER_ROUTES[worker.id], 'C' as const].sort((a, b) =>
         distance(worker, this.destinationCenter(a, worker.side)) - distance(worker, this.destinationCenter(b, worker.side)))[0];
     const target = this.destinationCenter(route, worker.side);
@@ -502,6 +519,14 @@ export class ShiftModel3D extends ShiftModel {
   /** The 3D shift has no scanner faults; the shared model keeps its two handovers. */
   protected override updateScannerRequest(): void {}
 
+  /** A throw remembers how far it was thrown (from the thrower, as its range is measured), for the trick-shot bonus when it lands. */
+  public override throwHeld(worker: Worker = this.activeWorker): void {
+    const held = this.packages.find(parcel => parcel.id === worker.heldId);
+    const from = { x: worker.x, y: worker.y };
+    super.throwHeld(worker);
+    if (held?.state === 'thrown' && held.flight) this.throwSpans.set(held.id, distance(from, { x: held.flight.toX, y: held.flight.toY }));
+  }
+
   /** With two players each keeps their own worker. */
   public override switchWorker(): void {
     if (!this.coop) super.switchWorker();
@@ -567,6 +592,18 @@ export class ShiftModel3D extends ShiftModel {
     const due = this.priorityDue.get(parcel.id);
     this.priorityDue.delete(parcel.id);
     super.deliver(parcel, assisted);
+    // A long throw that lands clean pays a bonus: a LONG THROW, or from further a TRICK SHOT (`TRICK_SHOTS`).
+    const span = parcel.thrownDelivery ? this.throwSpans.get(parcel.id) : undefined;
+    if (span !== undefined) {
+      this.throwSpans.delete(parcel.id);
+      this.longestThrowPx = Math.max(this.longestThrowPx, span);
+      const tier = span >= TRICK_SHOTS.trick.px ? TRICK_SHOTS.trick : span >= TRICK_SHOTS.long.px ? TRICK_SHOTS.long : null;
+      if (tier) {
+        this.score += tier.bonus;
+        this.trickShots += 1;
+        this.emit('trick', `${tier.title} · ${(span / 32).toFixed(1)} m · +${tier.bonus}`, parcel, parcel, tier.bonus);
+      }
+    }
     // Watched, a player's load earns the inspection bonus.
     if (this.inspection && !assisted) {
       this.inspection.loads += 1;
