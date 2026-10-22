@@ -10,6 +10,7 @@ import { eyeHeight, gazeInFigureFrame, lookTargetFor, type Gaze } from './attent
 import { windAt, type Wind } from './wind';
 import { DrivingModels } from './drivingModels';
 import { applyPose, type CrewLife, type Pose } from './crew';
+import { palmOf } from './characterModels';
 import { placeProp, upgradeCar } from './propModels';
 import { poseSeated, seatRootPosition, type SeatTargetPoints } from './seating';
 import { followWheels, type SeatName, type VehicleContract, type WheelRig } from './vehicleRig';
@@ -1923,11 +1924,8 @@ export class StoryStage {
     shan.faceAngle = walk >= 1 && drive <= 0 ? Math.PI : null;
     if (walk >= 1 && open <= 0) shan.setPose('press', time);
     props.shanCoffee.visible = id === 'opener-3' && walk > 0;
-    if (props.shanCoffee.visible) {
-      const hand = new THREE.Vector3();
-      shan.character.leftArm.getWorldPosition(hand);
-      props.shanCoffee.position.copy(hand).add(new THREE.Vector3(0, -0.55, 0.15));
-    }
+    // In his hand as he walks, not a fixed drop below the shoulder (which left it hanging off the arm).
+    if (props.shanCoffee.visible) palmOf(shan.character, 'left', props.shanCoffee.position);
     this.cameraTo(new THREE.Vector3(13, 8.5, 21), new THREE.Vector3(1.5, 1, 2.5), this.frameDt, cutscene.index === 0 && cutscene.elapsedMs < 50);
   }
 
@@ -2033,8 +2031,8 @@ export class StoryStage {
     const hand = ease(cueProgress(cutscene, 'hand-coffee'));
     const spill = cueProgress(cutscene, 'spill');
     // Hand to hand, following each reaching arm.
-    const from = a('skanky').character.rightHand.getWorldPosition(new THREE.Vector3());
-    const to = a('termite').character.rightHand.getWorldPosition(new THREE.Vector3());
+    const from = palmOf(a('skanky').character, 'right');
+    const to = palmOf(a('termite').character, 'right');
     props.cup.visible = true;
     props.cup.position.lerpVectors(from, to, Math.min(1, hand * 1.4));
     a('skanky').setPose(hand > 0 && hand < 0.8 ? 'press' : 'none', time);
@@ -2239,7 +2237,7 @@ export class StoryStage {
       // A beer in the left hand, kept upright as the arm moves.
       const cup = props[`cup-${who}`];
       cup.visible = drinking.has(who);
-      if (cup.visible) actor.character.leftHand.getWorldPosition(cup.position).add(new THREE.Vector3(0, -0.08, 0));
+      if (cup.visible) palmOf(actor.character, 'left', cup.position);
     }
     // Lamp and TV at night; the sun through the back window in the morning.
     const lights = this.houseLights!;

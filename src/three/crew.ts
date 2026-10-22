@@ -6,6 +6,7 @@ import {
 import { DRIVERS, SHAN_BREAKAGE_LINES } from '../game/slice/StoryScript';
 import type { Parcel, ShiftEvent, ShiftModel } from '../game/slice/ShiftModel';
 import { audioSystem } from './audio';
+import { palmOf } from './characterModels';
 import { BODY, animateCharacter, bendElbows, bendKnees, blendPose, createCharacter, faceToward, lookToward, mergeCharacter, snapshotPose, type Character } from './characters';
 import { eyeHeight, gazeInFigureFrame, lookTargetFor, type Gaze, type Speaker } from './attention';
 import { plantFeet } from './footing';
@@ -276,6 +277,7 @@ export function applyPose(c: Character, pose: Pose, t: number, still: boolean): 
 
 export class CrewLife {
   public readonly actors = new Map<string, Actor>();
+  private readonly kylieCup: THREE.Mesh;
   /** Inspection state for the browser checks. */
   public snakeState: 'waiting' | 'belt' | 'collecting' | 'dancing' | 'done' = 'waiting';
   public massageStage: 'waiting' | 'arriving' | 'lying' | 'leaving' | 'done' = 'waiting';
@@ -333,10 +335,10 @@ export class CrewLife {
       world.scene.add(character.root);
       this.actors.set(id, new Actor(character));
     }
-    // Kylie carries an (empty) coffee cup on his search.
-    const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.045, 0.16, 12), standard(0xc23a2e, 0.6));
-    cup.position.set(0, -0.085, 0.05);
-    this.actor('kylie').character.rightHand.add(cup);
+    // Kylie carries an (empty) coffee cup on his search, in his palm (placed each update; see holdKylieCup).
+    this.kylieCup = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.045, 0.16, 12), standard(0xc23a2e, 0.6));
+    this.kylieCup.position.set(0, -0.085, 0.05);
+    this.actor('kylie').character.rightHand.add(this.kylieCup);
 
     this.towel = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.06, 0.7), standard(0xf2efe6, 0.95));
     this.towel.visible = false;
@@ -619,8 +621,16 @@ export class CrewLife {
     this.updateWatcher(model);
   }
 
+  /** Keeps Kylie's cup in his palm: his model's hand is not where the figure's hand pivot puts a fixed offset. */
+  private holdKylieCup(): void {
+    const kylie = this.actor('kylie');
+    if (!kylie.root.visible) return;
+    kylie.character.rightHand.worldToLocal(palmOf(kylie.character, 'right', this.kylieCup.position));
+  }
+
   public update(dt: number, model: ShiftModel, wallTime: number): void {
     this.wallTime = wallTime;
+    this.holdKylieCup();
     const t = model.elapsedMs;
     const reserved = this.advanceWorkWalk(dt);
 

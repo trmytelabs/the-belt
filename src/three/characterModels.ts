@@ -698,6 +698,24 @@ function driveModel(character: Character, rig: ModelRig): void {
   }
 }
 
+const knuckle = new THREE.Vector3();
+
+/**
+ * Where a held thing sits in a character's hand, in world metres: the imported model's palm, most of the way from
+ * the wrist to the knuckles (the hand bone's finger roots), else a little down the figure's hand. The figure's hand
+ * pivot is the model's wrist, so cups placed at it, or a fixed drop below it, floated beside the fingers.
+ */
+export function palmOf(character: Character, side: 'left' | 'right', out = new THREE.Vector3()): THREE.Vector3 {
+  const pivot = side === 'left' ? character.leftHand : character.rightHand;
+  const bone = tracked.get(character.root)?.rig?.hands.find((hand) => hand.pivot === pivot)?.bone;
+  const fingers = bone && bone.parent ? bone.children.filter((child) => (child as THREE.Bone).isBone) : [];
+  if (!bone || !fingers.length) return pivot.localToWorld(out.set(0, -0.08, 0.02));
+  const knuckles = new THREE.Vector3();
+  for (const finger of fingers) knuckles.add(finger.getWorldPosition(knuckle));
+  knuckles.divideScalar(fingers.length);
+  return bone.getWorldPosition(out).lerp(knuckles, 0.8);
+}
+
 /** The clip a character's model is playing, or null without a model or clips; for checks. */
 export function clipRoleOf(character: Character): string | null {
   return tracked.get(character.root)?.rig?.clips?.role ?? null;
