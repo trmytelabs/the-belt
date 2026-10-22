@@ -3,6 +3,7 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 
 import { BODY, bendElbows, bendKnees, createCharacter, mergeCharacter, type Character, type CharacterMotion } from './characters';
 import { placeProp } from './propModels';
+import { poseSeated } from './seating';
 import { shadowed, standard, textPlane } from './space';
 
 /**
@@ -21,6 +22,14 @@ const rounded = (w: number, h: number, d: number, material: THREE.Material, r = 
 /** Seat height of the stool and armchair cushion. */
 const SEAT_HEIGHT = 0.48;
 
+/** Where the hands go on the held things, in each one's own frame: the guitar's neck and sound hole, the controller's grips. */
+const HAND_POINTS = {
+  fret: new THREE.Vector3(0.5, 0.13, 0.05),
+  strum: new THREE.Vector3(-0.02, -0.01, 0.1),
+  gripA: new THREE.Vector3(0.08, 0.012, 0.03),
+  gripB: new THREE.Vector3(-0.08, 0.012, 0.03),
+};
+
 export class MesaDream {
   public readonly scene = new THREE.Scene();
   public readonly camera = new THREE.PerspectiveCamera(44, 1, 0.1, 60);
@@ -31,6 +40,8 @@ export class MesaDream {
   private readonly lumines: THREE.CanvasTexture;
   private readonly fade: HTMLDivElement;
   private readonly guitar = new THREE.Group();
+  /** Trmyte's controller, whose grips his hands hold. */
+  private readonly controller: THREE.Object3D;
   private blocks: number[][] = [];
   private piece = { x: 7, y: -2, colors: [0, 1, 1, 0] };
   private sweep = 0;
@@ -62,14 +73,14 @@ export class MesaDream {
     // Trmyte in the armchair with the controller, facing the TV.
     this.trmyte = createCharacter({ name: 'TRMYTE', skin: 0xe2b088, shirt: 0x2f5f8f, pants: 0x2a3f5c, overalls: 0x2a3f5c, hair: 0x5a3a20, hairStyle: 'short', headwear: 'termiteHat', beard: true });
     this.seat(this.trmyte, new THREE.Vector3(0.75, 0.05, 0.55), -2.7);
-    const controller = rounded(0.24, 0.06, 0.12, standard(0x161616, 0.4), 0.03);
-    // Held in both hands in the lap.
-    controller.position.set(0, 1.12, 0.36);
-    this.trmyte.body.add(controller);
-    this.trmyte.leftArm.rotation.set(-0.2, 0, 0.35);
-    this.trmyte.rightArm.rotation.set(-0.2, 0, -0.35);
+    // A pad-sized controller held in both hands over the lap; poseHands puts his hands on its grips.
+    this.controller = rounded(0.19, 0.05, 0.1, standard(0x161616, 0.4), 0.025);
+    this.controller.position.set(0, 1.12, 0.36);
+    this.controller.rotation.x = -0.35;
     bendElbows(this.trmyte, -1.3);
     mergeCharacter(this.trmyte);
+    // After the merge: merged into the body mesh, the controller left the hierarchy and his hands reached for nowhere.
+    this.trmyte.body.add(this.controller);
     const armchair = new THREE.Group();
     const seatMat = standard(0x56604a, 0.9);
     const base = rounded(0.95, 0.45, 0.9, seatMat, 0.08);
@@ -367,11 +378,31 @@ export class MesaDream {
     this.guitar.position.set(-0.05, 1.1, 0.25);
     this.guitar.rotation.set(0, 0, 0.15);
     shadowed(this.guitar);
-    // The rig's "right" arm sits on the character's left: it frets the neck,
-    // and the other arm strums across the body.
-    this.skanky.rightArm.rotation.set(-1.15, 0, 0.55);
-    this.skanky.leftArm.rotation.set(-0.95, 0, 0.55);
-    bendElbows(this.skanky, -0.7, -0.45);
+    // One hand frets the neck and the other strums over the sound hole: poseHands places them every frame.
+    this.poseHands(0, true);
+  }
+
+  /**
+   * Hands on the instruments, by the seated reach solver: Skanky's on the neck and over the strings
+   * (a small wrist strum, and the fretting hand moving up and down the neck), Trmyte's on the
+   * controller's grips with a little thumb work. The arms used to be set by fixed rotations, which
+   * left Skanky reaching past the guitar with both arms out straight.
+   */
+  private poseHands(seconds: number, still: boolean): void {
+    const strum = still ? 0 : Math.sin(seconds * 18) * 0.03;
+    const slide = still ? 0 : Math.sin(seconds * 0.9) * 0.05;
+    this.handsOn(this.skanky, this.guitar, HAND_POINTS.fret.clone().setX(HAND_POINTS.fret.x + slide), HAND_POINTS.strum.clone().setY(HAND_POINTS.strum.y + strum));
+    const tap = still ? 0 : Math.sin(seconds * 11) * 0.006;
+    this.handsOn(this.trmyte, this.controller, HAND_POINTS.gripA.clone().setY(HAND_POINTS.gripA.y + tap), HAND_POINTS.gripB.clone().setY(HAND_POINTS.gripB.y - tap));
+  }
+
+  /** Puts a character's hands on two points of a held object (in its own frame), each hand on the nearer one. */
+  private handsOn(c: Character, held: THREE.Object3D, a: THREE.Vector3, b: THREE.Vector3): void {
+    c.root.updateMatrixWorld(true);
+    held.localToWorld(a); held.localToWorld(b);
+    const left = c.leftArm.getWorldPosition(new THREE.Vector3()), right = c.rightArm.getWorldPosition(new THREE.Vector3());
+    const straight = left.distanceTo(a) + right.distanceTo(b), crossed = left.distanceTo(b) + right.distanceTo(a);
+    poseSeated(c, { hands: straight <= crossed ? { left: a, right: b } : { left: b, right: a } });
   }
 
   private resetLumines(): void {
@@ -456,14 +487,12 @@ export class MesaDream {
     this.drawLumines(dt);
     for (const c of [this.trmyte, this.skanky]) if (c.motion) { c.motion.time = t / 1000; c.motion.reduced = reducedMotion; }
     if (!reducedMotion) {
-      // Strumming, controller taps and a little head-banging.
+      // Strumming, controller taps and a little nodding along.
       const s = t / 1000;
-      this.skanky.leftArm.rotation.x = -0.95 + Math.sin(s * 16) * 0.22;
-      this.skanky.head.rotation.x = 0.15 + Math.sin(s * 8) * 0.12;
-      this.trmyte.leftArm.rotation.set(-0.2 + Math.sin(s * 11) * 0.04, 0, 0.35);
-      this.trmyte.rightArm.rotation.set(-0.2 + Math.cos(s * 13) * 0.04, 0, -0.35);
+      this.skanky.head.rotation.x = 0.18 + Math.sin(s * 6) * 0.06;
       this.trmyte.head.rotation.y = Math.sin(s * 0.7) * 0.1;
     }
+    this.poseHands(t / 1000, reducedMotion);
     return t >= DREAM_MS + DREAM_FADE_MS;
   }
 
