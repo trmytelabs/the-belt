@@ -271,6 +271,45 @@ try {
   if(process.env.BELT_SCREENSHOT_DIR) await page.screenshot({path:join(process.env.BELT_SCREENSHOT_DIR,'address-stairs-3d.png')});
   assert.deepEqual(errors,[]);
   console.log('PASS 3D address signs, carrying clearance, stair throw and single penalty with Shan yelling; no script errors');
+
+  // TWO PLAYERS: C on the briefing, then Termite on WASD and SPACE, Skanky on the arrows and ENTER, by real keys.
+  await read(() => window.fixtureApp.restart());
+  await wait(() => window.fixtureApp.state === 'briefing');
+  await page.keyboard.press('KeyC');
+  await wait(() => window.fixtureApp.settings.twoPlayers === true);
+  assert.match(await page.locator('[data-action=players]').innerText(), /2 PLAYERS/);
+  await page.keyboard.press('KeyJ');
+  await wait(() => window.fixtureApp.state === 'playing');
+  assert.equal(await read(() => window.fixtureApp.model.coop), true);
+  assert.match(await page.locator('[data-f=worker]').innerText(), /P1 TERMITE[\s\S]*P2 SKANKY/);
+  const spots = () => read(() => { const m = window.fixtureApp.model; return { p1: { x: m.activeWorker.x, y: m.activeWorker.y }, p2: { x: m.partnerWorker.x, y: m.partnerWorker.y } }; });
+  await read(() => { const m = window.fixtureApp.model; m.paused = false; Object.assign(m.activeWorker, { x: 380, y: 500, heldId: null }); Object.assign(m.partnerWorker, { x: 580, y: 500, heldId: null }); });
+  const before = await spots();
+  await page.keyboard.down('ArrowDown'); await page.waitForTimeout(400); await page.keyboard.up('ArrowDown');
+  const afterArrows = await spots();
+  assert.ok(afterArrows.p2.y > before.p2.y + 20 && Math.abs(afterArrows.p1.y - before.p1.y) < 1, `the arrows walk Skanky only: ${JSON.stringify({ before, afterArrows })}`);
+  await page.keyboard.down('KeyS'); await page.waitForTimeout(400); await page.keyboard.up('KeyS');
+  const afterWasd = await spots();
+  assert.ok(afterWasd.p1.y > afterArrows.p1.y + 20 && Math.abs(afterWasd.p2.y - afterArrows.p2.y) < 1, `WASD walks Termite only: ${JSON.stringify({ afterArrows, afterWasd })}`);
+  // ENTER grabs for Skanky: a parcel for his trucks on the belt beside him.
+  await read(() => {
+    const m = window.fixtureApp.model, p2 = m.partnerWorker;
+    for (const parcel of m.packages) if (parcel.state === 'belt') parcel.state = 'delivered';
+    m.packages.push({ ...m.packages[0], id: 9300, route: 'B', kind: 'standard', size: 'normal', state: 'belt', workerId: null, flight: null, x: 480, y: p2.y, beltOffset: 0 });
+  });
+  await page.keyboard.press('Enter');
+  await wait(() => window.fixtureApp.model.partnerWorker.heldId === 9300);
+  assert.equal(await read(() => window.fixtureApp.model.activeWorker.heldId), null, 'ENTER grabs for player 2, not player 1');
+  // TAB switches nobody with two players.
+  await page.keyboard.press('Tab');
+  assert.equal(await read(() => window.fixtureApp.model.activeWorker.id), 'termite');
+  // Back to one player, so the setting does not carry into another run.
+  await read(() => window.fixtureApp.restart());
+  await wait(() => window.fixtureApp.state === 'briefing');
+  await page.keyboard.press('KeyC');
+  await wait(() => window.fixtureApp.settings.twoPlayers === false);
+  assert.deepEqual(errors, []);
+  console.log('PASS 3D two players: C on the briefing, WASD and SPACE play Termite, the arrows and ENTER play Skanky, nobody switches; no script errors');
 } finally {
   await browser?.close();
   if (server) await new Promise(resolve=>server.httpServer.close(resolve));

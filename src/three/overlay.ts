@@ -164,6 +164,8 @@ const CSS = `
 .b3d-panel .b3d-start { position: sticky; bottom: 0; z-index: 1; display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; background: #142a31; box-shadow: 0 -10px 18px #142a31; }
 .b3d-panel .b3d-start button { margin-top: 0; flex: 2 1 220px; }
 .b3d-panel .b3d-start button[data-action="play"] { flex: 1 1 160px; background: transparent; border: 1px solid #edb765; color: #edb765; }
+.b3d-panel .b3d-start button[data-action="players"] { flex: 1 1 130px; background: transparent; border: 1px solid #7fd6e0; color: #7fd6e0; }
+.b3d-panel .b3d-start button[data-action="players"] small { display: block; margin-top: 3px; font-size: 10px; letter-spacing: 1.5px; opacity: 0.8; }
 .b3d-panel .b3d-start button[data-action="play"] small { display: block; margin-top: 3px; font-size: 10px; letter-spacing: 1.5px; opacity: 0.8; }
 .b3d-setting { display: grid; grid-template-columns: 90px 1fr 48px; align-items: center; gap: 12px; margin: 12px 0; font-size: 13px; letter-spacing: 1.5px; color: #c9dcdc; }
 .b3d-setting input[type=range] { width: 100%; accent-color: #edb765; }
@@ -252,6 +254,8 @@ const CSS = `
 export interface HudState {
   sorted: number; goal: number; score: number; timeLeftMs: number; backlog: number; capacity: number;
   phase: string; combo: number; worker: 'termite' | 'skanky'; hint: string; brake: string; overview: boolean; routes?: string; scanner?: string;
+  /** With two players, the second player's worker: the label names both. */
+  partner?: 'termite' | 'skanky';
   /** The clock's label when it shows something other than the time left (the endless shift's time survived). */
   clockLabel?: string;
   /** Tonight's score against the best night's at the same moment (`pace.ts`); null or absent hides it. */
@@ -517,7 +521,7 @@ export class Overlay {
         : state.goal > 0 ? `TARGET  /  ${state.goal} CLEAN DISPATCHES` : 'NO TARGET  /  LAST AS LONG AS YOU CAN';
     // Only a clock counting down can run out; the endless shift's counts up.
     f.time.parentElement?.classList.toggle('urgent', !state.clockLabel && state.timeLeftMs > 0 && state.timeLeftMs <= 30_000);
-    f.worker.textContent = `● ${state.worker.toUpperCase()}`;
+    f.worker.textContent = state.partner ? `● P1 ${state.worker.toUpperCase()}   ● P2 ${state.partner.toUpperCase()}` : `● ${state.worker.toUpperCase()}`;
     f.worker.className = `b3d-worker ${state.worker}`;
     f.hint.textContent = state.hint;
     f.brake.textContent = state.brake;

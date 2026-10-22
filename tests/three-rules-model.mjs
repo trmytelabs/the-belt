@@ -132,6 +132,38 @@ test('empty hands walk where they are pointed beside the stairs and trucks; a ca
   }
 });
 
+test("two players: the partner walks on the second player's input, takes bulk and throws; nobody switches", () => {
+  const m = new ShiftModel3D();
+  m.coop = true;
+  const p1 = m.activeWorker, p2 = m.partnerWorker;
+  assert.notEqual(p1, p2);
+  // Left alone, the second player's worker stands still: no coworker sorting for them.
+  const start = { x: p2.x, y: p2.y };
+  m.update(2000);
+  assert.deepEqual({ x: p2.x, y: p2.y }, start, 'the partner waits for the second player');
+  // The second player's stick walks them.
+  m.partnerMove = { x: 0, y: 1 };
+  for (let i = 0; i < 30; i++) m.update(1000 / 60);
+  assert.ok(p2.y > start.y + 50 && p2.moving, `the second player walks the partner: ${JSON.stringify({ start, now: { x: p2.x, y: p2.y } })}`);
+  m.partnerMove = { x: 0, y: 0 };
+  // Nobody switches: each player keeps their worker.
+  m.switchWorker();
+  assert.equal(m.activeWorker, p1);
+  // Either player takes bulk freight off the belt (alone, only the played worker can).
+  const template = m.packages[0];
+  const bulk = { ...template, id: 900, route: 'C', kind: 'standard', size: 'normal', state: 'belt', workerId: null, flight: null, x: 480, y: p2.y };
+  const own = { ...template, id: 901, route: 'A', kind: 'standard', size: 'normal', state: 'held', workerId: p1.id, flight: null };
+  m.packages.push(bulk, own);
+  m.action(p2);
+  assert.equal(p2.heldId, bulk.id, 'the partner picks up bulk');
+  // And throws their own parcel, at bulk within range, leaving the first player's alone.
+  p1.heldId = own.id;
+  Object.assign(p2, { x: 580, y: 1080 });
+  m.throwHeld(p2);
+  assert.equal(bulk.state, 'thrown', "the partner's throw");
+  assert.equal(own.state, 'held', "the first player's parcel stays in hand");
+});
+
 test('3D keeps truck rows before rear bulk, outward stairs and every drop before the terminal wall', () => {
   assert.ok(L.dockA.y < L.dockD.y && L.dockD.y < L.bulkPile.y);
   assert.ok(L.stairs.left.bottomX < L.stairs.left.topX);

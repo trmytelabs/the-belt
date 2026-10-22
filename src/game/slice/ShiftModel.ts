@@ -687,11 +687,10 @@ export class ShiftModel {
     return result;
   }
 
-  /** The optional shortcut: risks breaking the parcel instead of walking it there. */
-  public throwHeld(): void {
+  /** The optional shortcut: risks breaking the parcel instead of walking it there. `worker` is the active one unless a second player throws. */
+  public throwHeld(worker: Worker = this.activeWorker): void {
     if (!this.canAct()) return;
-    const worker = this.activeWorker;
-    const held = this.heldPackage;
+    const held = this.packages.find((parcel) => parcel.id === worker.heldId) ?? null;
     const target = this.throwTarget(worker);
     if (!held || !target) {
       this.emit('wrong', 'Pick up a parcel first, then F throws it', worker);
