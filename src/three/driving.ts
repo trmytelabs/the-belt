@@ -400,6 +400,8 @@ export class DrivingView {
         continue;
       }
       object.visible = true; object.position.set(obstacle.x, obstacle.kind === 'cone' && obstacle.hit ? 0.15 : 0, obstacle.z);
+      const tail = object.userData.tail as THREE.MeshStandardMaterial | undefined;
+      if (tail) tail.emissiveIntensity = obstacle.braking ? 3.6 : 1.2;
       object.rotation.set(0, obstacle.heading, obstacle.kind === 'cone' && obstacle.hit ? Math.PI / 2 : 0);
       if (object.userData.wheels) followWheels(object.userData.wheels as WheelRig, object, dt);
     }

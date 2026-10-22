@@ -75,7 +75,7 @@ try {
   assert.ok(city.instanced && city.windows > 2000, `lit windows as one instanced mesh: ${JSON.stringify(city)}`);
   assert.ok(city.batched && city.cars === 28 && city.variants === 2 && city.standIns === 0, `28 batched sedans of both shapes replace the stand-ins: ${JSON.stringify(city)}`);
   assert.ok(city.near >= 1 && city.far >= 1, `near cars at full detail and far cars as shells: ${JSON.stringify(city)}`);
-  assert.deepEqual(city.batches.map(b => b.name).sort(), ['traffic-batch-lights', 'traffic-batch-paint', 'traffic-batch-trim']);
+  assert.deepEqual(city.batches.map(b => b.name).sort(), ['traffic-batch-lights', 'traffic-batch-paint', 'traffic-batch-tails', 'traffic-batch-trim']);
   assert.ok(city.batches.every(b => b.batched));
   assert.ok(city.calls < 200 && city.triangles < 600_000, `the road stays within its draw budget: ${JSON.stringify(city)}`);
   assert.ok(await page.evaluate(() => {

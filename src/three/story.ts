@@ -215,6 +215,8 @@ export function createCar(color: number, detailed = true): THREE.Group {
   }
   const head = new THREE.MeshStandardMaterial({ color: 0xfff3c8, emissive: 0xfff0c0, emissiveIntensity: 2.2 });
   const tail = new THREE.MeshStandardMaterial({ color: 0x8a1010, emissive: 0xff2020, emissiveIntensity: 1.2 });
+  // The road's traffic brightens these while it brakes.
+  car.userData.tail = tail;
   for (const z of [0.6, -0.6]) {
     const light = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.16, 0.34), head);
     light.position.set(2.11, 0.7, z);
