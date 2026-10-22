@@ -13,8 +13,8 @@ import * as THREE from 'three';
 const direction = new THREE.Vector3();
 const point = new THREE.Vector3();
 const arc = new THREE.Vector3();
-/** How far up the crane goes when hemmed in: about 80 degrees, nearly over the vehicle. */
-const CRANE_TOP = 1.4;
+/** How far up the crane goes when hemmed in: about 45 degrees, so the view still takes in the road and lights ahead. */
+const CRANE_TOP = 0.8;
 const CRANE_STEPS = 8;
 
 /**
@@ -23,8 +23,9 @@ const CRANE_STEPS = 8;
  * than `minDistance`; returns true when it moved. A camera already inside a
  * box comes out to that box's near side. Hemmed in (a building hard by the
  * vehicle in a tight turn, so even `minDistance` is inside it), the camera
- * rises over the vehicle at that distance instead, and only if no height is
- * clear does it come nearer than the minimum.
+ * rises over the vehicle at that distance instead; if no height is clear it
+ * holds `minDistance`, inside the box's padding at worst. It never drops
+ * nearer: on the roof, the truck fills the view and the frame reads as black.
  */
 export function pullClear(anchor: THREE.Vector3, camera: THREE.Vector3, boxes: readonly THREE.Box3[], margin = 0.4, minDistance = 0.5): boolean {
   direction.subVectors(camera, anchor);
@@ -38,11 +39,10 @@ export function pullClear(anchor: THREE.Vector3, camera: THREE.Vector3, boxes: r
   }
   if (nearest === Infinity) return false;
   const clear = Math.max(0, nearest - margin);
-  let distance = Math.max(minDistance, clear);
+  const distance = Math.max(minDistance, clear);
   if (distance > clear && boxes.some((box) => box.containsPoint(point.copy(anchor).addScaledVector(direction, distance)))) {
-    // Held at minDistance the camera would be inside the box: crane up over the vehicle, or failing that come as near as it has to.
+    // Held at minDistance the camera would be inside the box: crane up over the vehicle, or failing that hold the minimum.
     if (craneUp(anchor, boxes, margin, minDistance, camera)) return true;
-    distance = clear;
   }
   if (distance >= length) return false;
   camera.copy(point.copy(anchor).addScaledVector(direction, distance));

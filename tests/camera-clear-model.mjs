@@ -45,18 +45,23 @@ test('a short lamp below the line of sight is passed over', () => {
 });
 
 test('beside a building in a tight turn, the camera rises over the vehicle rather than stop inside the wall or drop onto the roof', () => {
-  // The wall's padded face is 2.5 m from the roof, inside the 3.5 m minimum: held there, the camera would be in the building.
-  const wall = blocker(-11.5, 0, 17, 10, 30, 0.5), roof = v(0, 3.6, 0);
+  // The wall's padded face is 3 m from the roof, inside the 3.5 m minimum: held there, the camera would be in the building.
+  const wall = blocker(-11.75, 0, 16.5, 10, 30, 0.5), roof = v(0, 3.6, 0);
   const camera = v(-9, 4.5, 0);
   assert.equal(pullClear(roof, camera, [wall], 0.4, 3.5), true);
   assert.equal(wall.containsPoint(camera), false, `out of the wall: ${camera.toArray()}`);
   assert.ok(Math.abs(camera.distanceTo(roof) - 3.5) < 1e-9, `still the minimum away: ${camera.distanceTo(roof)}`);
-  assert.ok(camera.y > 5.5 && camera.x < 0 && camera.x > -2.5, `up over the truck on the same side: ${camera.toArray()}`);
-  // Under an overhang no height is clear: only then does it come nearer than the minimum, still out of the wall.
+  assert.ok(camera.y > 5.5 && camera.y < 6.2 && camera.x < 0 && camera.x > -3, `up behind the truck, no steeper than about 45 degrees: ${camera.toArray()}`);
+  // Under an overhang no height is clear: it holds the minimum (in the wall's padding at worst) and never drops onto the roof.
   const overhang = new THREE.Box3(v(-20, 5, -10), v(20, 30, 10));
   const tucked = v(-9, 4.5, 0);
   pullClear(roof, tucked, [wall, overhang], 0.4, 3.5);
-  assert.ok(!wall.containsPoint(tucked) && !overhang.containsPoint(tucked) && tucked.distanceTo(roof) < 3.5, `as near as it has to: ${tucked.toArray()}`);
+  assert.ok(Math.abs(tucked.distanceTo(roof) - 3.5) < 1e-9, `held at the minimum: ${tucked.toArray()}`);
+  // A lamp post whose padding takes in the roof itself blocks every height; the camera still never drops onto the roof.
+  const lamp = blocker(-0.5, 0, 0.4, 0.4, 8, 0.9);
+  const scraping = v(-9, 4.5, 0);
+  pullClear(roof, scraping, [lamp], 0.4, 3.5);
+  assert.ok(Math.abs(scraping.distanceTo(roof) - 3.5) < 1e-9, `not on the roof: ${scraping.toArray()}`);
   // With room to spare, the minimum still holds.
   const far = blocker(-14, 0, 4, 10, 30, 0.5);
   const roomy = v(-20, 4.5, 0);

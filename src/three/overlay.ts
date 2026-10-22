@@ -163,7 +163,7 @@ const CSS = `
 .b3d-setting output { text-align: right; font-variant-numeric: tabular-nums; color: #edb765; }
 .b3d-setting.check { display: flex; gap: 10px; }
 .b3d-setting.check input { width: 18px; height: 18px; accent-color: #edb765; }
-.b3d-panel .pad-focus { outline: 3px solid #fff3c4; outline-offset: 3px; }
+.b3d-panel .pad-focus, .b3d-panel :is(button, a, input, summary):focus-visible { outline: 3px solid #fff3c4; outline-offset: 3px; }
 .b3d-panel button.b3d-secondary { margin-top: 10px; padding: 10px; background: transparent; border: 1px solid #3b5a62; color: #c9dcdc; font-size: 13px; }
 .b3d-help { display: grid; grid-template-columns: 130px 1fr; gap: 6px 14px; margin: 4px 0 8px; font-size: 13px; }
 .b3d-help dt { font-weight: 800; letter-spacing: 1.5px; color: #edb765; font-size: 12px; padding-top: 2px; }
@@ -319,6 +319,9 @@ export class Overlay {
     this.bubbles = this.div('b3d-bubbles', this.root);
     this.pops = this.div('b3d-pops', this.root);
     this.toast = this.div('b3d-toast', this.root);
+    // Toasts carry news (a goal met, ON FIRE, a controller ready): read them out politely.
+    this.toast.setAttribute('role', 'status');
+    this.toast.setAttribute('aria-live', 'polite');
     this.toast.style.opacity = '0';
     this.center = this.div('b3d-center', this.root);
     this.storybar = this.div('b3d-storybar', this.root);
@@ -678,7 +681,11 @@ export class Overlay {
 
   /** A centred panel; one handler for its button, or handlers by data-action. */
   public showPanel(html: string, onButton?: (() => void) | Record<string, () => void>): void {
-    this.center.innerHTML = `<div class="b3d-panel">${html}</div>`;
+    // A dialog named by its heading, so assistive technology announces what the panel is.
+    this.center.innerHTML = `<div class="b3d-panel" role="dialog" aria-labelledby="b3d-panel-title">${html}</div>`;
+    const heading = this.center.querySelector('.b3d-panel h1');
+    if (heading) heading.id = 'b3d-panel-title';
+    else this.center.querySelector('.b3d-panel')?.removeAttribute('aria-labelledby');
     for (const button of this.center.querySelectorAll<HTMLButtonElement>('button')) {
       const handler = typeof onButton === 'function' ? onButton : onButton?.[button.dataset.action ?? ''];
       button.addEventListener('pointerdown', (event) => event.stopPropagation());

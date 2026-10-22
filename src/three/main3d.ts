@@ -144,6 +144,8 @@ export class Belt3d {
   /** Tonight's three goals, chosen by the nights on record, and the live ones already announced. */
   public goals: NightGoal[] = nightGoals(this.record.played);
   private readonly goalsAnnounced = new Set<string>();
+  /** Sorting time and frames counted towards the one-time hint to lower the resolution. */
+  private readonly slowFrames = { seconds: 0, frames: 0, hinted: false };
   /** Tonight's shift score every five seconds, kept with the record if tonight becomes the best night. */
   private paceSamples: number[] = [];
   /** Whether the streak was on fire last frame, so the faster walk is announced once per streak. */
@@ -1199,7 +1201,8 @@ export class Belt3d {
       }
     }
     if (this.state === 'playing') {
-      if (!this.benStarted && m.elapsedMs >= BEN_START && !m.ended) this.beginInterlude();
+      // Ben's big moment is a story scene; the endless shift has none.
+      if (!this.benStarted && !m.endless && m.elapsedMs >= BEN_START && !m.ended) this.beginInterlude();
       else if (this.mesa.check(m)) this.state = 'mesa';
       else if (this.story.breakDue(m.elapsedMs) && !m.ended) this.beginBreak();
     }
@@ -1207,6 +1210,7 @@ export class Belt3d {
       m.laneObstacles = this.crew.patrolObstacles;
       m.update(dt * 1000, this.movement());
       if (!m.endless) samplePace(this.paceSamples, m.elapsedMs, m.score);
+      this.watchFrameRate(dt);
       for (const event of m.drainEvents()) this.handleEvent(event);
       this.crew.watcher = m.inspection ? this.watcherName === 'VIC' ? 'vic' : 'shan' : null;
       this.announceGoals();
@@ -1310,6 +1314,22 @@ export class Belt3d {
     // Bubbles project with the camera as it is now, whether or not a draw follows.
     camera.updateMatrixWorld();
     this.overlay.update(dt * 1000, speechClock, camera, size.x, size.y);
+  }
+
+  /**
+   * Once a visit, after eight seconds of sorting below 30 frames a second on a GPU renderer, suggests a lower
+   * resolution; never at the lowest already, and never on a software renderer, which draws at 0.6 anyway.
+   */
+  private watchFrameRate(dt: number): void {
+    const watch = this.slowFrames;
+    if (watch.hinted || this.quality !== 'high' || this.settings.resolution <= MIN_RESOLUTION || !(dt > 0)) return;
+    watch.seconds += dt; watch.frames += 1;
+    if (watch.seconds < 8) return;
+    if (watch.frames / watch.seconds < 30) {
+      watch.hinted = true;
+      this.overlay.showToast('RUNNING SLOWLY? A LOWER RESOLUTION IN SETTINGS (ESC) CAN HELP', 5000);
+    }
+    watch.seconds = 0; watch.frames = 0;
   }
 
   /** Tonight's score less the best night's at the same moment of the shift, while sorting; null with nothing to race. */
@@ -2125,16 +2145,24 @@ export class Belt3d {
     const m = this.model;
     const seconds = Math.floor(m.elapsedMs / 1000), clock = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
     const result = recordEndless(this.record, { sorted: m.sorted, seconds, score: m.score, date: new Date().toISOString().slice(0, 10) });
-    this.record = result.record;
+    // The endless shift earns its own two medals, and a streak or a priority run can earn the night medals that do not need a finished shift.
+    const awarded = awardMedals(result.record.medals, {
+      won: false, grade: '', peak: false, goalsMet: 0, goalsTotal: 0, priorityCount: m.priorityCount, priorityOnTime: m.priorityOnTime,
+      bestCombo: m.bestCombo, wrongDrops: m.wrongDrops, damaged: m.damaged, missed: m.missed, safeDrive: false,
+      openersSeen: result.record.openers.length, nightsPlayed: result.record.played, endlessLevel: m.endlessLevel, endlessSorted: m.sorted,
+    });
+    this.record = { ...result.record, medals: awarded.medals };
+    this.medalsEarned = awarded.fresh.map((medal) => medal.id);
     saveRecord(browserStorage(), this.record);
-    if (result.newBest) audioSystem.fanfare(true);
+    if (result.newBest || awarded.fresh.length) audioSystem.fanfare(result.newBest);
+    const medals = awarded.fresh.map((medal) => `<p class="b3d-medal"><b>MEDAL · ${medal.title}</b> · ${escapeHtml(medal.detail)}</p>`).join('');
     const best = this.record.endless!;
     const bestClock = `${Math.floor(best.seconds / 60)}:${String(best.seconds % 60).padStart(2, '0')}`;
     this.overlay.showPanel(`
       <div class="grade">∞</div>
       <div class="kicker">ENDLESS SHIFT / LEVEL ${m.endlessLevel}</div>
       <h1>THE BELT WINS</h1>
-      <p class="b3d-best">${result.newBest ? `<b>NEW ENDLESS BEST</b>${result.previous ? ` · beat ${result.previous.sorted} dispatched` : ''}` : `BEST ENDLESS · ${best.sorted} dispatched · ${bestClock}`}</p>
+      <p class="b3d-best">${result.newBest ? `<b>NEW ENDLESS BEST</b>${result.previous ? ` · beat ${result.previous.sorted} dispatched` : ''}` : `BEST ENDLESS · ${best.sorted} dispatched · ${bestClock}`}</p>${medals}
       <p><b>${m.sorted} DISPATCHED · ${String(m.score).padStart(5, '0')} POINTS · SURVIVED ${clock}</b></p>
       <p>${m.bestCombo} best streak · ${m.priorityOnTime} of ${m.priorityCount} priority on time · ${m.wrongDrops} wrong drops · ${m.damaged} broken</p>
       <p>Recovery overflowed at level ${m.endlessLevel}. Endless shifts keep their own best and leave your nights' record alone.</p>

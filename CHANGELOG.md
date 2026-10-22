@@ -2,6 +2,24 @@
 
 ## 0.1.0 — development snapshot
 
+- Settle the 3D chase camera's escape from walls. Hemmed in, it rises over
+  the truck no steeper than about 45 degrees, so the road and lights ahead stay
+  in view, and if no height is clear it holds its 3.5 m; it never drops onto
+  the roof. CI's software run had seen one near-black frame after the first
+  fix, which could come nearer or look steeply down at the dark road.
+- Keep Ben's big moment out of the 3D endless shift: it is a story scene, and
+  the endless shift has none, but it held the belt 68 seconds into every run.
+- Make the 3D panels named dialogs (by their heading), the toasts a polite
+  live region, and give panel buttons, links, settings and the HOW TO PLAY
+  summary the controller highlight's focus ring when focused from the keyboard.
+- Suggest a lower resolution, once a visit, when the 3D game sorts for eight
+  seconds below 30 frames a second on a GPU renderer (not at the lowest
+  setting already, and never on a software renderer).
+- Give the 3D endless shift two medals, making twelve: LONG HAUL (reach level
+  5) and BELT MARATHON (dispatch 60 in one run). The endless results now award
+  medals too, including the night medals that need no finished shift (TWENTY
+  STRAIGHT, ON THE DOT), name them and play the chime. BELT LEGEND still
+  needs every medal.
 - Name the endless best to beat on the 3D endless shift’s HUD (ENDLESS /
   LEVEL 3 / BEST 42).
 - Race your best 3D night: the best night now keeps its shift score every five

@@ -1,17 +1,17 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { MEDALS, MEDAL_IDS, awardMedals } from '../src/three/medals.ts';
+import { ENDLESS_MEDALS, MEDALS, MEDAL_IDS, awardMedals } from '../src/three/medals.ts';
 
-// Medals: ten achievements, each earned once, kept with the record.
+// Medals: twelve achievements, each earned once, kept with the record.
 
 const facts = (over = {}) => ({
   won: true, grade: 'B', peak: false, goalsMet: 1, goalsTotal: 3, priorityCount: 4, priorityOnTime: 2, bestCombo: 6,
   wrongDrops: 1, damaged: 0, missed: 2, safeDrive: false, openersSeen: 1, nightsPlayed: 1, ...over,
 });
 
-test('ten medals with distinct ids, each with a title and how it is earned', () => {
-  assert.equal(MEDALS.length, 10);
-  assert.equal(MEDAL_IDS.size, 10);
+test('twelve medals with distinct ids, each with a title and how it is earned', () => {
+  assert.equal(MEDALS.length, 12);
+  assert.equal(MEDAL_IDS.size, 12);
   for (const medal of MEDALS) assert.ok(medal.title && medal.detail, medal.id);
 });
 
@@ -46,4 +46,17 @@ test('a medal is new only once; held medals stay, unknown ids drop, and the list
   const failed = awardMedals(['regular', 'bogus', 'first-shift'], facts({ won: false }));
   assert.deepEqual(failed.medals, ['first-shift', 'regular']);
   assert.deepEqual(failed.fresh, []);
+});
+
+test('the endless shift earns its own two medals, and nights never do', () => {
+  const byId = Object.fromEntries(MEDALS.map((medal) => [medal.id, medal]));
+  assert.deepEqual([ENDLESS_MEDALS.level, ENDLESS_MEDALS.sorted], [5, 60]);
+  const endless = (level, sorted) => facts({ won: false, grade: '', goalsMet: 0, goalsTotal: 0, endlessLevel: level, endlessSorted: sorted });
+  assert.equal(byId['long-haul'].earned(endless(4, 10)), false);
+  assert.equal(byId['long-haul'].earned(endless(5, 10)), true);
+  assert.equal(byId.marathon.earned(endless(9, 59)), false);
+  assert.equal(byId.marathon.earned(endless(2, 60)), true);
+  assert.equal(byId['long-haul'].earned(facts({ bestCombo: 99 })), false, 'a night carries no endless level');
+  assert.deepEqual(awardMedals([], endless(5, 60)).fresh.map((medal) => medal.id), ['long-haul', 'marathon']);
+  assert.deepEqual(awardMedals([], endless(1, 3)).fresh, [], 'a short endless shift earns nothing, not even FIRST SHIFT');
 });

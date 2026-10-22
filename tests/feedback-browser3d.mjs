@@ -100,6 +100,12 @@ try {
   });
   await page.keyboard.press('Escape');
   await wait(() => window.fixtureApp.state === 'paused');
+  const pauseDialog = await read(() => {
+    const panel = document.querySelector('.b3d-panel'), toast = document.querySelector('.b3d-toast');
+    return { role: panel.getAttribute('role'), name: document.getElementById(panel.getAttribute('aria-labelledby'))?.textContent,
+      toast: [toast.getAttribute('role'), toast.getAttribute('aria-live')] };
+  });
+  assert.deepEqual(pauseDialog, { role: 'dialog', name: 'GAME PAUSED.', toast: ['status', 'polite'] }, 'panels are named dialogs and toasts a polite status');
   await page.getByRole('button', { name: 'SETTINGS' }).click();
   await page.locator('[data-setting="music"]').focus();
   const workerBefore = await read(() => ({ x: window.fixtureApp.model.activeWorker.x, y: window.fixtureApp.model.activeWorker.y }));
@@ -236,6 +242,42 @@ try {
   await wait(() => document.querySelector('[data-f="pace"]').textContent === '−50 VS BEST' && document.querySelector('[data-f="pace"]').classList.contains('behind'));
   await read((kept) => { const app = window.fixtureApp; app.record = kept; app.model.paused = false; }, recordKept);
   await wait(() => document.querySelector('[data-f="pace"]').hidden === (window.fixtureApp.record.best?.pace === undefined));
+  // An endless run that reaches level 5 with 60 dispatched earns both endless medals on its results, kept with the record.
+  const endlessMedals = await read(() => {
+    const app = window.fixtureApp, kept = app.record, Model = app.model.constructor;
+    app.model = new Model({ endless: true }); app.state = 'playing';
+    Object.assign(app.model, { elapsedMs: 306_000, sorted: 60, paused: true });
+    app.showResults();
+    const result = { text: document.querySelector('.b3d-panel').innerText, medals: app.record.medals, stored: JSON.parse(localStorage.getItem('the-belt:3d-record:v1')).medals };
+    app.record = kept; localStorage.setItem('the-belt:3d-record:v1', JSON.stringify(kept)); app.restart();
+    return result;
+  });
+  assert.ok(endlessMedals.text.includes('MEDAL · LONG HAUL') && endlessMedals.text.includes('MEDAL · BELT MARATHON'), endlessMedals.text);
+  assert.ok(['long-haul', 'marathon'].every((id) => endlessMedals.medals.includes(id) && endlessMedals.stored.includes(id)), JSON.stringify(endlessMedals));
+  // Eight seconds of sorting below 30 frames a second on a GPU suggests a lower resolution, once a visit.
+  const slowHint = await read(() => {
+    const app = window.fixtureApp, quality = app.quality, toasts = [], show = app.overlay.showToast.bind(app.overlay);
+    app.overlay.showToast = (text, ms) => { toasts.push(text); return show(text, ms); };
+    app.quality = 'high'; app.slowFrames.hinted = false; app.slowFrames.seconds = app.slowFrames.frames = 0;
+    for (let i = 0; i < 500; i++) app.watchFrameRate(1 / 60);
+    const fast = toasts.length;
+    for (let i = 0; i < 90; i++) app.watchFrameRate(0.1);
+    for (let i = 0; i < 90; i++) app.watchFrameRate(0.1);
+    app.quality = quality; app.overlay.showToast = show;
+    return { fast, toasts };
+  });
+  assert.equal(slowHint.fast, 0, 'a smooth game gets no hint');
+  assert.deepEqual(slowHint.toasts, ['RUNNING SLOWLY? A LOWER RESOLUTION IN SETTINGS (ESC) CAN HELP'], 'a slow one gets it once');
+  // Ben's big moment is a story scene: an endless shift sorts straight past it.
+  await read(() => {
+    const app = window.fixtureApp, Model = app.model.constructor;
+    app.restart(); app.forceStory({ breakAtMs: 1e12 }); app.mesa.seen = true;
+    app.model = new Model({ endless: true, autonomousCoworker: false }); app.overlay.clearCenter(); app.state = 'playing';
+    Object.assign(app.model, { elapsedMs: 70_000, eventStopped: true });
+  });
+  await wait(() => window.fixtureApp.model.elapsedMs > 70_300);
+  assert.deepEqual(await read(() => [window.fixtureApp.state, window.fixtureApp.benStarted]), ['playing', false], 'no interlude in the endless shift');
+  await read(() => { const app = window.fixtureApp; app.restart(); app.forceStory({ breakAtMs: 1e12 }); app.benStarted = true; app.model.autonomousCoworker = false; app.model.eventStopped = true; app.overlay.clearCenter(); app.state = 'playing'; });
   // An endless shift names the endless best to beat.
   const endlessKept = await read(() => {
     const app = window.fixtureApp, kept = app.record, Model = app.model.constructor;

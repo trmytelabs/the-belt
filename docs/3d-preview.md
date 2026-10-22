@@ -103,6 +103,27 @@ It also spaces out its draws, so the shift clock, input and bubbles keep running
 at full rate even when a single draw takes longer than a frame. Without WebGL it explains
 the requirement and links to the classic game.
 
+## Between nights and around the shift
+
+The night systems are small pure modules with their own model tests; `main3d.ts`
+wires them into the briefing, the HUD and the results.
+
+| Module | What it holds | Model test |
+| --- | --- | --- |
+| `nightRecord.ts` | The record in local storage (`the-belt:3d-record:v1`): nights played and finished, the best night (with its pace notes), openers seen, medals, the endless best and the last eight nights. Every field is cleaned on load. | `night-record-model.mjs` |
+| `nightGoals.ts` | Three optional goals a night, rotating with the nights played, shown as HUD chips; +150 each. | `night-goals-model.mjs` |
+| `medals.ts` | Twelve medals, judged at a night's or an endless shift's results. | `medals-model.mjs` |
+| `seniority.ts` | Six titles from finished nights and medals, worked out from the record. | `seniority-model.mjs` |
+| `perks.ts` | Six perks, three offered a night; the picked one changes that night's `ShiftModel3D` only. | `perks-model.mjs` |
+| `pace.ts` | The shift score every five seconds, kept with the best night and raced on the HUD. | `pace-model.mjs` |
+| `settings.ts` | Music, effects, camera shake and resolution (`the-belt:3d-settings:v1`). | `settings-model.mjs` |
+| `gamepad.ts` | Standard-layout pads: movement, pedals, button presses mapped to the keys each screen uses, menu directions and rumble. | `gamepad-model.mjs` |
+| `cameraClear.ts` | Keeps the chase camera out of buildings and lamp posts, craning up over the truck when hemmed in. | `camera-clear-model.mjs` |
+
+Rules that change play live in `ShiftModel3D` as constants: `PRIORITY_3D`,
+`INSPECTION_3D`, `PEAK_NIGHT`, `ENDLESS_3D` and `FLOW_3D` (the ON FIRE pace).
+Endless shifts never touch the nights' record, best night or recent list.
+
 ## Reference coverage after phase 3
 
 Present in 3D:
