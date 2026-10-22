@@ -2,6 +2,11 @@
 
 ## 0.1.0 — development snapshot
 
+- Keep Ben's big moment out of the 3D endless shift: it is a story scene, and
+  the endless shift has none, but it held the belt 68 seconds into every run.
+- Make the 3D panels named dialogs (by their heading), the toasts a polite
+  live region, and give panel buttons, links, settings and the HOW TO PLAY
+  summary the controller highlight's focus ring when focused from the keyboard.
 - Suggest a lower resolution, once a visit, when the 3D game sorts for eight
   seconds below 30 frames a second on a GPU renderer (not at the lowest
   setting already, and never on a software renderer).
