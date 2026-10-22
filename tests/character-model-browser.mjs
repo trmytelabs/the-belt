@@ -351,6 +351,10 @@ try {
       femaleTalking: play('doris', (a) => { a.speaking = true; }, 0.6),
       shan: play('shan', (a) => { a.walking = true; }, 0.8),
       walker: play('hussan', (a) => { a.walking = true; }, 0.8),
+      // A hand raised and a phone held on the move: the legs keep walking rather than sliding on a standing clip.
+      handupWalking: play('hussan', (a, t) => { a.pose = 'handup'; a.poseStart = t; a.walking = true; }, 0.8),
+      phoneWalking: play('hussan', (a, t) => { a.pose = 'phone'; a.poseStart = t; a.walking = true; }, 0.8),
+      handupStill: play('hussan', (a, t) => { a.pose = 'handup'; a.poseStart = t; }, 0.5),
     };
   });
   assert.ok(quaternius.belt.includes('pickupTable') && !quaternius.belt.includes('crouchIn'), `a lift off the belt bends at the hips: ${JSON.stringify(quaternius)}`);
@@ -358,6 +362,11 @@ try {
   assert.ok(quaternius.press.includes('interact') && quaternius.push.includes('push'), `a press reaches and a push pushes: ${JSON.stringify(quaternius)}`);
   assert.ok(quaternius.talking.includes('talking') && quaternius.femaleTalking.includes('talking'), `speaking standing gestures, in both bodies: ${JSON.stringify(quaternius)}`);
   assert.ok(quaternius.shan.includes('walkFormal') && !quaternius.walker.includes('walkFormal'), `Shan walks the manager's walk and the crew their own: ${JSON.stringify(quaternius)}`);
+  for (const [name, still] of [['handupWalking', 'wave'], ['phoneWalking', 'phone']]) {
+    const roles = quaternius[name];
+    assert.ok(!roles.includes(still) && roles.some(role => ['walk', 'walkSlow', 'run'].includes(role)), `a gesture on the move keeps the legs walking: ${name} ${JSON.stringify(roles)}`);
+  }
+  assert.ok(quaternius.handupStill.includes('wave'), `standing still, the raised hand plays its clip: ${JSON.stringify(quaternius.handupStill)}`);
   // Seated on the lot's contract seats the driver plays a seated idle with the hands kept on the wheel.
   await page.evaluate(() => { window.fixtureApp.stage.stage('lot'); });
   await page.waitForFunction(() => Object.entries(window.fixtureApp.stage.stages.lot.props).filter(([name]) => /^car-/.test(name)).every(([, car]) => car.userData.contract), null, { timeout: 90_000 });
@@ -373,7 +382,7 @@ try {
   assert.ok(seated.driver.model && seated.driver.seat === 'driver' && seated.driver.hands, `the seated driver holds the wheel on the figure: ${JSON.stringify(seated)}`);
   assert.ok(seated.passenger.model && seated.passenger.seat === 'passenger' && !seated.passenger.hands && ['sitIdle', 'sitIdleAlt', 'sitLookAround'].includes(seated.passenger.role), `the seated passenger plays a seated idle: ${JSON.stringify(seated)}`);
   await page.evaluate(() => window.fixtureApp.useCharacterClips(false));
-  console.log('PASS the loosened motion: angry shout, fidgets, turns on the spot, pose blending and seated idles, and the Quaternius pick-up, press, push, talking and formal walk');
+  console.log('PASS the loosened motion: angry shout, fidgets, turns on the spot, pose blending and seated idles, the Quaternius pick-up, press, push, talking and formal walk, and gestures on the move');
   assert.deepEqual(errors, [], 'no page errors');
   console.log('PASS no page errors with imported character models');
 } finally {
