@@ -67,6 +67,8 @@ export class StageActor {
   private heading = 0;
   /** Whether the figure sat last frame, so sitting down and standing up ease instead of snapping; null before the first frame. */
   private wasSeated: boolean | null = null;
+  /** The pose the figure showed last frame. */
+  private shown: Pose = 'none';
 
   constructor(character: Character) {
     this.character = character;
@@ -85,8 +87,15 @@ export class StageActor {
     if (this.moved) this.heading = Math.atan2(dx, dz);
   }
 
+  /**
+   * Changes pose, blending in from the joints and restarting the gesture only when it differs from the pose
+   * shown last frame. Scenes reset `pose` (to 'none', or 'sit' in a seat) before setting a gesture each frame;
+   * compared with that reset, the gesture restarted every frame and froze part way in, from the seat or the
+   * last pose: Termite ran from the car still sitting, and Shan's press at the gate never moved.
+   */
   public setPose(pose: Pose, time: number): void {
-    if (this.pose !== pose) { snapshotPose(this.character, time); this.pose = pose; this.poseStart = time; }
+    if (pose !== this.shown && (pose !== this.pose || this.poseStart !== time)) { snapshotPose(this.character, time); this.poseStart = time; }
+    this.pose = pose;
   }
 
   public animate(dt: number, time: number, reducedMotion: boolean): void {
@@ -114,6 +123,7 @@ export class StageActor {
     applyPose(c, this.pose, time - this.poseStart, reducedMotion);
     blendPose(c, time);
     this.moved = false;
+    this.shown = this.pose;
   }
 }
 

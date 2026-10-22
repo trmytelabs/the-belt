@@ -39,6 +39,8 @@ try {
       let standingSamples = 0;
       let passengerSamples = 0;
       let contractSamples = 0;
+      // Consecutive samples each person has spent out of a seat with the hips still down at seat height.
+      const crouched = new Map();
       const localCache = new Map();
       const shape = (object, animatedBody) => {
         let bounds = !animatedBody && localCache.get(object);
@@ -100,6 +102,15 @@ try {
             const ankleWorld = (shin) => ({ getWorldPosition: v => shin.localToWorld(v.set(0, -0.4, 0)) });
             if (targets.feet && !(near(ankleWorld(c.leftShin), targets.feet.left, 0.02) && near(ankleWorld(c.rightShin), targets.feet.right, 0.02)) && failures.length < 50) failures.push(`${scene.id} beat ${beat} at ${fraction}/20: seated ${name}'s feet off their targets`);
           }
+        }
+        // Out of a seat, the hips are back up within the stand-up blend (0.45 s, nine samples here, the hips
+        // above 0.3 m down after four): a gesture set every frame once froze Termite in his seated crouch as
+        // he ran from the car.
+        for (const [name, actor] of stage.actors) {
+          if (!actor.root.visible || actor.seatedIn || ['sit', 'crouch', 'squat'].includes(actor.pose)) { crouched.delete(name); continue; }
+          const y = actor.character.body.position.y, n = y < -0.3 ? (crouched.get(name) ?? 0) + 1 : 0;
+          crouched.set(name, n);
+          if (n > 4 && failures.length < 50) failures.push(`${scene.id} beat ${beat} at ${fraction}/20: ${name} out of the seat but still crouched at seat height (${y.toFixed(2)} m)`);
         }
         const check = (a, b) => {
           samples++;
