@@ -498,6 +498,15 @@ try {
   await wait(() => window.fixtureApp.cutscene?.scene.id === 'go-home');
   await page.waitForTimeout(2000);
   await shot('home');
+  // Not home yet: Vic rides along to Cha for Tea, where the two sit across a table of dim sum.
+  await page.keyboard.press('Enter');
+  await wait(() => window.fixtureApp.cutscene?.scene.id === 'cha-for-tea');
+  await wait(() => {
+    const app = window.fixtureApp, stage = app.stage.stages.dimsum;
+    return app.stage.active === 'dimsum' && ['skanky', 'vic'].every((id) => stage.actors.get(id).root.visible && stage.actors.get(id).pose === 'sit');
+  });
+  await page.waitForTimeout(1500);
+  await shot('cha-for-tea');
   await page.keyboard.press('Enter');
   await wait(() => window.fixtureApp.state === 'ended');
   const results = await page.locator('.b3d-panel').innerText();
@@ -525,7 +534,7 @@ try {
   assert.deepEqual(await read(() => window.fixtureApp.story.visited.slice(-9)),
     ['shift', 'clockout', 'assignment', 'to-mall', 'mall', 'to-ups', 'return', 'home', 'results']);
   assert.deepEqual(errors, []);
-  console.log('PASS 3D finale: shift completion into the mall assignment, three cart runs by real keys with no empty, early or duplicate credit, six drops and six signatures, return to the truck, five-ton back to UPS by key drop, home and results; no script errors');
+  console.log('PASS 3D finale: shift completion into the mall assignment, three cart runs by real keys with no empty, early or duplicate credit, six drops and six signatures, return to the truck, five-ton back to UPS by key drop, breakfast with Vic at Cha for Tea, and results; no script errors');
 
   // Regression for a near-complete night with recovered freight: the same mall
   // and key-return objects have really completed, only the warehouse totals are synthetic.

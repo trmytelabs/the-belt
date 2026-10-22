@@ -31,7 +31,7 @@ import { snowBank, snowCap, snowField, snowfall, type Snowfall } from './snow';
  * Every pose is a function of how far each cue has progressed, so skipping a
  * scene always lands on its final staging.
  */
-export type StageId = 'lot' | 'store' | 'coffee' | 'road' | 'mall' | 'house';
+export type StageId = 'lot' | 'store' | 'coffee' | 'road' | 'mall' | 'house' | 'dimsum';
 
 const ease = (t: number): number => t * t * (3 - 2 * t);
 const mix = (a: number, b: number, t: number): number => a + (b - a) * Math.max(0, Math.min(1, t));
@@ -266,6 +266,8 @@ const lotZ = (y: number): number => (y - 140) / 32 - 13.5;
 /** Tim Hortons seating: the booths' centre line, each bench's depth position and the crew's table. */
 const BOOTH_X = 3.4;
 const BOOTHS = { north: -1.45, south: 0.25, next: 1.15, table: -0.6 } as const;
+/** Cha for Tea's table: its top's height and radius, where each chair stands from its centre, and the chairs' seat height. */
+const DIM_SUM = { tableTop: 0.76, radius: 0.72, seat: 1.02, seatTop: 0.46 } as const;
 const TABLE_TOP = 0.76;
 
 /** The living room's indoor camera angles. */
@@ -405,6 +407,7 @@ export class StoryStage {
     else if (id === 'coffee') this.buildCoffee(stage);
     else if (id === 'road') this.buildRoad(stage);
     else if (id === 'house') this.buildHouse(stage);
+    else if (id === 'dimsum') this.buildDimSum(stage);
     else this.buildMall(stage);
     for (const flakes of stage.snow) scene.add(flakes.points);
     const dynamic = new Set<THREE.Object3D>([...stage.actors.values()].map((actor) => actor.root));
@@ -1701,7 +1704,7 @@ export class StoryStage {
       actor.root.rotation.set(0, 0, 0);
     }
     for (const [name, prop] of Object.entries(stage.props)) if (name.startsWith('car-') || name.startsWith('park-') || name === 'fiveTon') prop.visible = false;
-    this.dawn = scene.id === 'go-home' ? 1 : scene.id === 'drive-to-ups' ? 0.6 : 0;
+    this.dawn = scene.id === 'go-home' || scene.id === 'cha-for-tea' ? 1 : scene.id === 'drive-to-ups' ? 0.6 : 0;
     this.applySky(stage);
     this.roadTravel = 0;
     this.roadWind = 0;
@@ -1729,6 +1732,7 @@ export class StoryStage {
     else if (id.startsWith('timhortons')) this.directCoffee(stage, cutscene, time);
     else if (id === 'drive-to-mall' || id === 'drive-to-ups') this.directRoad(stage, cutscene, dt);
     else if (id === 'go-home') this.directHome(stage, cutscene, time);
+    else if (id === 'cha-for-tea') this.directDimSum(stage, cutscene, time);
     else if (id === 'home-decision' || id === 'leave-house' || id === 'quit-night') this.directHouse(stage, cutscene, time);
     else if (id === 'mall-intro') this.directMallIntro(stage, cutscene);
     this.updateLooks(stage.actors, cutscene, time);
@@ -2106,11 +2110,297 @@ export class StoryStage {
       const step = alongPath([[9.5, -12.8], [0.5, -3.0], [-8.3, -2.6], [-10.8, -2.6], [-10.8, -4.9]], walk);
       skanky.at(step.x, step.z);
     } else this.seat(skanky, car, 'driver');
+    const vic = actors.get('vic');
+    if (vic) {
+      const follow = ease(Math.max(0, Math.min(1, cueProgress(cutscene, 'car') * 1.15 - 0.15)));
+      if (follow < 1) {
+        vic.root.visible = true;
+        vic.pose = 'none';
+        vic.faceAngle = null;
+        // The same way round the truck, then down the car's right side (world +x in the stall) to the passenger door.
+        const step = alongPath([[9.5, -12.8], [0.5, -3.0], [-6.6, -2.6], [-8.2, -2.6], [-8.2, -4.9]], follow);
+        vic.at(step.x, step.z);
+      } else this.seat(vic, car, 'passenger');
+    }
     const phone = props.phoneGlow as THREE.PointLight;
     const phoneOn = cueProgress(cutscene, 'phone') > 0 && leave <= 0;
     phone.intensity = phoneOn ? 4 + Math.sin(time * 6) : 0;
     phone.position.copy(skanky.root.position).add(new THREE.Vector3(0, 1.3, 0));
     this.cameraTo(new THREE.Vector3(2, 6.5, 12), new THREE.Vector3(-4.5, 1, -4), this.frameDt, cutscene.index === 0 && cutscene.elapsedMs < 50);
+  }
+
+  /**
+   * Cha for Tea (the 3D ending): Skanky and Vic at a round table under red lanterns, the lazy Susan turning with its
+   * steamers, more on the way from the cart.
+   */
+  private buildDimSum(stage: Stage): void {
+    const { scene, props } = stage;
+    scene.background = new THREE.Color(0x1a1210);
+    scene.add(new THREE.HemisphereLight(0xffe6c8, 0x4a2a20, 1.1));
+    // A red carpet with a gold lattice, and walls of cream over dark wood.
+    const carpet = document.createElement('canvas');
+    carpet.width = carpet.height = 64;
+    const cctx = carpet.getContext('2d')!;
+    cctx.fillStyle = '#7a1c1c'; cctx.fillRect(0, 0, 64, 64);
+    cctx.strokeStyle = '#c99a3a'; cctx.lineWidth = 3;
+    cctx.strokeRect(8, 8, 48, 48);
+    cctx.beginPath(); cctx.arc(32, 32, 10, 0, Math.PI * 2); cctx.stroke();
+    const carpetTexture = new THREE.CanvasTexture(carpet);
+    carpetTexture.wrapS = carpetTexture.wrapT = THREE.RepeatWrapping;
+    carpetTexture.repeat.set(10, 8);
+    carpetTexture.colorSpace = THREE.SRGBColorSpace;
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(14, 11), new THREE.MeshStandardMaterial({ map: carpetTexture, roughness: 0.95 }));
+    floor.rotation.x = -Math.PI / 2;
+    floor.receiveShadow = true;
+    scene.add(floor);
+    const cream = standard(0xeadfc8, 0.85), wood = standard(0x4a2418, 0.55), red = standard(0xa3201c, 0.6), gold = standard(0xd4a640, 0.35, 0.6);
+    const wall = (x: number, y: number, z: number, w: number, h: number, d: number, material: THREE.Material = cream): void => {
+      const panel = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
+      panel.position.set(x, y, z);
+      scene.add(panel);
+    };
+    wall(0, 2, -5.5, 14, 4, 0.2); wall(0, 0.55, -5.38, 14, 1.1, 0.06, wood);
+    wall(-7, 2, 0, 0.2, 4, 11); wall(-6.88, 0.55, 0, 0.06, 1.1, 11, wood);
+    wall(7, 0.45, 0, 0.2, 0.9, 11, wood); wall(7, 3.35, 0, 0.2, 1.3, 11);
+    wall(0, 3.82, -5.36, 14, 0.12, 0.06, red); wall(0, 3.7, -5.34, 14, 0.06, 0.06, gold);
+    // The morning through the window wall.
+    const morning = new THREE.Mesh(new THREE.PlaneGeometry(11, 1.8), new THREE.MeshBasicMaterial({ color: 0xf2c79a }));
+    morning.rotation.y = -Math.PI / 2;
+    morning.position.set(7.3, 1.8, 0);
+    scene.add(morning);
+    for (const z of [-3.6, 0, 3.6]) wall(7, 1.8, z, 0.2, 1.8, 0.14, wood);
+    const sign = textPlane(['CHA FOR TEA'], 4.4, 0.7, { width: 400, height: 64, background: '#a3201c', color: '#f2cc6a', radius: 8 });
+    sign.position.set(0, 3.1, -5.36);
+    scene.add(sign);
+    const menu = textPlane(['DIM SUM', 'HAR GOW · SIU MAI · CHAR SIU BAO', 'EGG TARTS · RICE ROLLS · TURNIP CAKE'], 4.2, 1.1, { width: 420, height: 110, background: '#2a1410', color: '#f2dcb0', radius: 6 });
+    menu.position.set(-4.2, 2.1, -5.36);
+    scene.add(menu);
+    // Red lanterns over the tables.
+    const lanternRed = new THREE.MeshStandardMaterial({ color: 0xc8261e, emissive: 0xc8261e, emissiveIntensity: 0.8, roughness: 0.6 });
+    for (const [x, z] of [[0, 0], [-3.4, -2.6], [3.4, -2.6], [-3.4, 2.4], [3.4, 2.4]]) {
+      const lantern = new THREE.Mesh(new THREE.SphereGeometry(0.26, 14, 10), lanternRed);
+      lantern.scale.y = 0.8;
+      lantern.position.set(x, 3.1, z);
+      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.06, 10), gold);
+      cap.position.set(x, 3.33, z);
+      const tassel = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.03, 0.22, 6), gold);
+      tassel.position.set(x, 2.8, z);
+      scene.add(lantern, cap, tassel);
+    }
+    // Round tables in white cloths, each with its chairs.
+    const cloth = standard(0xd9d2c4, 0.95), seatRed = standard(0x8a1e1a, 0.6);
+    const roundTable = (x: number, z: number, radius: number, chairs: number): void => {
+      const top = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius + 0.04, 0.08, 32), cloth);
+      top.position.set(x, DIM_SUM.tableTop - 0.04, z);
+      const skirt = new THREE.Mesh(new THREE.CylinderGeometry(radius + 0.04, radius + 0.1, 0.4, 32, 1, true), cloth);
+      skirt.position.set(x, DIM_SUM.tableTop - 0.28, z);
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.2, DIM_SUM.tableTop - 0.1, 10), wood);
+      post.position.set(x, (DIM_SUM.tableTop - 0.1) / 2, z);
+      scene.add(shadowed(top), skirt, post);
+      for (let i = 0; i < chairs; i++) {
+        const angle = (i / chairs) * Math.PI * 2;
+        scene.add(this.dimSumChair(x + Math.sin(angle) * (radius + 0.35), z + Math.cos(angle) * (radius + 0.35), angle + Math.PI, seatRed, wood));
+      }
+    };
+    roundTable(-3.4, -2.6, 0.75, 6); roundTable(3.4, -2.6, 0.75, 6); roundTable(-3.4, 2.4, 0.75, 6); roundTable(3.4, 2.4, 0.75, 6);
+    // Skanky and Vic's table, its two chairs facing across it.
+    const top = new THREE.Mesh(new THREE.CylinderGeometry(DIM_SUM.radius, DIM_SUM.radius + 0.04, 0.08, 40), cloth);
+    top.position.y = DIM_SUM.tableTop - 0.04;
+    const skirt = new THREE.Mesh(new THREE.CylinderGeometry(DIM_SUM.radius + 0.04, DIM_SUM.radius + 0.1, 0.4, 40, 1, true), cloth);
+    skirt.position.y = DIM_SUM.tableTop - 0.28;
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.22, DIM_SUM.tableTop - 0.1, 10), wood);
+    post.position.y = (DIM_SUM.tableTop - 0.1) / 2;
+    scene.add(shadowed(top), skirt, post);
+    props.chairSkanky = this.dimSumChair(0, DIM_SUM.seat, Math.PI, seatRed, wood);
+    props.chairVic = this.dimSumChair(0, -DIM_SUM.seat, 0, seatRed, wood);
+    scene.add(props.chairSkanky, props.chairVic);
+    // The lazy Susan: a glass disc that turns, laden with steamers, plates and a teapot.
+    const susan = new THREE.Group();
+    const glass = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 0.025, 36), new THREE.MeshStandardMaterial({ color: 0xd8e4e0, roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.55 }));
+    susan.add(glass);
+    const spots = 9;
+    for (let i = 0; i < spots; i++) {
+      const angle = (i / spots) * Math.PI * 2;
+      const item = i === 4 ? this.teapot() : i % 3 === 2 ? this.dimSumPlate(i) : this.steamerStack(1 + (i % 2), i);
+      item.position.set(Math.sin(angle) * 0.36, 0.013, Math.cos(angle) * 0.36);
+      susan.add(item);
+    }
+    susan.position.y = DIM_SUM.tableTop + 0.02;
+    susan.userData.keep = true;
+    scene.add(susan);
+    props.lazySusan = susan;
+    // At each place: a plate, chopsticks, a teacup and a dish of soy.
+    for (const side of [1, -1]) {
+      const z = side * (DIM_SUM.radius - 0.2);
+      const plate = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.1, 0.015, 20), standard(0xf8f8f4, 0.3));
+      plate.position.set(0, DIM_SUM.tableTop + 0.008, z);
+      const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.03, 0.06, 12), standard(0xf2efe6, 0.3));
+      cup.position.set(0.2 * side, DIM_SUM.tableTop + 0.03, z);
+      const soy = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.03, 0.02, 12), standard(0x2a120a, 0.2));
+      soy.position.set(-0.2 * side, DIM_SUM.tableTop + 0.01, z);
+      scene.add(plate, cup, soy);
+      for (const dx of [-0.008, 0.008]) {
+        const stick = new THREE.Mesh(new THREE.BoxGeometry(0.008, 0.008, 0.24), standard(0x6a3a20, 0.6));
+        stick.position.set(0.15 * side + dx, DIM_SUM.tableTop + 0.006, z - 0.03 * side);
+        scene.add(stick);
+      }
+    }
+    // The cart, stacked high, by the window; one more stack rides from it to the table on its cue.
+    const cart = new THREE.Group();
+    const cartBody = rounded(0.9, 0.6, 0.55, standard(0xb8b8b0, 0.3, 0.7), 0.04);
+    cartBody.position.y = 0.6;
+    cart.add(cartBody);
+    for (let i = 0; i < 6; i++) {
+      const stack = this.steamerStack(2 + (i % 2), i);
+      stack.position.set(-0.3 + (i % 3) * 0.3, 0.9, i < 3 ? -0.12 : 0.12);
+      cart.add(stack);
+    }
+    for (const x of [-0.38, 0.38]) for (const z of [-0.22, 0.22]) {
+      const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.04, 12), standard(0x222222, 0.6));
+      wheel.rotation.x = Math.PI / 2;
+      wheel.position.set(x, 0.06, z);
+      cart.add(wheel);
+    }
+    cart.position.set(5.6, 0, 0.4);
+    cart.rotation.y = -Math.PI / 2;
+    scene.add(cart);
+    const more = this.steamerStack(3, 7);
+    more.userData.keep = true;
+    scene.add(more);
+    props.moreSteamers = more;
+    const warm = new THREE.PointLight(0xffc890, 5, 9, 1.4);
+    warm.position.set(0, 3.2, 0.2);
+    const room = new THREE.PointLight(0xffe0b8, 8, 16, 1.4);
+    room.position.set(-2, 3.4, -1.5);
+    const sun = new THREE.DirectionalLight(0xffd2a0, 0.9);
+    sun.position.set(9, 4, 1);
+    scene.add(warm, room, sun);
+    this.cast(stage, ['skanky', 'vic']);
+  }
+
+  /** A red-cushioned dining chair at (x, z), facing `facing` (0 faces +z). */
+  private dimSumChair(x: number, z: number, facing: number, seat: THREE.Material, wood: THREE.Material): THREE.Group {
+    const chair = new THREE.Group();
+    const cushion = rounded(0.46, 0.08, 0.44, seat, 0.03);
+    cushion.position.y = DIM_SUM.seatTop - 0.04;
+    const back = rounded(0.46, 0.55, 0.06, wood, 0.02);
+    back.position.set(0, DIM_SUM.seatTop + 0.3, -0.21);
+    chair.add(cushion, back);
+    for (const lx of [-0.19, 0.19]) for (const lz of [-0.18, 0.18]) {
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, DIM_SUM.seatTop - 0.08, 6), wood);
+      leg.position.set(lx, (DIM_SUM.seatTop - 0.08) / 2, lz);
+      chair.add(leg);
+    }
+    chair.position.set(x, 0, z);
+    chair.rotation.y = facing;
+    return chair;
+  }
+
+  /** A stack of `count` bamboo steamers, the top one open on its dumplings (by `seed`: har gow, siu mai or buns). */
+  private steamerStack(count: number, seed: number): THREE.Group {
+    const stack = new THREE.Group();
+    const bamboo = standard(0xc9a46a, 0.8), band = standard(0x8a6a3a, 0.8);
+    for (let i = 0; i < count; i++) {
+      const basket = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.055, 18), bamboo);
+      basket.position.y = 0.0275 + i * 0.057;
+      const rim = new THREE.Mesh(new THREE.TorusGeometry(0.09, 0.006, 4, 18), band);
+      rim.rotation.x = Math.PI / 2;
+      rim.position.y = 0.055 + i * 0.057;
+      stack.add(basket, rim);
+    }
+    const kind = seed % 3, top = count * 0.057;
+    for (let j = 0; j < (kind === 2 ? 3 : 4); j++) {
+      const angle = (j / (kind === 2 ? 3 : 4)) * Math.PI * 2 + seed;
+      const r = kind === 2 ? 0.045 : 0.045;
+      const dumpling = kind === 0
+        ? new THREE.Mesh(new THREE.SphereGeometry(0.024, 10, 8), new THREE.MeshStandardMaterial({ color: 0xf4eee2, roughness: 0.3, transparent: true, opacity: 0.92 }))
+        : kind === 1 ? new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.02, 0.032, 10), standard(0xe8c25a, 0.5))
+          : new THREE.Mesh(new THREE.SphereGeometry(0.032, 10, 8), standard(0xfaf6ee, 0.6));
+      dumpling.position.set(Math.cos(angle) * r, top + (kind === 1 ? 0.016 : 0.018), Math.sin(angle) * r);
+      if (kind === 0) dumpling.scale.y = 0.75;
+      stack.add(dumpling);
+      if (kind === 1) {
+        const roe = new THREE.Mesh(new THREE.SphereGeometry(0.007, 6, 4), standard(0xe86a2a, 0.5));
+        roe.position.set(Math.cos(angle) * r, top + 0.034, Math.sin(angle) * r);
+        stack.add(roe);
+      }
+    }
+    return stack;
+  }
+
+  /** A plate of egg tarts (or, by `seed`, rice rolls). */
+  private dimSumPlate(seed: number): THREE.Group {
+    const plate = new THREE.Group();
+    const dish = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.08, 0.015, 20), standard(0xf8f8f4, 0.3));
+    dish.position.y = 0.008;
+    plate.add(dish);
+    if (seed % 2) {
+      for (let j = 0; j < 3; j++) {
+        const roll = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.12, 10), new THREE.MeshStandardMaterial({ color: 0xf6f2ea, roughness: 0.25, transparent: true, opacity: 0.9 }));
+        roll.rotation.z = Math.PI / 2;
+        roll.position.set(0, 0.035, -0.045 + j * 0.045);
+        plate.add(roll);
+      }
+    } else {
+      for (let j = 0; j < 4; j++) {
+        const angle = (j / 4) * Math.PI * 2;
+        const crust = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.022, 0.025, 12), standard(0xd09a4a, 0.6));
+        crust.position.set(Math.cos(angle) * 0.045, 0.028, Math.sin(angle) * 0.045);
+        const custard = new THREE.Mesh(new THREE.CircleGeometry(0.025, 12), standard(0xf6d040, 0.3));
+        custard.rotation.x = -Math.PI / 2;
+        custard.position.set(Math.cos(angle) * 0.045, 0.041, Math.sin(angle) * 0.045);
+        plate.add(crust, custard);
+      }
+    }
+    return plate;
+  }
+
+  private teapot(): THREE.Group {
+    const pot = new THREE.Group();
+    const clay = standard(0x6a3a22, 0.4);
+    const body = new THREE.Mesh(new THREE.SphereGeometry(0.07, 14, 10), clay);
+    body.scale.y = 0.8;
+    body.position.y = 0.056;
+    const spout = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.016, 0.08, 8), clay);
+    spout.position.set(0.075, 0.07, 0);
+    spout.rotation.z = -0.9;
+    const knob = new THREE.Mesh(new THREE.SphereGeometry(0.014, 8, 6), clay);
+    knob.position.y = 0.115;
+    const handle = new THREE.Mesh(new THREE.TorusGeometry(0.035, 0.008, 6, 12), clay);
+    handle.position.set(-0.07, 0.06, 0);
+    pot.add(body, spout, knob, handle);
+    return pot;
+  }
+
+  /** Cha for Tea: Skanky and Vic across the table, the lazy Susan turning, Vic eating and talking, more steamers coming. */
+  private directDimSum(stage: Stage, cutscene: Cutscene, time: number): void {
+    const { props, actors } = stage;
+    const skanky = actors.get('skanky')!, vic = actors.get('vic')!;
+    const sit = (actor: StageActor, z: number, chair: THREE.Object3D, face: number): void => {
+      actor.root.visible = true;
+      actor.at(0, z);
+      actor.seatedIn = chair;
+      actor.faceAngle = face;
+      actor.pose = 'sit';
+    };
+    sit(skanky, DIM_SUM.seat - 0.05, props.chairSkanky, Math.PI);
+    sit(vic, -DIM_SUM.seat + 0.05, props.chairVic, 0);
+    props.lazySusan.rotation.y = this.reducedMotion ? 0 : time * 0.25;
+    const index = cutscene.index;
+    // Vic eats between his lines and talks with his hands; Skanky sips his tea and listens.
+    const vicSpeaking = cutscene.scene.beats[index]?.speaker === 'vic';
+    vic.setPose(vicSpeaking ? (index === 5 ? 'shrug' : 'announce') : Math.sin(time * 2.2) > 0.2 ? 'sip' : 'sit', time);
+    skanky.setPose(cueProgress(cutscene, 'look') > 0 && index === 4 ? 'shrug' : index > 5 && Math.sin(time * 1.4) > 0.6 ? 'sip' : 'sit', time);
+    // Another stack of steamers comes from the cart to the table.
+    const more = ease(cueProgress(cutscene, 'more'));
+    props.moreSteamers.visible = more > 0;
+    props.moreSteamers.position.set(mix(5.6, 0.32, more), mix(0.9, DIM_SUM.tableTop + 0.03, more) + Math.sin(more * Math.PI) * 0.2, mix(0.4, 0.05, more));
+    const snap = index === 0 && cutscene.elapsedMs < 50;
+    // A wide shot of the table; Vic over Skanky's shoulder while he talks; Skanky's look; and back out at the end.
+    const leave = cueProgress(cutscene, 'leave');
+    if (vicSpeaking) this.cameraTo(new THREE.Vector3(0.55, 1.6, 2.0), new THREE.Vector3(0, 1.1, -0.85), this.frameDt, snap);
+    else if (index === 4) this.cameraTo(new THREE.Vector3(-0.5, 1.5, -1.9), new THREE.Vector3(0, 1.1, 0.85), this.frameDt, snap);
+    else this.cameraTo(new THREE.Vector3(2.6 + leave * 1.5, 2.3 + leave * 0.6, 2.4 + leave * 1.5), new THREE.Vector3(0, 0.9, 0), this.frameDt, snap);
   }
 
   /** The prologue at home: the decision, the walk out to the car, or the long night in. */

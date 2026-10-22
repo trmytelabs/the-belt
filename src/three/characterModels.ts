@@ -34,6 +34,8 @@ export interface CharacterModelEntry {
   clips?: 'male' | 'female';
   /** A walk other than the ordinary one (rocketboxCast.ts). */
   walk?: 'formal';
+  /** Grime on the clothes and grey hair (rocketboxCast.ts). */
+  wear?: { clothes?: number; greyHair?: boolean };
 }
 
 /**
@@ -41,9 +43,47 @@ export interface CharacterModelEntry {
  * crew are Rocketbox people, whose head material holds the face and whose
  * body material includes the clothes, so only the head reddens.
  */
-export const CHARACTER_MODELS: CharacterModelEntry[] = ROCKETBOX_CAST.map(({ file, names, source, walk }) => ({
-  names, url: `/models/characters/${file}.glb`, skinMaterial: /head/i, clips: /Female/.test(source) ? 'female' : 'male', walk,
+export const CHARACTER_MODELS: CharacterModelEntry[] = ROCKETBOX_CAST.map(({ file, names, source, walk, wear }) => ({
+  names, url: `/models/characters/${file}.glb`, skinMaterial: /head/i, clips: /Female/.test(source) ? 'female' : 'male', walk, wear,
 }));
+
+/** Each hair texture turned grey once, however many people wear it. */
+const greyed = new WeakMap<THREE.Texture, THREE.Texture>();
+/**
+ * `map` in greys, lifted toward white: a person's hair gone grey. The source image is redrawn on a canvas; a map
+ * that cannot be read (no image yet, or an image the canvas cannot draw) is returned as it is.
+ */
+function greyHair(map: THREE.Texture): THREE.Texture {
+  const known = greyed.get(map);
+  if (known) return known;
+  const image = map.image as CanvasImageSource & { width?: number; height?: number } | undefined;
+  const width = image?.width ?? 0, height = image?.height ?? 0;
+  if (!image || !width || !height || typeof document === 'undefined') return map;
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = width; canvas.height = height;
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    if (!context) return map;
+    context.drawImage(image, 0, 0);
+    const pixels = context.getImageData(0, 0, width, height);
+    const data = pixels.data;
+    for (let i = 0; i < data.length; i += 4) {
+      const light = 0.3 * data[i] + 0.59 * data[i + 1] + 0.11 * data[i + 2];
+      const grey = Math.min(255, 105 + light * 0.75);
+      data[i] = grey; data[i + 1] = grey; data[i + 2] = grey * 0.97;
+    }
+    context.putImageData(pixels, 0, 0);
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.flipY = map.flipY;
+    texture.colorSpace = map.colorSpace;
+    texture.wrapS = map.wrapS; texture.wrapT = map.wrapT;
+    texture.anisotropy = map.anisotropy;
+    greyed.set(map, texture);
+    return texture;
+  } catch {
+    return map;
+  }
+}
 
 const FIGURE_HEIGHT = 1.78;
 
@@ -311,7 +351,7 @@ function setFigureVisible(character: Character, visible: boolean): void {
  * procedural figure. Returns null, leaving the figure, if the skeleton lacks
  * the head, arms and legs.
  */
-export function attachModel(character: Character, source: THREE.Object3D, entry: Pick<CharacterModelEntry, 'rotationY' | 'height' | 'skinMaterial' | 'clips' | 'walk'>, figureSkin: number): ModelRig | null {
+export function attachModel(character: Character, source: THREE.Object3D, entry: Pick<CharacterModelEntry, 'rotationY' | 'height' | 'skinMaterial' | 'clips' | 'walk' | 'wear'>, figureSkin: number): ModelRig | null {
   const model = cloneSkinned(source);
   // The container follows the figure's body (bob, lean, lying down); the
   // inner turn faces the model along the figure's +Z.
@@ -390,6 +430,9 @@ export function attachModel(character: Character, source: THREE.Object3D, entry:
     const cloneMaterial = (material: THREE.Material): THREE.Material => {
       const copy = material.clone();
       const standard = copy as THREE.MeshStandardMaterial;
+      // Wear: grime over the clothes (the body material), grey through the hair cards (their cut-out material).
+      if (standard.isMeshStandardMaterial && entry.wear?.clothes !== undefined && /body/i.test(material.name)) standard.color.multiply(new THREE.Color(entry.wear.clothes));
+      if (standard.isMeshStandardMaterial && entry.wear?.greyHair && /opacity|hair/i.test(material.name) && standard.map) standard.map = greyHair(standard.map);
       if (standard.isMeshStandardMaterial && (entry.skinMaterial ?? /skin|body/i).test(material.name)) skin.push({ material: standard, base: standard.color.clone() });
       return copy;
     };
