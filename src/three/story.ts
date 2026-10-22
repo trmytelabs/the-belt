@@ -144,6 +144,12 @@ function specFor(id: string): CharacterSpec {
  * 1.52 m). A loaded model's contract places the seats instead.
  */
 const SEAT_Y = 0.06;
+/**
+ * Where Skanky's wrists go on the mall cart's handle bar (x -0.58, 1.15 m up, in the cart's frame, the deck
+ * toward +x): shoulder width apart, a little behind and above the bar so the palms close over it.
+ */
+const CART_GRIPS = [new THREE.Vector3(-0.64, 1.18, -0.19), new THREE.Vector3(-0.64, 1.18, 0.19)] as const;
+
 const PLAIN_SEATS: Record<SeatName, THREE.Vector3> = {
   // Left-hand drive, as on the detailed sedans: the driver on the car's left (−z; the nose is +x).
   driver: new THREE.Vector3(-0.3, SEAT_Y, -0.36), passenger: new THREE.Vector3(-0.3, SEAT_Y, 0.36),
@@ -2367,6 +2373,22 @@ export class StoryStage {
       }
     });
     for (const actor of actors.values()) if (actor.root.visible) actor.animate(dt, time, this.reducedMotion);
+    // Pushing, the hands hold the handle bar; the carry pose's fixed reach put them past it, over the deck.
+    if (model.cart.pushed && !model.carrying) {
+      skanky.root.updateMatrixWorld(true);
+      cart.updateMatrixWorld(true);
+      const [a, b] = CART_GRIPS.map((grip) => cart.localToWorld(grip.clone()));
+      const left = skanky.character.leftArm.getWorldPosition(new THREE.Vector3());
+      poseSeated(skanky.character, { hands: left.distanceTo(a) <= left.distanceTo(b) ? { left: a, right: b } : { left: b, right: a } });
+      // The hands close over the bar, bent forward and down at the wrist, rather than carrying on up the forearms' line.
+      const over = new THREE.Vector3(1, 0, 0).transformDirection(cart.matrixWorld).multiplyScalar(Math.cos(0.6)).add(new THREE.Vector3(0, -Math.sin(0.6), 0));
+      const c = skanky.character, frame = new THREE.Quaternion();
+      for (const [forearm, hand] of [[c.leftForearm, c.leftHand], [c.rightForearm, c.rightHand]] as const) {
+        // A hand hangs along its pivot's -y and bends toward -z about x.
+        const local = over.clone().applyQuaternion(forearm.getWorldQuaternion(frame).invert());
+        hand.rotation.set(Math.atan2(-local.z, -local.y), 0, 0);
+      }
+    }
     const target = skanky.root.position;
     // Kept inside the anchor wall at the concourse's east end.
     const cameraX = Math.min(target.x + 1.0, mallX(1260) - 0.4);
