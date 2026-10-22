@@ -3,23 +3,25 @@ import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferG
 import { SimplifyModifier } from 'three/examples/jsm/modifiers/SimplifyModifier.js';
 
 /**
- * The 28 traffic sedans on the road as three batched draws (the 3D depot
+ * The 28 traffic sedans on the road as four batched draws (the 3D depot
  * only). Each car used to be its own detailed model: a merged body, four
  * wheel pivots, a lit interior and a contract, ten or so draw calls apiece.
  * Traffic is only ever seen from the chase camera, so it is baked once per
- * sedan variant into three batches, one per material class:
+ * sedan variant into four batches, one per material class:
  *
  * - paint, tinted per instance, which also holds an 1,800-triangle shell each
  *   car switches to beyond `LOD_DISTANCE` (most of the way into the fog);
  * - trim: glass, black plastic and chrome by vertex colour, and the four
  *   wheels as their own instances so they roll;
- * - lights: unlit head and tail lamps, so they glow at night.
+ * - lights: unlit headlamps, so they glow at night;
+ * - tails: the unlit tail lamps, tinted per instance so they brighten while
+ *   the car brakes (at a red light, or queuing behind a car or the truck).
  *
  * The player's own car and the lot's cars keep their full models. Until the
  * sedans have downloaded, and on renderers without the batch, the road keeps
  * its procedural cars.
  */
-export interface TrafficPose { x: number; z: number; heading: number }
+export interface TrafficPose { x: number; z: number; heading: number; braking?: boolean }
 
 export type TrafficVariant = 'sedan' | 'sedan-wide';
 export const TRAFFIC_VARIANTS: TrafficVariant[] = ['sedan', 'sedan-wide'];
@@ -35,6 +37,12 @@ const SHELL_TRIANGLES = 1800;
 const FIT = { length: 4.2, height: 1.5, width: 1.8 };
 const TRIM_COLOURS: [RegExp, number][] = [[/windows/i, 0x1b2430], [/grey/i, 0x9aa0a4], [/black/i, 0x14161a]];
 const LIGHT_COLOURS: [RegExp, number][] = [[/headlights/i, 0xfff1cc], [/taillights/i, 0xff3a2a]];
+/**
+ * The tail lamps' tint over their red: dimmed while running, and braking several times brighter in the red alone
+ * (brightening all three channels washed the lamps out to peach once tone-mapped).
+ */
+export const TAIL_RUNNING = new THREE.Color(0.55, 0.45, 0.45);
+export const TAIL_BRAKING = new THREE.Color(1.7, 0.3, 0.3);
 
 /** One sedan variant baked into geometries in the car's frame: nose +x, y up, wheels on y 0. */
 export interface VehicleParts {
@@ -42,6 +50,7 @@ export interface VehicleParts {
   shell: THREE.BufferGeometry;
   trim: THREE.BufferGeometry;
   lights: THREE.BufferGeometry;
+  tails: THREE.BufferGeometry;
   /** Each wheel's geometry centred on its own axle, and where that centre sits in the car. */
   wheels: { geometry: THREE.BufferGeometry; centre: THREE.Vector3 }[];
   wheelRadius: number;
@@ -144,7 +153,7 @@ export function bakeVehicleParts(source: THREE.Object3D): VehicleParts {
   model.scale.set(FIT.width / size.z, FIT.height / size.y, FIT.length / size.x);
   model.position.y = -bounds.min.y * model.scale.y;
   model.updateMatrixWorld(true);
-  const paint: THREE.BufferGeometry[] = [], trim: THREE.BufferGeometry[] = [], lights: THREE.BufferGeometry[] = [];
+  const paint: THREE.BufferGeometry[] = [], trim: THREE.BufferGeometry[] = [], lights: THREE.BufferGeometry[] = [], tails: THREE.BufferGeometry[] = [];
   const wheels: VehicleParts['wheels'] = [];
   const radii: number[] = [];
   // A wheel is a node (the loader splits a multi-material wheel into a tyre mesh and a rim mesh under it).
@@ -154,7 +163,7 @@ export function bakeVehicleParts(source: THREE.Object3D): VehicleParts {
   const classify = (piece: { geometry: THREE.BufferGeometry; material: string }, into: { paint: boolean }): void => {
     const light = LIGHT_COLOURS.find(([pattern]) => pattern.test(piece.material));
     const dark = TRIM_COLOURS.find(([pattern]) => pattern.test(piece.material));
-    if (light) { colourAttribute(piece.geometry, light[1]); lights.push(piece.geometry); }
+    if (light) { colourAttribute(piece.geometry, light[1]); (light === LIGHT_COLOURS[1] ? tails : lights).push(piece.geometry); }
     else if (dark) { colourAttribute(piece.geometry, dark[1]); trim.push(piece.geometry); }
     else if (into.paint && /blue|red|paint|light/i.test(piece.material)) paint.push(piece.geometry);
     else { colourAttribute(piece.geometry, 0x5f666c); trim.push(piece.geometry); }
@@ -193,6 +202,7 @@ export function bakeVehicleParts(source: THREE.Object3D): VehicleParts {
     shell: shellOf([body, ...trim]),
     trim: merged(trim),
     lights: merged(lights),
+    tails: merged(tails),
     wheels,
     wheelRadius: radii.length ? radii.reduce((sum, r) => sum + r, 0) / radii.length : 0.33,
   };
@@ -203,13 +213,15 @@ interface Slot {
   body: number;
   trimBody: number;
   lights: number;
+  tails: number;
+  braking: boolean;
   wheels: number[];
   spin: number;
   last: THREE.Vector3 | null;
   far: boolean;
 }
 
-interface VariantIds { full: number; shell: number; trim: number; lights: number; wheels: number[] }
+interface VariantIds { full: number; shell: number; trim: number; lights: number; tails: number; wheels: number[] }
 
 const carMatrix = new THREE.Matrix4();
 const wheelMatrix = new THREE.Matrix4();
@@ -225,6 +237,7 @@ export class TrafficBatch {
   private paint: THREE.BatchedMesh | null = null;
   private trim: THREE.BatchedMesh | null = null;
   private lights: THREE.BatchedMesh | null = null;
+  private tails: THREE.BatchedMesh | null = null;
   private variants: { parts: VehicleParts; ids: VariantIds }[] = [];
   private readonly slots = new Map<string, Slot>();
   private disposed = false;
@@ -249,6 +262,7 @@ export class TrafficBatch {
     const paintGeometries = parts.flatMap((p) => [p.paint, p.shell]);
     const trimGeometries = parts.flatMap((p) => [p.trim, ...p.wheels.map((w) => w.geometry)]);
     const lightGeometries = parts.map((p) => p.lights);
+    const tailGeometries = parts.map((p) => p.tails);
     const n = this.capacity;
     const mostWheels = Math.max(0, ...parts.map((p) => p.wheels.length));
     this.paint = new THREE.BatchedMesh(n, count(paintGeometries, 'position'), count(paintGeometries, 'index'),
@@ -257,8 +271,10 @@ export class TrafficBatch {
       new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.5, metalness: 0.2 }));
     this.lights = new THREE.BatchedMesh(n, count(lightGeometries, 'position'), count(lightGeometries, 'index'),
       new THREE.MeshBasicMaterial({ vertexColors: true }));
-    for (const mesh of [this.paint, this.trim, this.lights]) {
-      mesh.name = 'traffic-batch-' + (mesh === this.paint ? 'paint' : mesh === this.trim ? 'trim' : 'lights');
+    this.tails = new THREE.BatchedMesh(n, count(tailGeometries, 'position'), count(tailGeometries, 'index'),
+      new THREE.MeshBasicMaterial({ vertexColors: true }));
+    for (const mesh of [this.paint, this.trim, this.lights, this.tails]) {
+      mesh.name = 'traffic-batch-' + (mesh === this.paint ? 'paint' : mesh === this.trim ? 'trim' : mesh === this.lights ? 'lights' : 'tails');
       mesh.userData.keep = true;
       mesh.sortObjects = false;
       mesh.frustumCulled = false;
@@ -268,7 +284,7 @@ export class TrafficBatch {
     this.trim.castShadow = true;
     this.variants = parts.map((p) => ({ parts: p, ids: {
       full: this.paint!.addGeometry(p.paint), shell: this.paint!.addGeometry(p.shell),
-      trim: this.trim!.addGeometry(p.trim), lights: this.lights!.addGeometry(p.lights),
+      trim: this.trim!.addGeometry(p.trim), lights: this.lights!.addGeometry(p.lights), tails: this.tails!.addGeometry(p.tails),
       wheels: p.wheels.map((w) => this.trim!.addGeometry(w.geometry)),
     } }));
   }
@@ -289,10 +305,12 @@ export class TrafficBatch {
       body: this.paint!.addInstance(ids.full),
       trimBody: this.trim!.addInstance(ids.trim),
       lights: this.lights!.addInstance(ids.lights),
+      tails: this.tails!.addInstance(ids.tails), braking: false,
       wheels: ids.wheels.map((wheel) => this.trim!.addInstance(wheel)),
       spin: 0, last: null, far: false,
     };
     this.paint!.setColorAt(slot.body, new THREE.Color(TRAFFIC_COLOURS[index % TRAFFIC_COLOURS.length]));
+    this.tails!.setColorAt(slot.tails, TAIL_RUNNING);
     this.slots.set(id, slot);
     return slot;
   }
@@ -302,7 +320,7 @@ export class TrafficBatch {
    * picks its level of detail from its distance to `camera`.
    */
   public place(id: string, index: number, pose: TrafficPose, camera: THREE.Object3D): void {
-    if (!this.paint || !this.trim || !this.lights) return;
+    if (!this.paint || !this.trim || !this.lights || !this.tails) return;
     const slot = this.slot(id, index), variant = this.variants[slot.variant];
     carMatrix.makeRotationY(pose.heading).setPosition(pose.x, 0, pose.z);
     position.set(pose.x, 0, pose.z);
@@ -322,6 +340,9 @@ export class TrafficBatch {
     this.paint.setMatrixAt(slot.body, carMatrix);
     this.trim.setMatrixAt(slot.trimBody, carMatrix);
     this.lights.setMatrixAt(slot.lights, carMatrix);
+    this.tails.setMatrixAt(slot.tails, carMatrix);
+    const braking = pose.braking === true;
+    if (braking !== slot.braking) { slot.braking = braking; this.tails.setColorAt(slot.tails, braking ? TAIL_BRAKING : TAIL_RUNNING); }
     if (!far) {
       spinMatrix.makeRotationAxis(AXLE, slot.spin);
       slot.wheels.forEach((instance, i) => {
@@ -333,19 +354,19 @@ export class TrafficBatch {
   }
 
   /** Which detail each car draws, for checks. */
-  public report(): { id: string; far: boolean; variant: number }[] {
-    return [...this.slots.entries()].map(([id, slot]) => ({ id, far: slot.far, variant: slot.variant }));
+  public report(): { id: string; far: boolean; variant: number; braking: boolean }[] {
+    return [...this.slots.entries()].map(([id, slot]) => ({ id, far: slot.far, variant: slot.variant, braking: slot.braking }));
   }
 
   public dispose(): void {
     this.disposed = true;
-    for (const mesh of [this.paint, this.trim, this.lights]) {
+    for (const mesh of [this.paint, this.trim, this.lights, this.tails]) {
       if (!mesh) continue;
       mesh.dispose();
       (mesh.material as THREE.Material).dispose();
     }
     for (const { parts } of this.variants) {
-      for (const geometry of [parts.paint, parts.shell, parts.trim, parts.lights, ...parts.wheels.map((w) => w.geometry)]) geometry.dispose();
+      for (const geometry of [parts.paint, parts.shell, parts.trim, parts.lights, parts.tails, ...parts.wheels.map((w) => w.geometry)]) geometry.dispose();
     }
     this.root.removeFromParent();
     this.slots.clear();

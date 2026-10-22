@@ -5,7 +5,11 @@ export type DriveDestination = 'mall' | 'ups';
 /** Where a drive begins: the other loading yard, or home for the 3D drive in to work. */
 export type DriveOrigin = 'depot' | 'home';
 export interface DriveInput { steer: number; throttle: number; brake: number }
-export interface RoadObstacle extends CityPoint { id: string; kind: 'car' | 'cone'; heading: number; speed: number; travel: number; route: number; hit: boolean }
+export interface RoadObstacle extends CityPoint {
+  id: string; kind: 'car' | 'cone'; heading: number; speed: number; travel: number; route: number; hit: boolean;
+  /** A car held back this step (at a light, or queuing behind a car or the truck): its brake lights are on. */
+  braking: boolean;
+}
 export type DriveEvent = { type: 'collision'; kind: 'car' | 'cone' | 'building'; points: number } | { type: 'red-light'; points: number } | { type: 'parked' };
 const clamp = (n: number, a: number, b: number): number => Math.max(a, Math.min(b, n));
 export const DRIVING = {
@@ -52,6 +56,8 @@ function penetration(a: Box, b: Box): CityPoint | null {
 /** Traffic keeps CAR_GAP metres between centres behind a car within CAR_LANE of its line and 9 m ahead;
  * TRUCK_GAP behind the truck (6 m long, 2.4 m wide) within TRUCK_LANE and TRUCK_REACH. */
 const CAR_LANE = 2.2, CAR_GAP = 7, TRUCK_LANE = 2.6, TRUCK_REACH = 11, TRUCK_GAP = 6;
+/** A car held to under this share of its cruising step is braking. */
+const BRAKING_SHARE = 0.7;
 
 /** How far `other` is ahead along `pose`'s heading when it is in the lane in front (within `lane` of the line), else null. */
 function inLane(pose: Pick<CityPose, 'x' | 'z' | 'tx' | 'tz'>, other: CityPoint, lane: number, reach = 9): number | null {
@@ -91,11 +97,11 @@ export class DrivingModel {
     const spawn = origin === 'home' ? HOME_SPAWN : SPAWNS[destination]; this.x = spawn.x; this.z = spawn.z; this.heading = spawn.heading;
     this.obstacles = [
       ...[30, 36, 42, 48, 54, 60].map((x, i): RoadObstacle => ({ id: `cone-${i}`, kind: 'cone', x, z: -45.7,
-        heading: 0, speed: 0, travel: 0, route: 0, hit: false })),
+        heading: 0, speed: 0, travel: 0, route: 0, hit: false, braking: false })),
       ...Array.from({ length: 28 }, (_, i): RoadObstacle => {
         const route = i % 3, speed = (i % 2 ? -1 : 1) * (7 + i % 3), travel = 42 + i * 47;
         const pose = trafficPose(route, travel, speed < 0);
-        return { id: `car-${i}`, kind: 'car', ...pose, speed, travel, route, hit: false };
+        return { id: `car-${i}`, kind: 'car', ...pose, speed, travel, route, hit: false, braking: false };
       }),
     ];
   }
@@ -207,6 +213,7 @@ export class DrivingModel {
         // Traffic queues behind the truck rather than driving through it.
         const truck = inLane(old, this, TRUCK_LANE, TRUCK_REACH);
         if (truck !== null) move = Math.min(move, Math.max(0, truck - TRUCK_GAP));
+        obstacle.braking = move < Math.abs(obstacle.speed) * dt * BRAKING_SHARE;
         obstacle.travel += Math.sign(obstacle.speed) * move;
         Object.assign(obstacle, trafficPose(obstacle.route, obstacle.travel, obstacle.speed < 0));
       }

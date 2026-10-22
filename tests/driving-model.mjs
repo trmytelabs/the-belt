@@ -188,6 +188,24 @@ test('traffic never stops inside another car, queues behind the truck and keeps 
   }
 });
 
+test('traffic brakes exactly while it is held back, at lights and in queues', () => {
+  const m = new DrivingModel('mall');
+  const coast = { steer: 0, throttle: 0, brake: 0 };
+  const cars = m.obstacles.filter((o) => o.kind === 'car');
+  let held = 0, free = 0;
+  for (let step = 0; step < 60 * 90; step++) {
+    const before = cars.map((car) => car.travel);
+    m.update(1 / 60, coast);
+    cars.forEach((car, i) => {
+      const moved = Math.abs(car.travel - before[i]), full = Math.abs(car.speed) / 60;
+      if (moved < 1e-9) { held++; assert.equal(car.braking, true, `${car.id} stopped without brake lights`); }
+      else if (moved > full * 0.99) { free++; assert.equal(car.braking, false, `${car.id} cruising with brake lights on`); }
+    });
+  }
+  assert.ok(held > 500 && free > 50000, `both seen: ${held} held, ${free} cruising samples`);
+  assert.ok(m.obstacles.filter((o) => o.kind === 'cone').every((cone) => cone.braking === false), 'cones never brake');
+});
+
 test('both loading bays are beyond the public road, inside separate paved yards', () => {
   for (const destination of ['mall', 'ups']) {
     const m = new DrivingModel(destination), terminal = TERMINALS[destination];

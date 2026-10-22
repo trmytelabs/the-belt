@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { LOD_DISTANCE, TRAFFIC_COLOURS, TrafficBatch, bakeVehicleParts } from '../src/three/trafficBatch.ts';
+import { LOD_DISTANCE, TAIL_BRAKING, TAIL_RUNNING, TRAFFIC_COLOURS, TrafficBatch, bakeVehicleParts } from '../src/three/trafficBatch.ts';
 import { WINDOW, createCityWindows, layoutWindows, mulberry } from '../src/three/cityWindows.ts';
 import { CITY_BUILDINGS } from '../src/three/drivingCity.ts';
 
@@ -34,9 +34,10 @@ function sedanScene(longer = 0) {
   return scene;
 }
 
-test('a sedan bakes into paint, trim, lights, four wheels and a shell, fitted to the full models\' box', () => {
+test('a sedan bakes into paint, trim, head and tail lamps, four wheels and a shell, fitted to the full models\' box', () => {
   const parts = bakeVehicleParts(sedanScene());
   assert.ok(parts.paint.attributes.position.count > 0 && parts.trim.attributes.position.count > 0 && parts.lights.attributes.position.count > 0);
+  assert.ok(parts.tails.attributes.position.count > 0 && parts.tails.attributes.color, 'the tail lamps bake apart, so they can brighten for braking');
   assert.equal(parts.wheels.length, 4, 'four wheels, the rear pair split from one node');
   assert.ok(parts.trim.attributes.color && parts.lights.attributes.color, 'trim and lights carry vertex colours');
   assert.ok(!parts.paint.attributes.color, 'paint takes the instance colour');
@@ -56,11 +57,30 @@ test('a sedan bakes into paint, trim, lights, four wheels and a shell, fitted to
   assert.ok(shellTriangles <= 700, `the shell is small: ${shellTriangles} triangles`);
 });
 
+test('a braking car brightens its tail lamps and lets them dim again', () => {
+  const batch = new TrafficBatch(4, async () => []);
+  batch.build([bakeVehicleParts(sedanScene())]);
+  const tails = batch.root.children.find((c) => c.name === 'traffic-batch-tails');
+  const camera = new THREE.Object3D();
+  const colour = new THREE.Color();
+  // The batch keeps colours as 32-bit floats.
+  const near = (a, b) => Math.abs(a.r - b.r) + Math.abs(a.g - b.g) + Math.abs(a.b - b.b) < 1e-5;
+  batch.place('car-0', 0, { x: 0, z: 0, heading: 0 }, camera);
+  tails.getColorAt(0, colour);
+  assert.ok(near(colour, TAIL_RUNNING) && batch.report()[0].braking === false, 'running lamps while it drives');
+  batch.place('car-0', 0, { x: 0, z: 0, heading: 0, braking: true }, camera);
+  tails.getColorAt(0, colour);
+  assert.ok(near(colour, TAIL_BRAKING) && colour.r > 2 * colour.g && batch.report()[0].braking, 'brighter while it brakes');
+  batch.place('car-0', 0, { x: 1, z: 0, heading: 0, braking: false }, camera);
+  tails.getColorAt(0, colour);
+  assert.ok(near(colour, TAIL_RUNNING), 'dim again when it drives on');
+});
+
 test('the batch places cars, rolls their wheels and switches detail with distance', () => {
   const batch = new TrafficBatch(6, async () => []);
   batch.build([bakeVehicleParts(sedanScene()), bakeVehicleParts(sedanScene(0.3))]);
   assert.ok(batch.built);
-  assert.equal(batch.root.children.length, 3, 'paint, trim and lights batches');
+  assert.equal(batch.root.children.length, 4, 'paint, trim, headlamp and tail-lamp batches');
   const camera = new THREE.Object3D();
   camera.position.set(0, 4.5, 9);
   const paint = batch.root.children.find((c) => c.name === 'traffic-batch-paint');
