@@ -571,7 +571,7 @@ function advanceClips(character: Character, rig: ModelRig, clips: ClipRig): void
       : talking ? 'talking' : IDLE_ROLES[Math.floor(clips.phase * IDLE_ROLES.length)];
     const still = seatedPlain || !motion.moving;
     if (clips.fidget && (now >= clips.fidget.until || !still || talking)) { clips.fidget = null; clips.fidgetAt = now + FIDGET_EVERY * (0.7 + clips.phase * 0.6); }
-    if (!clips.fidget && still && !talking && now >= clips.fidgetAt) {
+    if (!clips.fidget && still && !talking && motion.fidgets !== false && now >= clips.fidgetAt) {
       const options = (seatedPlain ? SEATED_FIDGETS : STANDING_FIDGETS).filter(has);
       if (options.length) {
         const pick = options[Math.floor(((now * 7.31 + clips.phase * 13) % 1 + 1) % 1 * options.length) % options.length];

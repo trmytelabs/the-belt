@@ -31,6 +31,9 @@ export class MesaEncounter {
   private timerMs = 0;
   private timerAction: (() => void) | null = null;
   private vicMs = 0;
+  /** Where Vic runs from and to, in the depot's units: up the west lane to the player's worker. */
+  private vicFrom = 40;
+  private vicTo = 278;
   private readonly overlay: Overlay;
   private readonly crew: CrewLife;
   private readonly callbacks: MesaCallbacks;
@@ -43,6 +46,11 @@ export class MesaEncounter {
 
   public get active(): boolean {
     return this.stage !== 'idle' && this.stage !== 'done';
+  }
+
+  /** The Mesa Vic is offering to take, while he makes the offer; null otherwise. */
+  public get offered(): Parcel | null {
+    return this.stage === 'approach' || this.stage === 'choice' ? this.parcel : null;
   }
 
   public reset(): void {
@@ -65,6 +73,10 @@ export class MesaEncounter {
     this.model = model;
     this.stage = 'approach';
     this.vicMs = 0;
+    // Vic stops level with the worker the player is controlling, so he makes his offer on screen
+    // (a fixed spot by the head of the belt often left him a speck at the top of the view).
+    this.vicTo = Math.max(90, Math.min(600, model.activeWorker.y - 30));
+    this.vicFrom = Math.max(40, this.vicTo - 240);
     model.paused = true;
     this.crew.staged.add('vic');
     const vic = this.crew.actor('vic');
@@ -96,7 +108,7 @@ export class MesaEncounter {
       this.vicMs += dtMs;
       const vic = this.crew.actor('vic');
       const run = Math.min(1, this.vicMs / 1100);
-      vic.place(401, mix(40, 278, 1 - (1 - run) * (1 - run)));
+      vic.place(401, mix(this.vicFrom, this.vicTo, 1 - (1 - run) * (1 - run)));
       vic.faceAngle = this.vicMs >= 1100 ? Math.PI / 2 : null;
       vic.pose = this.stage === 'choice' ? 'announce' : 'none';
       this.crew.animateActors(dtMs / 1000, wallTime, new Set(['vic']));
@@ -119,7 +131,7 @@ export class MesaEncounter {
       <p>${MESA.body.replace(/\n/g, '<br>')}</p>
       <p style="color:#8da7ac;font-size:12px;letter-spacing:1px">Y / N  ·  OR TAP A CHOICE</p>
       <div class="b3d-choices"><button type="button" class="steal" data-action="steal">STEAL IT</button><button type="button" class="leave" data-action="leave">LEAVE IT</button></div>`,
-    { steal: () => this.steal(), leave: () => this.leave() });
+    { steal: () => this.steal(), leave: () => this.leave() }, { docked: true });
   }
 
   private endOffer(): void {

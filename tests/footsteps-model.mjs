@@ -97,6 +97,7 @@ test('a voice in earshot wins over a passing worker, which wins over nothing; fa
   // Someone passing beside (90 degrees off the facing) is not looked at: the head would swing to its limit and back.
   assert.ok(LOOK_CONE > Math.PI / 4 && LOOK_CONE < Math.PI / 2);
   assert.deepEqual(lookTargetFor(self, 5, [], [worker(2, 0)]), null, 'a worker straight to one side');
+  assert.deepEqual(lookTargetFor(self, 5, [voice('shan', 2, 0.2)], []), voice('shan', 2, 0.2), 'a voice straight to one side still turns the head');
 });
 
 test("a gaze in the figure's frame turns the head the right way, up to another head and down to a parcel", () => {

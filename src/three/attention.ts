@@ -19,10 +19,12 @@ export const VOICE_RANGE = 9;
 /** How close a passing worker must come to be looked at, in metres. */
 export const PASSING_RANGE = 2.2;
 /**
- * Beyond this angle off the facing (radians, about 63 degrees) a target would need the body to turn,
+ * Beyond this angle off the facing (radians, about 63 degrees) a passing worker would need the body to turn,
  * so the head stays put. At 1.75 heads swung to their limit and back whenever someone passed beside.
  */
 export const LOOK_CONE = 1.1;
+/** A voice draws the eye from wider (about 100 degrees): someone speaking beside you is worth the turn. */
+export const VOICE_CONE = 1.75;
 /** How far the head turns either way (radians, about 40 degrees). */
 export const HEAD_TURN = 0.7;
 /** How quickly the head eases toward its target, per second: about a third of a second to get most of the way. */
@@ -32,8 +34,8 @@ const TOO_CLOSE = 0.3;
 
 /**
  * Chooses what a standing character looks at: the nearest person speaking within
- * `voiceRange` (never itself), else the nearest of `others` within `otherRange`,
- * else nothing. Targets outside the look cone are ignored.
+ * `voiceRange` (never itself) within `VOICE_CONE`, else the nearest of `others` within `otherRange`
+ * and `LOOK_CONE`, else nothing.
  */
 export function lookTargetFor(
   self: { id: string; x: number; z: number; facing: number },
@@ -42,19 +44,19 @@ export function lookTargetFor(
   others: readonly Gaze[] = [],
   ranges: { voice?: number; other?: number } = {},
 ): Gaze | null {
-  const nearest = (list: readonly Gaze[], range: number): Gaze | null => {
+  const nearest = (list: readonly Gaze[], range: number, cone: number): Gaze | null => {
     let best: Gaze | null = null;
     let bestDistance = range;
     for (const gaze of list) {
       const distance = Math.hypot(gaze.x - self.x, gaze.z - self.z);
-      if (distance >= bestDistance || distance < TOO_CLOSE || Math.abs(bearingOf(self, gaze)) > LOOK_CONE) continue;
+      if (distance >= bestDistance || distance < TOO_CLOSE || Math.abs(bearingOf(self, gaze)) > cone) continue;
       best = gaze;
       bestDistance = distance;
     }
     return best;
   };
   const voices = speakers.filter((speaker) => speaker.id !== self.id && speaker.until > now);
-  return nearest(voices, ranges.voice ?? VOICE_RANGE) ?? nearest(others, ranges.other ?? PASSING_RANGE);
+  return nearest(voices, ranges.voice ?? VOICE_RANGE, VOICE_CONE) ?? nearest(others, ranges.other ?? PASSING_RANGE, LOOK_CONE);
 }
 
 /** The target's bearing off the facing (radians, left negative) for a figure that faces +z at yaw 0. */

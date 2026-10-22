@@ -92,6 +92,11 @@ export interface CharacterMotion {
   hands: boolean;
   /** Saying a line right now, so a model standing still gestures as it talks. */
   speaking?: boolean;
+  /**
+   * False for the player's own workers: a stretch or a head scratch while the player holds them still
+   * reads as the controls misbehaving. The crew fidget as before.
+   */
+  fidgets?: boolean;
   /** A turn on the spot in progress: when it began, how far it turns (radians, positive to the left) and from which facing. */
   turn: { start: number; angle: number; from: number } | null;
 }

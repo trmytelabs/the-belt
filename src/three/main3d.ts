@@ -171,6 +171,8 @@ export class Belt3d {
   private readonly throwStarts = new Map<number, THREE.Vector3>();
   private readonly seenRoutes = new Set<Route>();
   private readonly activeRing: THREE.Mesh;
+  private readonly mesaRing: THREE.Mesh;
+  private readonly mesaTag: THREE.Sprite;
   private readonly sleepTag: THREE.Sprite;
   private readonly marker: THREE.Mesh;
   private readonly pickupHalo: THREE.Mesh;
@@ -362,6 +364,14 @@ export class Belt3d {
     }));
     this.deliveryHalo.name = 'delivery-highlight'; this.deliveryHalo.rotation.x = -Math.PI / 2;
     this.deliveryHalo.renderOrder = 8; this.deliveryHalo.visible = false; this.world.scene.add(this.deliveryHalo);
+    // The Mesa Vic wants: a warm ring under it and its name above it while he makes the offer.
+    this.mesaRing = new THREE.Mesh(new THREE.RingGeometry(0.62, 0.8, 40), new THREE.MeshBasicMaterial({
+      color: 0xff9f43, transparent: true, opacity: 0.95, depthTest: false, depthWrite: false, side: THREE.DoubleSide,
+    }));
+    this.mesaRing.name = 'mesa-highlight'; this.mesaRing.rotation.x = -Math.PI / 2;
+    this.mesaRing.renderOrder = 8; this.mesaRing.visible = false; this.world.scene.add(this.mesaRing);
+    this.mesaTag = textSprite(['MESA BOOGIE'], 0.26, { width: 220, height: 40, color: '#1a1206', background: '#ffb15c' });
+    this.mesaTag.name = 'mesa-tag'; this.mesaTag.renderOrder = 9; this.mesaTag.visible = false; this.world.scene.add(this.mesaTag);
     this.bindInput();
     this.resize();
     window.addEventListener('resize', () => this.resize(), { signal: this.inputAbort.signal });
@@ -1674,6 +1684,7 @@ export class Belt3d {
       plantFeet(character, surfaceUnder);
       // Saying a line, a worker standing still talks with their hands.
       if (character.motion) character.motion.speaking = this.crew.isSpeaking(worker.id);
+      if (character.motion) character.motion.fidgets = false;
       // Eyes on the work: the parcel about to be grabbed, or the drop the held one is bound for.
       const focus = this.state === 'playing' ? held ? m.deliveryPoint(held, worker) : m.nearestPackage(worker) : null;
       if (focus) {
@@ -1715,6 +1726,14 @@ export class Belt3d {
       this.pickupHalo.scale.setScalar(Math.max(0.8, view.width, view.depth) + 0.2);
       // Above the address tag, never over it: the tag stands taller than the parcel on tall freight.
       this.pickupPrompt.position.copy(view.root.position).y += Math.max(view.height + 1.75, view.tag.position.y + view.tag.scale.y + 0.55);
+    }
+    const offered = this.mesa.offered, mesaView = offered ? this.parcels.get(offered.id) : undefined;
+    this.mesaRing.visible = this.mesaTag.visible = mesaView !== undefined;
+    if (mesaView) {
+      const pulse = 1 + Math.sin(this.time * 6) * 0.08;
+      this.mesaRing.position.copy(mesaView.root.position).y += 0.04;
+      this.mesaRing.scale.setScalar((Math.max(0.8, mesaView.width, mesaView.depth) + 0.3) * pulse);
+      this.mesaTag.position.copy(mesaView.root.position).y += mesaView.height + 1.2;
     }
     const held = m.heldPackage;
     this.deliveryHalo.visible = this.state === 'playing' && held !== null;
@@ -1967,6 +1986,16 @@ export class Belt3d {
     this.updateCamera(1, true);
   }
 
+  /** During Vic's offer, the point between the worker and the Mesa (a little toward the screen's top), and how far apart they are. */
+  private mesaShot(): { look: THREE.Vector3; span: number } | null {
+    const offered = this.mesa.offered, view = offered ? this.parcels.get(offered.id) : undefined;
+    if (!view) return null;
+    const worker = this.workers[this.model.activeWorker.id].root.position, mesa = view.root.position;
+    // The docked panel covers the foot of the screen, so the pair sits a little above the middle.
+    const look = new THREE.Vector3((worker.x + mesa.x) / 2, 0.6, (worker.z + mesa.z) / 2 + 2.6);
+    return { look, span: Math.hypot(worker.x - mesa.x, worker.z - mesa.z) };
+  }
+
   private updateCamera(dt: number, snap = false): void {
     const portrait = this.camera.aspect < 1;
     let position: THREE.Vector3;
@@ -1978,6 +2007,11 @@ export class Belt3d {
       // stands between the camera and the gunman, Ben, the gate and the demon.
       look = new THREE.Vector3(toWorldX(90), 1.0, toWorldZ(SHIFT_LAYOUT.eventBays.ben.y));
       position = look.clone().add(portrait ? new THREE.Vector3(1.2, 11, 8) : new THREE.Vector3(1.4, 6.2, 7.2));
+    } else if (state === 'mesa' && this.mesaShot()) {
+      // Vic's offer: pull back over the worker and the Mesa on the belt so both are in view above the docked choice.
+      const shot = this.mesaShot()!;
+      look = shot.look;
+      position = look.clone().add(portrait ? new THREE.Vector3(0, 14 + shot.span * 0.8, 8 + shot.span * 0.5) : new THREE.Vector3(0, 9 + shot.span * 0.55, 8.5 + shot.span * 0.35));
     } else if (state === 'story' && this.depotShot) {
       look = this.depotShot.look;
       position = this.depotShot.position.clone();
