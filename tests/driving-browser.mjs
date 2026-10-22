@@ -121,7 +121,11 @@ try {
       if (view.blockers.some(box => box.containsPoint(view.camera.position))) window.cameraFrames.inside += 1;
     };
     app.draw = () => {
+      // A software renderer spaces its draws out: most calls return without drawing, and reading back then finds the
+      // frame already shown and cleared, which counted as black (the check failed on CI with 54 such calls of 80).
+      const before = app.lastRender;
       draw();
+      if (app.lastRender === before) return;
       window.cameraFrames.draws += 1;
       const { width, height } = app.renderer.domElement; let lit = 0;
       for (let i = 1; i < 6; i++) for (let j = 1; j < 6; j++) { gl.readPixels(Math.floor(width * i / 6), Math.floor(height * j / 6), 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); if (px[0] + px[1] + px[2] > 12) lit += 1; }
