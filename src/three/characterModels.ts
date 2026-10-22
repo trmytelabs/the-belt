@@ -531,7 +531,12 @@ function advanceClips(character: Character, rig: ModelRig, clips: ClipRig): void
   clips.time = now;
   const position = character.root.position;
   if (dt > 0) {
-    if (clips.last) clips.speed += (Math.hypot(position.x - clips.last.x, position.z - clips.last.z) / dt - clips.speed) * Math.min(1, dt * 8);
+    if (clips.last) {
+      // Speeding up shows at once, slowing down eases. Setting off at a walking pace otherwise played the slow walk for
+      // the first steps, its feet sliding under a body already moving at 2 m/s. A jump of over 12 m/s is a reset, not travel.
+      const raw = Math.hypot(position.x - clips.last.x, position.z - clips.last.z) / dt;
+      if (raw < 12) clips.speed += (raw - clips.speed) * Math.min(1, dt * (raw > clips.speed ? 30 : 8));
+    }
     clips.last = (clips.last ?? new THREE.Vector3()).copy(position);
   }
   // A lift or put-down starts the crouch clips on their own clock: down for the first half, back up for
