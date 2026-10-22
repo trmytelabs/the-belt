@@ -2183,13 +2183,18 @@ export class StoryStage {
           skanky.setPose('sit', time);
         } else {
           skanky.seatedIn = null;
-          // Round the car's nose to the driver's door, on its left (world +x: the car faces +z here).
-          const path = alongPath([[-0.4, -0.55], [-0.5, 1.8], [3.6, 1.6], [5.0, 1.4], [6.6, 2.0], [9.2, 3.3], [10.0, 2.6], [10.0, 0.6]], out);
-          stand(skanky, out > 0 ? path.x : mix(0.45, -0.4, up), out > 0 ? path.z : -0.55, out <= 0 ? -Math.PI / 2 : out >= 1 ? Math.PI / 2 : null);
+          // Round the car's nose to the driver's door, on its left (world +x: the car faces +z here). The car's
+          // body spans x 8.3 to 10.1 and reaches z 2.7; both of them wait at their doors clear of its sides.
+          const path = alongPath([[-0.4, -0.55], [-0.5, 1.8], [3.6, 1.6], [5.0, 1.4], [6.6, 2.0], [9.2, 3.4], [10.55, 2.8], [10.55, 0.4]], out);
+          // Standing, the hips come forward off the seat to stand clear of the couch's front (x 0.15) as the
+          // model's seated clip fades to standing (a quarter second, the first 3% of the eased 2.4 s cue); stood
+          // up where his hips had been, his legs were inside the couch.
+          const off = up < 0.03 ? mix(0.45, -0.05, up / 0.03) : mix(-0.05, -0.4, (up - 0.03) / 0.97);
+          stand(skanky, out > 0 ? path.x : off, out > 0 ? path.z : -0.55, out <= 0 ? -Math.PI / 2 : out >= 1 ? Math.PI / 2 : null);
           skanky.setPose(cueProgress(cutscene, 'keys') > 0 ? 'keys' : 'none', time);
         }
         if (up <= 0) gaming = new Set(['skanky']);
-        const path = alongPath([[2.6, 1.4], [4.4, 1.4], [5.0, 1.4], [6.6, 1.4], [8.4, 1.4], [8.45, 0.6]], Math.max(0, (out - 0.1) / 0.9));
+        const path = alongPath([[2.6, 1.4], [4.4, 1.4], [5.0, 1.4], [6.6, 1.4], [7.85, 1.4], [7.85, 0.4]], Math.max(0, (out - 0.1) / 0.9));
         stand(termite, path.x, path.z, out <= 0 || out >= 1 ? -Math.PI / 2 : null);
         termite.setPose('none', time);
       }
