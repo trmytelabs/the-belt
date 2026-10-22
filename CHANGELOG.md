@@ -2,6 +2,11 @@
 
 ## 0.1.0 — development snapshot
 
+- Settle the 3D chase camera's escape from walls. Hemmed in, it rises over
+  the truck no steeper than about 45 degrees, so the road and lights ahead stay
+  in view, and if no height is clear it holds its 3.5 m; it never drops onto
+  the roof. CI's software run had seen one near-black frame after the first
+  fix, which could come nearer or look steeply down at the dark road.
 - Keep Ben's big moment out of the 3D endless shift: it is a story scene, and
   the endless shift has none, but it held the belt 68 seconds into every run.
 - Make the 3D panels named dialogs (by their heading), the toasts a polite
