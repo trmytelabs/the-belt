@@ -152,6 +152,13 @@ export const FIDGET_EVERY = 11;
 const FIDGET_MAX = 6;
 /** A turn beyond this many radians (about 135°) steps round on the 180° clip. */
 const TURN_SPLIT = 2.35;
+/**
+ * Someone moving faster than RUN_FROM metres a second runs, and keeps running until below RUN_UNTIL. The crew
+ * amble at 2 to 2.7 m/s: with the line at 2.4 most of them ran, and those near it flicked between the walk and
+ * the run every few steps, their arms jerking with each cross-fade.
+ */
+const RUN_FROM = 3.4;
+const RUN_UNTIL = 2.9;
 // Two long, lively standing idles; Rocketbox's "breathe" clips are nearly still and read as a statue.
 const IDLE_ROLES: ClipRole[] = ['idle', 'idleAlt'];
 const LOOPING = new Set([...ROCKETBOX_CLIPS, ...UAL_CLIPS].filter((source) => source.loop).map((source) => source.role));
@@ -560,7 +567,7 @@ function advanceClips(character: Character, rig: ModelRig, clips: ClipRig): void
     const formal = rig.walk === 'formal' && has('walkFormal');
     const talking = !seatedPlain && !motion.moving && motion.speaking === true && has('talking');
     const idle = seatedPlain ? SEATED_IDLES[Math.floor(clips.phase * SEATED_IDLES.length)]
-      : motion.moving ? (clips.speed > 2.4 ? 'run' : formal ? 'walkFormal' : clips.speed < 0.9 ? 'walkSlow' : 'walk')
+      : motion.moving ? (clips.speed > (clips.role === 'run' ? RUN_UNTIL : RUN_FROM) ? 'run' : formal ? 'walkFormal' : clips.speed < 0.9 ? 'walkSlow' : 'walk')
       : talking ? 'talking' : IDLE_ROLES[Math.floor(clips.phase * IDLE_ROLES.length)];
     const still = seatedPlain || !motion.moving;
     if (clips.fidget && (now >= clips.fidget.until || !still || talking)) { clips.fidget = null; clips.fidgetAt = now + FIDGET_EVERY * (0.7 + clips.phase * 0.6); }
