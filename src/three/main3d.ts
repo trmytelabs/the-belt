@@ -46,6 +46,8 @@ import { StoryStage, directDepot } from './story';
 import { breakScene3d } from './breakScenes3d';
 import { DRIVE_PAR, DrivingModel, driveClock, parBonus, type DriveDestination, type DriveOrigin } from './DrivingModel';
 import { GhostRecorder, ghostPose, keepFaster, loadGhosts, saveGhosts, type GhostDrive } from './ghostDrive';
+import { COFFEE_RUN, CoffeeRunModel, type CoffeeRunEvent } from './coffeeRun';
+import { CoffeeRunScene } from './coffeeRunView';
 import { DECISION, HOME_DECISION, LEAVE_HOUSE, QUIT_ENDING, QUIT_NIGHT, type HomeBeat } from './homeScript';
 import { DrivingView } from './driving';
 import { BELT_SOLID_WIDTH, HEAD_DRIVE, clearReceiving } from './receivingCollision';
@@ -62,8 +64,8 @@ import {
 } from './space';
 import { DepotWorld, SKANKY_SPEC, TERMITE_SPEC } from './world';
 
-type AppState = 'briefing' | 'story' | 'decision' | 'countdown' | 'playing' | 'break-alert' | 'interlude' | 'mesa' | 'dream' | 'paused' | 'celebrating' | 'driving' | 'mall' | 'lot' | 'ended';
-type Resumable = 'playing' | 'break-alert' | 'interlude' | 'story' | 'driving' | 'mall' | 'lot';
+type AppState = 'briefing' | 'story' | 'decision' | 'countdown' | 'playing' | 'break-alert' | 'interlude' | 'mesa' | 'dream' | 'paused' | 'celebrating' | 'driving' | 'mall' | 'lot' | 'ended' | 'coffee' | 'coffee-done';
+type Resumable = 'playing' | 'break-alert' | 'interlude' | 'story' | 'driving' | 'mall' | 'lot' | 'coffee';
 
 const PHASE_LABELS: Record<string, string> = {
   lesson: '01  /  FIND YOUR RHYTHM', flow: '02  /  KEEP IT MOVING', rush: '03  /  LAST DISPATCH',
@@ -219,6 +221,13 @@ export class Belt3d {
   /** The fastest earlier drive to this yard, raced as a ghost, and this drive's own recording (`ghostDrive.ts`); none in the car. */
   private ghost: GhostDrive | null = null;
   private ghostRecorder: GhostRecorder | null = null;
+  /** The Timmies run (`coffeeRun.ts`): the lunch mini-game on the drive back from Tim Hortons, and its scene (made once). */
+  private coffee: CoffeeRunModel | null = null;
+  private coffeeScene: CoffeeRunScene | null = null;
+  /** Tonight's Timmies run once played: the coffees that made it and what they paid the shift. */
+  public coffeeResult: { cups: number; points: number } | null = null;
+  /** `?minigame=coffee`: the Timmies run on its own, from its own briefing. */
+  private readonly practiceCoffee = new URLSearchParams(window.location.search).get('minigame') === 'coffee';
   private breakAlertMs = 0;
   /**
    * JUST PLAY on the briefing: tonight runs without its story scenes. Each scene is passed over as a skip would pass
@@ -259,6 +268,8 @@ export class Belt3d {
     this.overlay = new Overlay(host);
     void audioSystem.preloadFoley();
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    // The Timmies run cuts the roof off Skanky's car with a clipping plane on its materials.
+    this.renderer.localClippingEnabled = true;
     const gl = this.renderer.getContext();
     const debug = gl.getExtension('WEBGL_debug_renderer_info');
     const rendererName = debug ? String(gl.getParameter(debug.UNMASKED_RENDERER_WEBGL)) : '';
@@ -489,7 +500,7 @@ export class Belt3d {
   }
 
   private canPause(): boolean {
-    return this.state === 'playing' || this.state === 'break-alert' || this.state === 'interlude' || this.state === 'story' || this.state === 'driving' || this.state === 'mall' || this.state === 'lot';
+    return this.state === 'playing' || this.state === 'break-alert' || this.state === 'interlude' || this.state === 'story' || this.state === 'driving' || this.state === 'mall' || this.state === 'lot' || this.state === 'coffee';
   }
 
   /** The primary action: grab/deliver on the belt, next line in a story, interact in the mall or lot. */
@@ -521,8 +532,9 @@ export class Belt3d {
         return;
       }
       if (event.code === 'Enter') {
-        if (['briefing', 'story', 'ended', 'paused'].includes(this.state)) event.preventDefault();
+        if (['briefing', 'story', 'ended', 'paused', 'coffee-done'].includes(this.state)) event.preventDefault();
         if (this.state === 'briefing') this.startNight();
+        else if (this.state === 'coffee-done') this.afterCoffee();
         else if (this.state === 'story') this.cutscene?.skip();
         else if (this.state === 'ended') {
           if (this.practiceDestination) this.beginDriving(this.practiceDestination);
@@ -604,6 +616,14 @@ export class Belt3d {
         <button type="button">START DRIVE  ↵</button><a href="${window.location.pathname}?mode=3d">PLAY THE FULL NIGHT</a>`, () => this.startNight());
       return;
     }
+    if (this.practiceCoffee) {
+      this.overlay.setMode('shift');
+      this.overlay.showPanel(`<div class="kicker">TERMITE &amp; SKANKY  /  THE LUNCH MINI-GAME</div><h1>THE TIMMIES RUN.</h1>
+        <p>Lunch at Tim Hortons is over. Termite drives everyone back to the depot, with Brian and Doris in the back, and Skanky rides up front holding two trays of coffees: thirty seconds, eight coffees.</p>
+        <p>${this.touch.enabled ? 'The stick tilts the trays.' : 'WASD or the arrows tilt the trays.'} Lean into each turn, back when Termite brakes, forward as he pulls away, and keep the coffee in the middle over the bumps. Each coffee that makes it pays +${COFFEE_RUN.pointsPerCup}; all eight, +${COFFEE_RUN.allSafeBonus} more.</p>
+        <button type="button">START  ↵</button><a href="${window.location.pathname}?mode=3d">PLAY THE FULL NIGHT</a>`, () => this.startNight());
+      return;
+    }
     this.overlay.setMode('shift');
     this.overlay.showPanel(`
       <div class="kicker">TERMITE &amp; SKANKY  /  ONE MORE OVERNIGHT</div>
@@ -635,6 +655,7 @@ export class Belt3d {
       ${this.record.completed > 0 ? '<button type="button" data-action="peak">PEAK NIGHT  P</button><button type="button" data-action="endless">ENDLESS SHIFT  N</button>' : ''}
       ${this.record.played > 0 ? `<button type="button" class="b3d-medals-link" data-action="medals">MEDALS · ${this.record.medals.length} OF ${MEDALS.length} · RECENT NIGHTS</button>` : ''}
       <a href="${window.location.pathname}?mode=3d&amp;drive=mall">TRY JUST THE DRIVE · EXPLORE THE CITY</a>
+      <a href="${window.location.pathname}?mode=3d&amp;minigame=coffee">TRY THE TIMMIES RUN · THE LUNCH MINI-GAME</a>
       <a href="${window.location.pathname}?mode=classic">PLAY THE ORIGINAL FULL SHIFT</a>`, { night: () => this.startNight(), play: () => this.startNight(false, true), players: () => this.togglePlayers(), peak: () => this.startNight(true), medals: () => this.showMedals(), endless: () => this.startEndless(), daily: () => this.startDaily(),
         'perk-0': () => this.pickPerk(0), 'perk-1': () => this.pickPerk(1), 'perk-2': () => this.pickPerk(2) });
   }
@@ -655,6 +676,7 @@ export class Belt3d {
     audioSystem.play('ui-start');
     audioSystem.startMusic('game');
     if (this.practiceDestination) { this.beginDriving(this.practiceDestination); return; }
+    if (this.practiceCoffee) { this.overlay.clearCenter(); this.beginCoffeeRun(); return; }
     this.overlay.clearCenter();
     if (this.playPrologue && !this.justPlay) {
       this.story.go('prologue');
@@ -783,7 +805,8 @@ export class Belt3d {
       this.story.go('countdown');
       this.startCountdown();
     } else if (this.story.chapter === 'break') {
-      this.endBreak();
+      if (this.story.choices.breakPlace === 'timhortons' && !this.coffeeResult) this.beginCoffeeRun();
+      else this.endBreak();
     } else if (scene.id === 'mall-assignment') {
       this.story.go('to-mall');
       this.playScene(DRIVE_TO_MALL);
@@ -893,17 +916,83 @@ export class Belt3d {
     audioSystem.startMusic('game');
   }
 
-  private beginDriving(destination: DriveDestination, origin: DriveOrigin = 'depot'): void {
-    this.driving = new DrivingModel(destination, origin);
-    this.ghost = origin === 'home' ? null : loadGhosts(browserStorage())[destination] ?? null;
-    this.ghostRecorder = origin === 'home' ? null : new GhostRecorder();
+  /** The city's view, made the first time a drive or the Timmies run needs it and kept for the night. */
+  private ensureDrivingView(): DrivingView {
     if (!this.drivingView) {
       this.drivingView = new DrivingView(this.quality);
       this.drivingView.scene.environment = this.nightEnvironment.texture;
       this.drivingView.scene.environmentIntensity = 0.35;
     }
     this.drivingView.resize(this.camera.aspect);
-    this.drivingView.begin(this.driving, origin === 'home' ? 'car' : 'truck');
+    return this.drivingView;
+  }
+
+  /**
+   * The Timmies run: the ride back from a Tim Hortons lunch (or `?minigame=coffee` on its own), Skanky in the
+   * passenger seat holding two trays of coffees for thirty seconds while Termite drives.
+   */
+  private beginCoffeeRun(): void {
+    const view = this.ensureDrivingView();
+    if (this.coffee) this.coffeeScene?.end();
+    this.coffeeScene ??= new CoffeeRunScene(view);
+    this.coffee = new CoffeeRunModel();
+    this.coffeeScene.begin();
+    this.stage.end();
+    this.state = 'coffee';
+    this.keys.clear(); this.touch.reset();
+    this.overlay.clearCenter(); this.overlay.clearSpeech();
+    this.overlay.setMode('chapter');
+    this.overlay.storyTitle('TIMMIES RUN', 'SKANKY · HOLD THE COFFEES');
+    this.overlay.showToast(this.touch.enabled ? 'The stick tilts the trays · lean into turns, back when Termite brakes'
+      : 'WASD / arrows tilt the trays · lean into turns, back when Termite brakes', 3600);
+    audioSystem.startMusic('game');
+    this.coffeeScene.update(this.coffee, [], 0, this.reducedMotion);
+  }
+
+  private handleCoffeeEvent(event: CoffeeRunEvent): void {
+    if (event.type === 'spill') {
+      audioSystem.play('splash');
+      this.gamepad.rumble(0.45, 160);
+      this.overlay.showToast(`SPLASH · ${event.left} of ${COFFEE_RUN.cups} coffees left`, 1400);
+    } else if (event.type === 'bump') {
+      audioSystem.play('drop');
+      this.gamepad.rumble(Math.min(0.8, event.strength * 0.3), 120);
+    } else if (event.type === 'warn') audioSystem.play('event-alert');
+  }
+
+  /** The ride is over: the coffees that made it pay the shift (or the practice keeps its score), and a card says so. */
+  private finishCoffeeRun(): void {
+    const run = this.coffee;
+    if (!run) return;
+    this.coffeeResult = { cups: run.cupsLeft, points: run.points };
+    if (!this.practiceCoffee) this.model.score += run.points;
+    this.state = 'coffee-done';
+    this.keys.clear(); this.touch.reset();
+    if (run.points) audioSystem.play('register');
+    const all = run.cupsLeft === COFFEE_RUN.cups;
+    this.overlay.showPanel(`<div class="kicker">TIMMIES RUN · ${this.practiceCoffee ? 'THE LUNCH MINI-GAME' : 'BACK AT THE DEPOT'}</div>
+      <h1>${all ? 'NOT A DROP SPILLED.' : run.cupsLeft === 0 ? 'EVERY LAST COFFEE, GONE.' : `${run.cupsLeft} OF ${COFFEE_RUN.cups} COFFEES MADE IT.`}</h1>
+      <p>${run.cupsLeft} × ${COFFEE_RUN.pointsPerCup}${all ? ` + ${COFFEE_RUN.allSafeBonus} for all ${COFFEE_RUN.cups}` : ''} · <b>+${run.points}</b>${this.practiceCoffee ? '' : ' to the shift'}</p>
+      ${this.practiceCoffee ? `<button type="button">AGAIN  ↵</button><a href="${window.location.pathname}?mode=3d">PLAY THE FULL NIGHT</a>` : '<button type="button">BACK TO THE BELT  ↵</button>'}`,
+    () => this.afterCoffee(), { docked: true });
+  }
+
+  /** After the card: the practice rides again; a night goes back to the belt. */
+  private afterCoffee(): void {
+    if (this.state !== 'coffee-done') return;
+    this.overlay.clearCenter();
+    if (this.practiceCoffee) { this.coffeeResult = null; this.beginCoffeeRun(); return; }
+    this.coffeeScene?.end();
+    this.coffee = null;
+    this.endBreak();
+  }
+
+  private beginDriving(destination: DriveDestination, origin: DriveOrigin = 'depot'): void {
+    this.driving = new DrivingModel(destination, origin);
+    this.ghost = origin === 'home' ? null : loadGhosts(browserStorage())[destination] ?? null;
+    this.ghostRecorder = origin === 'home' ? null : new GhostRecorder();
+    this.ensureDrivingView();
+    this.drivingView!.begin(this.driving, origin === 'home' ? 'car' : 'truck');
     this.stage.end();
     this.state = 'driving';
     this.keys.clear(); this.touch.reset();
@@ -1031,6 +1120,7 @@ export class Belt3d {
       ['PERKS', `Once you finish a night, the briefing offers three perks: pick one${touch ? '' : pad ? ' with LB / RB' : ' with 1, 2 or 3'} to bend that night's rules.`],
       ['DAILY CHALLENGE', `One night a day, the same on every device: the date picks the freight, the surprises, the goals and a rule. It plays without the story scenes${this.touch.enabled ? '' : ' (Y on the briefing)'}; today's best and the days in a row are kept on this device.`],
       ['GHOST DRIVES', 'Your fastest drive to each yard in the five-ton is kept on this device and drives beside you next time as a see-through truck. Beat it to keep the new one.'],
+      ['TIMMIES RUN', `After a Tim Hortons lunch, Skanky rides back up front holding two trays of coffees for thirty seconds. ${touch ? 'The stick tilts' : pad ? 'The left stick tilts' : 'WASD or the arrows tilt'} the trays: lean into turns, back when Termite brakes, forward as he pulls away. +${COFFEE_RUN.pointsPerCup} a coffee, +${COFFEE_RUN.allSafeBonus} more for all eight.`],
       ['ENDLESS SHIFT', 'Also unlocked by a finished night: no clock. From the rush on, freight comes sooner and the belt runs faster every minute until recovery overflows. It keeps its own best.'],
       ['CONTROLS', touch ? 'The stick moves; SWITCH changes worker; GRAB / DELIVER, THROW and STOP THE BELT do what they say; VIEW shows the whole warehouse.'
         : pad ? 'Left stick or d-pad moves · A grabs and delivers · B throws · X stops the belt · Y switches worker · BACK overview · START pause. On menus the d-pad or stick picks, A presses and B goes back.'
@@ -1097,7 +1187,7 @@ export class Belt3d {
     this.keys.clear(); this.touch.reset();
     this.overlay.clearCenter();
     this.renderer.domElement.focus({ preventScroll: true });
-    if (this.state === 'playing' || this.state === 'mall' || this.state === 'driving'
+    if (this.state === 'playing' || this.state === 'mall' || this.state === 'driving' || this.state === 'coffee'
       || this.state === 'story' && this.story.chapter !== 'break') audioSystem.startMusic('game');
   }
 
@@ -1191,6 +1281,8 @@ export class Belt3d {
     this.drivingPenalty = this.drivingCollisions = this.drivingRedLights = 0;
     this.driveBonus = 0; this.driveTimes = [];
     this.ghost = null; this.ghostRecorder = null;
+    if (this.coffee) this.coffeeScene?.end();
+    this.coffee = null; this.coffeeResult = null;
     this.mallBonus = 0;
     this.breakAlertMs = 0;
     this.overlay.setLunchAlert(false);
@@ -1442,6 +1534,12 @@ export class Belt3d {
       this.drivingView?.setGhost(this.ghost ? ghostPose(this.ghost, drive.elapsed) : null);
       this.drivingView?.update(drive, dt);
       if (drive.parked) this.finishDrive();
+    } else if (this.state === 'coffee' && this.coffee && this.coffeeScene) {
+      this.coffee.update(dt * 1000, this.movement());
+      const events = this.coffee.drainEvents();
+      for (const event of events) this.handleCoffeeEvent(event);
+      this.coffeeScene.update(this.coffee, events, dt, this.reducedMotion);
+      if (this.coffee.done) this.finishCoffeeRun();
     } else if (this.state === 'mall' && this.mall) {
       this.mall.update(dt * 1000, this.movement());
       for (const event of this.mall.drainEvents()) this.handleMallEvent(event);
@@ -1551,7 +1649,15 @@ export class Belt3d {
     this.overlay.drivingNavigation(this.state === 'driving' && this.driving ? {
       destination: this.driving.destination === 'mall' ? 'SOUTHGATE MALL' : 'UPS DEPOT', distance: this.driving.remaining, instruction: this.driving.navigation.instruction,
     } : null);
-    if (this.state === 'driving' && this.driving) {
+    const coffeeShown = (this.state === 'coffee' || this.state === 'coffee-done' || this.state === 'paused' && this.pausedFrom === 'coffee') && this.coffee !== null;
+    this.overlay.coffeeGauge(coffeeShown && this.coffee ? { forward: this.coffee.slosh.forward, right: this.coffee.slosh.right,
+      tiltForward: this.coffee.tilt.forward, tiltRight: this.coffee.tilt.right, danger: this.coffee.danger, cups: this.coffee.cups } : null);
+    if (coffeeShown && this.coffee) {
+      const run = this.coffee, next = run.upcoming;
+      this.overlay.chapterHud([['COFFEES', `${run.cupsLeft} / ${COFFEE_RUN.cups}`], ['TIME', `0:${String(Math.ceil(run.remainingMs / 1000)).padStart(2, '0')}`], ['POINTS', `+${run.points}`]],
+        next ? `${next.label} · ${next.hint}` : run.waiting ? 'RED LIGHT · hold the trays steady' : 'Keep the coffee in the middle of the gauge',
+        this.touch.enabled ? 'THE STICK TILTS THE TRAYS' : 'WASD / ARROWS TILT THE TRAYS · ESC PAUSE · M MUTE');
+    } else if (this.state === 'driving' && this.driving) {
       const drive = this.driving;
       const objective = drive.origin === 'home' ? drive.objective.replace(' · cargo safe', '') : drive.objective;
       const hint = this.touch.enabled ? objective
@@ -1578,7 +1684,7 @@ export class Belt3d {
     const driving = this.state === 'driving';
     this.overlay.root.classList.toggle('driving', driving);
     this.touch.setDriving(driving, driving && this.driving?.canPark === true);
-    const chapter = this.state === 'mall' || this.state === 'lot' || driving;
+    const chapter = this.state === 'mall' || this.state === 'lot' || driving || this.state === 'coffee';
     this.touch.setLive(this.state === 'playing' || this.state === 'interlude' || chapter,
       chapter ? (this.state === 'mall' ? (this.mall?.cart.pushed ? 'PARK' : 'CART') : '—')
         : `${m.beltStopsRemaining} LEFT${m.beltStopsRemaining > 0 && m.brakeCooldownMs > 0 ? ` · ${Math.ceil(m.brakeCooldownMs / 1000)}s` : ''}`,
@@ -1592,7 +1698,7 @@ export class Belt3d {
 
   private usesDriving(): boolean {
     const state = this.state === 'paused' ? this.pausedFrom : this.state;
-    return this.drivingView !== null && (state === 'driving' || state === 'ended' && this.practiceDestination !== null);
+    return this.drivingView !== null && (state === 'driving' || state === 'ended' && this.practiceDestination !== null || state === 'coffee' || state === 'coffee-done');
   }
 
   private usesStage(): boolean {
@@ -2521,6 +2627,7 @@ export class Belt3d {
       <p class="b3d-goals">NIGHT GOALS · ${judged.met.length} OF ${this.goals.length} · ${goals} · +${judged.bonus}</p>
       ${m.wavesRun || m.mysteriesOpened || m.fragileDelivered ? `<p>SURPRISES · ${m.wavesCleared} of ${m.wavesRun} rush ${m.wavesRun === 1 ? 'wave' : 'waves'} cleared · ${m.mysteriesOpened} mystery ${m.mysteriesOpened === 1 ? 'box' : 'boxes'} opened · ${m.fragileDelivered} fragile ${m.fragileDelivered === 1 ? 'crate' : 'crates'} carried in</p>` : ''}
       ${m.inspectionsHeld ? `<p>INSPECTIONS · ${m.inspectionLoads} clean ${m.inspectionLoads === 1 ? 'load' : 'loads'} watched · +${m.inspectionBonus}</p>` : ''}
+      ${this.coffeeResult ? `<p>TIMMIES RUN · ${this.coffeeResult.cups} of ${COFFEE_RUN.cups} coffees made it · +${this.coffeeResult.points}</p>` : ''}
       <p>${m.thrownDeliveries} thrown in clean · ${m.damaged} broken (−${m.breakagePenalty} points${m.damaged > THROWING.gradeForgivenBreaks ? `, ${m.gradedBreaks} counted against the grade` : ''})</p>
       ${mall ? `<p>MALL RUN · ${mall.delivered}/6 delivered · ${mall.signatures}/6 signed · five-ton ${home ? 'returned' : 'not returned'} · +${this.mallBonus}</p>
       <p>DRIVING · ${this.drivingCollisions} bumps${this.drivingRedLights ? ` · ${this.drivingRedLights} red lights` : ''} · −${this.drivingPenalty} points · cargo safe${this.driveTimes.length ? ` · ${this.driveTimes.map(driveClock).join(' and ')}${this.driveBonus ? ` · against par +${this.driveBonus}` : ''}` : ''}</p>
