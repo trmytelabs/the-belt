@@ -196,16 +196,24 @@ try {
     assert.equal(await read(() => window.fixtureApp.story.chapter), 'break');
     const frozen = await read(() => ({ t: window.fixtureApp.model.elapsedMs, travel: window.fixtureApp.model.beltTravel, paused: window.fixtureApp.model.paused }));
     assert.equal(frozen.paused, true, 'the shift is paused for the break');
+    // Note the shift clock the moment the break ends. Read later, after the test next polls (once a frame, and a
+    // software-rendered frame on a loaded machine can take seconds), the running shift had already moved on.
+    await read(() => {
+      const app = window.fixtureApp, end = app.endBreak;
+      window.resumedAt = undefined;
+      app.endBreak = function () { end.call(this); window.resumedAt = this.model.elapsedMs; delete app.endBreak; };
+    });
     if (index === 0 || index === 3) { await page.waitForTimeout(1200); await shot(`break-${id}`); }
     // The 3D night plays Tim Hortons inside the restaurant (see breakScenes3d.ts).
     const lines = breakScene3d(BREAK_SCENES[place][variant]).beats.filter((beat) => beat.line).map((beat) => `${name(beat.speaker)}: ${beat.line}`);
     await stepScene(id);
     for (const line of lines) assert.ok((await read(() => window.fixtureApp.overlay.history)).includes(line), `${id} shows "${line}"`);
     await wait(() => window.fixtureApp.state === 'playing');
-    const after = await read(() => ({ score: window.fixtureApp.model.score, held: window.fixtureApp.model.workers[0].heldId, t: window.fixtureApp.model.elapsedMs }));
+    const after = await read(() => ({ score: window.fixtureApp.model.score, held: window.fixtureApp.model.workers[0].heldId, t: window.fixtureApp.model.elapsedMs, resumed: window.resumedAt }));
     assert.equal(after.score, before.score, 'no score is lost to the break');
     assert.equal(after.held, before.held, 'the held parcel is still in hand');
-    assert.ok(Math.abs(after.t - frozen.t) < 2000, 'the same shift resumes where it stopped');
+    assert.ok(typeof after.resumed === 'number' && Math.abs(after.resumed - frozen.t) < 100, `the same shift resumes where it stopped: ${JSON.stringify({ stopped: frozen.t, resumed: after.resumed })}`);
+    assert.ok(after.t >= after.resumed, 'and runs on from there');
     // It never comes back: not after more time, not after a pause.
     await page.keyboard.press('Escape');
     await wait(() => window.fixtureApp.state === 'paused');
