@@ -362,6 +362,8 @@ try {
   assert.ok(quaternius.press.includes('interact') && quaternius.push.includes('push'), `a press reaches and a push pushes: ${JSON.stringify(quaternius)}`);
   assert.ok(quaternius.talking.includes('talking') && quaternius.femaleTalking.includes('talking'), `speaking standing gestures, in both bodies: ${JSON.stringify(quaternius)}`);
   assert.ok(quaternius.shan.includes('walkFormal') && !quaternius.walker.includes('walkFormal'), `Shan walks the manager's walk and the crew their own: ${JSON.stringify(quaternius)}`);
+  // Setting off from standing at 1.5 m/s goes straight into the walk: the slow walk's first steps slid its feet under the body.
+  assert.ok(quaternius.walker.includes('walk') && !quaternius.walker.includes('walkSlow'), `setting off at a walking pace goes straight into the walk: ${JSON.stringify(quaternius.walker)}`);
   for (const [name, still] of [['handupWalking', 'wave'], ['phoneWalking', 'phone']]) {
     const roles = quaternius[name];
     assert.ok(!roles.includes(still) && roles.some(role => ['walk', 'walkSlow', 'run'].includes(role)), `a gesture on the move keeps the legs walking: ${name} ${JSON.stringify(roles)}`);
