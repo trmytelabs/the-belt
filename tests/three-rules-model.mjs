@@ -105,6 +105,33 @@ test('open deck beside the belt, bulk and stair approach has no invisible lane f
   }
 });
 
+test('empty hands walk where they are pointed beside the stairs and trucks; a carried box is still lined up', () => {
+  for (const [side, sign] of [['left', 1], ['right', -1]]) {
+    const mirror = x => side === 'left' ? x : 960 - x;
+    const walk = (from, move, carrying = false) => {
+      const m = new ShiftModel3D();
+      m.activeIndex = side === 'left' ? 0 : 1;
+      const worker = m.activeWorker;
+      worker.heldId = null;
+      if (carrying) {
+        Object.assign(m.packages[0], { state: 'held', workerId: worker.id, kind: 'standard', route: side === 'left' ? 'T' : 'S' });
+        worker.heldId = m.packages[0].id;
+      }
+      Object.assign(worker, { x: mirror(from.x), y: from.y });
+      for (let i = 0; i < 60; i++) m.moveWorker(1000 / 60, move, worker);
+      return { x: mirror(worker.x), y: worker.y };
+    };
+    // Down beside the stairs stays in line (it was dragged across to the stair line).
+    assert.equal(walk({ x: 440, y: 1060 }, { x: 0, y: 1 }).x, 440, `${side}: walking down beside the stairs`);
+    // Outward near the stairs stops at the platform edge (it was pulled down the flight).
+    assert.deepEqual(walk({ x: 420, y: 1080 }, { x: -sign, y: 0 }), { x: 330, y: 1080 }, `${side}: walking outward above the stairs`);
+    // Outward past a truck's door stays on its line (it was pulled into the truck).
+    assert.deepEqual(walk({ x: 360, y: 1000 }, { x: -sign, y: 0 }), { x: 330, y: 1000 }, `${side}: walking outward past a truck`);
+    // A carried box is still lined up with the stair flight.
+    assert.ok(walk({ x: 440, y: 1060 }, { x: 0, y: 1 }, true).x < 420, `${side}: a carried box is steered toward the stairs`);
+  }
+});
+
 test('3D keeps truck rows before rear bulk, outward stairs and every drop before the terminal wall', () => {
   assert.ok(L.dockA.y < L.dockD.y && L.dockD.y < L.bulkPile.y);
   assert.ok(L.stairs.left.bottomX < L.stairs.left.topX);

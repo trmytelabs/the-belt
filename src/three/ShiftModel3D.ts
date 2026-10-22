@@ -357,10 +357,17 @@ export class ShiftModel3D extends ShiftModel {
     const requestedY = Number.isFinite(move.y) ? clamp(move.y, -1, 1) : 0;
     let y = requestedY;
     const requestedSpeed = Math.min(1, Math.hypot(x, y));
+    const held = this.packages.find(parcel => parcel.id === worker.heldId);
+    // The steering below lines a carried box up with a truck's rear door or the stair flight, whose clearances
+    // for a box are a few centimetres wide. Empty hands fit with room to spare, so they walk where they are
+    // pointed: steered empty-handed, a worker was pulled into a truck when passing it, dragged across to the
+    // stair line when walking down beside the stairs, and down the flight when walking sideways near it,
+    // which the owner felt as invisible walls.
+    const steered = held !== undefined;
     // A shallow funnel at each rear door guides a walking approach into the
     // shelf aisle. It uses normal movement speed, including with a heavy box.
-    const entering = worker.side === 'left' ? x < 0 && worker.x >= 306 && worker.x <= 380
-      : x > 0 && worker.x >= 580 && worker.x <= 654;
+    const entering = steered && (worker.side === 'left' ? x < 0 && worker.x >= 306 && worker.x <= 380
+      : x > 0 && worker.x >= 580 && worker.x <= 654);
     const doorway = entering ? TRUCK_ROUTES.find(route => ROUTE_INFO[route].side === worker.side
       && Math.abs(worker.y - this.layout.playerTrucks[route].y) <= 52) : undefined;
     if (doorway) y = clamp((this.layout.playerTrucks[doorway].y - worker.y) / 16, -1, 1);
@@ -368,20 +375,19 @@ export class ShiftModel3D extends ShiftModel {
     const flight = stairs[worker.side];
     const stairCenter = (stairs.minY + stairs.maxY) / 2;
     const onDeck = worker.side === 'left' ? worker.x >= flight.topX : worker.x <= flight.topX;
-    const approachingStairs = onDeck && requestedY > 0 && worker.y >= stairs.minY - 85
+    const approachingStairs = steered && onDeck && requestedY > 0 && worker.y >= stairs.minY - 85
       && worker.y < stairs.minY + this.layout.carriedClearance;
     if (approachingStairs) {
       x = clamp(((worker.side === 'left' ? 382 : 578) - worker.x) / 18, -1, 1);
       y = requestedY;
     }
-    const crossingStairs = !approachingStairs && requestedX !== 0 && worker.x >= Math.min(flight.topX, flight.bottomX) - 80
+    const crossingStairs = steered && !approachingStairs && requestedX !== 0 && worker.x >= Math.min(flight.topX, flight.bottomX) - 80
       && worker.x <= Math.max(flight.topX, flight.bottomX) + 80
       && Math.abs(worker.y - stairCenter) <= 78;
     if (crossingStairs) y = clamp((stairCenter - worker.y) / 12, -1, 1);
     const magnitude = Math.hypot(x, y);
     worker.moving = false;
     if (!magnitude) return;
-    const held = this.packages.find(parcel => parcel.id === worker.heldId);
     const squeezed = worker === this.activeWorker && this.laneObstacles.some(point => {
       const dx = point.x - worker.x, dy = point.y - worker.y;
       return Math.hypot(dx, dy) < 32 && dx * x + dy * y > 0 && Math.abs(dx * y - dy * x) / magnitude < 22;
