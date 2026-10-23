@@ -23,7 +23,7 @@ import { DepotAmbientOcclusion } from './ambientOcclusion';
 import { MESA } from './references';
 import { clearDepotFootprint, DEPOT_BODY_RADIUS, DEPOT_CARRY_RADIUS, depotSolidFootprints, type FootprintCircle } from '../game/slice/DepotClearance';
 import { KeyReturnModel, MALL_RULES, type MallEvent } from '../game/slice/MallModel';
-import { CHASE, MALL_3D_BUNDLES, MALL_3D_STOPS, MallModel3D as MallModel } from './MallModel3D';
+import { AMBULANCE, MALL_3D_BUNDLES, MALL_3D_STOPS, MallModel3D as MallModel } from './MallModel3D';
 import { OnlineHost, openMicrophone, setMicrophone, transportFromUrl } from './online';
 import { MOVE_KEYS, heldMove, roomCode, sceneOwner, turnText, type GuestMessage } from './onlineRules';
 import {
@@ -244,6 +244,11 @@ export class Belt3d {
   /** Until the guard's next yell on the chase, and which. */
   private chaseYellMs = 0;
   private chaseYell = 0;
+  /** Shot: the siren started, and the black for the cuts to the medics and to the ambulance. */
+  private sirenOn = false;
+  /** The night ended shot at the mall: its GAME OVER card stays over the mall, outside where the ambulance left. */
+  private shotEnded = false;
+  private shotBlack: HTMLDivElement | null = null;
   /** Online play: the room this screen hosts, the joining player's held keys and stick, and the turn last sent to them. */
   private online: OnlineHost | null = null;
   private readonly remoteKeys = new Set<string>();
@@ -1118,6 +1123,8 @@ export class Belt3d {
     this.mall = new MallModel();
     this.mallPanel = '';
     this.mallCaught = false;
+    this.sirenOn = false;
+    this.shotEnded = false;
     this.stage.resetMall();
     this.stage.beginMall();
     this.state = 'mall';
@@ -1460,6 +1467,7 @@ export class Belt3d {
     audioSystem.stopMusic();
     this.justPlay = false;
     this.sawEnding = false;
+    this.shotEnded = false;
     for (const view of this.parcels.values()) disposeObject3D(view.root);
     for (const item of this.departing) disposeObject3D(item.view.root);
     this.parcels.clear();
@@ -1795,7 +1803,9 @@ export class Belt3d {
       for (const event of this.mall.drainEvents()) this.handleMallEvent(event);
       this.syncMallPanel();
       this.chaseYells(dt);
-      if (this.mall.finished) {
+      this.shotCuts();
+      if (this.mall.finished && this.mall.getaway === 'shot') this.showShotEnding();
+      else if (this.mall.finished) {
         // Seven signatures at 50; getting away from mall security earns 100 more, being marched out costs 100.
         this.mallBonus = this.mall.signatures * MALL_RULES.pointsPerSignature + (this.mall.getaway === 'escaped' ? 100 : this.mall.getaway === 'busted' ? -100 : 0);
         this.overlay.clearCenter();
@@ -1947,7 +1957,7 @@ export class Belt3d {
       const mall = this.mall;
       this.overlay.chapterHud([
         ['RUN', `${Math.min(mall.runCount, mall.run + 1)} / ${mall.runCount}`], ['DELIVERED', `${mall.delivered} / ${mall.stores.length}`], ['SIGNED', `${mall.signatures} / ${mall.stores.length}`],
-        mall.chase ? ['HITS', `${mall.chase.hits} / ${CHASE.hitsToCatch}`]
+        mall.chase ? ['GUARD', `${Math.round(Math.hypot(mall.chase.guard.x - mall.skanky.x, mall.chase.guard.y - mall.skanky.y) / 32)} M BEHIND`]
           : ['CART', mall.cart.load.length === 0 ? 'EMPTY' : mall.cart.load.map((id) => mall.store(id).name).join(' + ')],
       ], mall.interaction.label === mall.objective ? mall.objective : `${mall.interaction.label} · ${mall.objective}`, 'WASD MOVE · SPACE TAKE / LOAD / GRAB CART / DROP / SIGN · E ALSO GRABS CART · ESC PAUSE');
     } else if (this.state === 'lot' && this.lot) {
@@ -1986,7 +1996,8 @@ export class Belt3d {
       // The Ralph run's drive back keeps its surf guitar.
       case 'driving': return this.ralph ? 'ralph' : 'drive';
       // Running from mall security, the rush's track.
-      case 'mall': return this.mall?.chase ? 'rush' : 'mall';
+      // Shot and taken away, the dream's slow track.
+      case 'mall': return this.mall?.down ? 'dream' : this.mall?.chase ? 'rush' : 'mall';
       case 'lot': return 'lot';
       // The last minute of a timed shift is the rush.
       case 'playing': return !this.model.endless && this.model.elapsedMs >= 120_000 && !this.model.ended ? 'rush' : 'depot';
@@ -2007,7 +2018,7 @@ export class Belt3d {
   private usesStage(): boolean {
     const state = this.state === 'paused' ? this.pausedFrom : this.state;
     if (state === 'mall' || state === 'lot' || state === 'decision') return true;
-    if (state === 'ended') return this.stage.active === 'house';
+    if (state === 'ended') return this.stage.active === 'house' || (this.shotEnded && this.stage.active === 'mall');
     return state === 'story' && this.stage.active !== null;
   }
 
@@ -2249,13 +2260,13 @@ export class Belt3d {
       pick: 'grab', load: 'drop', cart: 'switch', drop: 'bulk', sign: 'sign', wrong: 'wrong', run: 'event-alert', done: 'correct',
       refuse: 'wrong', security: 'grab', handover: 'drop',
       quiz: 'npc-talk', right: 'correct', denied: 'wrong', grab: 'warning', aim: 'event-alert', shot: 'gunshot', hit: 'gunshot',
-      caught: 'wrong', escape: 'correct', busted: 'wrong',
+      caught: 'wrong', escape: 'correct', busted: 'wrong', down: 'game-over',
     };
     if (event.type !== 'wrong' || /Nothing on the cart for|goes out on run/.test(event.message)) audioSystem.play(sounds[event.type]);
     this.chapterHint = event.message;
     if (event.type === 'run' || event.type === 'done') this.overlay.showToast(event.message, 2600);
     // The Bentley run's turns, long enough to read: the refusal (and where to go), the box from security, the hand-over.
-    if (['refuse', 'security', 'denied', 'grab', 'caught', 'escape', 'busted'].includes(event.type) || (event.type === 'handover' && !this.mall?.chase)) {
+    if (['refuse', 'security', 'denied', 'grab', 'caught', 'escape', 'busted', 'hit'].includes(event.type) || (event.type === 'handover' && !this.mall?.chase)) {
       this.overlay.showToast(event.message, 4200);
     }
     if (event.type === 'aim') this.overlay.showToast(event.message, 900);
@@ -2298,7 +2309,8 @@ export class Belt3d {
       if (at) this.overlay.pop('BANG!', '#f2c14e', this.stage.mallGuardAnchor(), 1.2);
       if (event.type === 'hit') {
         this.overlay.pop('HIT!', '#ff5a4a', skankyAt, 1.5);
-        this.gamepad.rumble(0.7, 220);
+        this.gamepad.rumble(1, 600);
+        guard('SHOTS FIRED! I NEED AN AMBULANCE\nAT SOUTHGATE, NOW!', 3200);
       }
     } else if (event.type === 'caught') {
       this.mallCaught = true;
@@ -2571,6 +2583,42 @@ export class Belt3d {
       this.mallCaught = false;
       mall.decide(index === 0 ? 'grab' : 'again');
     }
+  }
+
+  /** Shot: the siren, and the cuts to black, as MallModel3D AMBULANCE times them (the view changes under the black). */
+  private shotCuts(): void {
+    const ms = this.mall?.down?.ms ?? -1;
+    if (ms >= AMBULANCE.sirenMs && !this.sirenOn) {
+      this.sirenOn = true;
+      audioSystem.siren((AMBULANCE.overMs - AMBULANCE.sirenMs) / 1000);
+    }
+    const cut = (into: number, at: number): number => ms >= into && ms < at ? (ms - into) / (at - into) : ms >= at && ms < at + 600 ? 1 - (ms - at) / 600 : 0;
+    const black = ms < 0 ? 0 : Math.max(cut(AMBULANCE.cutInMs, AMBULANCE.medicsMs), cut(AMBULANCE.cutOutMs, AMBULANCE.outsideMs));
+    if (!this.shotBlack) {
+      if (black <= 0) return;
+      const div = document.createElement('div');
+      div.className = 'b3d-shot-black';
+      div.style.cssText = 'position:fixed;inset:0;background:#000;pointer-events:none;z-index:6';
+      this.overlay.root.append(div);
+      this.shotBlack = div;
+    }
+    this.shotBlack.style.opacity = String(black);
+  }
+
+  /** Shot on the chase at the mall and taken away by ambulance: the night is lost (the owner's, 2026-10-23). */
+  private showShotEnding(): void {
+    this.state = 'ended';
+    this.shotEnded = true;
+    if (this.shotBlack) this.shotBlack.style.opacity = '0';
+    this.overlay.clearSpeech();
+    this.overlay.setMode('shift');
+    this.story.go('results');
+    audioSystem.startMusic('results');
+    this.overlay.showPanel(`<div class="kicker">THE MALL RUN · SOUTHGATE MALL</div>
+      <h1>GAME OVER</h1>
+      <p>Skanky ran with BENTLEY's box, mall security shot him, and the ambulance took him away. The night is over.</p>
+      <p style="color:#8da7ac">Next time: answer the guard's questions, or sidestep the moment his aim turns red.</p>
+      <button type="button">ANOTHER NIGHT  ↵</button>`, () => this.restart());
   }
 
   /** On the chase the guard yells every few seconds, from wherever he is. */

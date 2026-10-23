@@ -62,6 +62,37 @@ export class DepotAudio extends AudioSystem {
    * mixed in. Taken from the game's own sound rather than the shared tab's, so the joining player's voice, played
    * here, never goes back to them as an echo.
    */
+  /** An ambulance siren for `seconds`: a two-tone wail, rising in and fading out at the end. */
+  public siren(seconds: number): void {
+    const context = this.getContext();
+    if (!context || !this.sfxGain) return;
+    const now = context.currentTime;
+    const tone = context.createOscillator();
+    tone.type = 'sawtooth';
+    tone.frequency.value = 900;
+    const wail = context.createOscillator();
+    wail.frequency.value = 0.6;
+    const depth = context.createGain();
+    depth.gain.value = 300;
+    wail.connect(depth);
+    depth.connect(tone.frequency);
+    const soften = context.createBiquadFilter();
+    soften.type = 'lowpass';
+    soften.frequency.value = 2200;
+    const level = context.createGain();
+    level.gain.setValueAtTime(0, now);
+    level.gain.linearRampToValueAtTime(0.12, now + 0.6);
+    level.gain.setValueAtTime(0.12, now + Math.max(0.7, seconds - 1.5));
+    level.gain.linearRampToValueAtTime(0, now + seconds);
+    tone.connect(soften);
+    soften.connect(level);
+    level.connect(this.sfxGain);
+    tone.start(now);
+    wail.start(now);
+    tone.stop(now + seconds);
+    wail.stop(now + seconds);
+  }
+
   public broadcast(voice: MediaStream | null): MediaStream | null {
     const context = this.getContext();
     if (!context || !this.output) return null;
