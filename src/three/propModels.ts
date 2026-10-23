@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { assetUrl } from './assetBase.ts';
 import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { mergeStatic } from './merge.ts';
@@ -20,7 +21,7 @@ export async function upgradeCar(car: THREE.Group, color: number): Promise<boole
   car.userData.keep = true;
   const variant = [0x7d4d9c, 0xd8d4c8, 0x6d5534, 0x7a7a70].includes(color) ? 'sedan-wide' : 'sedan';
   try {
-    const source = await load(`/models/vehicles/${variant}.glb`);
+    const source = await load(assetUrl(`models/vehicles/${variant}.glb`));
     // The outer group is the suspension pivot the body and interior pitch and roll about; the fitted body hangs under it.
     const model = new THREE.Group();
     model.name = 'vehicle-model'; model.userData.keep = true;
@@ -98,7 +99,7 @@ export class DevilModel {
   private current: THREE.AnimationAction | null = null;
 
   constructor(root: THREE.Group, sizeLimit = { height:2.8, width:2.4 }) {
-    this.ready = load('/models/creatures/devil.glb').then(gltf => {
+    this.ready = load(assetUrl('models/creatures/devil.glb')).then(gltf => {
       const asset = clone(gltf.scene);
       const model = new THREE.Group();
       model.name = 'devil-model'; model.userData.keep = true;
@@ -207,7 +208,7 @@ export const PROP_MODELS: Record<PropId, PropModelSource> = {
   'side-table': { polyHaven: 'side_table_01', textureSize: 512 },
 };
 
-export const PROP_MODEL_URL = (id: PropId): string => `/models/props/${id}.glb`;
+export const PROP_MODEL_URL = (id: PropId): string => assetUrl(`models/props/${id}.glb`);
 
 const propLoads = new Map<PropId, Promise<THREE.Object3D | null>>();
 

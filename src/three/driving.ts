@@ -1,8 +1,10 @@
 import * as THREE from 'three';
+import { PuffField } from './fx';
+import { assetUrl } from './assetBase.ts';
 import { DrivingModel, type DriveDestination } from './DrivingModel';
 import { createCityFacades } from './cityFacades';
 import { CITY, CITY_BUILDINGS, CITY_SIGNALS, DESTINATIONS, TERMINALS, signalColor, streetExtent, type CityAxis, type CityPoint, type CitySignal } from './drivingCity';
-import { SKANKY_SPEC, TERMITE_SPEC, createTruck } from './world';
+import { SKANKY_SPEC, TERMITE_SPEC, createTruck, mergeTruck, rigTruckWheels } from './world';
 import { createCar } from './story';
 import { standard, textPlane } from './space';
 import { mergeStatic } from './merge';
@@ -21,10 +23,20 @@ import { TRUCK_CAB, createTruckCab } from './vehicleInterior';
 import { TRAFFIC_VARIANTS, TrafficBatch } from './trafficBatch';
 import { createCityWindows } from './cityWindows';
 
+/**
+ * The five-ton on the road: the depot's own truck (createTruck), textured like the trucks at the dock, at the road's
+ * size (its collision box is 6 × 2.4 m) with the door down.
+ */
+const FIVE_TON_LENGTH = 5.9;
+const FIVE_TON = { length: FIVE_TON_LENGTH, depth: 2.4, closed: true };
+export const createFiveTon = (): THREE.Group => createTruck('UPS 5 TON', 0x5a4632, 0x4a3a2a, 'right', undefined, false, false, FIVE_TON);
+
 /** A reusable city with real connected intersections and free player movement. */
 /** The ghost five-ton: the procedural truck in one see-through pale blue, casting no shadow. */
 function createGhostTruck(): THREE.Group {
-  const ghost = createTruck('5 TON', 0x5a4632, 0x4a3a2a, 'right');
+  const ghost = createFiveTon();
+  // Merged by material first, so the see-through truck is a few dozen draws.
+  mergeTruck(ghost);
   const material = new THREE.MeshBasicMaterial({ color: 0x9fdcff, transparent: true, opacity: 0.3, depthWrite: false });
   ghost.traverse((object) => {
     const mesh = object as THREE.Mesh;
@@ -42,7 +54,7 @@ function createGhostTruck(): THREE.Group {
 export class DrivingView {
   public readonly scene = new THREE.Scene();
   public readonly camera = new THREE.PerspectiveCamera(54, 1, 0.1, 180);
-  public readonly truck = createTruck('5 TON', 0x5a4632, 0x4a3a2a, 'right');
+  public readonly truck = createFiveTon();
   /** Skanky's own car, for the drive in to work. */
   public readonly car = createCar(0x8f3f34);
   /** The moon: the road's one shadow caster, kept over the vehicle. */
@@ -57,8 +69,6 @@ export class DrivingView {
   public view: 'chase' | 'cab' = 'chase';
   private readonly cab: THREE.Group;
   private readonly cabWheel: THREE.Object3D;
-  /** The procedural five-ton's own parts, shown until the downloaded model replaces them. */
-  private readonly truckBody: THREE.Object3D[];
   private readonly signalProps: { signal: CitySignal; axis: CityAxis; root: THREE.Group; bulbs: THREE.Mesh<THREE.SphereGeometry, THREE.MeshStandardMaterial>[] }[] = [];
   /**
    * The see-through five-ton of the player's fastest drive to this yard (`ghostDrive.ts`), hidden until a drive has a
@@ -92,6 +102,9 @@ export class DrivingView {
   /** Skanky at the wheel of his own car with Termite beside him on the drive in; the five-ton's cab is solid and carries no one. */
   private readonly occupants: { name: string; character: Character; seat: SeatName }[] = [];
   private readonly seatPoint = new THREE.Vector3();
+  /** The tailpipe's exhaust, and the time to its next puff. */
+  private readonly exhaust = new PuffField(this.scene);
+  private exhaustClock = 0;
 
   /** Rattles the chase camera and the suspension: a cone is a tap, a car or a building a thump. */
   public jolt(amount: number): void {
@@ -219,36 +232,33 @@ export class DrivingView {
       this.signalProps.push({ signal, axis, root, bulbs }); scene.add(root);
     }
 
-    // Close the existing five-ton's rear door for road travel; mall cargo remains model-owned.
-    const shutter = new THREE.Mesh(new THREE.BoxGeometry(0.09, 2.2, 2.7), standard(0x665542, 0.7));
-    shutter.position.set(-2.32, 2.23, 0); this.truck.add(shutter);
     this.truck.traverse(object => {
       if (object.name === 'truck-headlight') (object as THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>).material.emissiveIntensity = 3;
     });
-    for (const z of [-0.9, 0.9]) {
-      const tail = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.2, 0.28), this.tailMaterial);
-      tail.position.set(-2.38, 0.8, z); this.truck.add(tail);
-    }
-    this.truckBody = [...this.truck.children];
-    loads.push(this.models.place(this.truck, 'truck', { x: 6.2, y: 3.5, z: 2.5 }, [...this.truck.children], Math.PI / 2));
+    // Its body (everything but the wheels) pitches and rolls on its springs; the wheels roll and steer. The cab view
+    // hides the body by its name.
+    rigTruckWheels(this.truck);
+    const body = new THREE.Group();
+    body.name = 'driving-model-truck';
+    for (const part of [...this.truck.children]) if (part.name !== 'truck-wheels') body.add(part);
+    this.truck.add(body);
+    this.truck.userData.suspension = body;
+    // The roof's nameplate reads from behind, where the chase camera is.
+    const plate = this.truck.getObjectByName('truck-roof-plate');
+    if (plate) plate.rotation.z += Math.PI;
+    mergeTruck(body);
+    this.truck.userData.modelReady = true;
     // The cab as the driver sees it, shown only in the cab view (added after the model's fallbacks are listed).
     const { cab, wheel } = createTruckCab();
     cab.visible = false;
     this.truck.add(cab);
     this.cab = cab; this.cabWheel = wheel;
-    // These lights and labels stay on the truck after its original body is upgraded.
-    for (const z of [-0.8, 0.8]) {
-      const tail = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.22, 0.3), this.tailMaterial);
-      tail.position.set(-3.12, 0.75, z); this.truck.add(tail);
-      const head = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.18, 0.4), lampMaterial);
-      head.position.set(3.12, 0.85, z); this.truck.add(head);
+    // The brake lights under the door, which brighten as it brakes.
+    const end = FIVE_TON_LENGTH / 2 + 0.03;
+    for (const z of [-0.95, 0.95]) {
+      const tail = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.2, 0.3), this.tailMaterial);
+      tail.position.set(-end, 0.82, z); body.add(tail);
     }
-    for (const z of [-1.26, 1.26]) {
-      const badge = textPlane(['UPS', '5 TON'], 1.8, 0.9, { width: 256, height: 128, background: '#493726', color: '#f1cb79' });
-      badge.position.set(-0.5, 2.5, z); badge.rotation.y = z < 0 ? Math.PI : 0; this.truck.add(badge);
-    }
-    const rearBadge = textPlane(['UPS · 5 TON'], 1.5, 0.45, { width: 320, height: 96, background: '#493726', color: '#f1cb79' });
-    rearBadge.position.set(-3.13, 1.95, 0); rearBadge.rotation.y = -Math.PI / 2; this.truck.add(rearBadge);
     scene.add(this.truck);
     this.car.userData.keep = true; this.car.visible = false; scene.add(this.car);
     scene.add(this.ghost);
@@ -410,7 +420,7 @@ export class DrivingView {
       const batch = new TrafficBatch(28, async () => {
         const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js');
         const loader = new GLTFLoader();
-        return Promise.all(TRAFFIC_VARIANTS.map((variant) => loader.loadAsync(`/models/vehicles/${variant}.glb`).then((gltf) => gltf.scene)));
+        return Promise.all(TRAFFIC_VARIANTS.map((variant) => loader.loadAsync(assetUrl(`models/vehicles/${variant}.glb`)).then((gltf) => gltf.scene)));
       });
       this.trafficBatch = batch;
       this.scene.add(batch.root);
@@ -502,7 +512,6 @@ export class DrivingView {
     // parts until it lands) and keep the truck's lights.
     const body = this.truck.getObjectByName('driving-model-truck');
     if (body) body.visible = !inCab;
-    if (!this.truck.userData.modelReady) for (const part of this.truckBody) part.visible = !inCab;
     if (inCab) {
       // At the driver's eyes, pitching and rolling with the body on its springs; the wheel turns with the front wheels.
       const springs = this.truck.userData.suspension as THREE.Object3D | undefined;
@@ -535,10 +544,34 @@ export class DrivingView {
     const wind = windAt(this.weatherClock);
     this.snow.update(model.paused ? 0 : dt, this.reducedMotion, wind.x, wind.z);
     this.beam.update(model.paused ? 0 : dt, this.reducedMotion, wind.x, wind.z);
+    this.emitExhaust(model, model.paused ? 0 : dt);
+    this.exhaust.update(model.paused ? 0 : dt);
     if (this.guidesHidden) {
       this.navigation.root.visible = false;
       for (const beacon of this.goalBeacons.values()) beacon.visible = false;
     } else this.navigation.update(model, this.camera);
+  }
+
+  /**
+   * A cold night: thick white exhaust from under the rear bumper (the kerb side), heaviest idling and darker for the
+   * first seconds after the engine starts; on the move a thinner trail is left behind, so the chase camera still sees
+   * the road.
+   */
+  private emitExhaust(model: DrivingModel, dt: number): void {
+    // The truck's pipe is under its rear; the car's under its bumper.
+    if (dt <= 0) return;
+    this.exhaustClock -= dt;
+    if (this.exhaustClock > 0) return;
+    const p = model.pose, moving = Math.min(1, Math.abs(model.speed) / 8), starting = model.elapsed < 2.5;
+    const lerp = THREE.MathUtils.lerp;
+    this.exhaustClock = starting ? 0.03 : lerp(0.045, 0.08, moving);
+    const back = this.vehicle === this.truck ? FIVE_TON_LENGTH / 2 + 0.1 : 2.3;
+    const at = new THREE.Vector3(p.x - p.tx * back - p.tz * 0.5, 0.35, p.z - p.tz * back + p.tx * 0.5);
+    this.exhaust.emit(at, {
+      color: starting ? 0x5e6266 : 0xd8dde2, size: starting ? 0.62 : 0.42, life: lerp(3.4, 2, moving),
+      opacity: lerp(0.6, 0.38, moving) + (starting ? 0.15 : 0), grow: lerp(7, 4, moving), spread: 0.25, look: 'cloud',
+      velocity: new THREE.Vector3(-p.tx * 0.6 + (Math.random() - 0.5) * 0.3, 0.4 + Math.random() * 0.3 + (starting ? 0.4 : 0), -p.tz * 0.6 + (Math.random() - 0.5) * 0.3),
+    });
   }
 
   /**

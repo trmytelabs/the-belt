@@ -1,7 +1,12 @@
 import { AudioSystem, type MusicMode, type SoundEffect } from '../game/systems/AudioSystem';
 export type { SoundEffect } from '../game/systems/AudioSystem';
 
-export const DEPOT_MUSIC_URL = '/audio/music/after-hours.mp3';
+/**
+ * Where the build serves public/ from: assetBase.ts's base, written out here so this module loads on its own (the
+ * audio checks run it alone in a page).
+ */
+const BASE: string = (import.meta as { env?: { BASE_URL?: string } }).env?.BASE_URL ?? '/';
+export const DEPOT_MUSIC_URL = `${BASE}audio/music/after-hours.mp3`;
 const CROSSFADE_SECONDS = 1.6;
 type FoleyCue = { files: string[]; volume: number; cutoff?: number };
 // Small CC0 recordings replace the old oscillator-based handling/UI effects.
@@ -86,7 +91,7 @@ export class DepotAudio extends AudioSystem {
     if (!context) return Promise.resolve();
     this.foleyLoad ??= Promise.all([...new Set(Object.values(FOLEY).flatMap(cue => cue.files))].map(async file => {
       try {
-        const response = await fetch(`/audio/foley/${file}.ogg`);
+        const response = await fetch(`${BASE}audio/foley/${file}.ogg`);
         if (!response.ok) return;
         const buffer = await context.decodeAudioData(await response.arrayBuffer());
         let sum = 0, peak = 0, count = 0;

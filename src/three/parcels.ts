@@ -102,8 +102,12 @@ function crate(w: number, h: number, d: number): THREE.Group {
 }
 
 function addressBadge(parcel: Parcel): THREE.Mesh {
-  const badge = textPlane([parcelStreet(parcel)], parcel.kind === 'longbox' ? 0.3 : 0.42, 0.22, { width: 160, height: 72, background: '#fff4d8', color: '#12232a', radius: 6 });
+  const badge = textPlane([parcelStreet(parcel)], parcel.kind === 'longbox' ? 0.3 : 0.42, 0.22, { width: 160, height: 72, background: '#e2d6ba', color: '#0e1c22', radius: 6 });
   badge.rotation.x = -Math.PI / 2;
+  // Matte and dimmer than white paper: under the belt's lights it bloomed into a blur over its own number.
+  const material = badge.material as THREE.MeshStandardMaterial;
+  material.roughness = 0.95;
+  material.envMapIntensity = 0.25;
   return badge;
 }
 
