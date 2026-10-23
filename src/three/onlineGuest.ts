@@ -127,11 +127,13 @@ async function play(root: HTMLElement, code: string): Promise<void> {
     else say('COULD NOT CONNECT', 'Your network may be blocking the direct connection. Try again, or another network.', true);
   };
   guest.onStream = (stream) => {
+    // The same stream arrives once per track (picture, then sound): load it once.
+    if (video.srcObject === stream) return;
     picture = true;
     status.hidden = true;
     video.srcObject = stream;
     video.muted = false;
-    void video.play().catch(() => { video.muted = true; void video.play(); });
+    void video.play().catch(() => { video.muted = true; return video.play(); }).catch(() => undefined);
   };
   guest.onMessage = (message) => {
     if (message.t === 'bye') { say('TERMITE STOPPED HOSTING', 'Thanks for playing.', true); return; }

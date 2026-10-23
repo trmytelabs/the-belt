@@ -170,6 +170,7 @@ export class OnlineHost {
     this.call = call;
     // The joining player answers with their microphone: their voice, played here.
     call.on('stream', (voice) => {
+      if (this.voice.srcObject === voice) return;
       this.voice.srcObject = voice;
       void this.voice.play().catch(() => undefined);
     });

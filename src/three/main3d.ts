@@ -2508,7 +2508,7 @@ export class Belt3d {
     if (!this.onlineChip) {
       const chip = document.createElement('div');
       chip.className = 'b3d-online-chip';
-      chip.style.cssText = 'position:fixed;left:18px;top:64px;z-index:5;pointer-events:none;border-radius:6px;padding:4px 8px;'
+      chip.style.cssText = 'position:fixed;left:18px;top:94px;z-index:5;pointer-events:none;border-radius:6px;padding:4px 8px;'
         + 'font:700 11px/1.3 "Segoe UI",Arial,sans-serif;letter-spacing:1.5px;color:#10241a';
       this.overlay.root.append(chip);
       this.onlineChip = chip;
