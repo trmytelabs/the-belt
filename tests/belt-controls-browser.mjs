@@ -25,6 +25,7 @@ try {
     const wait = (fn, arg) => page.waitForFunction(fn, arg, { polling: 20, timeout: 90000 });
     await page.goto(url);
     await wait(() => window.fixtureApp?.state === 'briefing');
+    await page.locator('.b3d-more summary').click();
     assert.match(await page.locator('.b3d-panel').innerText(), /3 stops per run, with a 15-second cooldown/);
     await page.getByRole('button', { name: /START THE NIGHT/ }).click();
     await wait(() => window.fixtureApp.state === 'story');

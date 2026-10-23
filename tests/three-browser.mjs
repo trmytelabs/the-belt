@@ -552,6 +552,7 @@ try {
 errors: ${touchErrors.join(' | ')}
 console: ${touchConsole.slice(-10).join(' | ')}`); });
   assert.equal(await touchPage.locator('.b3d-fallback').count(), 0, `touch page fell back to 2D; console: ${touchConsole.slice(-10).join(' | ')}`);
+  await touchPage.locator('.b3d-more summary').click();
   assert.match(await touchPage.locator('.b3d-panel').innerText(), /The stick moves\. SWITCH changes worker\./, 'touch players get touch instructions');
   assert.equal(await touchPage.locator('.b3d-touch').isVisible(), false, 'controls wait for the shift to start');
   await readTouch(() => (window.fixtureApp.model.autonomousCoworker = false, window.fixtureApp.forceStory({ breakAtMs: 1e12 })));

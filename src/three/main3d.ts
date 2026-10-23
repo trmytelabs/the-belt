@@ -682,6 +682,7 @@ export class Belt3d {
         <li><b>Follow its destination.</b> The big street number chooses the truck: <b>27 ST → MILL WOODS (10–49 ST)</b>. The guide and gold marker show where to go.</li>
         <li><b>Walk through the truck’s open rear door.</b> ${this.touch.enabled ? 'Tap GRAB / DELIVER' : 'Press SPACE'} inside to load. OVERSIZE goes to BULK at the back; floor freight goes down the side stairs.</li>
       </ol>
+      </details>
       <details class="b3d-more"><summary>MORE RULES AND CONTROLS</summary>
       <p><b>Missed one? Recover it at the belt end.</b> The shift ends at ${this.model.capacity} packages in recovery. ${this.touch.enabled ? 'STOP THE BELT' : 'E / STOP THE BELT'} gives you two seconds to catch up: 3 stops per run, with a 15-second cooldown after each use. You get ${this.model.cleanupMs / 1000} seconds to finish after intake closes.</p>
       <p>Your partner sorts their side automatically. ${this.touch.enabled ? 'SWITCH' : 'TAB / right-click'} changes worker; only your controlled worker picks up bulk. Partner deliveries count toward the goal. Wrong drops cost 10 points; throws can break freight. A gold PRIORITY ring marks urgent freight: load it before the ring runs out for +${PRIORITY_3D.bonus}. Twice a night a supervisor watches for ${INSPECTION_3D.durationMs / 1000} seconds: clean loads +${INSPECTION_3D.bonus}, wrong drops cost more.</p>
@@ -693,7 +694,6 @@ export class Belt3d {
       <p>Story scenes: SPACE next line, ENTER skips the scene, ESC pauses. JUST PLAY (J) skips every one.</p>
       <p>TWO PLAYERS (C): player 1 is Termite on WASD, SPACE grabs, F throws; player 2 is Skanky on the arrows, ENTER grabs, RIGHT SHIFT throws. A second controller plays Skanky.</p>`}
       <p>The night starts at home: go in to work, or quit UPS. After the shift, drive the five-ton to Southgate Mall and finish the deliveries. Driving controls appear when you get there.</p>
-      </details>
       </details>
       ${this.recordLine()}
       ${this.seniorityLine()}

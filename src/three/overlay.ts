@@ -157,7 +157,8 @@ const CSS = `
 .b3d-howto > summary::before, .b3d-more > summary::before { content: '▸ '; color: #edb765; }
 .b3d-howto[open] > summary::before, .b3d-more[open] > summary::before { content: '▾ '; }
 /* The rules past the three steps and the controls fold away, so a first look at the start screen is short. */
-.b3d-more > summary { font-size: 13px; letter-spacing: 1px; color: #9fb4b4; }
+.b3d-more > summary { cursor: pointer; list-style: none; margin: 6px 0; font-size: 13px; letter-spacing: 1px; color: #9fb4b4; }
+.b3d-more > summary::-webkit-details-marker { display: none; }
 .b3d-panel p.b3d-origin { margin: -4px 0 10px; color: #cbbf9c; font-style: italic; font-size: 14px; }
 .b3d-panel p.b3d-sum { margin-top: 10px; padding-top: 8px; border-top: 1px solid #3b5a62; color: #9fb4b4; font-size: 13px; letter-spacing: .5px; }
 .b3d-trend { display: flex; align-items: flex-end; gap: 4px; height: 48px; margin: 4px 0 8px; border-bottom: 1px solid #3b5a62; }
