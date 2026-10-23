@@ -3,7 +3,7 @@ import type { StoryScene } from '../game/slice/StoryScript';
 /**
  * The 3D night's ending (the owner's, 2026-10-22): Skanky does not drive straight home. Vic rides with him to Cha
  * for Tea, and over a table of dim sum Vic tells him what he is worth. Vic's lines are the owner's own notes about
- * him; Skanky only reacts, in the directions. The shared GO_HOME scene (the classic game's) is left as it is.
+ * him; Skanky's one reply is the owner's too (2026-10-23). The shared GO_HOME scene (the classic game's) is left as it is.
  */
 
 /** GO_HOME as the 3D night plays it: Vic climbs in, and the drive goes to Cha for Tea, not home. */
@@ -32,7 +32,8 @@ export const CHA_FOR_TEA: StoryScene = {
     { direction: "Skanky looks at the stains on Vic's sleeves.", cue: 'look', ms: 2400 },
     { speaker: 'vic', line: 'Got a Jag in storage. I drive it to Calgary.', cue: 'jag', ms: 3000 },
     { speaker: 'vic', line: 'I work nights at UPS for fun.', cue: 'fun', ms: 2700 },
-    { direction: 'The lazy Susan goes round again. Another stack of steamers arrives.', cue: 'more', ms: 3000 },
+    { speaker: 'skanky', line: 'Uhhh, ya sure.', cue: 'sure', ms: 2000 },
+    { direction: 'The waitress sets down another stack of steamers. The lazy Susan goes round again.', cue: 'more', ms: 3400 },
     { direction: 'The sun is well up when Skanky finally drives home.', cue: 'leave', ms: 2600 },
   ],
 };

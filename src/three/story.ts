@@ -267,6 +267,8 @@ const BOOTH_X = 3.4;
 const BOOTHS = { north: -1.45, south: 0.25, next: 1.15, table: -0.6 } as const;
 /** Cha for Tea's table: its top's height and radius, where each chair stands from its centre, and the chairs' seat height. */
 const DIM_SUM = { tableTop: 0.76, radius: 0.72, seat: 1.02, seatTop: 0.46 } as const;
+/** The dim sum cart's track along x: by the window, beside the table to serve, and parked after; its line in z. */
+const DIM_SUM_CART = { window: 5.6, table: 1.35, parked: 3.4, z: 0.4 } as const;
 const TABLE_TOP = 0.76;
 
 /** The living room's indoor camera angles. */
@@ -2128,7 +2130,7 @@ export class StoryStage {
         scene.add(stick);
       }
     }
-    // The cart, stacked high, by the window; one more stack rides from it to the table on its cue.
+    // The cart, stacked high, by the window: the waitress wheels it to the table and serves one more stack on its cue.
     const cart = new THREE.Group();
     const cartBody = rounded(0.9, 0.6, 0.55, standard(0xb8b8b0, 0.3, 0.7), 0.04);
     cartBody.position.y = 0.6;
@@ -2144,9 +2146,9 @@ export class StoryStage {
       wheel.position.set(x, 0.06, z);
       cart.add(wheel);
     }
-    cart.position.set(5.6, 0, 0.4);
-    cart.rotation.y = -Math.PI / 2;
+    cart.position.set(DIM_SUM_CART.window, 0, DIM_SUM_CART.z);
     scene.add(cart);
+    props.dimSumCart = cart;
     const more = this.steamerStack(3, 7);
     more.userData.keep = true;
     scene.add(more);
@@ -2158,7 +2160,8 @@ export class StoryStage {
     const sun = new THREE.DirectionalLight(0xffd2a0, 0.9);
     sun.position.set(9, 4, 1);
     scene.add(warm, room, sun);
-    this.cast(stage, ['skanky', 'vic']);
+    // The waitress (the clerk's figure and model) wheels the cart.
+    this.cast(stage, ['skanky', 'vic', 'clerk-dimsum']);
   }
 
   /** A red-cushioned dining chair at (x, z), facing `facing` (0 faces +z). */
@@ -2273,16 +2276,29 @@ export class StoryStage {
     // Vic eats between his lines and talks with his hands; Skanky sips his tea and listens.
     const vicSpeaking = cutscene.scene.beats[index]?.speaker === 'vic';
     vic.setPose(vicSpeaking ? (index === 5 ? 'shrug' : 'announce') : Math.sin(time * 2.2) > 0.2 ? 'sip' : 'sit', time);
-    skanky.setPose(cueProgress(cutscene, 'look') > 0 && index === 4 ? 'shrug' : index > 5 && Math.sin(time * 1.4) > 0.6 ? 'sip' : 'sit', time);
-    // Another stack of steamers comes from the cart to the table.
-    const more = ease(cueProgress(cutscene, 'more'));
+    const skankySpeaking = cutscene.scene.beats[index]?.speaker === 'skanky';
+    skanky.setPose(cueProgress(cutscene, 'look') > 0 && index === 4 || skankySpeaking ? 'shrug' : index > 5 && Math.sin(time * 1.4) > 0.6 ? 'sip' : 'sit', time);
+    // The waitress wheels the cart over while Vic and Skanky talk, lifts a stack of steamers onto the table, and wheels
+    // it back toward the window. (The stack used to fly to the table from the cart by itself.)
+    const cart = props.dimSumCart, waitress = actors.get('clerk-dimsum')!;
+    const over = ease(Math.min(1, cueProgress(cutscene, 'fun') + cueProgress(cutscene, 'sure') * 0.5));
+    const more = cueProgress(cutscene, 'more');
+    const serve = ease(Math.min(1, more / 0.45)), away = ease(Math.max(0, (more - 0.6) / 0.4));
+    cart.position.x = mix(mix(DIM_SUM_CART.window, DIM_SUM_CART.table, over), DIM_SUM_CART.parked, away);
+    waitress.root.visible = true;
+    waitress.at(cart.position.x + 0.78, DIM_SUM_CART.z);
+    waitress.faceAngle = -Math.PI / 2;
+    // Hands on the cart while it rolls and round the steamers while she serves: a carrier's arms over her own walk
+    // (a pushing or carrying pose would stand her whole model still and slide it along).
+    waitress.setPose('none', time);
+    waitress.carrying = more > 0 && more < 0.6 || over > 0 && over < 1 || away > 0 && away < 1;
     props.moreSteamers.visible = more > 0;
-    props.moreSteamers.position.set(mix(5.6, 0.32, more), mix(0.9, DIM_SUM.tableTop + 0.03, more) + Math.sin(more * Math.PI) * 0.2, mix(0.4, 0.05, more));
+    props.moreSteamers.position.set(mix(cart.position.x - 0.2, 0.32, serve), mix(0.9, DIM_SUM.tableTop + 0.03, serve) + Math.sin(serve * Math.PI) * 0.25, mix(DIM_SUM_CART.z, 0.05, serve));
     const snap = index === 0 && cutscene.elapsedMs < 50;
     // A wide shot of the table; Vic over Skanky's shoulder while he talks; Skanky's look; and back out at the end.
     const leave = cueProgress(cutscene, 'leave');
     if (vicSpeaking) this.cameraTo(new THREE.Vector3(0.55, 1.6, 2.0), new THREE.Vector3(0, 1.1, -0.85), this.frameDt, snap);
-    else if (index === 4) this.cameraTo(new THREE.Vector3(-0.5, 1.5, -1.9), new THREE.Vector3(0, 1.1, 0.85), this.frameDt, snap);
+    else if (index === 4 || skankySpeaking) this.cameraTo(new THREE.Vector3(-0.5, 1.5, -1.9), new THREE.Vector3(0, 1.1, 0.85), this.frameDt, snap);
     else this.cameraTo(new THREE.Vector3(2.6 + leave * 1.5, 2.3 + leave * 0.6, 2.4 + leave * 1.5), new THREE.Vector3(0, 0.9, 0), this.frameDt, snap);
   }
 

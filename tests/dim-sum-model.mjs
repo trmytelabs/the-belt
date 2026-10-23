@@ -18,11 +18,13 @@ test('the shared drive home is untouched; the 3D night adds Vic and drives to Ch
   assert.equal(homeScene3d(CHA_FOR_TEA), CHA_FOR_TEA, 'other scenes pass through');
 });
 
-test('at Cha for Tea Vic says what the owner wrote about him, and Skanky only reacts', () => {
+test('at Cha for Tea Vic says what the owner wrote about him, and Skanky answers with the owner\'s one line', () => {
   assert.equal(CHA_FOR_TEA.location, 'dimsum');
   const vic = CHA_FOR_TEA.beats.filter((beat) => beat.speaker === 'vic').map((beat) => beat.line).join(' ');
   for (const fact of [/millionaire/, /tons of money/i, /Jag in storage/, /Calgary/, /nights at UPS for fun/]) assert.match(vic, fact);
-  assert.deepEqual(CHA_FOR_TEA.beats.filter((beat) => beat.line && beat.speaker !== 'vic'), [], 'no invented lines for anyone else');
+  // The owner gave Skanky his reply (2026-10-23); nobody else says anything that was not written for them.
+  assert.deepEqual(CHA_FOR_TEA.beats.filter((beat) => beat.line && beat.speaker !== 'vic').map((beat) => [beat.speaker, beat.line]),
+    [['skanky', 'Uhhh, ya sure.']], 'no invented lines');
   assert.match(CHA_FOR_TEA.beats.map((beat) => beat.direction ?? '').join(' '), /grimy work clothes/);
   for (const beat of CHA_FOR_TEA.beats) assert.ok(beat.ms >= 2000 && beat.ms <= 4000, `${beat.line ?? beat.direction} reads in time`);
   assert.ok(CHA_FOR_TEA.beats.some((beat) => beat.cue === 'more') && CHA_FOR_TEA.beats.at(-1).cue === 'leave');
