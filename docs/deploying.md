@@ -1,9 +1,18 @@
 # Deploying a build
 
+**The game is live at https://trmytelabs.github.io/the-belt/** (the owner turned
+this on, 2026-10-23). The Pages workflow (`.github/workflows/pages.yml`)
+publishes it from `main` after every merge: it builds with
+`--base=/the-belt/` on the owner's PC (the `belt-pc` runner, no Actions
+minutes) and deploys to GitHub Pages. The site is public to anyone with the
+address; the repository itself stays private. To publish again without a
+merge, run the workflow by hand from the repository's Actions tab (Pages, Run
+workflow). To take the site down, turn Pages off in the repository's settings.
+
 The game is a static site: `npm run build` writes everything it needs into
 `dist/` (the page, the scripts, and `public/`'s models, textures and audio,
-about 50 MB). There is no server component. CI never deploys; putting a build
-online is the owner's step.
+about 50 MB). There is no server component. The CI workflow never deploys; only
+the Pages workflow publishes.
 
 Publishing a build makes it public to anyone with the address, even though the
 repository stays private. Check the build first:

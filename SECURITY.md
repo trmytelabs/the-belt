@@ -7,4 +7,5 @@ private screenshots or local recovery data in a report.
 
 This project is a browser game development snapshot with no server component.
 Keep dependencies reviewed and test changes before using a build outside local
-development. CI does not deploy or publish this repository.
+development. CI does not deploy or publish this repository. The Pages workflow publishes the built game
+from main to https://trmytelabs.github.io/the-belt/ (public, at the owner's choice); the source stays private.
