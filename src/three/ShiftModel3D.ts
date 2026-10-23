@@ -577,6 +577,16 @@ export class ShiftModel3D extends ShiftModel {
     let nextX = clamp(worker.x + x * speed, bounds.minX, bounds.maxX);
     if (!this.walkable(worker.side, nextX, worker.y)) nextX = previousX;
     if (!this.walkable(worker.side, nextX, nextY)) nextY = previousY;
+    // A carried box keeps clear of the stair rails and the storage, a clearance nobody can see: walked straight into,
+    // it stopped the carrier dead in open floor ("I get stuck here", beside the top of the stairs). Where only the box's
+    // clearance is in the way and the body has room, the carrier slides round it instead.
+    if (held && nextX === previousX && nextY === previousY) {
+      const straight = { x: clamp(worker.x + x * speed, bounds.minX, bounds.maxX), y: clamp(worker.y + y * speed, this.layout.workerMinY, maxY) };
+      if (this.bodyWalkable(worker.side, straight.x, straight.y)) {
+        const slide = this.slideRound(worker, x / magnitude, y / magnitude, Math.hypot(straight.x - worker.x, straight.y - worker.y), maxY);
+        if (slide) { nextX = slide.x; nextY = slide.y; }
+      }
+    }
     worker.x = nextX; worker.y = nextY;
     worker.moving = nextX !== previousX || nextY !== previousY;
     worker.facing = doorway || crossingStairs || Math.abs(x) > Math.abs(y) ? x > 0 ? 'right' : 'left' : y > 0 ? 'down' : 'up';
@@ -598,9 +608,38 @@ export class ShiftModel3D extends ShiftModel {
       : { minX: lane.minX, maxX: floor.right.maxX - radius };
   }
 
+  /**
+   * The step a blocked carrier takes round the box's clearance: the requested direction turned a little either way, a
+   * little more each try, the first that is free. Of two free turns, the one that stays free a few steps on.
+   */
+  private slideRound(worker: Worker, dx: number, dy: number, step: number, maxY: number): { x: number; y: number } | null {
+    if (!(step > 0)) return null;
+    const turned = (angle: number, distance: number): { x: number; y: number } => {
+      const c = Math.cos(angle), s = Math.sin(angle);
+      return { x: worker.x + (dx * c - dy * s) * distance, y: clamp(worker.y + (dx * s + dy * c) * distance, this.layout.workerMinY, maxY) };
+    };
+    const free = (point: { x: number; y: number }): boolean => {
+      const bounds = this.walkBounds(worker.side, point.y);
+      return point.x >= bounds.minX && point.x <= bounds.maxX && this.walkable(worker.side, point.x, point.y);
+    };
+    for (const angle of [0.45, 0.9, 1.35]) {
+      const sides = [angle, -angle].filter(a => free(turned(a, step)));
+      if (!sides.length) continue;
+      const best = sides.find(a => free(turned(a, step * 4))) ?? sides[0];
+      return turned(best, step);
+    }
+    return null;
+  }
+
   public override walkable(side: 'left' | 'right', x: number, y: number): boolean {
     if (y < this.layout.workerMinY || y > this.layout.workerMaxY) return false;
     if (this.workers.find(worker => worker.side === side)?.heldId != null && !this.clearForCarry(x, y, side)) return false;
+    return this.bodyWalkable(side, x, y);
+  }
+
+  /** Where a worker's body fits, whatever it carries (`walkable` adds a carried box's clearance). */
+  private bodyWalkable(side: 'left' | 'right', x: number, y: number): boolean {
+    if (y < this.layout.workerMinY || y > this.layout.workerMaxY) return false;
     const { stairs, lowerFloor, workerRadius: radius } = this.layout;
     const lane = side === 'left' ? this.layout.leftLane : this.layout.rightLane;
     const floor = lowerFloor[side];

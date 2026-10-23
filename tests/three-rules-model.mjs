@@ -418,6 +418,19 @@ test('stairs guide offset approaches down and up at ordinary speed while carryin
   }
 });
 
+test('a carrier walking straight down the platform edge slides round the rail end instead of sticking', () => {
+  for (const side of [0, 1]) {
+    const m = new ShiftModel3D({ autonomousCoworker: false }); m.activeIndex = side; m.eventStopped = true;
+    // Truck freight (no stair steering), held at the deck's outer edge above the stairs, walked straight down.
+    hold(m, side ? 'B' : 'A', { x: side ? 630 : 330, y: 1000 });
+    const before = { ...m.activeWorker };
+    for (let tick = 0; tick < 120; tick++) m.update(10, { x: 0, y: 1 });
+    const w = m.activeWorker;
+    assert.ok(w.y > 1070, `side ${side}: the carrier keeps going down past the rail end (${before.y} to ${w.y.toFixed(1)})`);
+    assert.ok(m.walkable(w.side, w.x, w.y), 'and stands somewhere the box fits');
+  }
+});
+
 test('walking down either platform edge guides carried freight around the rail end before the stair landing', () => {
   for (const side of [0,1]) for (const kind of ['smallbox','longbox','atv']) for (const diagonal of [false,true]) {
     const m=new ShiftModel3D({autonomousCoworker:false});m.activeIndex=side;m.eventStopped=true;
