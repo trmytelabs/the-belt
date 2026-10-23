@@ -1,5 +1,50 @@
 # Changelog
 
+## 1.0.0 — 2026-10-23 — first public release
+
+The whole 3D night, finished and published at
+https://trmytelabs.github.io/the-belt/ (the repository stays private). Everything
+since the 0.1.0 snapshot, #72 to #102:
+
+- Publish `main` to GitHub Pages after every merge, built on the owner's PC
+  (#96). Open on a title card (TRMYTE LABS PRESENTS, "based on real nights on
+  the belt at a UPS depot in Edmonton") behind a loading screen, and close a
+  full night with credits for the whole cast (#97). The start screen looks down
+  the belt from the bulk end, under a proper roof (#93, #98); PEAK NIGHT is
+  marked the hardest mode (#102).
+- Story: every lunch is Tim Hortons, with the Timmies run on the way back: hold
+  two trays of coffees through the drive, made much easier and given a big
+  gauge that names the key to press (#88, #92, #99). After the shift, the Ralph
+  run: throw parcels out of the five-ton's window to eight businesses, with an
+  arrow to the next stop and the drive back to UPS (#90, #99). The night ends at
+  Cha for Tea with Vic, a waitress serving dim sum and Skanky's "Uhhh, ya sure"
+  (#89, #99, #102).
+- Ways to play: JUST PLAY skips the story (#82); two players on one keyboard or
+  two controllers, with trick-shot throws (#83); surprise freight (mystery boxes
+  with power-ups, fragile crates that slow you right down, rush waves) (#84,
+  #101); a daily challenge (#85); and ghost drives to race your best (#86).
+- Music for every place: the shift keeps After Hours, and ten Kevin MacLeod
+  tracks (CC BY 4.0) cover home, the drives, Tim Hortons, the lot, the mall, the
+  Ralph run, the Mesa, Cha for Tea and the dream, crossfaded as the night moves
+  on (#100). The belt's constant whoosh is now a low roll (#98).
+- The crew: Rocketbox models for Vic, Termite in a polo and jeans, Skanky in
+  black with his own messy hair, a shorter Donna, Doris smoking, a new Fruit
+  Loop (#91, #94); natural keys and raised-hand poses, gestures only when
+  standing, and walks that start properly (#75, #80, #98); heads that no longer
+  spin (#72, #98); Vic lying on AJ's massage table rather than under it (#98).
+- The world: photo brick, plaster, siding and wood on the city, depot, lot and
+  restaurants; real lobsters, a Mesa/Boogie amp and an ATV in the freight (#95);
+  a city of facades with brake lights in its traffic (#73, #77); thick exhaust
+  from every tailpipe, and the five-ton built like the depot trucks (#93); the
+  yards and the rear lot dressed with lamps, fences and parked package cars, and
+  closer end-of-shift and results views (#99).
+- Playtest fixes: the recovery tray narrower, carried boxes lined up only where
+  they are going, carriers sliding round a box's invisible clearance instead of
+  sticking, lower-floor throws reaching their pile, the priority ring kept on
+  in the hands, surprise labels clear of the address (#81, #99, #101);
+  clipping, camera and traffic fixes across the scenes (#72, #74, #79, #87).
+- three.js 0.186.1 (#76); steadier checks on the owner's PC (#78, #98).
+
 ## 0.1.0 — development snapshot
 
 - Harden dependency updates now that CI runs on the owner's PC: Dependabot
