@@ -74,12 +74,15 @@ export interface MallStore {
 }
 
 export interface MallEvent {
-  type: 'pick' | 'load' | 'cart' | 'drop' | 'sign' | 'wrong' | 'run' | 'done';
+  /** `refuse`, `security` and `handover` are the 3D mall's Bentley run (MallModel3D). */
+  type: 'pick' | 'load' | 'cart' | 'drop' | 'sign' | 'wrong' | 'run' | 'done' | 'refuse' | 'security' | 'handover';
   message: string;
   storeId?: string;
 }
 
 const clamp = (value: number, low: number, high: number): number => Math.max(low, Math.min(high, value));
+/** Store counts in words, for the HUD's messages. */
+const COUNT_WORDS: Record<number, string> = { 6: 'six', 7: 'seven' };
 const insideRect = (rect: Rect, x: number, y: number, margin = 0): boolean =>
   x >= rect.x + margin && x <= rect.x + rect.w - margin && y >= rect.y + margin && y <= rect.y + rect.h - margin;
 
@@ -160,17 +163,27 @@ export class MallModel {
     return this.stores.find((store) => store.id === id)!;
   }
 
+  /** How many cart runs the mall takes: three, unless a subclass adds one. */
+  public get runCount(): number {
+    return MALL_RULES.runs;
+  }
+
+  /** "six" for six stores, and so on, for the messages. */
+  protected get storeWord(): string {
+    return COUNT_WORDS[this.stores.length] ?? String(this.stores.length);
+  }
+
   /** The current instruction, for the HUD. */
   public get objective(): string {
     if (this.finished) return 'Done. Back to UPS.';
-    if (this.allSigned) return this.cartNearTruck ? 'Press SPACE at the tailgate to close up' : 'All six signed · bring the cart back to the truck';
+    if (this.allSigned) return this.cartNearTruck ? 'Press SPACE at the tailgate to close up' : `All ${this.storeWord} signed · bring the cart back to the truck`;
     const manifest = this.manifest.map((store) => store.name).join(' + ');
     if (this.runComplete) return `Run ${this.run + 1} done · back to the truck for run ${this.run + 2}`;
     const waiting = this.manifest.filter((store) => store.state !== 'signed' && !this.cart.load.includes(store.id) && store.state === 'waiting');
-    if (waiting.length > 0) return `Run ${this.run + 1}/3 · load ${manifest} from the truck onto the cart`;
+    if (waiting.length > 0) return `Run ${this.run + 1}/${this.runCount} · load ${manifest} from the truck onto the cart`;
     const dropped = this.manifest.find((store) => store.state === 'dropped');
     if (dropped) return `Get ${dropped.name} to sign`;
-    return `Run ${this.run + 1}/3 · push the cart to ${manifest}`;
+    return `Run ${this.run + 1}/${this.runCount} · push the cart to ${manifest}`;
   }
 
   public get cartNearTruck(): boolean {
@@ -276,7 +289,7 @@ export class MallModel {
     if (this.runComplete) {
       // A finished run is only replaced here, back at the truck.
       this.run += 1;
-      this.emit('run', `Run ${this.run + 1}/3 · ${this.manifest.map((item) => item.name).join(' + ')}`);
+      this.emit('run', `Run ${this.run + 1}/${this.runCount} · ${this.manifest.map((item) => item.name).join(' + ')}`);
     }
     const slot = this.nearestSlot();
     const id = this.truckBundles[slot];
@@ -300,7 +313,7 @@ export class MallModel {
     this.emit('pick', `Took ${store.name} (${store.boxes} boxes) · load it on the cart`, id);
   }
 
-  private atStore(store: MallStore): void {
+  protected atStore(store: MallStore): void {
     if (store.state === 'signed') {
       this.emit('wrong', `${store.name} already signed`, store.id);
       return;
@@ -308,9 +321,9 @@ export class MallModel {
     if (store.state === 'dropped') {
       store.state = 'signed';
       this.signatures += 1;
-      this.emit('sign', `${store.name} signed (${this.signatures}/6)`, store.id);
+      this.emit('sign', `${store.name} signed (${this.signatures}/${this.stores.length})`, store.id);
       if (this.runComplete) {
-        this.emit('run', this.allSigned ? 'All six signed · cart back to the truck' : `Run ${this.run + 1} done · back to the truck for the next load`);
+        this.emit('run', this.allSigned ? `All ${this.storeWord} signed · cart back to the truck` : `Run ${this.run + 1} done · back to the truck for the next load`);
       }
       return;
     }
@@ -408,7 +421,7 @@ export class MallModel {
       Math.hypot(x - clamp(x, rect.x, rect.x + rect.w), y - clamp(y, rect.y, rect.y + rect.h)) < radius);
   }
 
-  private emit(type: MallEvent['type'], message: string, storeId?: string): void {
+  protected emit(type: MallEvent['type'], message: string, storeId?: string): void {
     this.events.push({ type, message, storeId });
   }
 }
