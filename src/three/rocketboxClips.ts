@@ -6,6 +6,8 @@
  * `CREW_CLIPS_URL`, holding a male and a female version of each role as
  * `m_<role>` and `f_<role>`. See docs/character-models.md.
  */
+import { assetUrl } from './assetBase.ts';
+
 export type ClipRole =
   | 'idle' | 'idleAlt' | 'walk' | 'walkSlow' | 'run'
   | 'cough' | 'cheer' | 'clap' | 'wave' | 'phone' | 'crouch' | 'dance' | 'sip' | 'shrug' | 'announce'
@@ -25,7 +27,7 @@ export interface ClipSource {
   turn?: boolean;
 }
 
-export const CREW_CLIPS_URL = '/models/animations/crew-clips.glb';
+export const CREW_CLIPS_URL = assetUrl('models/animations/crew-clips.glb');
 
 export const ROCKETBOX_CLIPS: ClipSource[] = [
   { role: 'idle', male: 'static/m_idle_neutral_01', female: 'static/f_idle_neutral_01', loop: true },
@@ -98,7 +100,7 @@ export const CLIP_SPANS: Partial<Record<string, [number, number]>> = {
  * root-motion copy.
  */
 export interface UalClipSource { role: ClipRole; clip: string; loop: boolean; speed?: boolean }
-export const UAL_CLIPS_URL = '/models/animations/crew-clips-ual.glb';
+export const UAL_CLIPS_URL = assetUrl('models/animations/crew-clips-ual.glb');
 export const UAL_CLIPS: UalClipSource[] = [
   { role: 'pickupTable', clip: 'PickUp_Table', loop: false },
   { role: 'interact', clip: 'Interact', loop: false },

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { assetUrl } from './assetBase.ts';
 import { disposeObject3D } from './resources';
 import { mergeStatic } from './merge';
 import { rigWheels } from './vehicleRig';
@@ -27,7 +28,7 @@ export class DrivingModels {
     let pending = this.loads.get(id);
     if (!pending) {
       pending = import('three/examples/jsm/loaders/GLTFLoader.js').then(async ({ GLTFLoader }) => {
-        const { scene } = await new GLTFLoader().loadAsync(`/models/driving/${DRIVING_ASSETS[id]}.glb`);
+        const { scene } = await new GLTFLoader().loadAsync(assetUrl(`models/driving/${DRIVING_ASSETS[id]}.glb`));
         if (this.disposed) { disposeObject3D(scene); return null; }
         this.templates.add(scene);
         return scene;

@@ -3,6 +3,7 @@ import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
 import type { Character, CharacterSpec } from './characters';
 import { ROCKETBOX_CAST } from './rocketboxCast.ts';
+import { assetUrl } from './assetBase.ts';
 import { CLIP_SPANS, CLIP_SPEEDS, CREW_CLIPS_URL, ROCKETBOX_CLIPS, UAL_CLIPS, UAL_CLIPS_URL, clipName, type ClipRole } from './rocketboxClips.ts';
 import { TURN_SECONDS } from './figure.ts';
 
@@ -44,7 +45,7 @@ export interface CharacterModelEntry {
  * body material includes the clothes, so only the head reddens.
  */
 export const CHARACTER_MODELS: CharacterModelEntry[] = ROCKETBOX_CAST.map(({ file, names, source, walk, wear }) => ({
-  names, url: `/models/characters/${file}.glb`, skinMaterial: /head/i, clips: /Female/.test(source) ? 'female' : 'male', walk, wear,
+  names, url: assetUrl(`models/characters/${file}.glb`), skinMaterial: /head/i, clips: /Female/.test(source) ? 'female' : 'male', walk, wear,
 }));
 
 /** Each hair texture turned grey once, however many people wear it: hair cards whole, head maps by their hair. */
