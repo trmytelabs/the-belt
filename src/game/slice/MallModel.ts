@@ -74,8 +74,9 @@ export interface MallStore {
 }
 
 export interface MallEvent {
-  /** `refuse`, `security` and `handover` are the 3D mall's Bentley run (MallModel3D). */
-  type: 'pick' | 'load' | 'cart' | 'drop' | 'sign' | 'wrong' | 'run' | 'done' | 'refuse' | 'security' | 'handover';
+  /** From `refuse` on, the 3D mall's Bentley run (MallModel3D): the refusal, mall security's questions, the chase. */
+  type: 'pick' | 'load' | 'cart' | 'drop' | 'sign' | 'wrong' | 'run' | 'done' | 'refuse' | 'security' | 'handover'
+    | 'quiz' | 'right' | 'denied' | 'grab' | 'aim' | 'shot' | 'hit' | 'caught' | 'escape' | 'busted';
   message: string;
   storeId?: string;
 }
@@ -161,6 +162,11 @@ export class MallModel {
 
   public store(id: string): MallStore {
     return this.stores.find((store) => store.id === id)!;
+  }
+
+  /** Skanky's walking speed in pixels a second; a subclass may change it (running, stumbling). */
+  protected get moveSpeed(): number {
+    return MALL_RULES.speed;
   }
 
   /** How many cart runs the mall takes: three, unless a subclass adds one. */
@@ -351,7 +357,7 @@ export class MallModel {
     s.moving = false;
     if (magnitude === 0) return;
     const normalized = Math.max(1, magnitude);
-    const step = MALL_RULES.speed * deltaMs / 1000 / normalized;
+    const step = this.moveSpeed * deltaMs / 1000 / normalized;
     const facing: Facing = Math.abs(x) > Math.abs(y) ? (x > 0 ? 'right' : 'left') : (y > 0 ? 'down' : 'up');
     const tryMove = (nx: number, ny: number): boolean => {
       if (!this.free(nx, ny, MALL_RULES.skankyRadius)) return false;
@@ -406,7 +412,7 @@ export class MallModel {
       x + w > rect.x && x - w < rect.x + rect.w && y + h > rect.y && y - h < rect.y + rect.h);
   }
 
-  private overlapsCart(x: number, y: number): boolean {
+  protected overlapsCart(x: number, y: number): boolean {
     const horizontal = this.cart.facing === 'left' || this.cart.facing === 'right';
     const w = (horizontal ? MALL_RULES.cartSize.w : MALL_RULES.cartSize.h) / 2 + MALL_RULES.skankyRadius;
     const h = (horizontal ? MALL_RULES.cartSize.h : MALL_RULES.cartSize.w) / 2 + MALL_RULES.skankyRadius;
