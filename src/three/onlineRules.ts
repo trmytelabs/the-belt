@@ -1,42 +1,31 @@
 /**
- * Online play (the owner's request, 2026-10-23: "I play Termite, he plays Skanky"). One player hosts: the night runs in
- * their browser and they play Termite. The other joins from a link with a room code: they see the host's tab, streamed
- * peer to peer, and play Skanky, their keys, controller or touch sent back to the host. These are the rules both sides
- * share; the connection is online.ts, the joining page onlineGuest.ts.
+ * Online play (the owner's requests, 2026-10-23: "I play Termite, he plays Skanky"; then "it should only be the belt
+ * game because that's the only two player game, make it endless"). One player hosts: the endless shift runs in their
+ * browser and they play Termite. The other joins from a link with a room code: they see the host's tab, streamed peer
+ * to peer, and play Skanky, player 2 on the belt, their keys, controller or touch sent back to the host. These are the
+ * rules both sides share; the connection is online.ts, the joining page onlineGuest.ts.
  */
-export type SceneOwner = 'termite' | 'skanky' | 'both';
+export type SceneOwner = 'termite' | 'both';
 
-/**
- * Whose controls each part of the night takes. The shift is played together (Skanky is player 2) and either player
- * moves a story scene on. The mall run, the key drop, the Timmies run's trays and the five-ton drives are Skanky's;
- * the Ralph run, and its drive back, are Termite's. Menus and cards (the start screen, the choices, the results) stay
- * with the host.
- */
-export function sceneOwner(state: string, ralph: boolean): SceneOwner {
-  switch (state) {
-    case 'playing': case 'countdown': case 'story': return 'both';
-    case 'mall': case 'lot': case 'coffee': return 'skanky';
-    case 'driving': return ralph ? 'termite' : 'skanky';
-    default: return 'termite';
-  }
+/** On the belt (and its countdown) both play; everything else (the room, the results, pausing) is the host's. */
+export function sceneOwner(state: string): SceneOwner {
+  return state === 'playing' || state === 'countdown' ? 'both' : 'termite';
 }
 
 /** The joining page says it is there this often; the host lets go of their keys after this long without a word. */
 export const GUEST_HEARTBEAT_MS = 400;
 export const GUEST_SILENCE_MS = 1500;
 
-/** Movement keys: held, they move the joining player's character (they are never replayed as key presses). */
+/** Movement keys: held, they move Skanky (they are never replayed as key presses). */
 export const MOVE_KEYS: ReadonlySet<string> = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
 /**
- * Every key the joining player's browser may send: movement and the game's own action keys. Anything else (and any
- * malformed message) is dropped, so the joining page can only press the game's keys.
+ * Every key the joining player's browser may send: movement, grab or deliver (SPACE or ENTER), throw (F or RIGHT
+ * SHIFT) and pause (ESC). Anything else (and any malformed message) is dropped, so the joining page can only work
+ * player 2 and pause.
  */
-export const GUEST_KEYS: ReadonlySet<string> = new Set([
-  ...MOVE_KEYS, 'Space', 'Enter', 'Escape', 'KeyE', 'KeyF', 'KeyV', 'Tab', 'ShiftRight',
-  'Digit1', 'Digit2', 'Digit3', 'Numpad1', 'Numpad2', 'Numpad3',
-]);
-/** A controller's buttons, mapped on the host to keys for whatever is on screen there (gamepad.ts padKey). */
-export const GUEST_BUTTONS: ReadonlySet<string> = new Set(['a', 'b', 'x', 'y', 'start', 'back', 'lb', 'rb', 'up', 'down', 'left', 'right']);
+export const GUEST_KEYS: ReadonlySet<string> = new Set([...MOVE_KEYS, 'Space', 'Enter', 'Escape', 'KeyF', 'ShiftRight']);
+/** A controller's buttons: A grabs or delivers, B throws, START pauses. */
+export const GUEST_BUTTONS: ReadonlySet<string> = new Set(['a', 'b', 'start']);
 
 /** What the joining player's browser sends. */
 export type GuestMessage =
@@ -44,11 +33,8 @@ export type GuestMessage =
   | { t: 'key'; code: string; down: boolean }
   | { t: 'move'; x: number; y: number; throttle: number; brake: number }
   | { t: 'pad'; button: string };
-/**
- * What the host sends back: whose turn it is, for the joining page's banner; and, when the joining player sees only the
- * 3D view (no HUD or cards), mall security's card, with its answers (an empty title clears it).
- */
-export type HostMessage = { t: 'turn'; owner: SceneOwner; text: string } | { t: 'card'; title: string; options: string[] } | { t: 'bye' };
+/** What the host sends back: whether Skanky is on the belt, for the joining page's banner. */
+export type HostMessage = { t: 'turn'; owner: SceneOwner; text: string } | { t: 'bye' };
 
 const unit = (value: unknown, low: number): number => typeof value === 'number' && Number.isFinite(value) ? Math.max(low, Math.min(1, value)) : 0;
 
@@ -68,11 +54,8 @@ export function readHostMessage(raw: unknown): HostMessage | null {
   if (!raw || typeof raw !== 'object') return null;
   const m = raw as Record<string, unknown>;
   if (m.t === 'bye') return { t: 'bye' };
-  if (m.t === 'turn' && (m.owner === 'termite' || m.owner === 'skanky' || m.owner === 'both') && typeof m.text === 'string') {
+  if (m.t === 'turn' && (m.owner === 'termite' || m.owner === 'both') && typeof m.text === 'string') {
     return { t: 'turn', owner: m.owner, text: m.text.slice(0, 120) };
-  }
-  if (m.t === 'card' && typeof m.title === 'string' && Array.isArray(m.options) && m.options.length <= 3 && m.options.every((option) => typeof option === 'string')) {
-    return { t: 'card', title: m.title.slice(0, 120), options: (m.options as string[]).map((option) => option.slice(0, 60)) };
   }
   return null;
 }
@@ -103,9 +86,8 @@ export function readRoomCode(text: string | null | undefined): string | null {
 /** The game's name on the connection service, so a room code only ever finds a host of this game. */
 export const PEER_PREFIX = 'trmytelabs-the-belt-';
 
-/** What the joining page says for each owner. */
+/** What the joining page's banner says. */
 export function turnText(owner: SceneOwner, state: string): string {
-  if (owner === 'both') return state === 'story' ? 'STORY · either of you moves it on' : 'THE BELT · you are Skanky, player 2';
-  if (owner === 'skanky') return state === 'driving' ? "YOUR DRIVE · you're Skanky at the wheel" : state === 'coffee' ? "YOUR TURN · keep Skanky's coffee trays level" : "YOUR TURN · you're Skanky";
-  return state === 'paper' || state === 'driving' ? "TERMITE'S TURN · watch the Ralph run" : 'TERMITE IS ON THE MENU · hold on';
+  if (owner === 'both') return state === 'countdown' ? 'THE BELT · get ready, you are Skanky' : 'THE BELT · you are Skanky, player 2';
+  return state === 'ended' ? 'SHIFT OVER · Termite starts the next one' : 'BETWEEN SHIFTS · Termite starts the endless shift';
 }
