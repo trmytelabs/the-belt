@@ -17,7 +17,7 @@ import { SHAN_NAME } from '../game/slice/StoryScript';
 import { TruckCutaway } from './truckCutaway';
 import { DEPOT_DRESSING } from './depotDressing';
 import { DevilModel, placeProp } from './propModels';
-import { SURFACE_MEANS, boxUVs, cardboardMaterial, getSurface, scaleUVs, surfaceMaterial, surfacesLoaded } from './textures';
+import { SURFACE_MEANS, SURFACE_TILE, boxUVs, cardboardMaterial, getSurface, scaleUVs, surfaceMaterial, surfacesLoaded } from './textures';
 import { snowBank, snowField, snowMaterial, snowfall, type Snowfall } from './snow';
 import { windAt } from './wind';
 import { WallPiles } from './wallPiles';
@@ -349,7 +349,8 @@ export class DepotWorld {
     this.groundSurface = floor;
     scene.add(floor);
 
-    const wall = standard(PALETTE.wall, 0.9);
+    // Corrugated siding (the photo set; the flat wall colour without it), sized per wall below.
+    const wall = surfaceMaterial('siding', { color: PALETTE.wall, roughness: 0.9, metalness: 0.15 });
     const backZ = toWorldZ(SHIFT_LAYOUT.worldTop) - 0.4;
     // Real receiving openings: a single solid wall used to pass directly
     // through both articulated trailers behind the painted door rectangles.
@@ -461,6 +462,11 @@ export class DepotWorld {
       const yardLight = new THREE.PointLight(0xffa64d, 22, 18, 1.6);
       yardLight.position.set(side * 21, 5, 3);
       scene.add(yardLight);
+    }
+    // Every wall in the siding gets UVs at the photo's real size, whatever its length.
+    for (const child of scene.children) {
+      const mesh = child as THREE.Mesh;
+      if (mesh.isMesh && (mesh.material === wall || mesh === south) && mesh.geometry.type === 'BoxGeometry') boxUVs(mesh.geometry, SURFACE_TILE.siding);
     }
   }
 
