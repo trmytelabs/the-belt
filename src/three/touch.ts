@@ -237,9 +237,12 @@ export class TouchControls {
     this.brakeButton.disabled = !brakeReady;
   }
 
-  public setDriving(driving: boolean, canPark: boolean): void {
+  public setDriving(driving: boolean, canPark: boolean, label = 'PARK'): void {
     this.root.classList.toggle('driving', driving);
-    this.root.querySelector<HTMLElement>('[data-drive="park"]')!.hidden = !canPark;
+    const park = this.root.querySelector<HTMLElement>('[data-drive="park"]')!;
+    park.hidden = !canPark;
+    // The Ralph run's THROW shares the button.
+    if (park.textContent !== label) { park.textContent = label; park.setAttribute('aria-label', label === 'PARK' ? 'Park truck' : 'Throw a parcel'); }
     this.root.querySelector('.b3d-stick')!.setAttribute('aria-label', driving ? 'Steer truck' : 'Move');
   }
 

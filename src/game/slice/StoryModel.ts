@@ -12,7 +12,7 @@ import { BREAK_PLACES, BREAK_SCENES, OPENERS, type BreakPlace, type Opener, type
  */
 export type Chapter =
   | 'briefing' | 'prologue' | 'commute' | 'quit' | 'arrival' | 'scrum' | 'countdown' | 'shift' | 'break' | 'clockout' | 'assignment'
-  | 'to-mall' | 'mall' | 'to-ups' | 'return' | 'home' | 'results';
+  | 'to-mall' | 'mall' | 'to-ups' | 'return' | 'home' | 'results' | 'ralph';
 
 /** When the single mid-shift break may begin (shift milliseconds). */
 export const BREAK_WINDOW = { earliestMs: 46_000, latestMs: 56_000 } as const;

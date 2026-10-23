@@ -66,6 +66,10 @@ test('a push of the d-pad or stick presses its direction once, for menus, and pr
 
 test('each screen maps the buttons to its own keys, and Start always pauses', () => {
   assert.deepEqual(['a', 'b', 'x', 'y', 'back', 'lb'].map((button) => padKey('playing', button)), ['Space', 'KeyF', 'KeyE', 'Tab', 'KeyV', null]);
+  // The Ralph run throws with A or B; after the shift A picks the mall run and B Ralph's; A closes the mini-games' cards.
+  assert.deepEqual(['a', 'b', 'rb', 'x'].map((button) => padKey('paper', button)), ['KeyF', 'KeyF', 'KeyV', null]);
+  assert.deepEqual(['a', 'b', 'x'].map((button) => padKey('run-choice', button)), ['KeyM', 'KeyR', null]);
+  assert.deepEqual(['coffee-done', 'ralph-done'].map((state) => padKey(state, 'a')), ['Enter', 'Enter']);
   assert.deepEqual(['a', 'b'].map((button) => padKey('decision', button)), ['KeyG', 'KeyQ']);
   assert.deepEqual(['a', 'b', 'y'].map((button) => padKey('mesa', button)), ['KeyN', 'KeyN', 'KeyY'], 'only Y steals the Mesa');
   assert.deepEqual(['a', 'y', 'x', 'lb', 'rb'].map((button) => padKey('briefing', button)), ['Enter', 'KeyP', 'KeyN', 'BracketLeft', 'BracketRight'],

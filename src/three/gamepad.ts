@@ -113,6 +113,10 @@ export function padKey(state: string, button: PadButton): string | null {
     case 'driving': return button === 'a' ? 'Space' : button === 'back' || button === 'rb' ? 'KeyV' : null;
     case 'mall': return button === 'a' ? 'Space' : button === 'x' ? 'KeyE' : null;
     case 'lot': return button === 'a' ? 'Space' : null;
+    // The Ralph run: A or B throws, as F does; BACK or RB the cab view. After the shift, A the mall run, B Ralph's.
+    case 'paper': return button === 'a' || button === 'b' ? 'KeyF' : button === 'back' || button === 'rb' ? 'KeyV' : null;
+    case 'run-choice': return button === 'a' ? 'KeyM' : button === 'b' ? 'KeyR' : null;
+    case 'coffee-done': case 'ralph-done': return button === 'a' ? 'Enter' : null;
     case 'playing': return ({ a: 'Space', b: 'KeyF', x: 'KeyE', y: 'Tab', back: 'KeyV' } as Partial<Record<PadButton, string>>)[button] ?? null;
     default: return null;
   }
