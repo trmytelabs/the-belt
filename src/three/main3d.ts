@@ -664,12 +664,14 @@ export class Belt3d {
     this.overlay.showPanel(`
       <div class="kicker">TERMITE &amp; SKANKY  /  ONE MORE OVERNIGHT</div>
       <h1>ANOTHER NIGHT ON THE BELT.</h1>
+      <p class="b3d-origin">Based on real nights on the belt at a UPS depot in Edmonton.</p>
       <details class="b3d-howto"${this.record.completed > 0 ? '' : ' open'}><summary><b>HOW TO PLAY · Dispatch ${this.model.goal} packages together in three minutes.</b></summary>
       <ol class="b3d-steps">
         <li><b>Move beside a package.</b> ${this.touch.enabled ? 'Use the stick. Tap GRAB / DELIVER' : 'Use WASD / arrows. Press SPACE'} to grab the glowing parcel.</li>
         <li><b>Follow its destination.</b> The big street number chooses the truck: <b>27 ST → MILL WOODS (10–49 ST)</b>. The guide and gold marker show where to go.</li>
         <li><b>Walk through the truck’s open rear door.</b> ${this.touch.enabled ? 'Tap GRAB / DELIVER' : 'Press SPACE'} inside to load. OVERSIZE goes to BULK at the back; floor freight goes down the side stairs.</li>
       </ol>
+      <details class="b3d-more"><summary>MORE RULES AND CONTROLS</summary>
       <p><b>Missed one? Recover it at the belt end.</b> The shift ends at ${this.model.capacity} packages in recovery. ${this.touch.enabled ? 'STOP THE BELT' : 'E / STOP THE BELT'} gives you two seconds to catch up: 3 stops per run, with a 15-second cooldown after each use. You get ${this.model.cleanupMs / 1000} seconds to finish after intake closes.</p>
       <p>Your partner sorts their side automatically. ${this.touch.enabled ? 'SWITCH' : 'TAB / right-click'} changes worker; only your controlled worker picks up bulk. Partner deliveries count toward the goal. Wrong drops cost 10 points; throws can break freight. A gold PRIORITY ring marks urgent freight: load it before the ring runs out for +${PRIORITY_3D.bonus}. Twice a night a supervisor watches for ${INSPECTION_3D.durationMs / 1000} seconds: clean loads +${INSPECTION_3D.bonus}, wrong drops cost more.</p>
       ${this.touch.enabled ? `
@@ -680,6 +682,7 @@ export class Belt3d {
       <p>Story scenes: SPACE next line, ENTER skips the scene, ESC pauses. JUST PLAY (J) skips every one.</p>
       <p>TWO PLAYERS (C): player 1 is Termite on WASD, SPACE grabs, F throws; player 2 is Skanky on the arrows, ENTER grabs, RIGHT SHIFT throws. A second controller plays Skanky.</p>`}
       <p>The night starts at home: go in to work, or quit UPS. After the shift, drive the five-ton to Southgate Mall and finish the deliveries. Driving controls appear when you get there.</p>
+      </details>
       </details>
       ${this.recordLine()}
       ${this.seniorityLine()}
@@ -694,7 +697,7 @@ export class Belt3d {
       <a href="${window.location.pathname}?mode=3d&amp;minigame=coffee">TRY THE TIMMIES RUN · THE LUNCH MINI-GAME</a>
       <a href="${window.location.pathname}?mode=3d&amp;minigame=ralph">TRY THE RALPH RUN · TERMITE'S PAPER ROUTE</a>
       <a href="${window.location.pathname}?mode=classic">PLAY THE ORIGINAL FULL SHIFT</a>`, { night: () => this.startNight(), play: () => this.startNight(false, true), players: () => this.togglePlayers(), peak: () => this.startNight(true), medals: () => this.showMedals(), endless: () => this.startEndless(), daily: () => this.startDaily(),
-        'perk-0': () => this.pickPerk(0), 'perk-1': () => this.pickPerk(1), 'perk-2': () => this.pickPerk(2) });
+        'perk-0': () => this.pickPerk(0), 'perk-1': () => this.pickPerk(1), 'perk-2': () => this.pickPerk(2) }, { side: true });
   }
 
   // ---------------------------------------------------------------- story flow
