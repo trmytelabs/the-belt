@@ -2571,8 +2571,11 @@ export class Belt3d {
       // receiving, the belt in the middle and a row of trucks on either side. It drifts slowly from side to side.
       const sway = this.reducedMotion ? 0 : Math.sin(this.time * 0.11);
       const deck = PLATFORM_HEIGHT;
-      position = new THREE.Vector3(sway * 0.5, deck + (portrait ? 3.6 : 2.6), toWorldZ(SHIFT_LAYOUT.bulkPile.y) - (portrait ? 1.2 : 2.4));
-      look = new THREE.Vector3(sway * 0.25, deck - 0.9, toWorldZ(SHIFT_LAYOUT.beltTop) - 6);
+      // On a wide screen the start card stands at the left (overlay.ts .side): the view turns a little to the left so
+      // the belt sits in the open right of the screen, with the crew on both sides of it in view.
+      const aside = window.innerWidth >= 1100 && this.camera.aspect >= 4 / 3 ? -2.4 : 0;
+      position = new THREE.Vector3(sway * 0.5 + aside * 0.6, deck + (portrait ? 3.6 : 2.6), toWorldZ(SHIFT_LAYOUT.bulkPile.y) - (portrait ? 1.2 : 2.4));
+      look = new THREE.Vector3(sway * 0.25 + aside, deck - 0.9, toWorldZ(SHIFT_LAYOUT.beltTop) - 6);
     } else if (this.overview || this.state === 'briefing' || this.state === 'celebrating') {
       look = new THREE.Vector3(0, 0, toWorldZ((SHIFT_LAYOUT.worldTop + SHIFT_LAYOUT.worldBottom) / 2));
       position = look.clone().add(new THREE.Vector3(0, Math.max(portrait ? 104 : 80, 58 / this.camera.aspect), portrait ? 39 : 27));
