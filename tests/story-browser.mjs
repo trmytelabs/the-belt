@@ -482,6 +482,48 @@ try {
     if (run < 2) assert.equal((await mallState()).finished, false);
   }
   assert.deepEqual(await mallState().then(({ delivered, signatures, finished }) => ({ delivered, signatures, finished })), { delivered: 6, signatures: 6, finished: false },
+    'six stores signed, and Bentley still to go');
+  // Run 4: Bentley only, both its loads filling the cart. Delivered, it will not sign: a box is missing, and mall
+  // security has it, through the staff doors in the south-east corner and down the service hallway.
+  await read(() => Object.assign(window.fixtureApp.mall.cart, { x: 150, y: 400, pushed: false, facing: 'up' }));
+  for (let load = 1; load <= 2; load += 1) {
+    await at(70, await read(() => { const mall = window.fixtureApp.mall; return mall.slotPosition(mall.truckBundles.indexOf('bentley')).y; }));
+    await page.keyboard.press('Space');
+    await wait(() => window.fixtureApp.mall.carrying === 'bentley');
+    await at(190, 400);
+    await page.keyboard.press('Space');
+    await wait((n) => window.fixtureApp.mall.cart.load.filter((id) => id === 'bentley').length === n, load);
+  }
+  assert.equal((await mallState()).run, 3, 'the fourth run');
+  await read(() => Object.assign(window.fixtureApp.mall.cart, { x: 1230, y: 420, pushed: true, facing: 'up' }));
+  await at(1230, 450);
+  await page.keyboard.press('Space');
+  await wait(() => window.fixtureApp.mall.store('bentley').state === 'dropped');
+  await page.keyboard.press('Space');
+  await wait(() => window.fixtureApp.mall.bentley === 'refused');
+  await page.keyboard.press('Space');
+  assert.equal(await read(() => window.fixtureApp.mall.store('bentley').state), 'dropped', 'Bentley will not sign without the missing box');
+  await page.waitForTimeout(600);
+  await shot('mall-bentley-refused');
+  // To security on real keys: south through the staff doors and down the hallway, then east to the desk.
+  await at(1215, 500);
+  await page.keyboard.down('KeyS');
+  await wait(() => window.fixtureApp.mall.skanky.y > 1015);
+  await page.keyboard.up('KeyS');
+  await page.keyboard.down('KeyD');
+  await wait(() => window.fixtureApp.mall.skanky.x > 1236);
+  await page.keyboard.up('KeyD');
+  await page.waitForTimeout(400);
+  await shot('mall-security');
+  await page.keyboard.press('Space');
+  await wait(() => window.fixtureApp.mall.handBox);
+  // Carried back by hand: handed over, then signed.
+  await at(1246, 452);
+  await page.keyboard.press('Space');
+  await wait(() => window.fixtureApp.mall.bentley === 'returned');
+  await page.keyboard.press('Space');
+  await wait(() => window.fixtureApp.mall.store('bentley').state === 'signed');
+  assert.deepEqual(await mallState().then(({ delivered, signatures, finished }) => ({ delivered, signatures, finished })), { delivered: 7, signatures: 7, finished: false },
     'the last signature is not the end: the cart and Skanky go back to the truck');
   await read(() => Object.assign(window.fixtureApp.mall.cart, { x: 150, y: 400, pushed: false }));
   await at(80, 465);
@@ -551,7 +593,7 @@ try {
   const results = await page.locator('.b3d-panel').innerText();
   await shot('results');
   assert.match(results, /HOME\. FINALLY\./);
-  assert.match(results, /MALL RUN · 6\/6 delivered · 6\/6 signed · five-ton returned · \+300/);
+  assert.match(results, /MALL RUN · 7\/7 delivered · 7\/7 signed · five-ton returned · \+350/);
   assert.match(results, /1 broken \(−150 points\)/);
   assert.match(results, /NIGHT TOTAL/);
   // The line above the total adds it up: the shift, the goals, the mall run and par, less the road.
@@ -573,7 +615,7 @@ try {
   assert.deepEqual(await read(() => window.fixtureApp.story.visited.slice(-9)),
     ['shift', 'clockout', 'assignment', 'to-mall', 'mall', 'to-ups', 'return', 'home', 'results']);
   assert.deepEqual(errors, []);
-  console.log('PASS 3D finale: shift completion into the mall assignment, three cart runs by real keys with no empty, early or duplicate credit, six drops and six signatures, return to the truck, five-ton back to UPS by key drop, breakfast with Vic at Cha for Tea, and results; no script errors');
+  console.log('PASS 3D finale: shift completion into the mall assignment, four cart runs by real keys with no empty, early or duplicate credit, seven drops and seven signatures (Bentley signs only once the missing box comes back from security), return to the truck, five-ton back to UPS by key drop, breakfast with Vic at Cha for Tea, and results; no script errors');
 
   // Regression for a near-complete night with recovered freight: the same mall
   // and key-return objects have really completed, only the warehouse totals are synthetic.
@@ -592,7 +634,8 @@ try {
     bumps: window.fixtureApp.drivingCollisions, redLights: window.fixtureApp.drivingRedLights }));
   assert.equal(driveTotals.penalty, (driveTotals.bumps + driveTotals.redLights) * 100, 'road incidents retain their separate 100-point deduction');
   const goalBonus = await read(() => window.fixtureApp.goalBonus), driveBonus = await read(() => window.fixtureApp.driveBonus);
-  const expectedNightTotal = String(Math.max(0, 6250 - driveTotals.penalty + goalBonus + driveBonus)).padStart(5, '0');
+  // The shift's 5950 and the mall's 350 (seven signatures at 50, Bentley's included).
+  const expectedNightTotal = String(Math.max(0, 6300 - driveTotals.penalty + goalBonus + driveBonus)).padStart(5, '0');
   assert.match(recovered, new RegExp(`NIGHT TOTAL ${expectedNightTotal}.*OUTSTANDING SHIFT`));
   await shot('recovered-s-rank');
   console.log(`PASS 56 of 57 dispatched, recovered freight and the completed mall run render S rank, an explicit grade breakdown and the correct ${expectedNightTotal} night total after driving deductions`);

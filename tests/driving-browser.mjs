@@ -232,7 +232,7 @@ try {
   await page.keyboard.press('Enter');
   await page.waitForFunction(() => window.fixtureApp.state === 'mall', null, { polling: 10 });
   assert.deepEqual(await page.evaluate(() => ({ bundles: window.fixtureApp.mall.truckBundles.length, delivered: window.fixtureApp.mall.delivered, signed: window.fixtureApp.mall.signatures })),
-    { bundles: 6, delivered: 0, signed: 0 });
+    { bundles: 8, delivered: 0, signed: 0 });
   assert.ok(await page.evaluate(() => window.fixtureApp.drivingPenalty >= 100 && window.fixtureApp.drivingPenalty === window.fixtureApp.driving.penalty));
   assert.ok(await page.evaluate(() => window.fixtureApp.driving.z < -291), 'the mall truck parks in the loading yard beyond the public road');
   console.log('PASS keyboard gas/steer/brake, loading-yard parking, collision/slowdown, 100-point deductions, paused inputs and intact mall cargo');
