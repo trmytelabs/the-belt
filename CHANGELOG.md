@@ -3,11 +3,15 @@
 ## Unreleased
 
 - The mall run gets BENTLEY, on a fourth run of its own with the cart full of
-  its freight. Delivered, the clerk yells about a missing box and will not
-  sign, and Skanky is stressed. Mall security has the box, through the staff
-  doors and down a long service hallway, and Skanky carries it back by hand
-  before BENTLEY signs. The mall is now seven stores on four runs, in the 3D
-  game only.
+  its freight. Delivered, the clerk yells about a missing box (with no idea
+  where it went) and will not sign, and Skanky freaks out and sweats. Mall
+  security's lost and found has it, through the staff doors and down a long
+  L-shaped service hallway. The guard asks three questions about the night
+  first: answer them right and Skanky carries the box back by hand before
+  BENTLEY signs. Get one wrong and he can ask again, or grab the box and run:
+  shove it at BENTLEY, then make for the five-ton with the guard chasing,
+  yelling and shooting (an aim band on the floor shows where; sidestep when it
+  turns red). The mall is now seven stores on four runs, in the 3D game only.
 
 ## 1.0.0 — 2026-10-23 — first public release
 
