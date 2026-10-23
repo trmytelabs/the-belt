@@ -28,7 +28,7 @@ export const TRICK_SHOTS = {
 export const SURPRISE_3D = {
   waves: [90_000, 130_000], waveMs: 15_000, waveGap: 0.5, waveBonus: 150,
   mystery: [44_000, 110_000, 160_000],
-  fragile: [80_000, 150_000], fragileBonus: 75, fragilePace: 0.75,
+  fragile: [80_000, 150_000], fragileBonus: 75, fragilePace: 0.55,
   repeatMs: 60_000,
 } as const;
 /** What a mystery box holds, by chance (`share`, summing to 1). */

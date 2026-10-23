@@ -1297,7 +1297,7 @@ export class Belt3d {
       ['STOP THE BELT', `${touch ? 'STOP THE BELT' : pad ? 'X' : 'E'} holds the belt for two seconds, ${stops} a night, with 15 seconds between.`],
       ['THROW', `${touch ? 'THROW' : pad ? 'B' : 'F'} throws to the nearest drop to save the walk. Fragile freight can break, and a throw down the stairs risks more.`],
       ['PRIORITY', `A gold ring marks urgent freight. Load it yourself before the ring runs out for +${PRIORITY_3D.bonus}.`],
-      ['SURPRISES', `Twice a night a siren starts a RUSH WAVE: freight twice as fast for ${SURPRISE_3D.waveMs / 1000} seconds, +${SURPRISE_3D.waveBonus} if none of it reaches recovery. A MYSTERY BOX pays a random prize when you deliver it. A FRAGILE crate cannot be thrown and slows you down: carry it in for +${SURPRISE_3D.fragileBonus}.`],
+      ['SURPRISES', `Twice a night a siren starts a RUSH WAVE: freight twice as fast for ${SURPRISE_3D.waveMs / 1000} seconds, +${SURPRISE_3D.waveBonus} if none of it reaches recovery. A MYSTERY BOX pays a random prize when you deliver it. A FRAGILE crate cannot be thrown and slows you right down: carry it in for +${SURPRISE_3D.fragileBonus}.`],
       ['INSPECTIONS', `Twice a night a supervisor watches for ${INSPECTION_3D.durationMs / 1000} seconds. Each clean load while they watch pays +${m.inspectionPay}; a wrong drop costs ${INSPECTION_3D.penalty} more than usual.`],
       ['STREAKS', `Each clean load in a row adds 15 more points, up to +150. From ${FLOW_3D.combo} in a row you are ON FIRE and walk ${Math.round((FLOW_3D.pace - 1) * 100)}% faster. A wrong drop or a miss ends the streak.`],
       ['GOALS', `Each night sets three goals, shown on the briefing and as chips on the HUD. Each one met pays +${GOAL_BONUS}.`],
@@ -2025,6 +2025,13 @@ export class Belt3d {
     if (event.type === 'grab' || event.type === 'recover') triggerAction(actor, 'lift', this.time, event.type === 'grab' && Math.abs(event.x - SHIFT_LAYOUT.beltX) <= 40 ? 'belt' : 'floor');
     else if (event.type === 'drop' || event.type === 'sort' || (event.type === 'wrong' && event.message.startsWith('WRONG DROP'))) triggerAction(actor, 'drop', this.time);
     else if (event.type === 'throw') triggerAction(actor, 'throw', this.time);
+    // Picking up a surprise says what it is and what to do with it.
+    if (event.type === 'grab' && event.packageId !== undefined && !event.assisted) {
+      const surprise = this.model.surpriseOf(event.packageId), parcel = this.model.packages.find((item) => item.id === event.packageId);
+      if (surprise && parcel) this.overlay.showToast(surprise === 'mystery'
+        ? `MYSTERY BOX · deliver it to ${ROUTE_INFO[parcel.route].name} to open it: a jackpot, a free belt stop, ON FIRE… or socks`
+        : `FRAGILE · you walk slowly with it · no throwing · +${SURPRISE_3D.fragileBonus} when it arrives`, 4200);
+    }
     if (event.type === 'sort' && event.score) {
       // A clean dispatch pops its points, growing with the streak, and throws a little gold up from the drop.
       const combo = this.model.combo;

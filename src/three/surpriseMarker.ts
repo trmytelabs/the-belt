@@ -6,7 +6,7 @@ export type SurpriseKind = 'mystery' | 'fragile';
 
 const STYLE: Record<SurpriseKind, { text: string; width: number; color: string; background: string }> = {
   mystery: { text: '?  MYSTERY BOX', width: 170, color: '#1d0b3a', background: '#c3a2ff' },
-  fragile: { text: 'FRAGILE · CARRY', width: 170, color: '#2c0606', background: '#ff8a7a' },
+  fragile: { text: 'FRAGILE · WALK SLOW', width: 200, color: '#2c0606', background: '#ff8a7a' },
 };
 /** The label's height in metres. */
 const LABEL_HEIGHT = 0.24;
