@@ -397,14 +397,16 @@ export class DepotAudio extends AudioSystem {
       motor.connect(motorFilter); motorFilter.connect(motorGain); motorGain.connect(this.sfxGain);
       const rollers = context.createBufferSource(), rollerFilter = context.createBiquadFilter(), rattleGain = context.createGain(), clack = context.createGain();
       rollers.buffer = this.noiseBuffer; rollers.loop = true;
-      rollerFilter.type = 'bandpass'; rollerFilter.frequency.value = 1100; rollerFilter.Q.value = 0.8;
+      // A low roll under the motor. A band of hiss around 1.1 kHz, swelling with the sway below, was the constant
+      // whooshing the owner heard while the belt ran.
+      rollerFilter.type = 'lowpass'; rollerFilter.frequency.value = 340; rollerFilter.Q.value = 0.5;
       rattleGain.gain.value = 0;
       // The rollers' sway: a gentle sine lifts and lowers the rattle. A square wave here clacked it on and off six to
       // nine times a second, which the owner heard as a constant drum beat under everything.
       clack.gain.value = 0.5;
       const pulse = context.createOscillator(), pulseDepth = context.createGain();
       pulse.type = 'sine'; pulse.frequency.value = 2.5;
-      pulseDepth.gain.value = 0.12;
+      pulseDepth.gain.value = 0.04;
       pulse.connect(pulseDepth); pulseDepth.connect(clack.gain);
       rollers.connect(rollerFilter); rollerFilter.connect(clack); clack.connect(rattleGain); rattleGain.connect(this.sfxGain);
       const nodes = [motorFilter, motorGain, rollerFilter, clack, rattleGain, pulseDepth];
