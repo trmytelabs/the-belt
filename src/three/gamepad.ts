@@ -97,9 +97,10 @@ export class GamepadInput {
  * Start always pauses and resumes; A is the confirm or action button; B throws on
  * the belt and skips a story scene; X stops the belt or moves the mall cart; Y
  * switches workers; Back is the overview or the cab view; on the briefing Y and X
- * pick the peak night and the endless shift, and the bumpers step through
- * tonight's perks. The four directions press no key: they move, and on a panel
- * the game steps through its buttons with them.
+ * pick the peak night and the endless shift, B starts the mall practice at
+ * Bentley, and the bumpers step through tonight's perks. The four directions
+ * press no key: they move, and on a panel the game steps through its buttons
+ * with them.
  */
 export function padKey(state: string, button: PadButton): string | null {
   if (button === 'start') return 'Escape';
@@ -107,7 +108,8 @@ export function padKey(state: string, button: PadButton): string | null {
     case 'decision': return button === 'a' ? 'KeyG' : button === 'b' ? 'KeyQ' : null;
     // The Mesa: Y steals it, as the Y key does; A or B leaves it.
     case 'mesa': return button === 'y' ? 'KeyY' : button === 'a' || button === 'b' ? 'KeyN' : null;
-    case 'briefing': return ({ a: 'Enter', y: 'KeyP', x: 'KeyN', lb: 'BracketLeft', rb: 'BracketRight' } as Partial<Record<PadButton, string>>)[button] ?? null;
+    // B is the mall practice's START AT BENTLEY, as the B key is; elsewhere on the briefing it presses nothing.
+    case 'briefing': return ({ a: 'Enter', b: 'KeyB', y: 'KeyP', x: 'KeyN', lb: 'BracketLeft', rb: 'BracketRight' } as Partial<Record<PadButton, string>>)[button] ?? null;
     case 'ended': case 'paused': case 'interlude': return button === 'a' ? 'Enter' : null;
     case 'story': return button === 'a' ? 'Space' : button === 'b' ? 'Enter' : null;
     case 'driving': return button === 'a' ? 'Space' : button === 'back' || button === 'rb' ? 'KeyV' : null;
@@ -118,7 +120,7 @@ export function padKey(state: string, button: PadButton): string | null {
     // The Ralph run: A or B throws, as F does; BACK or RB the cab view. After the shift, A the mall run, B Ralph's.
     case 'paper': return button === 'a' || button === 'b' ? 'KeyF' : button === 'back' || button === 'rb' ? 'KeyV' : null;
     case 'run-choice': return button === 'a' ? 'KeyM' : button === 'b' ? 'KeyR' : null;
-    case 'coffee-done': case 'ralph-done': return button === 'a' ? 'Enter' : null;
+    case 'coffee-done': case 'ralph-done': case 'mall-done': return button === 'a' ? 'Enter' : null;
     case 'playing': return ({ a: 'Space', b: 'KeyF', x: 'KeyE', y: 'Tab', back: 'KeyV' } as Partial<Record<PadButton, string>>)[button] ?? null;
     default: return null;
   }

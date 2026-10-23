@@ -13,7 +13,8 @@ export type MallAction = 'take' | 'load' | 'grab-cart' | 'park-cart' | 'drop' | 
  * its own with the cart full of its freight. Delivered, it will not sign: a box is missing, and the clerk is furious.
  * Skanky tries mall security's lost and found, through the staff doors and down a long service hallway. The guard has
  * the box, and asks questions first; answered right, Skanky carries it back by hand and Bentley signs. Answered wrong,
- * Skanky can ask again, or grab the box and run: Bentley, then the five-ton, with the guard chasing and shooting.
+ * Skanky can ask again, or grab the box and run: Bentley, then the five-ton, with the guard chasing and shooting. One
+ * hit and Skanky collapses: medics carry him out to an ambulance, and the night is lost (the owner's, 2026-10-23).
  */
 export const BENTLEY = {
   id: 'bentley', name: 'BENTLEY', door: { x: 1260, y: 400 }, run: 3, bundles: 2, boxes: 10,
@@ -44,12 +45,22 @@ export const SECURITY_WING = {
 /**
  * The chase, in pixels (32 to a metre) and milliseconds. Skanky runs a little faster than the guard walks him down; the
  * guard closes a long gap faster, so he stays in range. He only shoots with a clear line, after tracking Skanky and
- * then holding his aim: a sidestep once the aim holds is a miss. Three hits, or a hand on the shoulder, and he is caught.
+ * then holding his aim: a sidestep once the aim holds is a miss. A hit puts Skanky down; a hand on the shoulder
+ * catches him.
  */
 export const CHASE = {
   run: 1.08, guardSpeed: 240, guardCatchUp: 290, catchUpGap: 260, headStartMs: 700,
   caughtAt: 24, range: 430, minRange: 60, trackMs: 520, lockMs: 460, firstAimMs: 900, cooldownMs: [1100, 1700] as const,
-  hitRadius: 18, hitsToCatch: 3, stumbleMs: 850, stumble: 0.4, trailStep: 20,
+  hitRadius: 18, trailStep: 20,
+} as const;
+/**
+ * Shot, on one clock from the hit (ms): Skanky collapses; the guard radios for an ambulance; a cut to the medics
+ * kneeling by him with a stretcher; they lift him and carry him off; a cut outside to the ambulance at the receiving
+ * dock, where they load him in; it pulls away with its lights and siren; game over.
+ */
+export const AMBULANCE = {
+  collapseMs: 1200, sirenMs: 1500, cutInMs: 3000, medicsMs: 3600, liftMs: 5200, carryMs: 6600, cutOutMs: 9500,
+  outsideMs: 10100, loadMs: 10600, doorsMs: 11400, departMs: 12400, overMs: 16500,
 } as const;
 /** Before the box comes back, the guard asks three of these; each answer is shown with two wrong ones. */
 const SECURITY_QUESTIONS: readonly { question: string; right: string; wrong: readonly string[] }[] = [
@@ -71,10 +82,17 @@ export interface MallChase {
   shot: { from: Point; to: Point; hit: boolean; ageMs: number } | null;
   cooldownMs: number;
   elapsedMs: number;
-  stumbleMs: number;
-  hits: number;
   /** The box is with Bentley, signed for: now for the five-ton. */
   delivered: boolean;
+}
+/** Skanky shot: where he fell, whether he still had the box, where the guard stood, the shot, the clock since (`AMBULANCE`). */
+export interface MallDown {
+  x: number;
+  y: number;
+  ms: number;
+  box: boolean;
+  guard: Point;
+  shot: { from: Point; to: Point };
 }
 /** The 3D mall's floor: the shared layout's, and the way to security. */
 const WALK: readonly Rect[] = [...MALL_LAYOUT.walk, SECURITY_WING.doors, SECURITY_WING.hallway, SECURITY_WING.corridor, SECURITY_WING.office];
@@ -116,8 +134,10 @@ export class MallModel3D extends MallModel {
   public quiz: { questions: SecurityQuestion[]; index: number } | null = null;
   /** Running with the box, the guard behind. */
   public chase: MallChase | null = null;
-  /** How the chase ended: into the five-ton and away, or caught after Bentley signed. */
-  public getaway: 'escaped' | 'busted' | null = null;
+  /** How the chase ended: into the five-ton and away, caught after Bentley signed, or shot and taken away. */
+  public getaway: 'escaped' | 'busted' | 'shot' | null = null;
+  /** Shot on the chase: Skanky down, and the ambulance on its way. */
+  public down: MallDown | null = null;
   private readonly random: () => number;
 
   constructor(random: () => number = Math.random) {
@@ -134,6 +154,21 @@ export class MallModel3D extends MallModel {
 
   public override get runCount(): number {
     return BENTLEY.run + 1;
+  }
+
+  /**
+   * The mall practice's START AT BENTLEY: the first three runs done, the six stores delivered and signed, and the fourth
+   * under way with Bentley's two loads still in the truck, the cart parked at the tailgate and Skanky beside it.
+   */
+  public startAtBentley(): void {
+    for (const store of this.stores) if (store.id !== BENTLEY.id) store.state = 'signed';
+    this.signatures = this.delivered = this.stores.length - 1;
+    this.run = BENTLEY.run;
+    this.truckBundles.forEach((id, slot) => { if (id !== BENTLEY.id) this.truckBundles[slot] = null; });
+    this.carrying = null;
+    this.cart.load = [];
+    Object.assign(this.cart, { x: 130, y: 400, facing: 'up', pushed: false });
+    Object.assign(this.skanky, { x: 75, y: 400, facing: 'left', moving: false });
   }
 
   /** Eight bundles at the tailgate: closer together than the shared model's six, so all stay within reach. */
@@ -162,13 +197,13 @@ export class MallModel3D extends MallModel {
     return this.bentley === 'refused' || this.bentley === 'quiz' || this.bentley === 'denied' || this.chase !== null;
   }
 
-  /** Running with the box: a little faster than walking, and slowed for a moment by a hit. */
+  /** Running with the box: a little faster than walking. */
   protected override get moveSpeed(): number {
-    if (!this.chase) return MALL_RULES.speed;
-    return MALL_RULES.speed * CHASE.run * (this.chase.stumbleMs > 0 ? CHASE.stumble : 1);
+    return this.chase ? MALL_RULES.speed * CHASE.run : MALL_RULES.speed;
   }
 
   public override get objective(): string {
+    if (this.down) return 'Skanky is down · the ambulance is on its way';
     if (this.chase) return this.chase.delivered ? 'RUN! · get to the five-ton at the dock · dodge the shots' : 'RUN! · get the box to BENTLEY · dodge the shots';
     const store = this.store(BENTLEY.id);
     if (this.finished || this.run !== BENTLEY.run || this.allSigned || this.runComplete) return super.objective;
@@ -189,7 +224,7 @@ export class MallModel3D extends MallModel {
     if (this.carrying) return { action: nearCart ? 'load' : 'none', label: nearCart ? 'SPACE · LOAD CART' : 'Carry the bundle to the cart' };
     const store = this.stores.find(s => inside(s.zone, this.skanky) || this.cart.pushed && inside(s.zone, this.cart));
     // At the desk the card carries the choices; the prompt is just the errand.
-    if (this.bentley === 'quiz' || this.bentley === 'denied') return { action: 'none', label: this.objective };
+    if (this.down || this.bentley === 'quiz' || this.bentley === 'denied') return { action: 'none', label: this.objective };
     if (this.chase) {
       if (!this.chase.delivered && store?.id === BENTLEY.id) return { action: 'sign', label: 'SPACE · SHOVE THE BOX AT BENTLEY' };
       return { action: 'none', label: this.objective };
@@ -239,6 +274,16 @@ export class MallModel3D extends MallModel {
 
   public override update(deltaMs: number, move: { x: number; y: number } = { x: 0, y: 0 }): void {
     if (this.paused || this.finished || !Number.isFinite(deltaMs) || deltaMs <= 0) return;
+    // Shot: no more moving; the ambulance's clock runs to the end of the night.
+    if (this.down) {
+      this.down.ms += Math.min(deltaMs, 100);
+      if (this.down.ms >= AMBULANCE.overMs) {
+        this.finished = true;
+        this.getaway = 'shot';
+        this.emit('down', 'GAME OVER · Skanky was shot and taken away by ambulance');
+      }
+      return;
+    }
     // At the desk, answering the guard or deciding what to do, Skanky stands still.
     if (this.bentley === 'quiz' || this.bentley === 'denied') {
       this.skanky.moving = false;
@@ -392,7 +437,7 @@ export class MallModel3D extends MallModel {
       guard: { x: guardPost.x, y: guardPost.y, moving: false },
       // Out round the south end of his desk, then after Skanky.
       path: [{ x: guardPost.x, y: desk.y + desk.h + 26 }, { x: desk.x - 26, y: desk.y + desk.h + 26 }],
-      aim: null, shot: null, cooldownMs: CHASE.firstAimMs, elapsedMs: 0, stumbleMs: 0, hits: 0, delivered: false,
+      aim: null, shot: null, cooldownMs: CHASE.firstAimMs, elapsedMs: 0, delivered: false,
     };
     this.emit('grab', 'Grabbed it! · RUN · get the box to BENTLEY', BENTLEY.id);
   }
@@ -401,7 +446,6 @@ export class MallModel3D extends MallModel {
     const chase = this.chase!;
     const s = this.skanky, g = chase.guard;
     chase.elapsedMs += ms;
-    chase.stumbleMs = Math.max(0, chase.stumbleMs - ms);
     if (chase.shot && (chase.shot.ageMs += ms) > 450) chase.shot = null;
     const mark = chase.path[chase.path.length - 1] ?? g;
     if (Math.hypot(s.x - mark.x, s.y - mark.y) >= CHASE.trailStep) chase.path.push({ x: s.x, y: s.y });
@@ -482,10 +526,12 @@ export class MallModel3D extends MallModel {
       this.emit('shot', 'Missed!');
       return;
     }
-    chase.hits += 1;
-    chase.stumbleMs = CHASE.stumbleMs;
-    this.emit('hit', `Hit! (${chase.hits}/${CHASE.hitsToCatch})`);
-    if (chase.hits >= CHASE.hitsToCatch) this.catchSkanky();
+    // Down: the box falls where he does, and the chase is over.
+    this.down = { x: s.x, y: s.y, ms: 0, box: this.handBox, guard: { x: g.x, y: g.y }, shot: { from: chase.shot.from, to: chase.shot.to } };
+    this.chase = null;
+    this.handBox = false;
+    s.moving = false;
+    this.emit('hit', 'SHOT! · Skanky is down');
   }
 
   /**

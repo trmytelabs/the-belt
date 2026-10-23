@@ -196,10 +196,14 @@ he walks, and the guard follows his trail, catching up when he is far behind.
 With a clear line he stops and aims: an amber band on the floor tracks Skanky,
 turns red when the aim holds, and the shot follows a moment later along that
 band. A sidestep once it is red is a miss. Walls, corners, the hallway's
-clutter, the planters and the railings are cover. A hit slows Skanky for a
-moment; three hits, or the guard's hand on his shoulder, and he is caught. With
-the box, that puts it back on the desk and Skanky back at the counter, to ask
-again or try again. Shoving the box at BENTLEY on the run signs it at once.
+clutter, the planters and the railings are cover. One hit and Skanky collapses
+(the owner's, 2026-10-23): the guard radios for an ambulance and the siren
+starts; after a cut to black two medics are kneeling by him with a stretcher,
+lift him on and carry him off; after a second cut, outside the receiving dock,
+they load him into the ambulance, which pulls away up 111 Street with its lights
+going; then GAME OVER, and the night is lost (ANOTHER NIGHT starts again). The
+guard's hand on his shoulder catches him instead: with the box, that puts it
+back on the desk and Skanky back at the counter, to ask again or try again. Shoving the box at BENTLEY on the run signs it at once.
 Then into the five-ton at the dock is a getaway (+100 on the night, the cart
 left behind); caught after BENTLEY has signed, Skanky is marched out to the
 five-ton (−100). The rush's music plays through the chase. In the 3D mall

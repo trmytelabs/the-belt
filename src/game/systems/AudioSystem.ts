@@ -25,6 +25,8 @@ export class AudioSystem {
   private masterGain: GainNode | null = null;
   /** The last node before the speakers: everything the game plays passes through it. */
   protected output: AudioNode | null = null;
+  /** The mix before the master volume and mute (music and effects together). */
+  protected mix: AudioNode | null = null;
   protected musicGain: GainNode | null = null;
   protected sfxGain: GainNode | null = null;
   protected noiseBuffer: AudioBuffer | null = null;
@@ -310,6 +312,7 @@ export class AudioSystem {
     compressor.connect(this.masterGain); this.masterGain.connect(lowpass);
     lowpass.connect(rumbleCut); rumbleCut.connect(context.destination);
     this.output = rumbleCut;
+    this.mix = compressor;
     this.noiseBuffer = context.createBuffer(1, context.sampleRate * 2, context.sampleRate);
     const data = this.noiseBuffer.getChannelData(0);
     let seed = 0x71b37; let smooth = 0;
