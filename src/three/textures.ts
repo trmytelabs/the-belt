@@ -8,7 +8,8 @@ import * as THREE from 'three';
  * draw-call merging working (merge.ts keys on map identity), so meshes scale
  * their own UVs to world size instead of setting a per-texture repeat.
  */
-export type SurfaceName = 'concrete' | 'rubber' | 'steel' | 'paint' | 'cardboard' | 'asphalt' | 'snowpack';
+export type SurfaceName = 'concrete' | 'rubber' | 'steel' | 'paint' | 'cardboard' | 'asphalt' | 'snowpack'
+  | 'brick' | 'plaster' | 'siding' | 'wood';
 
 export interface Surface {
   map: THREE.Texture;
@@ -16,8 +17,9 @@ export interface Surface {
   armMap: THREE.Texture;
 }
 
-// Asphalt (plowed, with snow in the grain) and packed snow pave the arrival lot and the city.
-const NAMES: SurfaceName[] = ['concrete', 'rubber', 'steel', 'paint', 'cardboard', 'asphalt', 'snowpack'];
+// Asphalt (plowed, with snow in the grain) and packed snow pave the arrival lot and the city; brick and plaster face
+// its buildings and the rooms, corrugated siding clads the depot outside, and wood floors and panels the interiors.
+const NAMES: SurfaceName[] = ['concrete', 'rubber', 'steel', 'paint', 'cardboard', 'asphalt', 'snowpack', 'brick', 'plaster', 'siding', 'wood'];
 const surfaces = new Map<SurfaceName, Surface>();
 let loading: Promise<void> | null = null;
 
@@ -76,7 +78,36 @@ export const SURFACE_MEANS: Record<SurfaceName, { color: number; roughness: numb
   cardboard: { color: 0xb98f4d, roughness: 0.64, metalness: 0 },
   asphalt: { color: 0x7c787b, roughness: 0.87, metalness: 0 },
   snowpack: { color: 0x6a6a66, roughness: 0.82, metalness: 0 },
+  brick: { color: 0x69534a, roughness: 0.53, metalness: 0 },
+  plaster: { color: 0x9e8c78, roughness: 0.62, metalness: 0 },
+  siding: { color: 0x585851, roughness: 0.52, metalness: 0.19 },
+  wood: { color: 0x7f5f42, roughness: 0.47, metalness: 0 },
 };
+
+/** Real-world size in metres of one tile of each building set. */
+export const SURFACE_TILE = { brick: 1, plaster: 2, siding: 2, wood: 2 } as const;
+
+/**
+ * Surface `name` for vertex-coloured geometry: the photo's grain and relief under the vertex colours, the colour map
+ * divided by its average so a vertex colour keeps its brightness; without textures, plain vertex colour.
+ */
+export function vertexSurfaceMaterial(name: SurfaceName, roughness: number): THREE.MeshStandardMaterial {
+  const surface = surfaces.get(name);
+  const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness });
+  if (!surface) return material;
+  const mean = new THREE.Color(SURFACE_MEANS[name].color);
+  material.color.setRGB(1 / mean.r, 1 / mean.g, 1 / mean.b);
+  material.map = surface.map;
+  material.normalMap = surface.normalMap;
+  material.roughness = roughness / SURFACE_MEANS[name].roughness;
+  material.roughnessMap = surface.armMap;
+  return material;
+}
+
+/** The colour map of surface `name` once loaded, as an image to draw from, or null. */
+export function surfaceImage(name: SurfaceName): CanvasImageSource | null {
+  return (surfaces.get(name)?.map.image as CanvasImageSource | undefined) ?? null;
+}
 
 /** Real-world size of one tile of the outdoor sets: both photos cover 2 m. */
 export const PAVING_TILE = 2;

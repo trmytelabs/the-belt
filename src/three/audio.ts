@@ -216,6 +216,7 @@ export class DepotAudio extends AudioSystem {
     this.fade(this.musicGain, 0, 0.12);
     this.stopRecordings();
     this.setTruckIdle(false);
+    this.setRoomTone(null, 0);
     this.setDriving(null);
     this.setBelt(null);
     this.stopFoley();
@@ -223,6 +224,7 @@ export class DepotAudio extends AudioSystem {
 
   public override setMuted(muted: boolean): void {
     super.setMuted(muted);
+    if (muted) this.setRoomTone(null, 0);
     if (muted) this.setDriving(null);
     if (muted) this.setBelt(null);
     if (muted) this.stopFoley();
@@ -505,6 +507,80 @@ export class DepotAudio extends AudioSystem {
     this.fade(gain, 0.024, 1.2);
     noise.start(); hum.start();
   }
+
+  /** The story set's room tone now playing, its sources and level, and the time to the next clink. */
+  private roomKind: RoomTone | null = null;
+  private roomSources: AudioScheduledSourceNode[] = [];
+  private roomGain: GainNode | null = null;
+  private roomClink = 1;
+
+  /**
+   * A story set's room tone, called every frame (`dt` in seconds): `restaurant`, a low murmur of talk that swells and
+   * ebbs with porcelain clinking now and then (Cha for Tea, the Tim Hortons booth); `outdoors`, a night wind in
+   * slow gusts (the lot, the road); null for silence. Changing kind crossfades.
+   */
+  public setRoomTone(kind: RoomTone | null, dt: number): void {
+    if (this.muted) kind = null;
+    if (kind !== this.roomKind) {
+      if (this.roomGain) {
+        const now = this.context?.currentTime ?? 0;
+        this.fade(this.roomGain, 0, 0.25);
+        for (const source of this.roomSources) source.stop(now + 1);
+      }
+      this.roomSources = []; this.roomGain = null; this.roomKind = null;
+      if (kind && this.startRoomTone(kind)) this.roomKind = kind;
+      return;
+    }
+    if (kind !== 'restaurant' || !(dt > 0)) return;
+    this.roomClink -= dt;
+    if (this.roomClink > 0) return;
+    this.roomClink = 1.1 + Math.random() * 2.6;
+    const context = this.getContext();
+    if (!context || context.state !== 'running') return;
+    // A cup on a saucer or chopsticks on a bowl: two quick, high, quiet pings.
+    const now = context.currentTime + 0.01, pitch = 2300 + Math.random() * 1100;
+    this.voice(pitch, 0.08, now, 0.009, { attack: 0.002, cutoff: 6000 });
+    this.voice(pitch * 1.34, 0.06, now + 0.05 + Math.random() * 0.05, 0.006, { attack: 0.002, cutoff: 6000 });
+  }
+
+  private startRoomTone(kind: RoomTone): boolean {
+    const context = this.getContext();
+    if (!context || context.state !== 'running' || !this.sfxGain || !this.noiseBuffer) return false;
+    const gain = context.createGain();
+    gain.gain.value = 0;
+    gain.connect(this.sfxGain);
+    // Talk: two bands of noise; wind: one low band. A slow wobble on the level makes it swell and ebb (or gust).
+    const bands = kind === 'restaurant' ? [[420, 0.8, 0.05], [1050, 1.1, 0.022]] : [[260, 0.5, 0.06]];
+    const sources: AudioScheduledSourceNode[] = [];
+    for (const [frequency, q, level] of bands) {
+      const noise = context.createBufferSource(), filter = context.createBiquadFilter(), band = context.createGain();
+      noise.buffer = this.noiseBuffer; noise.loop = true;
+      noise.loopStart = Math.random(); noise.loopEnd = this.noiseBuffer.duration;
+      filter.type = 'bandpass'; filter.frequency.value = frequency; filter.Q.value = q;
+      band.gain.value = level;
+      noise.connect(filter); filter.connect(band); band.connect(gain);
+      const wobble = context.createOscillator(), depth = context.createGain();
+      wobble.frequency.value = kind === 'restaurant' ? 0.21 + Math.random() * 0.1 : 0.09;
+      depth.gain.value = level * (kind === 'restaurant' ? 0.35 : 0.7);
+      wobble.connect(depth); depth.connect(band.gain);
+      noise.onended = () => { noise.disconnect(); filter.disconnect(); band.disconnect(); };
+      wobble.onended = () => { wobble.disconnect(); depth.disconnect(); };
+      noise.start(); wobble.start();
+      sources.push(noise, wobble);
+    }
+    let remaining = sources.length;
+    for (const source of sources) {
+      const ended = source.onended;
+      source.onended = (event) => { ended?.call(source, event); if (--remaining === 0) gain.disconnect(); };
+    }
+    this.roomSources = sources; this.roomGain = gain;
+    this.fade(gain, 1, 0.6);
+    this.roomClink = 0.8;
+    return true;
+  }
 }
+
+/** A story set's room tone (DepotAudio.setRoomTone). */
+export type RoomTone = 'restaurant' | 'outdoors';
 
 export const audioSystem = new DepotAudio();

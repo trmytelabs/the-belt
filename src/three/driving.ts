@@ -475,7 +475,8 @@ export class DrivingView {
     const p = model.pose;
     this.vehicle.position.set(p.x, 0, p.z); this.vehicle.rotation.y = p.heading;
     this.tailMaterial.emissiveIntensity = model.braking || model.canPark ? 3 : 0.6;
-    this.pool.position.set(p.x, 7, p.z);
+    // The warm pool of light rides a few metres ahead, on the road the driver watches, not over the truck's roof (it glared).
+    this.pool.position.set(p.x + p.tx * 5, 7, p.z + p.tz * 5);
     for (const { signal, axis, bulbs } of this.signalProps) {
       const color = signalColor(signal, model.elapsed, axis);
       bulbs.forEach((bulb, i) => { bulb.material.emissiveIntensity = i === ['red', 'amber', 'green'].indexOf(color) ? 4 : 0.04; });

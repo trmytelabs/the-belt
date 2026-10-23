@@ -13,7 +13,7 @@ import { palmOf } from './characterModels';
 import { placeProp, upgradeCar } from './propModels';
 import { poseSeated, seatRootPosition, type SeatTargetPoints } from './seating';
 import { followWheels, type SeatName, type VehicleContract, type WheelRig } from './vehicleRig';
-import { PAVING_TILE, scaleUVs, surfaceMaterial, surfacesLoaded } from './textures';
+import { PAVING_TILE, SURFACE_TILE, boxUVs, scaleUVs, surfaceMaterial, surfacesLoaded } from './textures';
 import { PuffField } from './fx';
 import { buildSouthgateMall, mallX, mallZ, type SouthgateMall } from './mall';
 import { mergeStatic } from './merge';
@@ -484,7 +484,7 @@ export class StoryStage {
       scene.add(dash);
     }
     // The depot: dock doors, the dispatch door and the key drop.
-    const building = new THREE.Mesh(new THREE.BoxGeometry(50, 8, 8), standard(0x2c3438, 0.85));
+    const building = new THREE.Mesh(boxUVs(new THREE.BoxGeometry(50, 8, 8), SURFACE_TILE.siding), surfaceMaterial('siding', { color: 0x3c464c, roughness: 0.85, metalness: 0.2 }));
     building.position.set(0, 4, -18);
     building.receiveShadow = true;
     scene.add(building);
@@ -659,10 +659,10 @@ export class StoryStage {
     floor.receiveShadow = true;
     scene.add(floor);
     // Walls: cream above a dark wood wainscot. The window wall (east) is built round its glass.
-    const cream = standard(0xe9dcc4, 0.85);
-    const wood = standard(0x5a3826, 0.6);
+    const cream = surfaceMaterial('plaster', { color: 0xe9dcc4, roughness: 0.85 });
+    const wood = surfaceMaterial('wood', { color: 0x5a3826, roughness: 0.6 });
     const wall = (x: number, y: number, z: number, w: number, h: number, d: number, material: THREE.Material = cream): void => {
-      const panel = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
+      const panel = new THREE.Mesh(boxUVs(new THREE.BoxGeometry(w, h, d), material === wood ? SURFACE_TILE.wood : SURFACE_TILE.plaster), material);
       panel.position.set(x, y, z);
       scene.add(panel);
     };
@@ -877,7 +877,9 @@ export class StoryStage {
       pole.position.set(x, 3, -5);
       const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.18, 0.4), new THREE.MeshStandardMaterial({ color: 0x333333, emissive: 0xffb050, emissiveIntensity: 3 }));
       lamp.position.set(x, 6, -4.4);
-      const building = new THREE.Mesh(new THREE.BoxGeometry(8, 4 + (i * 7) % 6, 6), standard(0x1c2630, 0.9));
+      const facing = i % 2 ? 'brick' as const : 'plaster' as const;
+      const building = new THREE.Mesh(boxUVs(new THREE.BoxGeometry(8, 4 + (i * 7) % 6, 6), SURFACE_TILE[facing]),
+        surfaceMaterial(facing, { color: i % 2 ? 0x5a3c34 : 0x46505a, roughness: 0.9 }));
       building.position.set(x + 3, building.geometry.parameters.height / 2, -14);
       const roofSnow = snowCap(8.1, 6.1, 0.2);
       roofSnow.position.set(x + 3, building.geometry.parameters.height + 0.1, -14);
@@ -915,27 +917,18 @@ export class StoryStage {
     const street = new THREE.Mesh(new THREE.PlaneGeometry(60, 7), standard(0x25292b, 0.95));
     street.rotation.x = -Math.PI / 2; street.position.set(0, -0.005, 13.5);
     scene.add(grass, driveway, street);
-    // Wood floor with plank lines.
-    const planks = document.createElement('canvas');
-    planks.width = planks.height = 128;
-    const pctx = planks.getContext('2d')!;
-    pctx.fillStyle = '#7a5434'; pctx.fillRect(0, 0, 128, 128);
-    pctx.fillStyle = '#6a4629';
-    for (let i = 0; i < 8; i += 1) pctx.fillRect(0, i * 16, 128, 2);
-    const plankTexture = new THREE.CanvasTexture(planks);
-    plankTexture.wrapS = plankTexture.wrapT = THREE.RepeatWrapping;
-    plankTexture.repeat.set(4, 4);
-    plankTexture.colorSpace = THREE.SRGBColorSpace;
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(10, 8), new THREE.MeshStandardMaterial({ map: plankTexture, roughness: 0.7 }));
+    // A wood floor (the photo set; plain brown without it).
+    const floor = new THREE.Mesh(scaleUVs(new THREE.PlaneGeometry(10, 8), 10 / SURFACE_TILE.wood, 8 / SURFACE_TILE.wood), surfaceMaterial('wood', { color: 0x7a5434, roughness: 0.7 }));
     floor.rotation.x = -Math.PI / 2; floor.position.y = 0.005; floor.receiveShadow = true;
     scene.add(floor);
     // A closed room: painted walls inside, siding outside, a ceiling, skirting
     // and crown molding. The back and front walls have windows, the east wall the door.
-    const paint = standard(0xcdbf9f, 0.9);
-    const siding = standard(0x5d6a72, 0.9);
+    const paint = surfaceMaterial('plaster', { color: 0xcdbf9f, roughness: 0.9 });
+    // Stucco outside, as Edmonton houses are.
+    const siding = surfaceMaterial('plaster', { color: 0x5d6a72, roughness: 0.9 });
     const trim = standard(0xebe5d6, 0.6);
     const wall = (x: number, y: number, z: number, w: number, h: number, d: number, material: THREE.Material = paint): void => {
-      const panel = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
+      const panel = new THREE.Mesh(boxUVs(new THREE.BoxGeometry(w, h, d), SURFACE_TILE.plaster), material);
       panel.position.set(x, y, z);
       scene.add(shadowed(panel));
     };
@@ -948,7 +941,7 @@ export class StoryStage {
     // The east wall's outside face, seen from the driveway.
     for (const [y, z, h, d] of [[1.4, -1.64, 2.8, 4.88], [1.4, 3.04, 2.8, 2.08], [2.4, 1.4, 0.8, 1.2]] as const) wall(5.09, y, z, 0.02, h, d, siding);
     // The front wall: siding and a lit window outside, paint and a curtained window inside.
-    const frontWall = new THREE.Mesh(new THREE.BoxGeometry(10.16, 2.8, 0.16), siding);
+    const frontWall = new THREE.Mesh(boxUVs(new THREE.BoxGeometry(10.16, 2.8, 0.16), SURFACE_TILE.plaster), siding);
     frontWall.position.set(0, 1.4, 4);
     const frontWindow = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 1.1), new THREE.MeshStandardMaterial({ color: 0x40301c, emissive: 0xffc27a, emissiveIntensity: 0.9 }));
     frontWindow.position.set(-1.5, 0.15, 0.09);
@@ -1721,6 +1714,21 @@ export class StoryStage {
    * A car's engine running on a cold night: thick white exhaust rolling out of the tailpipe (behind the rear bumper,
    * the car's −x), dark and heavier while it has just started (`starting`). About 22 puffs a second at any frame rate.
    */
+  /**
+   * The five-ton's engine on the road scenes: thick exhaust from the tailpipe under its rear (createTruck's
+   * `stack-top`), left behind at the road's `speed` (the scenery moves past a still truck, toward −x), dark while it
+   * pulls away (`starting`).
+   */
+  private truckExhaust(stage: Stage, truck: THREE.Object3D, speed: number, starting: boolean): void {
+    if (Math.random() > this.frameDt * (starting ? 44 : 40)) return;
+    const pipe = truck.getObjectByName('stack-top');
+    if (!pipe) return;
+    stage.puffs.emit(pipe.getWorldPosition(new THREE.Vector3()), {
+      color: starting ? 0x6a6e72 : 0xd8dce0, size: starting ? 0.65 : 0.55, life: starting ? 2.6 : 1.8, opacity: starting ? 0.7 : 0.58, grow: 5, spread: 0.25, look: 'cloud',
+      velocity: new THREE.Vector3(-speed * 0.85 - 0.5 - Math.random() * 0.4, 0.3 + Math.random() * 0.3, (Math.random() - 0.5) * 0.3),
+    });
+  }
+
   private exhaust(stage: Stage, car: THREE.Object3D, starting: boolean): void {
     if (Math.random() > this.frameDt * (starting ? 34 : 22)) return;
     const pipe = car.localToWorld(new THREE.Vector3(-2.3, 0.3, 0.5));
@@ -1940,6 +1948,7 @@ export class StoryStage {
     map.offset.x = this.roadTravel / 10;
     props.passing.position.x = -(this.roadTravel % 12);
     props.truck.position.set(0, 0, 1.6);
+    this.truckExhaust(stage, props.truck, speed, depart < 0.3);
     this.cameraTo(new THREE.Vector3(-7.5, 3.6, 8.5), new THREE.Vector3(1.5, 1.4, 0.5), dt, cutscene.index === 0 && cutscene.elapsedMs < 50);
   }
 
@@ -2014,9 +2023,10 @@ export class StoryStage {
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
     scene.add(floor);
-    const cream = standard(0xeadfc8, 0.85), wood = standard(0x4a2418, 0.55), red = standard(0xa3201c, 0.6), gold = standard(0xd4a640, 0.35, 0.6);
+    const cream = surfaceMaterial('plaster', { color: 0xeadfc8, roughness: 0.85 }), wood = surfaceMaterial('wood', { color: 0x4a2418, roughness: 0.55 });
+    const red = standard(0xa3201c, 0.6), gold = standard(0xd4a640, 0.35, 0.6);
     const wall = (x: number, y: number, z: number, w: number, h: number, d: number, material: THREE.Material = cream): void => {
-      const panel = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
+      const panel = new THREE.Mesh(boxUVs(new THREE.BoxGeometry(w, h, d), material === wood ? SURFACE_TILE.wood : SURFACE_TILE.plaster), material);
       panel.position.set(x, y, z);
       scene.add(panel);
     };

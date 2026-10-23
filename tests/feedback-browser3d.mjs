@@ -329,6 +329,9 @@ try {
     const app = window.fixtureApp;
     app.model.activeWorker.heldId = null;
     for (const p of app.model.packages) p.state = 'delivered';
+    // The worker's own footsteps (a noise burst and a tone as a foot lands) are not interaction sounds: a step
+    // landing inside these short windows failed them now and then. They are held off until the checks are done.
+    app.footsteps = () => undefined;
     window.interactionSounds = [];
   });
   await page.keyboard.press('Space'); await page.waitForTimeout(100);
@@ -342,6 +345,7 @@ try {
   await page.keyboard.press('Space'); await wait(() => window.fixtureApp.model.score === 90);
   await wait(() => window.interactionSounds.some(sound => sound.kind === 'recording' && !sound.loop && sound.duration > 0 && sound.duration < 2));
   assert.equal(await read(() => window.interactionSounds.some(sound => sound.kind === 'oscillator')), false, 'wrong drops use the recorded cue');
+  await read(() => { delete window.fixtureApp.footsteps; });
   console.log('PASS the pickable package has a halo and Space prompt; empty grabs stay quiet, while the wrong truck deducts ten points and plays the short recorded error cue');
   await read(() => { window.fixtureApp.audio.ambienceIn = 6; });
 
