@@ -112,6 +112,15 @@ function showWebglFallback(host: HTMLElement): void {
  * owner's, 2026-10-22: the 7-Eleven lunch no longer fits). The shared script keeps 7-Eleven for the classic game.
  */
 const story3d = (random: () => number = Math.random, forced: Partial<StoryChoices> = {}): StoryRun => new StoryRun(random, { ...forced, breakPlace: 'timhortons' });
+/** The people of the night, as the game names them, for the credits. */
+const CREDITS_CAST = ['TERMITE', 'SKANKY', "SHAN O'MAC", 'VIC', 'KYLIE', 'JOHN RUSHTON', 'HUSSAN', 'AJ', 'BEN', 'BANNERMAN', 'FRUIT LOOP', 'DORIS', 'BRIAN', 'DONNA', 'PAULA ABDUL', 'RALPH'];
+
+/** The credits that close a full story night's results. */
+const creditsBlock = (): string => `<div class="b3d-credits"><div class="kicker">THE END</div>
+  <p><b>THE BELT</b> · a TRMYTE LABS game</p>
+  <p>Based on real nights on the belt at a UPS depot in Edmonton.</p>
+  <p class="b3d-cast">${CREDITS_CAST.map((name) => `<span>${escapeHtml(name)}</span>`).join('')}</p></div>`;
+
 const escapeHtml = (text: string): string => text.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
 
 export class Belt3d {
@@ -239,6 +248,8 @@ export class Belt3d {
   private ralphScene: RalphRunScene | null = null;
   /** Tonight's Ralph run once driven: the stops served, the dead-on ones and what it paid the night. */
   public ralphResult: { delivered: number; bullseyes: number; points: number; bumps: number } | null = null;
+  /** Whether tonight played through to its ending at Cha for Tea, so the results close with the credits. */
+  public sawEnding = false;
   private ralphBumps = 0;
   /** `?minigame=ralph`: the Ralph run on its own, from its own briefing. */
   private readonly practiceRalph = new URLSearchParams(window.location.search).get('minigame') === 'ralph';
@@ -862,6 +873,7 @@ export class Belt3d {
       // Not home yet: breakfast with Vic at Cha for Tea.
       this.playScene(CHA_FOR_TEA);
     } else if (scene.id === 'cha-for-tea') {
+      this.sawEnding = true;
       this.showResults();
     }
   }
@@ -1388,6 +1400,7 @@ export class Belt3d {
   private restart(): void {
     audioSystem.stopMusic();
     this.justPlay = false;
+    this.sawEnding = false;
     for (const view of this.parcels.values()) disposeObject3D(view.root);
     for (const item of this.departing) disposeObject3D(item.view.root);
     this.parcels.clear();
@@ -2828,6 +2841,7 @@ export class Belt3d {
       ${this.ralphResult ? `<p>THE RALPH RUN · ${this.ralphResult.delivered}/${RALPH_STOPS.length} delivered${this.ralphResult.bullseyes ? ` · ${this.ralphResult.bullseyes} dead on` : ''}${this.ralphResult.bumps ? ` · ${this.ralphResult.bumps} bumps` : ''} · +${this.ralphResult.points}</p>
       <p class="b3d-sum">SHIFT ${m.score} + NIGHT GOALS ${judged.bonus} + RALPH RUN ${ralphPoints}</p>
       <p><b>NIGHT TOTAL ${String(total).padStart(5, '0')}</b> · ${m.gradeQuote}</p>` : ''}
+      ${this.sawEnding ? creditsBlock() : ''}
       <button type="button">ANOTHER NIGHT  ↵</button>
       <a href="${window.location.pathname}?mode=classic">PLAY THE ORIGINAL FULL SHIFT</a>`, () => this.restart());
   }

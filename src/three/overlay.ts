@@ -95,6 +95,10 @@ const CSS = `
 .b3d-pop { position: absolute; transform: translate(-50%, -50%); font: 900 18px "Segoe UI", Arial, sans-serif; text-shadow: 0 2px 6px #000c; white-space: nowrap; }
 .b3d-center { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
 .b3d-title .b3d-hud { visibility: hidden; }
+.b3d-credits { margin: 14px 0 6px; padding-top: 12px; border-top: 1px solid #3b5a62; text-align: center; }
+.b3d-credits .kicker { font-size: 13px; letter-spacing: 6px; }
+.b3d-panel .b3d-credits p { margin: 4px 0; }
+.b3d-cast { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 12px; font-size: 12px; letter-spacing: 1.5px; color: #edb765; }
 @media (min-width: 1100px) and (min-aspect-ratio: 4/3) {
   .b3d-panel.side { justify-self: start; margin-left: 3vw; width: min(540px, 40vw); }
 }
