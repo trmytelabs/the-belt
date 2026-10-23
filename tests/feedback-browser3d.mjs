@@ -73,10 +73,10 @@ try {
     c.reset();return {before,first,all,exhaust,repeat,vibrates,reduced,cough,resumed,headlights,reset:app.world.trucks.every(truck=>!truck.group.userData.engineRunning&&truck.group.rotation.x===0&&truck.group.rotation.z===0)};
   });
   assert.deepEqual(engines.before,{running:0,lit:0});assert.deepEqual(engines.first,{running:1,lit:1});
-  assert.deepEqual(engines.all,{running:12,lit:12});assert.equal(engines.exhaust,12);
-  assert.equal(engines.repeat,12);assert.ok(engines.vibrates&&engines.reduced);
+  assert.deepEqual(engines.all,{running:12,lit:12});assert.equal(engines.exhaust,12*2);
+  assert.equal(engines.repeat,12*2);assert.ok(engines.vibrates&&engines.reduced);
   assert.ok(engines.headlights.every(count=>count===2));assert.equal(engines.cough,'cough');assert.equal(engines.resumed,'none');assert.ok(engines.reset);
-  console.log('PASS trucks start with one minute left, illuminate headlights, emit denser exhaust and visibly idle; reduced motion disables shaking, replay clears engines, loaders cough and resume');
+  console.log('PASS trucks start with one minute left, illuminate headlights, billow thick exhaust and visibly idle; reduced motion disables shaking, replay clears engines, loaders cough and resume');
 
   await read(()=>{const app=window.fixtureApp;app.model.elapsedMs=80000;app.beginBreak();});
   await page.locator('.b3d-lunch-alert').waitFor({state:'visible'});

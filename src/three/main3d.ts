@@ -297,7 +297,7 @@ export class Belt3d {
     else void useCharacterClips(true);
     setParcelModels(this.quality === 'high');
     this.renderer.shadowMap.enabled = this.quality === 'high';
-    this.renderer.shadowMap.type = this.quality === 'high' ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.18;
     this.renderer.domElement.tabIndex = 0;
@@ -1732,7 +1732,7 @@ export class Belt3d {
     // The conveyor runs while sorting goes on, and falls quiet when it stops (a brake, a story stop, a pause, the end).
     const beltRunning = this.state === 'playing' && !m.paused && !m.ended && !m.eventStopped && m.brakeRemainingMs <= 0;
     audioSystem.setBelt(beltRunning ? m.beltSpeed : null, beltRunning ? m.packages.filter((parcel) => parcel.state === 'belt').length : 0);
-    audioSystem.setDriving((this.state === 'driving' || this.state === 'paper') && this.driving ? this.driving.speed : null);
+    audioSystem.setDriving((this.state === 'driving' || this.state === 'paper') && this.driving ? this.driving.speed : this.state === 'coffee' && this.coffee ? this.coffee.speed : null);
     if (this.state === 'playing') this.crew.updateReceiving(m, dt, this.time);
     this.world.update(running ? dt : 0, this.time, m.beltTravel, this.reducedMotion);
     // Depot snow only falls while the depot is on screen; the wall piles always follow the shift clock.
@@ -1892,8 +1892,10 @@ export class Belt3d {
     const stageScene = this.usesDriving() ? this.drivingView!.scene : this.usesStage() ? this.stage.scene : null;
     const scene = stageScene ?? this.world.scene;
     const camera = this.activeCamera();
-    if (!stageScene && this.state !== 'dream') this.world.truckCutaway.update(camera,
-      [...Object.values(this.workers).map(worker => worker.root), ...[...this.crew.actors.values()].map(actor => actor.root)]);
+    // Trucks open a window onto the people behind them, except on the start screen: its view down the deck between
+    // the rows shows the trucks whole.
+    if (!stageScene && this.state !== 'dream') this.world.truckCutaway.update(camera, this.state === 'briefing' && !this.overview ? []
+      : [...Object.values(this.workers).map(worker => worker.root), ...[...this.crew.actors.values()].map(actor => actor.root)]);
     syncCharacterModels(this.state === 'dream' ? this.dream.scene : scene);
     if (this.state === 'dream') this.renderer.render(this.dream.scene, this.dream.camera);
     else if (this.composer && this.renderPass) {
@@ -2545,6 +2547,13 @@ export class Belt3d {
       look = this.depotShot.look;
       position = this.depotShot.position.clone();
       if (portrait) position.add(new THREE.Vector3(0, 4, 3));
+    } else if (this.state === 'briefing' && !this.overview) {
+      // The start screen: on the deck at the bulk end, at a little over head height, looking up the belt toward
+      // receiving, the belt in the middle and a row of trucks on either side. It drifts slowly from side to side.
+      const sway = this.reducedMotion ? 0 : Math.sin(this.time * 0.11);
+      const deck = PLATFORM_HEIGHT;
+      position = new THREE.Vector3(sway * 0.5, deck + (portrait ? 3.6 : 2.6), toWorldZ(SHIFT_LAYOUT.bulkPile.y) - (portrait ? 1.2 : 2.4));
+      look = new THREE.Vector3(sway * 0.25, deck - 0.9, toWorldZ(SHIFT_LAYOUT.beltTop) - 6);
     } else if (this.overview || this.state === 'briefing' || this.state === 'celebrating') {
       look = new THREE.Vector3(0, 0, toWorldZ((SHIFT_LAYOUT.worldTop + SHIFT_LAYOUT.worldBottom) / 2));
       position = look.clone().add(new THREE.Vector3(0, Math.max(portrait ? 104 : 80, 58 / this.camera.aspect), portrait ? 39 : 27));

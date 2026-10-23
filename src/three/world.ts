@@ -8,6 +8,7 @@ import { BODY, bendElbows, bendKnees, createCharacter, mergeCharacter, type Char
 import { mergeStatic } from './merge';
 import { physicalBounds } from './collision3d';
 import { PuffField } from './fx';
+import { rigWheels } from './vehicleRig';
 import {
   BELT_HEIGHT, BELT_WIDTH, BELT_WORK_HEIGHT, PALETTE, PLATFORM_HEIGHT, ROUTE_COLORS, WORLD_SCALE, shadowed, standard, textPlane,
   toWorld, toWorldX, toWorldZ,
@@ -139,7 +140,9 @@ export class DepotWorld {
   private stopCap!: THREE.Mesh;
   private startCap!: THREE.Mesh;
   public readonly trucks: {
-    name: string; group: THREE.Group; homeX: number; direction: number; stack: THREE.Object3D;
+    name: string; group: THREE.Group; homeX: number; direction: number;
+    /** The tailpipe's mouth, under the rear at the dock. */
+    stack: THREE.Object3D;
     cabDoor: { x: number; y: number }; route?: PlayerTruckRoute;
   }[] = [];
   /** Freight visibly stacking up inside each player truck's open rear. */
@@ -1398,11 +1401,15 @@ export class DepotWorld {
  * a grille and a chrome bumper. `fullBody` paints the whole truck in `color`
  * (Paula Abdul's purple). Dual rear wheels, a fuel tank, a battery box and
  * mud flaps hang under the chassis.
+ *
+ * `size` changes a truck away from the dock (the five-ton on the road): its `length` and `depth` (width) in metres,
+ * and `closed`, its roll-up door down and its nameplate on both sides.
  */
-export function createTruck(name: string, color: number, cabColor: number, side: 'left' | 'right', route?: PlayerTruckRoute, cutaway = false, fullBody = false): THREE.Group {
+export function createTruck(name: string, color: number, cabColor: number, side: 'left' | 'right', route?: PlayerTruckRoute, cutaway = false, fullBody = false,
+  size: { length?: number; depth?: number; closed?: boolean } = {}): THREE.Group {
   const truck = new THREE.Group();
-  const length = 148 * WORLD_SCALE;
-  const depth = (route ? SHIFT_LAYOUT.playerTruckDepth : SHIFT_LAYOUT.truckDepth) * WORLD_SCALE;
+  const length = size.length ?? 148 * WORLD_SCALE;
+  const depth = size.depth ?? (route ? SHIFT_LAYOUT.playerTruckDepth : SHIFT_LAYOUT.truckDepth) * WORLD_SCALE;
   const cabLength = 1.15;
   const boxLength = length - cabLength - 0.1;
   const boxHeight = route ? 2.8 : 2.3;
@@ -1481,7 +1488,21 @@ export function createTruck(name: string, color: number, cabColor: number, side:
     jamb.position.set(facing * (length / 2 + 0.01), floor + boxHeight / 2, z);
     truck.add(jamb);
   }
-  truck.add(rolled);
+  if (size.closed) {
+    // On the road the roll-up door is down: ribbed steel across the rear opening, with its handle.
+    const door = tiled(new THREE.Mesh(new THREE.BoxGeometry(0.05, boxHeight - wall, depth - wall * 2), steel(0xb7bcbf, 0.4, 0.6)), STEEL_TILE);
+    door.position.set(facing * (length / 2 - 0.04), floor + boxHeight / 2, 0);
+    truck.add(door);
+    const rib = steel(0x8e9497, 0.45, 0.6);
+    for (let y = floor + 0.26; y < floor + boxHeight - 0.12; y += 0.24) {
+      const slat = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.025, depth - wall * 2 - 0.02), rib);
+      slat.position.set(facing * (length / 2 - 0.01), y, 0);
+      truck.add(slat);
+    }
+    const doorHandle = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.05, 0.36), dark);
+    doorHandle.position.set(facing * (length / 2 + 0.005), floor + 0.22, 0);
+    truck.add(doorHandle);
+  } else truck.add(rolled);
   // Riveted panel seams every half metre, a rub rail along the bottom and a
   // cap rail along the top, on both sides. Nothing crosses the cargo opening.
   const seamMaterial = paint(trimColor, 0.55, 0.3);
@@ -1596,13 +1617,15 @@ export function createTruck(name: string, color: number, cabColor: number, side:
     signal.position.set(-facing * (length / 2 + 0.01), 0.7, sz * (depth / 2 - 0.1));
     truck.add(housing, headlight, signal);
   }
-  // Chrome exhaust stack behind the cab; the drivers' gag fills it with smoke.
-  const stack = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 1.5, 10), chrome);
-  stack.position.set(-facing * (length / 2 - cabLength - 0.02), 2.0, -(depth / 2 - 0.25));
+  // The tailpipe under the rear (the owner's: a package car's exhaust goes out the back, not up a stack at the cab):
+  // parked, it is at the dock, so a running engine's exhaust wells up at the platform edge. `stack-top` is its mouth.
+  const tailpipe = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.34, 10), chrome);
+  tailpipe.rotation.z = Math.PI / 2;
+  tailpipe.position.set(facing * (length / 2 - 0.12), 0.42, -(depth / 2 - 0.35));
   const stackTop = new THREE.Object3D();
   stackTop.name = 'stack-top';
-  stackTop.position.set(stack.position.x, 2.8, stack.position.z);
-  truck.add(stack, stackTop);
+  stackTop.position.set(facing * (length / 2 + 0.06), 0.42, tailpipe.position.z);
+  truck.add(tailpipe, stackTop);
   const frontBumper = rounded(0.18, 0.22, depth, chrome, 0.05);
   frontBumper.position.set(-facing * (length / 2 + 0.02), 0.45, 0);
   truck.add(frontBumper);
@@ -1615,6 +1638,8 @@ export function createTruck(name: string, color: number, cabColor: number, side:
     for (const sz of [-1, 1]) {
       for (const inset of dual ? [0, 0.32] : [0]) {
         const wheel = new THREE.Group();
+        wheel.name = 'truck-wheel';
+        wheel.userData.front = !dual;
         wheel.rotation.x = Math.PI / 2;
         wheel.position.set(along, 0.38, sz * (depth / 2 - 0.16 - inset));
         const tyreMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.38, 0.3, 20), tyre);
@@ -1636,6 +1661,7 @@ export function createTruck(name: string, color: number, cabColor: number, side:
   const lines = name.length > 10 && words.length > 1 ? [words.slice(0, Math.ceil(words.length / 2)).join(' '), words.slice(Math.ceil(words.length / 2)).join(' ')] : [name];
   const plateOptions = { width: 300, height: 120, background: '#14262d', color: '#d9ccab', border: route ? ROUTE_COLORS[route] : '#a8946a', radius: 10 };
   const roof = textPlane(lines, boxLength * 0.84, depth * 0.62, plateOptions);
+  roof.name = 'truck-roof-plate';
   roof.rotation.x = -Math.PI / 2;
   roof.position.set(boxX, floor + boxHeight + 0.011, 0);
   // An open-topped cutaway keeps the freight inside readable from above.
@@ -1643,7 +1669,58 @@ export function createTruck(name: string, color: number, cabColor: number, side:
   const sideplate = textPlane(lines, boxLength * 0.7, 0.9, { ...plateOptions, height: 110 });
   sideplate.position.set(boxX, floor + boxHeight * 0.62, depth / 2 + 0.045);
   truck.add(roof, sideplate);
+  if (size.closed) {
+    const far = sideplate.clone();
+    far.position.z = -far.position.z;
+    far.rotation.y = Math.PI;
+    truck.add(far);
+  }
   return shadowed(truck);
+}
+
+/**
+ * Gives a truck from createTruck wheels that roll and steer as it moves (vehicleRig.ts), as a driven model's do: each
+ * wheel goes under a frame turned to the model convention (forward along +z, axles along x).
+ */
+export function rigTruckWheels(truck: THREE.Group): void {
+  const wheels = truck.children.filter((child) => child.name === 'truck-wheel');
+  if (!wheels.length) return;
+  const frame = new THREE.Group();
+  frame.name = 'truck-wheels';
+  frame.rotation.y = Math.PI / 2;
+  frame.userData.keep = true;
+  truck.add(frame);
+  frame.updateMatrix();
+  const toFrame = frame.matrix.clone().invert();
+  const nodes = wheels.map((wheel) => {
+    const node = new THREE.Group();
+    node.name = 'truck-wheel-node';
+    node.position.copy(wheel.position).applyMatrix4(toFrame);
+    frame.add(node);
+    wheel.position.set(0, 0, 0);
+    // The tyre's axis along the frame's x: the axle.
+    wheel.rotation.set(0, 0, Math.PI / 2);
+    node.add(wheel);
+    return { node, steered: wheel.userData.front === true };
+  });
+  const along = wheels.map((wheel) => wheel.parent!.position.z);
+  const front = Math.max(...along), rear = Math.min(...along);
+  const rig = rigWheels(nodes, { forward: 1, wheelbase: Math.max(1, front - rear) });
+  if (rig) truck.userData.wheels = rig;
+  // Each wheel's tyre, tread and hub merge by material: a few draws a wheel, not one a part. Under the body their
+  // shadows never show, so they cast none.
+  for (const wheel of wheels) {
+    mergeStatic(wheel);
+    wheel.traverse((part) => { part.castShadow = false; });
+  }
+}
+
+/**
+ * Merges a truck from createTruck by material, as the depot merges its own, leaving its rolling wheels, its headlights
+ * and anything else marked `keep` as they are: a road truck is a few dozen draws, not one a part.
+ */
+export function mergeTruck(truck: THREE.Object3D): void {
+  mergeStatic(truck, (object) => object.userData.keep === true || object.name === 'truck-wheels');
 }
 
 export const crewTruckLength = 148 * WORLD_SCALE;

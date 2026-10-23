@@ -8,7 +8,6 @@ import type { StoryScene } from '../game/slice/StoryScript';
 import { animateCharacter, blendPose, createCharacter, faceToward, lookToward, mergeCharacter, SEAT_BLEND_SECONDS, snapshotPose, type Character, type CharacterSpec } from './characters';
 import { eyeHeight, gazeInFigureFrame, lookTargetFor, type Gaze } from './attention';
 import { windAt, type Wind } from './wind';
-import { DrivingModels } from './drivingModels';
 import { applyPose, type CrewLife, type Pose } from './crew';
 import { palmOf } from './characterModels';
 import { placeProp, upgradeCar } from './propModels';
@@ -21,7 +20,7 @@ import { mergeStatic } from './merge';
 import { disposeObject3D } from './resources';
 import { physicalBounds } from './collision3d';
 import { actorSurfaceAt, setFromModel, shadowed, standard, textPlane, textSprite, toWorld } from './space';
-import { RESIDENT_SPECS, SKANKY_SPEC, SKIN, TERMITE_SPEC, VISITORS, createTruck } from './world';
+import { RESIDENT_SPECS, SKANKY_SPEC, SKIN, TERMITE_SPEC, VISITORS, createTruck, mergeTruck, rigTruckWheels } from './world';
 import { DEPOT_3D_LAYOUT as DEPOT } from './layout';
 import { snowBank, snowCap, snowField, snowfall, type Snowfall } from './snow';
 
@@ -185,15 +184,15 @@ function alongPath(points: [number, number][], t: number): { x: number; z: numbe
 
 /** A small car whose nose points along local +X. With `detailed` off it stays procedural: the road's traffic draws its sedans in batches instead. */
 /**
- * The same downloaded five-ton the drive shows, over a procedural truck, fitted
- * to that truck's own length so the lot's stall and the road's layout keep
- * their clearances; the procedural body stays as the fallback until it lands.
+ * The five-ton in the story scenes: the depot's own truck as the drives show it (textured like the trucks at the
+ * dock, its door down), at the depot trucks' size, which the lot's stall and the road's layout keep their clearances
+ * for. Its wheels roll as it moves.
  */
-export function dressFiveTon(truck: THREE.Group, models: DrivingModels): void {
-  truck.updateWorldMatrix(true, true);
-  const bounds = new THREE.Box3().setFromObject(truck);
-  const length = Math.max(bounds.max.x - bounds.min.x, bounds.max.z - bounds.min.z);
-  void models.place(truck, 'truck', { x: length }, [...truck.children], Math.PI / 2);
+export function createStoryFiveTon(): THREE.Group {
+  const truck = createTruck('UPS 5 TON', 0x5a4632, 0x4a3a2a, 'right', undefined, false, false, { closed: true });
+  rigTruckWheels(truck);
+  mergeTruck(truck);
+  return truck;
 }
 
 export function createCar(color: number, detailed = true): THREE.Group {
@@ -622,11 +621,10 @@ export class StoryStage {
       scene.add(car);
       props[name] = car;
     }
-    const fiveTon = createTruck('5 TON', 0x5a4632, 0x4a3a2a, 'right');
+    const fiveTon = createStoryFiveTon();
     fiveTon.visible = false;
     scene.add(fiveTon);
     props.fiveTon = fiveTon;
-    dressFiveTon(fiveTon, new DrivingModels(scene));
     const phone = new THREE.PointLight(0x7fb0ff, 0, 3, 1.5);
     props.phoneGlow = phone;
     scene.add(phone);
@@ -901,10 +899,9 @@ export class StoryStage {
     const light = new THREE.PointLight(0xffb060, 28, 30, 1.5);
     light.position.set(0, 6, -2);
     scene.add(light);
-    const truck = createTruck('5 TON', 0x5a4632, 0x4a3a2a, 'right');
+    const truck = createStoryFiveTon();
     scene.add(truck);
     props.truck = truck;
-    dressFiveTon(truck, new DrivingModels(scene));
   }
 
   /** Termite and Skanky's living room, with the driveway and Skanky's car outside the side door. */
@@ -1720,6 +1717,20 @@ export class StoryStage {
     poseSeated(actor.character, points);
   }
 
+  /**
+   * A car's engine running on a cold night: thick white exhaust rolling out of the tailpipe (behind the rear bumper,
+   * the car's −x), dark and heavier while it has just started (`starting`). About 22 puffs a second at any frame rate.
+   */
+  private exhaust(stage: Stage, car: THREE.Object3D, starting: boolean): void {
+    if (Math.random() > this.frameDt * (starting ? 34 : 22)) return;
+    const pipe = car.localToWorld(new THREE.Vector3(-2.3, 0.3, 0.5));
+    const away = car.localToWorld(new THREE.Vector3(-3.3, 0.3, 0.5)).sub(pipe);
+    stage.puffs.emit(pipe, {
+      color: starting ? 0x6a6e72 : 0xd8dce0, size: starting ? 0.5 : 0.38, life: 3.4, opacity: starting ? 0.7 : 0.55, grow: 7, spread: 0.2, look: 'cloud',
+      velocity: away.multiplyScalar(0.6 + Math.random() * 0.4).setY(0.3 + Math.random() * 0.3),
+    });
+  }
+
   private placeCar(car: THREE.Object3D, x: number, z: number, heading: number): void {
     car.visible = true;
     car.position.set(x, 0, z);
@@ -1956,7 +1967,10 @@ export class StoryStage {
       // Behind the car and up its left side (world −x: it faces −z in the stall) to the driver's door.
       const step = alongPath([[9.5, -12.8], [0.5, -3.0], [-8.3, -2.6], [-10.8, -2.6], [-10.8, -4.9]], walk);
       skanky.at(step.x, step.z);
-    } else this.seat(skanky, car, 'driver');
+    } else {
+      this.seat(skanky, car, 'driver');
+      this.exhaust(stage, car, leave <= 0);
+    }
     const vic = actors.get('vic');
     if (vic) {
       const follow = ease(Math.max(0, Math.min(1, cueProgress(cutscene, 'car') * 1.15 - 0.15)));
@@ -2312,9 +2326,7 @@ export class StoryStage {
         this.seat(skanky, car, 'driver');
         this.seat(termite, car, 'passenger');
         headlights(true);
-        if (start < 1 && Math.random() < 0.3) {
-          stage.puffs.emit(car.localToWorld(new THREE.Vector3(-2.3, 0.3, 0.5)), { color: 0xb8bcc0, size: 0.14, life: 1.6, velocity: new THREE.Vector3(0, 0.3, -0.6), opacity: 0.35, grow: 3 });
-        }
+        this.exhaust(stage, car, start < 0.35);
       } else {
         // Up off the couch, round its end, out the side door, then either side of the car.
         if (up <= 0) {

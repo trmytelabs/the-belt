@@ -37,6 +37,9 @@ const TRUCK_DOORS: Record<string, { x: number; y: number }> = {
 };
 const MASSAGE_TABLE = DEPOT.eventProps.massage;
 export const ENGINES_3D = { driversAt: 117_000, firstAt: 120_000, othersAt: 122_000, staggerMs: 300 } as const;
+/** The trucks' exhaust: puffs per stack every `everyS` seconds, and how long a starting engine coughs dark smoke. */
+export const EXHAUST_3D = { everyS: 0.09, puffs: 2, startMs: 2_400 };
+
 export const mix = (a: number, b: number, t: number): number => a + (b - a) * THREE.MathUtils.clamp(t, 0, 1);
 
 /** A character placed in model space, facing the way it last moved. */
@@ -966,19 +969,28 @@ export class CrewLife {
   /** Subtitles for sounds; main3d shows them so nothing depends on audio alone. */
   public caption: (text: string) => void = () => undefined;
 
-  /** Denser, larger exhaust clouds from every running engine. */
+  /**
+   * Thick white exhaust from every running engine on a cold night, out of the tailpipes at the back of the trucks:
+   * it wells up at the platform edge and rolls a little way onto the deck, rising as it goes so the belt stays in
+   * sight. For its first seconds an engine coughs out dark smoke, faster and higher.
+   */
   public emitExhaust(dt: number, t = Infinity): void {
     this.exhaustTimer -= dt;
     if (this.exhaustTimer > 0 || dt <= 0) return;
-    this.exhaustTimer = 0.18;
+    this.exhaustTimer = EXHAUST_3D.everyS;
     const at = new THREE.Vector3();
     this.world.trucks.forEach((truck, index) => {
-      if (t < this.engineStartAt(index)) return;
+      const running = t - this.engineStartAt(index);
+      if (running < 0) return;
+      const starting = running < EXHAUST_3D.startMs;
       truck.stack.getWorldPosition(at);
-      this.world.puffs.emit(at, {
-        color: 0xa2aaa4, size: 0.46, life: 3.2, opacity: 0.46, grow: 4.5, spread: 0.15,
-        velocity: new THREE.Vector3(-truck.direction * 0.55, 0.46, 0),
-      });
+      for (let i = 0; i < EXHAUST_3D.puffs; i += 1) {
+        this.world.puffs.emit(at, {
+          color: starting ? 0x45494d : 0xc8cecd, size: starting ? 0.65 : 0.48, life: starting ? 3 : 3.2,
+          opacity: starting ? 0.66 : 0.42, grow: starting ? 6 : 5, spread: 0.3, look: 'cloud',
+          velocity: new THREE.Vector3(-truck.direction * (0.25 + Math.random() * 0.35), 0.8 + Math.random() * 0.45 + (starting ? 0.5 : 0), (Math.random() - 0.5) * 0.5),
+        });
+      }
     });
   }
 

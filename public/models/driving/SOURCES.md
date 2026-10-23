@@ -11,6 +11,11 @@ authored in code. Each kit's original licence is included beside its models.
 | City Kit Roads 2.2 | [Kenney](https://kenney.nl/assets/city-kit-roads) | `roads/light-curved.glb`, `traffic-light.glb` |
 | Car Kit 3.1 | [Kenney](https://kenney.nl/assets/car-kit) | `cars/delivery.glb` (closed box truck) |
 
+Since 2026-10-22 the drives' five-ton is built like the depot's trucks (`createTruck` in
+`src/three/world.ts`, textured, sized for the road with its door down), as the story scenes' is: the owner
+found the low-poly delivery truck looked worse than the trucks at the dock. `cars/delivery.glb` stays
+recorded here but is no longer drawn.
+
 Licence: **Creative Commons Zero (CC0 1.0 Universal)**, as stated in the official
 packs. [Licence text](https://creativecommons.org/publicdomain/zero/1.0/).
 Creator: [Kenney](https://kenney.nl/). Each directory also needs its own original
