@@ -83,17 +83,23 @@ function donutBox(open: boolean): THREE.Group {
 
 interface Cup { root: THREE.Group; lid: THREE.Mesh; spilled: boolean; lidVelocity: THREE.Vector3 | null }
 
-const STAIN = new THREE.PlaneGeometry(0.17, 0.17);
+const STAIN = new THREE.PlaneGeometry(0.22, 0.22);
 
-/** A coffee stain: a dark, wet splotch with a few splashes round it, drawn from `seed` so no two match. */
+/**
+ * A coffee stain: a double-double, so a creamy brown that shows on Skanky's black shirt and on jeans (a dark one
+ * vanished on black), darker at its wet middle, with a few splashes round it; drawn from `seed` so no two match.
+ */
 function coffeeStain(seed: number): THREE.Mesh<THREE.PlaneGeometry, THREE.MeshStandardMaterial> {
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = 64;
   const g = canvas.getContext('2d')!;
   let state = seed * 7919 + 13;
   const random = (): number => { state = (state * 16807) % 2147483647; return state / 2147483647; };
-  g.fillStyle = 'rgba(56, 30, 12, 0.88)';
+  g.fillStyle = 'rgba(196, 146, 92, 0.9)';
   for (let i = 0; i < 7; i++) { g.beginPath(); g.arc(20 + random() * 24, 20 + random() * 24, 6 + random() * 11, 0, Math.PI * 2); g.fill(); }
+  g.fillStyle = 'rgba(150, 100, 58, 0.55)';
+  for (let i = 0; i < 3; i++) { g.beginPath(); g.arc(26 + random() * 12, 26 + random() * 12, 4 + random() * 6, 0, Math.PI * 2); g.fill(); }
+  g.fillStyle = 'rgba(196, 146, 92, 0.9)';
   for (let i = 0; i < 7; i++) { g.beginPath(); g.arc(5 + random() * 54, 5 + random() * 54, 1.5 + random() * 2.5, 0, Math.PI * 2); g.fill(); }
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;

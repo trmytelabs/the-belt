@@ -2286,6 +2286,8 @@ export class StoryStage {
     const serve = ease(Math.min(1, more / 0.45)), away = ease(Math.max(0, (more - 0.6) / 0.4));
     cart.position.x = mix(mix(DIM_SUM_CART.window, DIM_SUM_CART.table, over), DIM_SUM_CART.parked, away);
     waitress.root.visible = true;
+    // She is the waitress here, not the clerk whose figure she wears: no name over her head.
+    waitress.character.nameTag.visible = false;
     waitress.at(cart.position.x + 0.78, DIM_SUM_CART.z);
     waitress.faceAngle = -Math.PI / 2;
     // Hands on the cart while it rolls and round the steamers while she serves: a carrier's arms over her own walk
