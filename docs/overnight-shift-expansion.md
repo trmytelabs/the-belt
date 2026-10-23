@@ -21,7 +21,7 @@ clock-out departures.
 | Morning scrum | The crew gathers at the head of the belt; Shan's three approved lines and the crew's two approved reactions. | `SCRUM` |
 | Countdown | The original **3, 2, 1, SORT!** | unchanged |
 | Shift | The existing shift, plus the new destinations, throwing and breakage. | `ShiftModel.ts` |
-| Break | Once per shift, between 46 and 56 s of shift time: Tim Hortons or 7-Eleven at random, one of three approved exchanges. The shift, belt and every parcel freeze until the crew is back. | `BREAK_SCENES`, `StoryModel.ts` |
+| Break | Once per shift, between 46 and 56 s of shift time: Tim Hortons or 7-Eleven at random, one of three approved exchanges. The shift, belt and every parcel freeze until the crew is back. The 3D night always goes to Tim Hortons and ends the break with the Timmies run (`coffeeRun.ts`). | `BREAK_SCENES`, `StoryModel.ts` |
 | Drivers | From 153 s: drivers bring keys, one engine starts, its exhaust drifts onto the platform, loaders cough, the other trucks start one by one, Shan: "Belt's still moving." | `DRIVERS` |
 | Clock-out | The existing celebration and truck departures. | unchanged |
 | Assignment | Shan gives Skanky the mall run; Termite goes home. | `MALL_ASSIGNMENT` |

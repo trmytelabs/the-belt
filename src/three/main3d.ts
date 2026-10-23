@@ -107,12 +107,17 @@ function showWebglFallback(host: HTMLElement): void {
     <p><a style="color:#edb765" href="${window.location.pathname}?mode=classic">Play the original full shift instead</a></p></div></div>`;
 }
 
+/**
+ * The 3D night's story choices: every lunch is at Tim Hortons, which ends with the ride back, the Timmies run (the
+ * owner's, 2026-10-22: the 7-Eleven lunch no longer fits). The shared script keeps 7-Eleven for the classic game.
+ */
+const story3d = (random: () => number = Math.random, forced: Partial<StoryChoices> = {}): StoryRun => new StoryRun(random, { ...forced, breakPlace: 'timhortons' });
 const escapeHtml = (text: string): string => text.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
 
 export class Belt3d {
   public model = new ShiftModel3D();
   public state: AppState = 'briefing';
-  public story = new StoryRun();
+  public story = story3d();
   /** The cutscene on screen, if any. */
   public cutscene: Cutscene | null = null;
   public mall: MallModel | null = null;
@@ -490,7 +495,7 @@ export class Belt3d {
   /** Fixes the next run's random choices (opener, break place, variant, time). For checks and rehearsal. */
   public forceStory(choices: Partial<StoryChoices>): void {
     this.forcedStory = { ...choices };
-    if (this.state === 'briefing') this.story = new StoryRun(Math.random, this.forcedStory);
+    if (this.state === 'briefing') this.story = story3d(Math.random, this.forcedStory);
   }
 
   private resize(): void {
@@ -727,7 +732,7 @@ export class Belt3d {
   private startEndless(): void {
     if (this.state !== 'briefing' || this.record.completed === 0 || this.practiceDestination) return;
     this.model = new ShiftModel3D({ endless: true });
-    this.story = new StoryRun(Math.random, { ...this.forcedStory, breakAtMs: Infinity });
+    this.story = story3d(Math.random, { ...this.forcedStory, breakAtMs: Infinity });
     this.applyPlayers();
     this.renderer.domElement.focus({ preventScroll: true });
     void audioSystem.unlock();
@@ -748,7 +753,7 @@ export class Belt3d {
     this.daily = night;
     this.model = new ShiftModel3D({ freightRandom: night.random.freight, random: night.random.throws, prizeRandom: night.random.prizes });
     this.goals = night.goals;
-    this.story = new StoryRun(night.random.story, this.forcedStory);
+    this.story = story3d(night.random.story, this.forcedStory);
     this.startNight(false, true);
   }
 
@@ -838,7 +843,8 @@ export class Belt3d {
       this.story.go('countdown');
       this.startCountdown();
     } else if (this.story.chapter === 'break') {
-      if (this.story.choices.breakPlace === 'timhortons' && !this.coffeeResult) this.beginCoffeeRun();
+      // Every 3D lunch is at Tim Hortons: it ends with the ride back.
+      if (!this.coffeeResult) this.beginCoffeeRun();
       else this.endBreak();
     } else if (scene.id === 'mall-assignment') {
       this.story.go('to-mall');
@@ -1410,7 +1416,7 @@ export class Belt3d {
     this.perk = null;
     this.perkInPlay = null;
     this.daily = null;
-    this.story = new StoryRun(Math.random, this.forcedStory);
+    this.story = story3d(Math.random, this.forcedStory);
     this.cutscene = null;
     this.mall = null;
     this.lot = null;

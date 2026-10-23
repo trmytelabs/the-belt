@@ -166,11 +166,11 @@ try {
   assert.deepEqual(errors, []);
   console.log('PASS 3D story: three openers reach the scrum (stepped, skipped and unattended), approved scrum lines in order, NEXT/SKIP/PAUSE buttons by keyboard and click, countdown into playable sorting; no script errors');
 
-  // ---- Scene 4-5: every break variant, once per shift, with the shift and freight preserved.
-  const breaks = [];
-  for (const place of ['7eleven', 'timhortons']) for (let variant = 0; variant < 3; variant += 1) breaks.push([place, variant]);
+  // ---- Scene 4-5: every lunch variant, once per shift, with the shift and freight preserved. The 3D night's lunch is
+  // always at Tim Hortons (a forced 7-Eleven is overruled): the first run asks for 7-Eleven and gets Tim Hortons.
+  const breaks = [['timhortons', 0], ['timhortons', 1], ['timhortons', 2]];
   for (const [index, [place, variant]] of breaks.entries()) {
-    await freshRun({ opener: 0, breakPlace: place, breakVariant: variant, breakAtMs: 46_000 });
+    await freshRun({ opener: 0, breakPlace: index === 0 ? '7eleven' : place, breakVariant: variant, breakAtMs: 46_000 });
     await page.keyboard.press('Enter');
     await wait(() => window.fixtureApp.state === 'story');
     await page.keyboard.press('Enter');
@@ -203,7 +203,7 @@ try {
       window.resumedAt = undefined;
       app.endBreak = function () { end.call(this); window.resumedAt = this.model.elapsedMs; delete app.endBreak; };
     });
-    if (index === 0 || index === 3) { await page.waitForTimeout(1200); await shot(`break-${id}`); }
+    if (index === 0) { await page.waitForTimeout(1200); await shot(`break-${id}`); }
     // The 3D night plays Tim Hortons inside the restaurant (see breakScenes3d.ts).
     const lines = breakScene3d(BREAK_SCENES[place][variant]).beats.filter((beat) => beat.line).map((beat) => `${name(beat.speaker)}: ${beat.line}`);
     await stepScene(id);
@@ -221,7 +221,7 @@ try {
       await wait(() => window.fixtureApp.state === 'coffee-done');
       assert.match(await page.locator('.b3d-panel').innerText(), /TIMMIES RUN · BACK AT THE DEPOT[\s\S]*BACK TO THE BELT/);
       await page.keyboard.press('Enter');
-    } else assert.equal(await read(() => window.fixtureApp.coffeeResult), null, 'no Timmies run after a 7-Eleven lunch');
+    }
     await wait(() => window.fixtureApp.state === 'playing');
     const after = await read(() => ({ score: window.fixtureApp.model.score, held: window.fixtureApp.model.workers[0].heldId, t: window.fixtureApp.model.elapsedMs, resumed: window.resumedAt }));
     assert.equal(after.score, before.score + coffeePoints, 'no score is lost to the break, and the coffees that made it pay');
@@ -239,7 +239,7 @@ try {
     assert.equal(await read(() => window.fixtureApp.state), 'playing');
   }
   assert.deepEqual(errors, []);
-  console.log('PASS 3D break: all six exchanges (three at 7-Eleven, three inside Tim Hortons) by real keys, each Tim Hortons lunch ending with the Timmies run, shift and held freight preserved, once per shift; no script errors');
+  console.log('PASS 3D break: every lunch at Tim Hortons (a forced 7-Eleven too), all three exchanges by real keys, each ending with the Timmies run, shift and held freight preserved, once per shift; no script errors');
 
   // ---- JUST PLAY: the night without its story scenes. J goes from the briefing straight to the countdown; the lunch
   // break and Ben's robbery pass without stopping the shift; the shift's end goes straight on to the drive to the mall.

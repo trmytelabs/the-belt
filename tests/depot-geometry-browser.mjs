@@ -318,7 +318,8 @@ try {
   // Sample authored camera positions through every arrival, scrum and break.
   // The near plane stays outside truck bodies; intended seating is not treated
   // as a collision between an actor and their own seat/vehicle.
-  for (const scene of [...OPENERS, SCRUM, ...Object.values(BREAK_SCENES).flat(), MALL_ASSIGNMENT, DRIVE_TO_MALL, DRIVE_TO_UPS, GO_HOME]) {
+  // The 3D night's lunch is always at Tim Hortons.
+  for (const scene of [...OPENERS, SCRUM, ...BREAK_SCENES.timhortons, MALL_ASSIGNMENT, DRIVE_TO_MALL, DRIVE_TO_UPS, GO_HOME]) {
     const issues = await page.evaluate(scene => {
       const app = window.fixtureApp; app.playScene(scene);
       const failures = [];
@@ -336,7 +337,7 @@ try {
           nearBounds.expandByPoint(camera.position.clone().set(x, y, -camera.near).applyMatrix4(camera.matrixWorld));
         }
         for (const [name, prop] of Object.entries(app.stage.stages[app.stage.active].props)) {
-          if (!prop.visible || (scene.location !== 'store' && !/^(car(?:-|$)|truck$|fiveTon$|park-|passing$)/i.test(name))) continue;
+          if (!prop.visible || !/^(car(?:-|$)|truck$|fiveTon$|park-|passing$)/i.test(name)) continue;
           const bounds = app.world.physicalBounds(prop);
           if (bounds.isEmpty()) continue;
           samples++;
