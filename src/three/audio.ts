@@ -57,6 +57,20 @@ const FOLEY: Partial<Record<SoundEffect | 'drive-collision', FoleyCue>> = {
 
 /** Recorded lo-fi and softer foley for the active 3D game. */
 export class DepotAudio extends AudioSystem {
+  /**
+   * Online play: everything the game plays, as a stream for the joining player, with `voice` (the host's microphone)
+   * mixed in. Taken from the game's own sound rather than the shared tab's, so the joining player's voice, played
+   * here, never goes back to them as an echo.
+   */
+  public broadcast(voice: MediaStream | null): MediaStream | null {
+    const context = this.getContext();
+    if (!context || !this.output) return null;
+    const out = context.createMediaStreamDestination();
+    this.output.connect(out);
+    if (voice) context.createMediaStreamSource(voice).connect(out);
+    return out.stream;
+  }
+
   private trackBuffer: AudioBuffer | null = null;
   private trackLoad: Promise<void> | null = null;
   private trackTimer: number | null = null;

@@ -183,6 +183,21 @@ SORT!** countdown starts the shift.
   highlights a button or setting, A presses it, left and right move a slider,
   and B goes back. A controller that drops out mid-play pauses the game. Pads
   with rumble shake on a wrong drop, a breakage and a bump on the road.
+- PLAY ONLINE (O on the briefing) plays the night on two computers: one player
+  hosts and is Termite, the other opens the room link (or PLAY ONLINE, JOIN and
+  the six-character code) and is Skanky. The night runs on the host's computer;
+  the host shares the game's tab (Chrome or Edge on a computer) and the joining
+  player sees it, with the game's sound, on a light page that loads no engine
+  (`?join=CODE`), playing with keys, a controller or touch. They work the belt
+  together (Skanky is player 2); the mall run, the key drop, the Timmies run's
+  trays and the five-ton drives are Skanky's, the Ralph run Termite's, and
+  either moves a story scene on or pauses. On Skanky's turns the host's own
+  keys do nothing. Voice chat rides the same link (K mutes the microphone on
+  either side; headphones keep the game's sound from echoing). PeerJS's free
+  public server introduces the two browsers, then everything goes directly
+  between them over WebRTC; each player can see the other's internet address.
+  Some strict networks block the direct link. `?online=local` links two tabs of
+  one browser instead, with no picture or voice, for the tests and a try-out.
 - Escape pauses; M toggles sound. SETTINGS on the pause screen sets the music
   and effects levels and the resolution (down to half, for a smoother game on a
   slow or very sharp screen) and turns the breakage camera shake on or off; they are
@@ -350,6 +365,8 @@ changes the production game configuration or bypasses its countdown. The default
 needs a local check on a machine with usable graphics support.
 
 The original scenes reference Google Fonts when a network connection is available.
+Online play (PLAY ONLINE) contacts PeerJS's public server (0.peerjs.com) and its
+STUN/TURN servers, and Google's STUN server, only once a player hosts or joins.
 Physical-device usability and audible sound still need manual checks. Automated
 coverage of timed events uses controlled fixtures, not a claim that every story
 was encountered in one unassisted playthrough.

@@ -24,6 +24,8 @@ import { MESA } from './references';
 import { clearDepotFootprint, DEPOT_BODY_RADIUS, DEPOT_CARRY_RADIUS, depotSolidFootprints, type FootprintCircle } from '../game/slice/DepotClearance';
 import { KeyReturnModel, MALL_RULES, type MallEvent } from '../game/slice/MallModel';
 import { CHASE, MALL_3D_BUNDLES, MALL_3D_STOPS, MallModel3D as MallModel } from './MallModel3D';
+import { OnlineHost, openMicrophone, setMicrophone, transportFromUrl } from './online';
+import { MOVE_KEYS, heldMove, roomCode, sceneOwner, turnText, type GuestMessage } from './onlineRules';
 import {
   CARRY_MULTIPLIER, THROWING, type Parcel, type Route, type ShiftEvent, type WorkerId,
 } from '../game/slice/ShiftModel';
@@ -242,6 +244,16 @@ export class Belt3d {
   /** Until the guard's next yell on the chase, and which. */
   private chaseYellMs = 0;
   private chaseYell = 0;
+  /** Online play: the room this screen hosts, the joining player's held keys and stick, and the turn last sent to them. */
+  private online: OnlineHost | null = null;
+  private readonly remoteKeys = new Set<string>();
+  private readonly remoteAnalog = { x: 0, y: 0, throttle: 0, brake: 0 };
+  private onlineTurn = '';
+  private onlineChip: HTMLDivElement | null = null;
+  /** Voice chat: this player's microphone (null if refused), whether it is on, and the game's sound sent with it. */
+  private onlineMic: MediaStream | null = null;
+  private onlineMicOn = true;
+  private onlineSound: MediaStream | null = null;
   /** What tonight's delivery drives earned against par, and their times in seconds. */
   public driveBonus = 0;
   public driveTimes: number[] = [];
@@ -560,6 +572,7 @@ export class Belt3d {
       if (event.target instanceof HTMLInputElement && (event.code.startsWith('Arrow') || event.code === 'Space' || event.code === 'Tab')) return;
       if (event.code === 'Tab') event.preventDefault();
       if (event.code === 'Space' || event.code.startsWith('Arrow')) event.preventDefault();
+      if (this.hostBlocked(event)) return;
       this.keys.add(event.code);
       if (event.repeat) return;
       void audioSystem.unlock();
@@ -597,6 +610,8 @@ export class Belt3d {
         else if (this.state === 'paused') this.resume();
         else if (this.state === 'interlude') this.skipInterlude();
         else if (this.state === 'playing' && this.model.coop) this.model.action(this.model.partnerWorker);
+      } else if (event.code === 'KeyK' && this.online) {
+        this.toggleOnlineMic();
       } else if (event.code === 'KeyM') {
         audioSystem.toggleMuted();
       } else if (event.code === 'Escape') {
@@ -612,6 +627,8 @@ export class Belt3d {
         else if (event.code === 'KeyE') this.mall?.toggleCart();
       } else if (this.state === 'lot') {
         if (event.code === 'Space') this.lot?.action();
+      } else if (this.state === 'briefing' && event.code === 'KeyO') {
+        this.showOnline();
       } else if (this.state === 'briefing' && event.code === 'KeyP') {
         if (this.record.completed > 0) this.startNight(true);
       } else if (this.state === 'briefing' && event.code === 'KeyC' && !this.touch.enabled) {
@@ -645,6 +662,7 @@ export class Belt3d {
       void audioSystem.unlock();
       // On touch screens the on-screen buttons act; a tap on the scene does not.
       if (event.pointerType === 'touch') return;
+      if (this.guestPlays()) return;
       if (this.state === 'story' && event.button === 0) { this.cutscene?.userNext(); return; }
       if (this.state === 'mall' && event.button === 0) { this.mall?.action(); return; }
       if (this.state === 'lot' && event.button === 0) { this.lot?.action(); return; }
@@ -717,12 +735,13 @@ export class Belt3d {
       ${this.record.completed > 0 ? `<p class="b3d-record">PEAK NIGHT UNLOCKED · the hardest mode: in the flow and the rush freight comes a fifth sooner, the belt runs faster and recovery holds ${PEAK_NIGHT.capacity}. ${this.touch.enabled ? 'Tap PEAK NIGHT.' : 'Press P or click PEAK NIGHT.'} ENDLESS SHIFT${this.touch.enabled ? '' : ' (N)'} has no clock: the belt speeds up every minute until recovery overflows.</p>` : ''}
       <div class="b3d-start">${this.touch.enabled ? '' : `<button type="button" data-action="players" class="b3d-players">${this.settings.twoPlayers ? '2 PLAYERS' : '1 PLAYER'}  C<small>${this.settings.twoPlayers ? 'P2 · ARROWS · ENTER' : 'C FOR TWO PLAYERS'}</small></button>`}<button type="button" data-action="night">START THE NIGHT  ↵</button><button type="button" data-action="play" title="The shift, the drives and the mall run, without the story scenes">JUST PLAY${this.touch.enabled ? '' : '  J'}<small>NO STORY SCENES</small></button></div>
       ${this.dailyButton()}
+      <button type="button" data-action="online" class="b3d-online">PLAY ONLINE${this.touch.enabled ? '' : '  O'}<small>${this.online ? `ROOM ${this.online.code} · ${this.online.joined ? 'SKANKY HAS JOINED' : 'WAITING FOR SKANKY'}` : 'TWO COMPUTERS · TERMITE HOSTS, SKANKY JOINS'}</small></button>
       ${this.record.completed > 0 ? `<button type="button" data-action="peak">PEAK NIGHT (HARDEST MODE)${this.touch.enabled ? '' : '  P'}<small>FASTER FREIGHT · QUICKER BELT · LESS ROOM IN RECOVERY</small></button><button type="button" data-action="endless">ENDLESS SHIFT${this.touch.enabled ? '' : '  N'}<small>NO CLOCK · IT SPEEDS UP UNTIL RECOVERY OVERFLOWS</small></button>` : ''}
       ${this.record.played > 0 ? `<button type="button" class="b3d-medals-link" data-action="medals">MEDALS · ${this.record.medals.length} OF ${MEDALS.length} · RECENT NIGHTS</button>` : ''}
       <a href="${window.location.pathname}?mode=3d&amp;drive=mall">TRY JUST THE DRIVE · EXPLORE THE CITY</a>
       <a href="${window.location.pathname}?mode=3d&amp;minigame=coffee">TRY THE TIMMIES RUN · THE LUNCH MINI-GAME</a>
       <a href="${window.location.pathname}?mode=3d&amp;minigame=ralph">TRY THE RALPH RUN · TERMITE'S PAPER ROUTE</a>
-      <a href="${window.location.pathname}?mode=classic">PLAY THE ORIGINAL FULL SHIFT</a>`, { night: () => this.startNight(), play: () => this.startNight(false, true), players: () => this.togglePlayers(), peak: () => this.startNight(true), medals: () => this.showMedals(), endless: () => this.startEndless(), daily: () => this.startDaily(),
+      <a href="${window.location.pathname}?mode=classic">PLAY THE ORIGINAL FULL SHIFT</a>`, { night: () => this.startNight(), play: () => this.startNight(false, true), players: () => this.togglePlayers(), peak: () => this.startNight(true), medals: () => this.showMedals(), endless: () => this.startEndless(), daily: () => this.startDaily(), online: () => this.showOnline(),
         'perk-0': () => this.pickPerk(0), 'perk-1': () => this.pickPerk(1), 'perk-2': () => this.pickPerk(2) }, { side: true });
   }
 
@@ -817,7 +836,8 @@ export class Belt3d {
 
   /** Tonight's model plays with two players when the setting asks (not on a touch screen, which has one stick). */
   private applyPlayers(): void {
-    this.model.coop = this.settings.twoPlayers && !this.touch.enabled;
+    // Hosting online, the joining player is Skanky on the belt.
+    this.model.coop = this.online !== null || (this.settings.twoPlayers && !this.touch.enabled);
   }
 
   private playScene(scene: StoryScene): void {
@@ -1506,6 +1526,7 @@ export class Belt3d {
   }
 
   private movement(): { x: number; y: number } {
+    if (this.guestPlays()) return this.remoteMovement();
     // With two players on the belt, the arrows are player 2's.
     const arrows = !(this.model.coop && this.state === 'playing');
     const keyX = (this.keys.has('KeyD') || (arrows && this.keys.has('ArrowRight')) ? 1 : 0) - (this.keys.has('KeyA') || (arrows && this.keys.has('ArrowLeft')) ? 1 : 0);
@@ -1534,7 +1555,13 @@ export class Belt3d {
   private partnerMovement(): { x: number; y: number } {
     const keyX = (this.keys.has('ArrowRight') ? 1 : 0) - (this.keys.has('ArrowLeft') ? 1 : 0);
     const keyY = (this.keys.has('ArrowDown') ? 1 : 0) - (this.keys.has('ArrowUp') ? 1 : 0);
-    return { x: Math.max(-1, Math.min(1, keyX + this.pad2.move.x)), y: Math.max(-1, Math.min(1, keyY + this.pad2.move.y)) };
+    const remote = this.online ? this.remoteMovement() : { x: 0, y: 0 };
+    return { x: Math.max(-1, Math.min(1, keyX + this.pad2.move.x + remote.x)), y: Math.max(-1, Math.min(1, keyY + this.pad2.move.y + remote.y)) };
+  }
+
+  /** A driving pedal: the joining player's on Skanky's drives online; otherwise this screen's touch pedal or pad trigger. */
+  private pedal(which: 'throttle' | 'brake'): number {
+    return this.guestPlays() ? this.remoteAnalog[which] : Math.max(this.touch.pedals[which], this.pad[which]);
   }
 
   /** With a controller in use, the HUD and the grab prompt name its buttons; without one, the keyboard's again. */
@@ -1716,7 +1743,7 @@ export class Belt3d {
     } else if (this.state === 'driving' && this.driving) {
       const drive = this.driving, move = this.movement();
       const wasBraking = drive.braking;
-      drive.update(dt, { steer: move.x, throttle: Math.max(0, -move.y, this.touch.pedals.throttle, this.pad.throttle), brake: Math.max(0, move.y, this.touch.pedals.brake, this.pad.brake) });
+      drive.update(dt, { steer: move.x, throttle: Math.max(0, -move.y, this.pedal('throttle')), brake: Math.max(0, move.y, this.pedal('brake')) });
       if (drive.braking && !wasBraking) audioSystem.drivingCue('brake');
       for (const event of drive.drainEvents()) {
         if (event.type === 'collision') {
@@ -1737,7 +1764,7 @@ export class Belt3d {
     } else if (this.state === 'paper' && this.driving && this.ralph && this.ralphScene) {
       const drive = this.driving, run = this.ralph, move = this.movement();
       const wasBraking = drive.braking;
-      drive.update(dt, { steer: move.x, throttle: Math.max(0, -move.y, this.touch.pedals.throttle, this.pad.throttle), brake: Math.max(0, move.y, this.touch.pedals.brake, this.pad.brake) });
+      drive.update(dt, { steer: move.x, throttle: Math.max(0, -move.y, this.pedal('throttle')), brake: Math.max(0, move.y, this.pedal('brake')) });
       if (drive.braking && !wasBraking) audioSystem.drivingCue('brake');
       // Bumps jolt the cab and are counted; a paper route keeps no road penalties.
       for (const event of drive.drainEvents()) {
@@ -1792,6 +1819,7 @@ export class Belt3d {
 
     // Each place and mini-game has its own track, crossfaded as the night moves between them.
     audioSystem.setScene(this.sceneMusic());
+    this.updateOnline();
     // The story sets' room tone: talk and clinks at Cha for Tea and in the Tim Hortons booth, night wind in the lot and on the road.
     const set = this.usesStage() ? this.stage.active : null;
     audioSystem.setRoomTone(set === 'dimsum' || set === 'coffee' ? 'restaurant' : set === 'lot' || set === 'road' ? 'outdoors' : null, dt);
@@ -2280,6 +2308,214 @@ export class Belt3d {
     } else if (event.type === 'escape') {
       guard('AND STAY OUT!', 2400);
     }
+  }
+
+  // ---------------------------------------------------------------- online play (onlineRules.ts)
+
+  /** PLAY ONLINE (O): host a room and play Termite, or join one and play Skanky (that page is onlineGuest.ts). */
+  private showOnline(): void {
+    if (this.state !== 'briefing') return;
+    if (this.online) { this.showHosting(); return; }
+    audioSystem.play('button');
+    this.overlay.showPanel(`<div class="kicker">PLAY ONLINE</div>
+      <h1>TERMITE AND SKANKY, ONLINE</h1>
+      <p>One of you hosts and plays Termite: the night runs on that computer. The other joins with the room code and plays Skanky from their own computer or phone, with keys, a controller or touch.</p>
+      <p>You work the belt together. The mall run, the key drop, the Timmies run's trays and the five-ton drives are Skanky's; the Ralph run is Termite's. Either of you moves the story on.</p>
+      <p style="color:#8da7ac;font-size:12px">Hosting needs Chrome or Edge on a computer, to share this tab. The picture, sound and controls go directly between your two browsers, introduced by the free PeerJS service; each of you can see the other's internet address.</p>
+      <div class="b3d-choices"><button type="button" class="steal" data-action="host">HOST · I'M TERMITE</button><button type="button" class="leave" data-action="join">JOIN · I'M SKANKY</button></div>
+      <button type="button" data-action="back">BACK</button>`,
+    { host: () => void this.hostOnline(), join: () => this.joinOnline(), back: () => this.showBriefing() });
+  }
+
+  private joinOnline(): void {
+    const params = new URLSearchParams({ mode: '3d', join: '' });
+    if (transportFromUrl() === 'local') params.set('online', 'local');
+    window.location.href = `${window.location.pathname}?${params}`;
+  }
+
+  /** Opens a room (a fresh code if one is taken) and shows its link; the joining player's messages come to onGuest. */
+  private async hostOnline(): Promise<void> {
+    if (this.online || this.state !== 'briefing') return;
+    this.overlay.showPanel('<div class="kicker">PLAY ONLINE</div><h1>OPENING A ROOM…</h1>');
+    const transport = transportFromUrl();
+    for (let attempt = 0; attempt < 3 && !this.online; attempt += 1) {
+      try { this.online = await OnlineHost.open(roomCode(), transport); } catch { /* the code was taken, or no service: try again */ }
+    }
+    const online = this.online;
+    if (this.state !== 'briefing') return;
+    if (!online) {
+      this.overlay.showPanel(`<div class="kicker">PLAY ONLINE</div><h1>COULD NOT OPEN A ROOM</h1>
+        <p>The connection service did not answer. Check the internet connection, then try again.</p>
+        <button type="button" data-action="back">BACK</button>`, { back: () => this.showBriefing() });
+      return;
+    }
+    online.onMessage = (message) => this.onGuest(message);
+    online.onChange = () => {
+      this.onlineTurn = '';
+      if (!online.joined) this.releaseRemote();
+      if (this.state === 'briefing' && this.overlay.root.querySelector('[data-online-panel]')) this.showHosting();
+    };
+    this.showHosting();
+  }
+
+  /** The room: its code and link, whether Skanky has joined, sharing the tab, and the night's start. */
+  private showHosting(): void {
+    const online = this.online;
+    if (!online || this.state !== 'briefing') return;
+    const params = new URLSearchParams({ mode: '3d', join: online.code });
+    if (online.transport === 'local') params.set('online', 'local');
+    const link = `${window.location.origin}${window.location.pathname}?${params}`;
+    const step = !online.joined
+      ? '<p><b>Waiting for Skanky…</b> Send your brother the link. Or on his screen: PLAY ONLINE, JOIN, and this code.</p>'
+      : online.transport === 'local' ? '<p style="color:#a6cc9a"><b>SKANKY HAS JOINED</b> (another tab of this browser, with no picture).</p>'
+        : !online.picture ? '<p style="color:#a6cc9a"><b>SKANKY HAS JOINED.</b> Now share this tab so he sees the game: pick <b>this tab</b> and leave <b>share tab audio</b> on.</p>'
+          : `<p style="color:#a6cc9a"><b>SKANKY HAS JOINED AND SEES THE GAME</b>${online.picture === '3d' ? ' (the 3D view only: no HUD or speech)' : ''}.</p>
+            <p>${this.onlineMic ? `Voice chat is ${this.onlineMicOn ? 'on: just talk' : 'muted'} (K mutes and unmutes).` : 'No microphone: allow it in the browser to talk.'} Wear headphones, so the game's sound does not echo.</p>`;
+    const share = online.joined && online.transport !== 'local'
+      ? `<div class="b3d-choices"><button type="button" class="steal" data-action="share">${online.picture ? 'SHARE THIS TAB AGAIN' : 'SHARE THIS TAB'}</button><button type="button" class="leave" data-action="view">JUST THE 3D VIEW</button></div>` : '';
+    this.overlay.showPanel(`<div class="kicker" data-online-panel>PLAY ONLINE · YOU ARE TERMITE</div>
+      <h1>ROOM ${online.code}</h1>
+      <p>Skanky joins at <b>${escapeHtml(link)}</b></p>
+      <button type="button" data-action="copy">COPY THE LINK</button>
+      ${step}${share}
+      <div class="b3d-start"><button type="button" data-action="night">START THE NIGHT  ↵</button><button type="button" data-action="play">JUST PLAY<small>NO STORY SCENES</small></button></div>
+      <button type="button" data-action="stop">STOP HOSTING</button>`,
+    {
+      copy: () => void navigator.clipboard?.writeText(link).then(() => this.overlay.showToast('Link copied · send it to Skanky', 2400), () => undefined),
+      share: () => void online.shareTab().then((shared) => {
+        if (shared) void this.startVoice();
+        else this.overlay.showToast('Not shared · try again and pick this tab', 3200);
+      }),
+      view: () => { online.shareView(this.renderer.domElement); void this.startVoice(); },
+      night: () => this.startNight(), play: () => this.startNight(false, true), stop: () => this.stopOnline(),
+    });
+  }
+
+  /** Voice chat, once the picture is shared: the microphone (asked for once) and the game's sound go with it. */
+  private async startVoice(): Promise<void> {
+    const online = this.online;
+    if (!online) return;
+    this.onlineMic ??= await openMicrophone();
+    setMicrophone(this.onlineMic, this.onlineMicOn);
+    this.onlineSound ??= audioSystem.broadcast(this.onlineMic);
+    online.useSound(this.onlineSound);
+    this.onlineTurn = '';
+    if (this.state === 'briefing' && this.overlay.root.querySelector('[data-online-panel]')) this.showHosting();
+  }
+
+  /** K, online: the microphone off or on again. */
+  private toggleOnlineMic(): void {
+    if (!this.onlineMic) {
+      this.overlay.showToast('No microphone · allow it in the browser to talk', 2600);
+      return;
+    }
+    this.onlineMicOn = !this.onlineMicOn;
+    setMicrophone(this.onlineMic, this.onlineMicOn);
+    this.overlay.showToast(this.onlineMicOn ? 'MIC ON · Skanky can hear you' : 'MIC MUTED · K to talk again', 2000);
+    this.onlineTurn = '';
+    if (this.state === 'briefing' && this.overlay.root.querySelector('[data-online-panel]')) this.showHosting();
+  }
+
+  private stopOnline(): void {
+    for (const track of this.onlineMic?.getTracks() ?? []) track.stop();
+    this.onlineMic = null;
+    this.onlineSound = null;
+    this.online?.close();
+    this.online = null;
+    this.releaseRemote();
+    this.onlineTurn = '';
+    this.onlineChip?.remove();
+    this.onlineChip = null;
+    this.showBriefing();
+  }
+
+  /** A message from the joining player, already checked (onlineRules.readGuestMessage). */
+  private onGuest(message: GuestMessage): void {
+    if (message.t === 'hello') return;
+    if (message.t === 'move') {
+      Object.assign(this.remoteAnalog, { x: message.x, y: message.y, throttle: message.throttle, brake: message.brake });
+      return;
+    }
+    if (message.t === 'pad') {
+      if (this.state === 'playing' && this.model.coop && message.button !== 'start') {
+        if (message.button === 'a') this.model.action(this.model.partnerWorker);
+        else if (message.button === 'b') this.model.throwHeld(this.model.partnerWorker);
+        return;
+      }
+      const code = padKey(this.state === 'mall' && this.mallAsking() ? 'mall-quiz' : this.state, message.button as PadButton);
+      if (code) this.remotePress(code);
+      return;
+    }
+    if (message.down) this.remoteKeys.add(message.code);
+    else this.remoteKeys.delete(message.code);
+    if (message.down && !MOVE_KEYS.has(message.code)) this.remotePress(message.code);
+  }
+
+  /**
+   * A key the joining player pressed, if it is theirs to press here. On the belt it works Skanky (player 2) directly;
+   * on Skanky's turns, and to move a story on or pause, it is replayed as this screen's own key, marked as theirs.
+   */
+  private remotePress(code: string): void {
+    if (this.state === 'playing' && this.model.coop && code !== 'Escape') {
+      if (code === 'Space' || code === 'Enter') this.model.action(this.model.partnerWorker);
+      else if (code === 'KeyF' || code === 'ShiftRight') this.model.throwHeld(this.model.partnerWorker);
+      return;
+    }
+    const owner = sceneOwner(this.state, this.ralph !== null);
+    const allowed = owner === 'skanky' || (owner === 'both' && (code === 'Space' || code === 'Enter'))
+      || (code === 'Escape' && (this.canPause() || this.state === 'paused')) || (this.state === 'paused' && code === 'Enter');
+    if (!allowed) return;
+    for (const type of ['keydown', 'keyup'] as const) {
+      const event = new KeyboardEvent(type, { code });
+      Object.defineProperty(event, 'beltRemote', { value: true });
+      window.dispatchEvent(event);
+    }
+  }
+
+  /** The joining player's movement: their held keys (WASD or arrows) and stick, each axis -1..1. */
+  private remoteMovement(): { x: number; y: number } {
+    const keys = heldMove(this.remoteKeys);
+    return { x: Math.max(-1, Math.min(1, keys.x + this.remoteAnalog.x)), y: Math.max(-1, Math.min(1, keys.y + this.remoteAnalog.y)) };
+  }
+
+  /** Online, with the joining player here, and this part of the night is Skanky's alone. */
+  private guestPlays(): boolean {
+    return this.online?.joined === true && sceneOwner(this.state, this.ralph !== null) === 'skanky';
+  }
+
+  /** On Skanky's turns the host's own keys (and pad) for moving and acting do nothing; ESC, M and the like still work. */
+  private hostBlocked(event: KeyboardEvent): boolean {
+    if ((event as KeyboardEvent & { beltRemote?: boolean }).beltRemote || !this.guestPlays()) return false;
+    return MOVE_KEYS.has(event.code) || ['Space', 'Enter', 'KeyE', 'KeyF', 'KeyV', 'Tab', 'Digit1', 'Digit2', 'Digit3', 'Numpad1', 'Numpad2', 'Numpad3'].includes(event.code);
+  }
+
+  private releaseRemote(): void {
+    this.remoteKeys.clear();
+    Object.assign(this.remoteAnalog, { x: 0, y: 0, throttle: 0, brake: 0 });
+  }
+
+  /** Each frame online: whose turn it is, sent to the joining player when it changes, and the chip on this screen. */
+  private updateOnline(): void {
+    const online = this.online;
+    if (!online) return;
+    const state = this.state === 'paused' ? this.pausedFrom : this.state;
+    const owner = sceneOwner(state, this.ralph !== null);
+    const text = this.state === 'paused' ? 'PAUSED · ESC carries on' : turnText(owner, state);
+    const key = `${owner}|${text}|${online.joined}`;
+    if (key === this.onlineTurn) return;
+    this.onlineTurn = key;
+    online.send({ t: 'turn', owner, text });
+    if (!this.onlineChip) {
+      const chip = document.createElement('div');
+      chip.className = 'b3d-online-chip';
+      chip.style.cssText = 'position:fixed;left:18px;top:94px;z-index:5;pointer-events:none;border-radius:6px;padding:4px 8px;'
+        + 'font:700 11px/1.3 "Segoe UI",Arial,sans-serif;letter-spacing:1.5px;color:#10241a';
+      this.overlay.root.append(chip);
+      this.onlineChip = chip;
+    }
+    const mic = this.onlineMic ? (this.onlineMicOn ? ' · MIC ON (K)' : ' · MIC MUTED (K)') : '';
+    this.onlineChip.textContent = `ONLINE · ROOM ${online.code} · ${!online.joined ? 'WAITING FOR SKANKY' : owner === 'skanky' ? "SKANKY'S TURN" : owner === 'both' ? 'TERMITE + SKANKY' : "TERMITE'S TURN"}${mic}`;
+    this.onlineChip.style.background = online.joined ? '#a6cc9a' : '#edba6d';
   }
 
   /** Mall security's card: the current question, or (after a wrong answer, or being caught) grab it or ask again. */
