@@ -1714,6 +1714,21 @@ export class StoryStage {
    * A car's engine running on a cold night: thick white exhaust rolling out of the tailpipe (behind the rear bumper,
    * the car's −x), dark and heavier while it has just started (`starting`). About 22 puffs a second at any frame rate.
    */
+  /**
+   * The five-ton's engine on the road scenes: thick exhaust from the tailpipe under its rear (createTruck's
+   * `stack-top`), left behind at the road's `speed` (the scenery moves past a still truck, toward −x), dark while it
+   * pulls away (`starting`).
+   */
+  private truckExhaust(stage: Stage, truck: THREE.Object3D, speed: number, starting: boolean): void {
+    if (Math.random() > this.frameDt * (starting ? 44 : 40)) return;
+    const pipe = truck.getObjectByName('stack-top');
+    if (!pipe) return;
+    stage.puffs.emit(pipe.getWorldPosition(new THREE.Vector3()), {
+      color: starting ? 0x6a6e72 : 0xd8dce0, size: starting ? 0.65 : 0.55, life: starting ? 2.6 : 1.8, opacity: starting ? 0.7 : 0.58, grow: 5, spread: 0.25, look: 'cloud',
+      velocity: new THREE.Vector3(-speed * 0.85 - 0.5 - Math.random() * 0.4, 0.3 + Math.random() * 0.3, (Math.random() - 0.5) * 0.3),
+    });
+  }
+
   private exhaust(stage: Stage, car: THREE.Object3D, starting: boolean): void {
     if (Math.random() > this.frameDt * (starting ? 34 : 22)) return;
     const pipe = car.localToWorld(new THREE.Vector3(-2.3, 0.3, 0.5));
@@ -1933,6 +1948,7 @@ export class StoryStage {
     map.offset.x = this.roadTravel / 10;
     props.passing.position.x = -(this.roadTravel % 12);
     props.truck.position.set(0, 0, 1.6);
+    this.truckExhaust(stage, props.truck, speed, depart < 0.3);
     this.cameraTo(new THREE.Vector3(-7.5, 3.6, 8.5), new THREE.Vector3(1.5, 1.4, 0.5), dt, cutscene.index === 0 && cutscene.elapsedMs < 50);
   }
 
