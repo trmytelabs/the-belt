@@ -214,6 +214,7 @@ export class DepotWorld {
 
     this.addLights(quality);
     this.addShell();
+    this.addYards();
     this.addRoof();
     this.addPlatform();
     this.tread = this.addBelt();
@@ -461,13 +462,6 @@ export class DepotWorld {
       const yard = outside.clone();
       yard.position.set(side * 30.6, -0.01, (groundTop + groundEnd) / 2);
       scene.add(yard);
-      // Plowed banks along the yard's far side, clear of the bays the fleet drives out of.
-      for (const z of [-14, -2, 10, 22]) {
-        const bank = snowBank(9, 2.2, 0.9);
-        bank.position.set(side * 42, 0, z);
-        bank.rotation.y = Math.PI / 2;
-        scene.add(bank);
-      }
       const yardLight = new THREE.PointLight(0xffa64d, 22, 18, 1.6);
       yardLight.position.set(side * 21, 5, 3);
       scene.add(yardLight);
@@ -512,6 +506,152 @@ export class DepotWorld {
    * The fade is a function of where the camera is, not of time, so the near
    * plane never meets a visible wall. Returns the wall's opacity.
    */
+  /**
+   * Outside the depot, seen from the end-of-shift view, through the open bays and past the bulk wall: plowed asphalt
+   * aprons striped for the trucks, sodium lamps on poles with their pools of light, plowed piles, a chain-link fence
+   * round the lot, the rear lot with the brown package cars parked for the night, a dumpster and pallets, and snowy
+   * ground out to the fog. The yards were flat white fields ending in black, with oval banks that read as holes.
+   */
+  private addYards(): void {
+    const scene = this.scene;
+    const groundTop = -23;
+    const rear = SHIFT_LAYOUT.bulkRearWall;
+    const southZ = toWorldZ(rear.y + rear.height / 2);
+    const outside = new THREE.Group();
+    outside.name = 'depot-yards';
+    // Snowy ground out to the fog, under the yards and the lot.
+    const far = snowField(320, 320, 0, 0, -0.03);
+    far.material = snowMaterial(320, 320, 40).clone();
+    (far.material as THREE.MeshStandardMaterial).color.setHex(0x6f7b8a);
+    far.userData.solid = false;
+    scene.add(far);
+    const asphalt = getSurface('asphalt') ? surfaceMaterial('asphalt', { color: 0x4b5157, roughness: 0.95 }) : standard(0x3b4045, 0.95);
+    const paint = standard(0xd9b23a, 0.7);
+    const apron = (width: number, depth: number, x: number, z: number): void => {
+      const pad = new THREE.Mesh(photoUVs(new THREE.PlaneGeometry(width, depth), (geometry) => scaleUVs(geometry, width / 6, depth / 6)), asphalt);
+      pad.rotation.x = -Math.PI / 2;
+      pad.position.set(x, 0.006, z);
+      pad.receiveShadow = true;
+      outside.add(pad);
+    };
+    // Plowed aprons outside both rows of bays, striped between the trucks.
+    for (const side of [-1, 1]) {
+      apron(13, southZ - groundTop, side * 22.1, (groundTop + southZ) / 2);
+      for (const y of [...SHIFT_LAYOUT.crewTruckRows, ...Object.values(SHIFT_LAYOUT.playerTrucks).map((truck) => truck.y)]) {
+        for (const edge of [-1.75, 1.75]) {
+          const line = new THREE.Mesh(new THREE.BoxGeometry(7, 0.01, 0.12), paint);
+          line.position.set(side * 20.2, 0.012, toWorldZ(y) + edge);
+          outside.add(line);
+        }
+      }
+    }
+    // The rear lot behind the bulk wall.
+    apron(58, 17, 0, southZ + 9);
+    // Sodium lamps on poles: a warm pool on the ground under each (painted light; the yards' own lamps light the scene).
+    const pole = standard(0x3d444a, 0.6, 0.6);
+    const lens = new THREE.MeshStandardMaterial({ color: 0x2a2a2a, emissive: 0xffb15a, emissiveIntensity: 3 });
+    const pool = (() => {
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = 64;
+      const g = canvas.getContext('2d')!;
+      const gradient = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+      gradient.addColorStop(0, 'rgba(255, 170, 80, 0.55)');
+      gradient.addColorStop(1, 'rgba(255, 170, 80, 0)');
+      g.fillStyle = gradient;
+      g.fillRect(0, 0, 64, 64);
+      return new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(canvas), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+    })();
+    const lamp = (x: number, z: number, facing: number): void => {
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.14, 8, 8), pole);
+      post.position.set(x, 4, z);
+      const arm = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.1, 0.1), pole);
+      arm.position.set(x + Math.cos(facing) * 0.7, 7.9, z - Math.sin(facing) * 0.7);
+      arm.rotation.y = facing;
+      const head = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.18, 0.36), pole);
+      head.position.set(x + Math.cos(facing) * 1.35, 7.85, z - Math.sin(facing) * 1.35);
+      head.rotation.y = facing;
+      const glow = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.28), lens);
+      glow.rotation.set(Math.PI / 2, 0, -facing);
+      glow.position.set(head.position.x, 7.75, head.position.z);
+      const spot = new THREE.Mesh(new THREE.CircleGeometry(7, 24), pool);
+      spot.rotation.x = -Math.PI / 2;
+      spot.position.set(head.position.x, 0.02, head.position.z);
+      spot.renderOrder = 1;
+      outside.add(post, arm, head, glow, spot);
+    };
+    for (const side of [-1, 1]) for (const z of [-16, -3, 10]) lamp(side * 29.5, z, side < 0 ? 0 : Math.PI);
+    for (const x of [-20, 0, 20]) lamp(x, southZ + 16.5, -Math.PI / 2);
+    // Plowed piles at the lot's corners and along the fence: a few lumps each, not one smooth oval.
+    const pile = (x: number, z: number, size: number): void => {
+      for (const [dx, dz, s, turn] of [[0, 0, 1, 0], [size * 0.45, size * 0.2, 0.7, 0.8], [-size * 0.35, -size * 0.25, 0.6, -0.5]] as const) {
+        const lump = snowBank(size * s * 1.6, size * s, size * s * 0.42);
+        lump.position.set(x + dx, 0, z + dz);
+        lump.rotation.y = turn;
+        outside.add(lump);
+      }
+    };
+    for (const side of [-1, 1]) { pile(side * 36.5, -19, 4); pile(side * 36.5, 3.5, 3.4); pile(side * 33, southZ + 15, 4.2); }
+    // Chain-link round the lot: posts, a top rail and see-through mesh.
+    const chain = (() => {
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = 32;
+      const g = canvas.getContext('2d')!;
+      g.strokeStyle = '#ffffff'; g.lineWidth = 2;
+      g.beginPath(); g.moveTo(0, 16); g.lineTo(16, 0); g.lineTo(32, 16); g.lineTo(16, 32); g.closePath(); g.stroke();
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+      return texture;
+    })();
+    const chainLink = new THREE.MeshStandardMaterial({ color: 0x9aa3aa, metalness: 0.6, roughness: 0.5, alphaMap: chain, alphaTest: 0.5, side: THREE.DoubleSide });
+    const fence = (from: THREE.Vector2, to: THREE.Vector2): void => {
+      const length = from.distanceTo(to), angle = Math.atan2(-(to.y - from.y), to.x - from.x);
+      // One material for every run of fence; each run's UVs repeat the mesh along its own length.
+      const mesh = new THREE.Mesh(scaleUVs(new THREE.PlaneGeometry(length, 2.1), length / 0.35, 2.1 / 0.35), chainLink);
+      mesh.position.set((from.x + to.x) / 2, 1.05, (from.y + to.y) / 2);
+      mesh.rotation.y = angle;
+      outside.add(mesh);
+      for (let d = 0; d <= length + 0.01; d += 3) {
+        const post = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 2.2, 6), pole);
+        post.position.set(from.x + (to.x - from.x) * d / length, 1.1, from.y + (to.y - from.y) * d / length);
+        outside.add(post);
+      }
+    };
+    const back = southZ + 19.5, front = groundTop - 4;
+    fence(new THREE.Vector2(-40, front), new THREE.Vector2(-40, back));
+    fence(new THREE.Vector2(40, front), new THREE.Vector2(40, back));
+    fence(new THREE.Vector2(-40, back), new THREE.Vector2(40, back));
+    // The package cars, parked nose-out in the rear lot for the night.
+    for (const x of [-15, -9, 9, 15]) {
+      const car = createTruck('UPS', 0x5a4632, 0x4a3a2a, 'right', undefined, false, false, { length: 5.2, depth: 2.3, closed: true });
+      rigTruckWheels(car);
+      car.rotation.y = -Math.PI / 2;
+      car.position.set(x, 0, southZ + 6.5);
+      mergeTruck(car);
+      outside.add(car);
+    }
+    // A dumpster and stacked pallets by the wall.
+    const dumpster = rounded(2.1, 1.3, 1.3, standard(0x2f5a3a, 0.7, 0.3), 0.05);
+    dumpster.position.set(-3.2, 0.65, southZ + 2.2);
+    const lid = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.08, 1.35), standard(0x1f3a26, 0.6));
+    lid.position.set(-3.2, 1.34, southZ + 2.2);
+    lid.rotation.x = -0.12;
+    outside.add(dumpster, lid);
+    const wood = standard(0x8a6a44, 0.9);
+    for (let i = 0; i < 5; i++) {
+      const pallet = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.14, 1.0), wood);
+      pallet.position.set(3.4, 0.07 + i * 0.15, southZ + 2.1);
+      pallet.rotation.y = (i % 2) * 0.08;
+      outside.add(pallet);
+    }
+    outside.traverse((child) => {
+      const mesh = child as THREE.Mesh;
+      if (mesh.isMesh) { mesh.castShadow = false; mesh.userData.solid = false; }
+    });
+    outside.userData.solid = false;
+    mergeStatic(outside, (object) => object.name === 'truck-wheels' || (object as THREE.Mesh).material === pool);
+    scene.add(outside);
+  }
+
   /**
    * The depot's roof, from underneath: a corrugated deck on open-web joists across the building, two girders along it,
    * red sprinkler mains and a high-bay lamp over each work light. The play cameras look down from well above the walls,

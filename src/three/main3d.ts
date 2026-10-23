@@ -1942,7 +1942,7 @@ export class Belt3d {
     // Trucks open a window onto the people behind them, except on the start screen: its view down the deck between
     // the rows shows the trucks whole.
     if (!stageScene) this.world.showRoofFor(camera);
-    if (!stageScene && this.state !== 'dream') this.world.truckCutaway.update(camera, this.state === 'briefing' && !this.overview ? []
+    if (!stageScene && this.state !== 'dream') this.world.truckCutaway.update(camera, (this.state === 'briefing' || this.state === 'ended') && !this.overview ? []
       : [...Object.values(this.workers).map(worker => worker.root), ...[...this.crew.actors.values()].map(actor => actor.root)]);
     syncCharacterModels(this.state === 'dream' ? this.dream.scene : scene);
     if (this.state === 'dream') this.renderer.render(this.dream.scene, this.dream.camera);
@@ -2604,17 +2604,23 @@ export class Belt3d {
       look = this.depotShot.look;
       position = this.depotShot.position.clone();
       if (portrait) position.add(new THREE.Vector3(0, 4, 3));
-    } else if (this.state === 'briefing' && !this.overview) {
-      // The start screen: on the deck at the bulk end, at a little over head height, looking up the belt toward
-      // receiving, the belt in the middle and a row of trucks on either side. It drifts slowly from side to side.
+    } else if ((this.state === 'briefing' || this.state === 'ended') && !this.overview) {
+      // The start screen, and the results after the night: on the deck at the bulk end, at a little over head height,
+      // looking up the belt toward receiving, the belt in the middle and a row of trucks on either side. It drifts
+      // slowly from side to side. (The results stood behind the bulk wall, looking at its back over the snow.)
       const sway = this.reducedMotion ? 0 : Math.sin(this.time * 0.11);
       const deck = PLATFORM_HEIGHT;
       // On a wide screen the start card stands at the left (overlay.ts .side): the view turns a little to the left so
       // the belt sits in the open right of the screen, with the crew on both sides of it in view.
-      const aside = window.innerWidth >= 1100 && this.camera.aspect >= 4 / 3 ? -2.4 : 0;
+      const aside = this.state === 'briefing' && window.innerWidth >= 1100 && this.camera.aspect >= 4 / 3 ? -2.4 : 0;
       position = new THREE.Vector3(sway * 0.5 + aside * 0.6, deck + (portrait ? 3.6 : 2.6), toWorldZ(SHIFT_LAYOUT.bulkPile.y) - (portrait ? 1.2 : 2.4));
       look = new THREE.Vector3(sway * 0.25 + aside, deck - 0.9, toWorldZ(SHIFT_LAYOUT.beltTop) - 6);
-    } else if (this.overview || this.state === 'briefing' || this.state === 'celebrating') {
+    } else if (this.state === 'celebrating' && !this.overview) {
+      // Clocked out: from above the bulk end, close enough to see the crew cheer and the trucks pull out into the yards.
+      // From the overview's 80 m the depot was a toy in a white field.
+      look = new THREE.Vector3(0, 0, toWorldZ((SHIFT_LAYOUT.worldTop + SHIFT_LAYOUT.worldBottom) / 2));
+      position = look.clone().add(portrait ? new THREE.Vector3(0, 46, 30) : new THREE.Vector3(0, 27, 23));
+    } else if (this.overview || this.state === 'briefing') {
       look = new THREE.Vector3(0, 0, toWorldZ((SHIFT_LAYOUT.worldTop + SHIFT_LAYOUT.worldBottom) / 2));
       position = look.clone().add(new THREE.Vector3(0, Math.max(portrait ? 104 : 80, 58 / this.camera.aspect), portrait ? 39 : 27));
     } else if (this.model.coop && (state === 'playing' || state === 'countdown' || state === 'ended')) {
