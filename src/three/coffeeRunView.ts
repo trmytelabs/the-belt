@@ -16,8 +16,11 @@ import { RESIDENT_SPECS, SKANKY_SPEC, TERMITE_SPEC } from './world';
  * the back, and boxes of donuts all over the car. The camera rides above the car's rear quarter, looking in.
  */
 
-/** Everything of the car above this height (world metres) is cut away, so the camera sees in: the roof and pillars, not the riders. */
-const ROOF_CUT = 1.36;
+/**
+ * Everything of the car above this height (world metres) is cut away, so the camera sees in: the roof and pillars, not
+ * the riders. At 1.36 m the sloping rear pillars stayed, through the heads of the riders in the back.
+ */
+const ROOF_CUT = 1.2;
 /** The trays' pivot, in the car's frame (its nose +x, the passenger's side +z): in front of Skanky's lap. */
 const TRAYS_AT = new THREE.Vector3(0.2, 0.9, 0.38);
 /** How far a full tilt turns the trays, in radians. */
@@ -80,6 +83,27 @@ function donutBox(open: boolean): THREE.Group {
 
 interface Cup { root: THREE.Group; lid: THREE.Mesh; spilled: boolean; lidVelocity: THREE.Vector3 | null }
 
+const STAIN = new THREE.PlaneGeometry(0.17, 0.17);
+
+/** A coffee stain: a dark, wet splotch with a few splashes round it, drawn from `seed` so no two match. */
+function coffeeStain(seed: number): THREE.Mesh<THREE.PlaneGeometry, THREE.MeshStandardMaterial> {
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = 64;
+  const g = canvas.getContext('2d')!;
+  let state = seed * 7919 + 13;
+  const random = (): number => { state = (state * 16807) % 2147483647; return state / 2147483647; };
+  g.fillStyle = 'rgba(56, 30, 12, 0.88)';
+  for (let i = 0; i < 7; i++) { g.beginPath(); g.arc(20 + random() * 24, 20 + random() * 24, 6 + random() * 11, 0, Math.PI * 2); g.fill(); }
+  for (let i = 0; i < 7; i++) { g.beginPath(); g.arc(5 + random() * 54, 5 + random() * 54, 1.5 + random() * 2.5, 0, Math.PI * 2); g.fill(); }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  const stain = new THREE.Mesh(STAIN, new THREE.MeshStandardMaterial({
+    map: texture, transparent: true, roughness: 0.3, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2,
+  }));
+  stain.name = 'coffee-stain';
+  return stain;
+}
+
 export class CoffeeRunScene {
   /** The riders, made once and kept: their figures (and imported models) are reused on every run. */
   private readonly riders: { character: Character; seat: SeatName }[] = [];
@@ -91,6 +115,8 @@ export class CoffeeRunScene {
   private readonly cups: Cup[] = [];
   private readonly handles: { left: THREE.Object3D; right: THREE.Object3D };
   private readonly drops: { mesh: THREE.Mesh; velocity: THREE.Vector3; life: number }[] = [];
+  /** The coffee on the riders: a stain on a lap for each cup that went over. */
+  private readonly stains: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshStandardMaterial>[] = [];
   /** A contract from the generated interior for the car's procedural stand-in, until the imported sedan (with its own) loads. */
   private readonly fallback: THREE.Group;
   private readonly fallbackContract: VehicleContract;
@@ -191,6 +217,8 @@ export class CoffeeRunScene {
       cup.lid.position.set(0, 0.066, 0); cup.lid.rotation.set(0, 0, 0); cup.lid.visible = true;
     }
     this.clearDrops();
+    for (const stain of this.stains) { stain.removeFromParent(); stain.material.map?.dispose(); stain.material.dispose(); }
+    this.stains.length = 0;
     this.springs.lastSpeed = null;
     this.clippedFor = null;
   }
@@ -325,6 +353,26 @@ export class CoffeeRunScene {
     cup.root.rotation.set(1.1 * right, 0, -1.1 * forward);
     cup.lidVelocity = new THREE.Vector3(forward * 0.9, 1.6, right * 0.9);
     this.splash(cup, model, 18, 1);
+    // It lands on whoever is beside it: down Skanky's shirt and on his knee on the cup's side (his lap is under the
+    // trays, out of the camera's sight), and on Termite's knee too off the console tray.
+    const rider = (seat: SeatName): Character | undefined => this.riders.find((item) => item.seat === seat)?.character;
+    const skanky = rider('passenger'), termite = rider('driver'), spot = CUP_SPOTS[index];
+    const jitter = (n: number): number => ((n * 37) % 10) / 10;
+    if (skanky) {
+      this.stain(skanky.body, index + 1, new THREE.Vector3((jitter(index + 3) - 0.5) * 0.16, 1.02 + jitter(index) * 0.24, 0.135));
+      this.stain(spot.right > 0 ? skanky.rightLeg : skanky.leftLeg, index + 9, new THREE.Vector3((jitter(index + 5) - 0.5) * 0.03, -0.3 - jitter(index + 1) * 0.08, 0.1));
+    }
+    if (termite && spot.right < -0.1) this.stain(termite.rightLeg, index + 21, new THREE.Vector3(0, -0.3 - jitter(index + 2) * 0.08, 0.1));
+  }
+
+  /** Lays a stain on a part of a rider, facing out of its front (a seated thigh's front faces up). */
+  private stain(part: THREE.Object3D, seed: number, at: THREE.Vector3): void {
+    const stain = coffeeStain(seed);
+    stain.position.copy(at);
+    stain.rotation.z = seed * 1.7;
+    stain.scale.setScalar(0.75 + ((seed * 13) % 5) * 0.1);
+    part.add(stain);
+    this.stains.push(stain);
   }
 
   private splash(cup: Cup, model: CoffeeRunModel, count: number, speed: number): void {
