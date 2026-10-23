@@ -4,8 +4,9 @@ import { chromium } from 'playwright';
 import { preview } from 'vite';
 
 // The Bentley run's security desk and chase in the real app: the guard's questions on a docked card answered with real
-// keys, a wrong answer and the choice it leaves, grabbing the box, the guard's pistol, aim and shot, the hit on the HUD,
-// the box shoved at Bentley on the run, and the getaway into the five-ton in the results. The run up to the refusal,
+// keys, a wrong answer and the choice it leaves, grabbing the box, the guard's pistol, aim and a sidestepped shot, the
+// box shoved at Bentley on the run, and the getaway into the five-ton; then a run shot down: Skanky collapses, the
+// medics carry him out, the ambulance takes him away, and the night is lost. The run up to the refusal,
 // and the right answers, are played by the story suite.
 const shots = process.env.BELT_SCREENSHOT_DIR;
 const server = process.env.BELT_TEST_BASE_URL ? null : await preview({ preview: { host: '127.0.0.1', port: 0 }, logLevel: 'silent' });
@@ -75,15 +76,15 @@ try {
   assert.match(await card(), /1 · GRAB IT AND RUN[\s\S]*2 · ASK AGAIN/);
   await shot('denied');
 
-  // 1: grab it and run. The card goes, the HUD counts hits, the guard yells and draws.
+  // 1: grab it and run. The card goes, the HUD says how far behind the guard is, the guard yells and draws.
   await page.keyboard.press('Digit1');
   await wait(() => window.fixtureApp.mall.chase !== null);
   await wait(() => !document.querySelector('.b3d-panel.docked'));
-  await wait(() => /HITS\s*0 \/ 3/.test(document.querySelector('.b3d-chapterhud')?.textContent ?? ''));
+  await wait(() => /GUARD\s*\d+ M BEHIND/.test(document.querySelector('.b3d-chapterhud')?.textContent ?? ''));
   await wait(() => window.fixtureApp.overlay.history.some((line) => /SECURITY: HEY! THAT'S LOST PROPERTY!/.test(line)));
   await wait(() => window.fixtureApp.stage.stages.mall.props.guardGun.visible);
   assert.ok(await read(() => window.played.includes('warning')), 'the alarm');
-  // Down the hallway with the guard behind on the same line: his aim shows on the floor, and standing on it is a hit.
+  // Down the hallway with the guard behind on the same line: his aim shows on the floor; a sidestep once it turns red is a miss.
   await read(() => {
     const { mall } = window.fixtureApp;
     Object.assign(mall.skanky, { x: 1700, y: 824 });
@@ -92,10 +93,13 @@ try {
   await wait(() => window.fixtureApp.mall.chase.aim !== null);
   await wait(() => window.fixtureApp.stage.stages.mall.props.guardAim.visible);
   await shot('aim');
-  await wait(() => window.fixtureApp.mall.chase.hits === 1);
+  await wait(() => window.fixtureApp.mall.chase.aim?.locked);
+  await page.keyboard.down('KeyS');
+  await wait(() => window.fixtureApp.mall.chase.shot !== null);
+  await page.keyboard.up('KeyS');
+  assert.deepEqual(await read(() => [window.fixtureApp.mall.chase.shot.hit, window.fixtureApp.mall.down]), [false, null], 'sidestepped');
   await wait(() => window.played.includes('gunshot'));
-  await wait(() => /HITS\s*1 \/ 3/.test(document.querySelector('.b3d-chapterhud')?.textContent ?? ''));
-  await shot('hit');
+  await shot('miss');
 
   // The box shoved at Bentley on the run (signed at once, with no idea what is going on), then into the five-ton.
   await read(() => {
@@ -118,8 +122,36 @@ try {
   await page.keyboard.up('KeyA');
   assert.deepEqual(await read(() => [window.fixtureApp.mall.getaway, window.fixtureApp.mallBonus]), ['escaped', 450], 'seven signatures and the getaway');
   await wait(() => window.fixtureApp.state !== 'mall');
+
+  // Another run, shot down on the line: he collapses, the guard radios, the siren starts; the medics; the ambulance.
+  await read(() => {
+    const app = window.fixtureApp;
+    app.beginMall();
+    const { mall } = app;
+    for (const store of mall.stores) store.state = store.id === 'bentley' ? 'dropped' : 'signed';
+    mall.truckBundles.forEach((_, slot) => { mall.truckBundles[slot] = null; });
+    Object.assign(mall, { signatures: 6, delivered: 7, run: 3, bentley: 'denied' });
+    mall.decide('grab');
+    Object.assign(mall.skanky, { x: 1700, y: 824 });
+    Object.assign(mall.chase, { guard: { x: 1450, y: 824, moving: false }, path: [], elapsedMs: 1000, cooldownMs: 0 });
+  });
+  await wait(() => window.fixtureApp.mall.down !== null);
+  await wait(() => window.fixtureApp.overlay.history.some((line) => /SECURITY: SHOTS FIRED!/.test(line)));
+  await wait(() => window.fixtureApp.sirenOn);
+  await shot('down');
+  await read(() => { window.fixtureApp.mall.down.ms = 5000; });
+  await wait(() => window.fixtureApp.stage.stages.mall.actors.get('medic-1').root.visible && window.fixtureApp.stage.stages.mall.props.stretcher.visible);
+  await shot('medics');
+  await read(() => { window.fixtureApp.mall.down.ms = 10700; });
+  await wait(() => window.fixtureApp.stage.stages.mall.props.ambulance.visible);
+  assert.equal(await read(() => window.fixtureApp.stage.stages.mall.props.mallFull.visible), true, 'outside, the whole building');
+  await shot('ambulance');
+  await read(() => { window.fixtureApp.mall.down.ms = 16400; });
+  await wait(() => window.fixtureApp.state === 'ended');
+  assert.match(await page.locator('.b3d-panel').innerText(), /GAME OVER[\s\S]*ambulance took him away[\s\S]*ANOTHER NIGHT/);
+  assert.ok(await read(() => window.played.includes('game-over')));
   assert.deepEqual(errors, []);
-  console.log('PASS mall security asks three questions on a docked card answered by real keys, a wrong answer offers grab-and-run or ask again, and the chase draws the gun, shows the aim, hits, signs Bentley on the run and gets away into the five-ton for +450');
+  console.log('PASS mall security asks three questions on a docked card answered by real keys, a wrong answer offers grab-and-run or ask again, and the chase draws the gun, shows the aim, misses a sidestep, signs Bentley on the run and gets away into the five-ton for +450; shot, Skanky is carried out to the ambulance and the night is lost');
 } finally {
   await browser?.close();
   await server?.httpServer.close();
