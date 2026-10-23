@@ -16,8 +16,8 @@ export interface RocketboxCasting {
   /** A walk other than the crew's ordinary one: `formal`, the manager's upright stride (a Quaternius clip). */
   walk?: 'formal';
   /**
-   * Wear on the source's look (characterModels.ts): `clothes` multiplies the body material (the clothes, and the hands
-   * with them) by a colour, as grime; `greyHair` turns the hair cards grey.
+   * Wear on the source's look (characterModels.ts): `clothes` fades the clothing on the body material and stains it
+   * with that colour, leaving the skin; `greyHair` turns the hair grey, the cards and the hair painted on the head.
    */
   wear?: { clothes?: number; greyHair?: boolean };
 }
@@ -30,7 +30,8 @@ export const ROCKETBOX_CAST: RocketboxCasting[] = [
   { file: 'skanky', source: 'Adults/Male_Adult_06', names: ['SKANKY'], textureSize: 1024 },
   { file: 'shan', source: 'Professions/Business_Male_07', names: ["SHAN O'MAC"], textureSize: 1024, walk: 'formal' },
   { file: 'kylie', source: 'Adults/Male_Adult_10', names: ['KYLIE'], textureSize: 1024 },
-  { file: 'vic', source: 'Adults/Male_Adult_05', names: ['VIC'], textureSize: 1024, wear: { clothes: 0x9a8668, greyHair: true } },
+  // The owner's Vic is an old Asian man in dirty clothes: Rocketbox has no older Asian man, so its East Asian man, greyed.
+  { file: 'vic', source: 'Adults/Male_Adult_09', names: ['VIC'], textureSize: 1024, wear: { clothes: 0x5a4630, greyHair: true } },
   { file: 'john-rushton', source: 'Adults/Male_Adult_08', names: ['JOHN RUSHTON'], textureSize: 1024 },
   { file: 'hussan', source: 'Adults/Male_Adult_17', names: ['HUSSAN'], textureSize: 1024 },
   { file: 'aj', source: 'Adults/Male_Adult_14', names: ['AJ'], textureSize: 512 },
