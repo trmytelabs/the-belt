@@ -181,6 +181,7 @@ const CSS = `
 .b3d-panel .b3d-start button[data-action="players"] small { display: block; margin-top: 3px; font-size: 10px; letter-spacing: 1.5px; opacity: 0.8; }
 .b3d-panel button[data-action="daily"] small { display: block; margin-top: 3px; font-size: 10px; letter-spacing: 1.5px; opacity: 0.8; }
 .b3d-panel .b3d-start button[data-action="play"] small { display: block; margin-top: 3px; font-size: 10px; letter-spacing: 1.5px; opacity: 0.8; }
+.b3d-panel button[data-action="peak"] small, .b3d-panel button[data-action="endless"] small { display: block; margin-top: 3px; font-size: 10px; letter-spacing: 1.5px; opacity: 0.8; }
 .b3d-setting { display: grid; grid-template-columns: 90px 1fr 48px; align-items: center; gap: 12px; margin: 12px 0; font-size: 13px; letter-spacing: 1.5px; color: #c9dcdc; }
 .b3d-setting input[type=range] { width: 100%; accent-color: #edb765; }
 .b3d-setting output { text-align: right; font-variant-numeric: tabular-nums; color: #edb765; }

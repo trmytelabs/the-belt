@@ -514,6 +514,38 @@ try {
   });
   await page.waitForTimeout(1500);
   await shot('cha-for-tea');
+  // NEXT through to the last beat: the waitress's extra stack of steamers ends in the empty middle of the lazy Susan,
+  // clear of every dish round it (it used to land in that ring, through the food).
+  for (let i = 0; i < 12 && await read(() => window.fixtureApp.cutscene?.scene.beats[window.fixtureApp.cutscene.index]?.cue !== 'leave'); i++) {
+    await page.keyboard.press('Space');
+    await page.waitForTimeout(120);
+  }
+  await page.waitForTimeout(300);
+  const served = await read(() => {
+    const stage = window.fixtureApp.stage.stages.dimsum, more = stage.props.moreSteamers, susan = stage.props.lazySusan;
+    const Vec = more.position.constructor;
+    const bounds = (object) => {
+      object.updateWorldMatrix(true, true);
+      const min = new Vec(Infinity, Infinity, Infinity), max = new Vec(-Infinity, -Infinity, -Infinity);
+      object.traverse((child) => {
+        if (!child.isMesh) return;
+        child.geometry.computeBoundingBox();
+        const b = child.geometry.boundingBox;
+        for (const x of [b.min.x, b.max.x]) for (const y of [b.min.y, b.max.y]) for (const z of [b.min.z, b.max.z]) {
+          const p = new Vec(x, y, z).applyMatrix4(child.matrixWorld);
+          min.min(p); max.max(p);
+        }
+      });
+      return { min, max };
+    };
+    const stack = bounds(more);
+    const overlaps = susan.children.slice(1).filter((item) => {
+      const b = bounds(item);
+      return ['x', 'y', 'z'].every((axis) => Math.min(stack.max[axis], b.max[axis]) - Math.max(stack.min[axis], b.min[axis]) > 0.002);
+    }).length;
+    return { visible: more.visible, centre: Math.hypot(more.position.x, more.position.z), overlaps };
+  });
+  assert.ok(served.visible && served.centre < 0.01 && served.overlaps === 0, `the served steamers sit in the middle, clear of the dishes: ${JSON.stringify(served)}`);
   await page.keyboard.press('Enter');
   await wait(() => window.fixtureApp.state === 'ended');
   const results = await page.locator('.b3d-panel').innerText();
@@ -620,6 +652,7 @@ try {
   assert.match(await page.locator('.b3d-panel').innerText(), /PEAK NIGHT UNLOCKED/);
   assert.match(await page.locator('.b3d-panel').innerText(), /SENIORITY · PART-TIMER · NEXT: LOADER AT 3 FINISHED NIGHTS/);
   assert.ok(await page.locator('button[data-action="peak"]').isVisible(), 'the PEAK NIGHT button shows');
+  assert.match(await page.locator('button[data-action="peak"]').innerText(), /PEAK NIGHT \(HARDEST MODE\)[\s\S]*FASTER FREIGHT/, 'and says it is the hardest mode');
   // A finished night also offers three perks; 1 picks the first (Roomy recovery, on the third night's offer), and the night starts with it.
   assert.equal(await page.locator('.b3d-perk').count(), 3);
   await page.keyboard.press('Digit1');
