@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- The mall run gets BENTLEY, on a fourth run of its own with the cart full of
+  its freight. Delivered, the clerk yells about a missing box and will not
+  sign, and Skanky is stressed. Mall security has the box, through the staff
+  doors and down a long service hallway, and Skanky carries it back by hand
+  before BENTLEY signs. The mall is now seven stores on four runs, in the 3D
+  game only.
+
 ## 1.0.0 — 2026-10-23 — first public release
 
 The whole 3D night, finished and published at

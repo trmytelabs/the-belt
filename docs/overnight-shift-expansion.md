@@ -26,7 +26,7 @@ clock-out departures.
 | Clock-out | The existing celebration and truck departures. | unchanged |
 | Assignment | Shan gives Skanky the mall run; Termite goes home. | `MALL_ASSIGNMENT` |
 | To the mall | A short drive in the five-ton (a travel scene, not a driving game). | `DRIVE_TO_MALL` |
-| Mall run | Playable: three cart runs, two stores each, six drops, six signatures. | `MallModel.ts` |
+| Mall run | Playable: three cart runs, two stores each, six drops, six signatures. The 3D game adds a fourth run for BENTLEY and its missing box. | `MallModel.ts`, `MallModel3D.ts` |
 | Back to UPS | The drive back, then walk the keys to the KEY DROP. | `DRIVE_TO_UPS`, `KeyReturnModel` |
 | Home | Skanky drives home at dawn; then the results. | `GO_HOME` |
 
@@ -136,8 +136,12 @@ branding or downloaded assets:
   on the other side.
 - A railed centre-court atrium looking down on lower-level bleacher seating,
   a nod to the redeveloped former anchor's three-level atrium.
-- A shuttered anchor portal at the east end, and a bench pod around a mall
+- The anchor portal at the east end, which is BENTLEY in the 3D game (dark
+  wood, luggage on plinths and wall shelves), and a bench pod around a mall
   directory that maps this concourse.
+- In 3D, staff doors in the south-east corner open onto a long block-walled
+  service hallway running south to the mall security office (a desk under a
+  wall of CCTV screens, and lost and found).
 - The receiving dock where the five-ton backs in. Outside it are 111 Street,
   an LRT station with a train, the pedestrian overpass into the mall's upper
   level, spruce on the berm, and 51 Avenue and Whitemud Drive beyond.
@@ -169,6 +173,15 @@ all stores are reachable and every store gets exactly one bundle).
 7. After six signatures, bring the cart back to the truck and press **Space**
    at the tailgate. The run is not over at the last signature.
 
+In the 3D game (the owner's request, 2026-10-23), a fourth run is BENTLEY's
+alone: its two loads fill the cart. Delivered, the clerk yells that a box is
+missing and will not sign, and Skanky is stressed. Mall security has the box,
+through the staff doors and down the service hallway. Skanky leaves the cart,
+collects the box at the security desk and carries it back by hand (the cart
+cannot follow him through the staff doors). Handed over, BENTLEY signs, and
+the cart goes back to the truck after seven signatures. The legacy mall keeps
+its three runs.
+
 At UPS, Skanky walks the keys to the **KEY DROP** by the dispatch door. Only
 then does the trip home, and the results, follow.
 
@@ -186,6 +199,10 @@ following were written for review and are easy to change in `StoryScript.ts`:
 - Shan's breakage reactions (`SHAN_BREAKAGE_LINES`).
 - The mall assignment, the drives, the mall intro, the store clerks, the key
   return and the trip home.
+- The BENTLEY clerk's refusal ("A BOX IS MISSING. I'M NOT SIGNING. SECURITY HAS
+  IT. BACK HALLWAY.", then "Finally. Signed.") and mall security's line ("THIS
+  CAME IN LAST NIGHT. BENTLEY, RIGHT?"), in `main3d.ts` and `MallModel3D.ts`.
+  Both are generic characters; Skanky has no new lines.
 - The new truck names DOWNTOWN and EASTSIDE, the mall SOUTHGATE MALL in 3D
   (MALLWOOD CENTRE in the legacy story) and its
   stores (built from the game's own references: TIMMY HORTANS, MESA MUSIC,
