@@ -20,9 +20,11 @@ const localChannel = (code: string): BroadcastChannel => new BroadcastChannel(`t
 async function openPeer(id?: string): Promise<Peer> {
   const { Peer: PeerClass } = await import('peerjs');
   const peer = id ? new PeerClass(id, { debug: 0 }) : new PeerClass({ debug: 0 });
+  // The connection service has 12 seconds to answer.
   await new Promise<void>((resolve, reject) => {
-    peer.once('open', () => resolve());
-    peer.once('error', (error) => reject(error));
+    const late = window.setTimeout(() => { peer.destroy(); reject(new Error('The connection service did not answer')); }, 12_000);
+    peer.once('open', () => { window.clearTimeout(late); resolve(); });
+    peer.once('error', (error) => { window.clearTimeout(late); reject(error); });
   });
   // Losing the connection service later leaves the players' own link alone; this only re-registers the room.
   peer.on('disconnected', () => { if (!peer.destroyed) peer.reconnect(); });
@@ -56,6 +58,8 @@ export class OnlineHost {
   private peer: Peer | null = null;
   private connection: DataConnection | null = null;
   private call: MediaConnection | null = null;
+  /** The joining player's voice: a call of their own, made once their microphone is allowed. */
+  private voiceCall: MediaConnection | null = null;
   private local: BroadcastChannel | null = null;
   private stream: MediaStream | null = null;
   /** The game's sound with the host's voice mixed in, sent with the picture. */
@@ -94,6 +98,18 @@ export class OnlineHost {
         host.onChange();
       });
       connection.on('open', () => { if (host.stream) host.sendPicture(); });
+    });
+    // The joining player's voice, from the player who joined (anyone else's call is turned away).
+    peer.on('call', (call) => {
+      if (call.peer !== host.connection?.peer) { call.close(); return; }
+      host.voiceCall?.close();
+      host.voiceCall = call;
+      call.answer();
+      call.on('stream', (voice) => {
+        if (host.voice.srcObject === voice) return;
+        host.voice.srcObject = voice;
+        void host.voice.play().catch(() => undefined);
+      });
     });
     return host;
   }
@@ -168,12 +184,6 @@ export class OnlineHost {
     const outgoing = new MediaStream([...this.stream.getVideoTracks(), ...(this.sound?.getAudioTracks() ?? [])]);
     const call = this.peer.call(this.connection.peer, outgoing);
     this.call = call;
-    // The joining player answers with their microphone: their voice, played here.
-    call.on('stream', (voice) => {
-      if (this.voice.srcObject === voice) return;
-      this.voice.srcObject = voice;
-      void this.voice.play().catch(() => undefined);
-    });
     // A steady 30 frames at up to 2.5 Mbit/s: smooth enough to play by, without swamping a home upload.
     const sender = call.peerConnection?.getSenders().find((candidate) => candidate.track?.kind === 'video');
     if (sender) {
@@ -191,6 +201,7 @@ export class OnlineHost {
     for (const track of this.stream?.getTracks() ?? []) track.stop();
     this.stream = null;
     this.call?.close();
+    this.voiceCall?.close();
     this.connection?.close();
     this.peer?.destroy();
     this.local?.close();
@@ -209,8 +220,11 @@ export class OnlineGuest {
   private connection: DataConnection | null = null;
   private local: BroadcastChannel | null = null;
 
-  /** `microphone`, if any, answers the host's call: this player's voice. */
-  public static async join(code: string, transport: OnlineTransport, microphone: MediaStream | null = null): Promise<OnlineGuest> {
+  /**
+   * `microphone` (asked for alongside, so the picture never waits on its prompt) is this player's voice: once it is
+   * allowed and the link is up, it goes to the host on a call of its own.
+   */
+  public static async join(code: string, transport: OnlineTransport, microphone: Promise<MediaStream | null> = Promise.resolve(null)): Promise<OnlineGuest> {
     const guest = new OnlineGuest();
     if (transport === 'local') {
       const channel = localChannel(code);
@@ -236,7 +250,7 @@ export class OnlineGuest {
     guest.peer = peer;
     peer.on('error', (error) => guest.onState(error.type === 'peer-unavailable' ? 'no-host' : 'failed'));
     peer.on('call', (call) => {
-      call.answer(microphone ?? undefined);
+      call.answer();
       call.on('stream', (stream) => guest.onStream(stream));
     });
     const connection = peer.connect(PEER_PREFIX + code, { reliable: true, serialization: 'json' });
@@ -244,6 +258,7 @@ export class OnlineGuest {
     connection.on('open', () => {
       guest.send({ t: 'hello', v: 1 });
       guest.onState('connected');
+      void microphone.then((voice) => { if (voice && !peer.destroyed) peer.call(PEER_PREFIX + code, voice); });
     });
     connection.on('data', (data) => {
       const message = readHostMessage(data);

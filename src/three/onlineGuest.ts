@@ -1,6 +1,6 @@
 import { GamepadInput } from './gamepad';
 import { OnlineGuest, openMicrophone, setMicrophone, transportFromUrl } from './online';
-import { GUEST_KEYS, readRoomCode } from './onlineRules';
+import { GUEST_HEARTBEAT_MS, GUEST_KEYS, readRoomCode } from './onlineRules';
 
 /**
  * The joining player's page (`?join=CODE`): Skanky, playing Termite's game from another computer. It does not run the
@@ -34,6 +34,10 @@ const CSS = `
 .b3g-pads { position: absolute; right: 18px; bottom: 0; display: grid; grid-template-columns: repeat(3, 64px); gap: 10px; pointer-events: auto; }
 .b3g-pads button { height: 56px; padding: 0; touch-action: none; }
 .b3g-pads button.big { grid-column: span 3; height: 64px; }
+.b3g-quiz { position: absolute; left: 50%; bottom: 60px; transform: translateX(-50%); width: min(520px, calc(100vw - 32px)); box-sizing: border-box;
+  background: #142a31f2; border: 1px solid #3b5a62; border-radius: 12px; padding: 14px 18px; }
+.b3g-quiz h2 { font: 800 20px "Segoe UI", Arial, sans-serif; margin: 0 0 8px; }
+.b3g-quiz button { display: block; width: 100%; margin-top: 8px; }
 `;
 
 export function startGuest(codeText: string | null): void {
@@ -97,9 +101,10 @@ async function play(root: HTMLElement, code: string): Promise<void> {
   };
   say('CONNECTING…', 'Finding Termite\'s game.');
 
-  // Voice chat: the microphone (if allowed) answers Termite's call; K or MIC mutes it.
+  // Voice chat: the microphone is asked for alongside joining (the picture never waits on its prompt); K or MIC mutes it.
   const transport = transportFromUrl();
-  const microphone = transport === 'peer' ? await openMicrophone() : null;
+  const asking = transport === 'peer' ? openMicrophone() : Promise.resolve(null);
+  let microphone: MediaStream | null = null;
   let micOn = true;
   const micButton = bar.querySelector<HTMLButtonElement>('[data-action="mic"]')!;
   const showMic = (): void => { micButton.textContent = !microphone ? 'NO MIC' : micOn ? 'MIC ON' : 'MIC MUTED'; };
@@ -109,12 +114,13 @@ async function play(root: HTMLElement, code: string): Promise<void> {
     setMicrophone(microphone, micOn);
     showMic();
   };
-  showMic();
+  micButton.textContent = 'MIC…';
+  void asking.then((voice) => { microphone = voice; showMic(); });
   micButton.addEventListener('click', toggleMic);
   window.addEventListener('keydown', (event) => { if (event.code === 'KeyK' && !event.repeat) toggleMic(); });
   let guest: OnlineGuest;
   try {
-    guest = await OnlineGuest.join(code, transport, microphone);
+    guest = await OnlineGuest.join(code, transport, asking);
   } catch {
     say('COULD NOT CONNECT', 'The connection service did not answer. Check your internet, then try again.', true);
     return;
@@ -135,8 +141,29 @@ async function play(root: HTMLElement, code: string): Promise<void> {
     video.muted = false;
     void video.play().catch(() => { video.muted = true; return video.play(); }).catch(() => undefined);
   };
+  // Mall security's card, sent only when Termite shares just the 3D view: its answers can be clicked as well as keyed.
+  const quiz = document.createElement('div');
+  quiz.className = 'b3g-quiz';
+  quiz.hidden = true;
+  root.append(quiz);
   guest.onMessage = (message) => {
     if (message.t === 'bye') { say('TERMITE STOPPED HOSTING', 'Thanks for playing.', true); return; }
+    if (message.t === 'card') {
+      quiz.hidden = !message.title;
+      quiz.replaceChildren();
+      if (!message.title) return;
+      const title = document.createElement('h2');
+      title.textContent = message.title;
+      quiz.append(title);
+      message.options.forEach((option, index) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = `${index + 1} · ${option}`;
+        button.addEventListener('click', () => { press(`Digit${index + 1}`, true); press(`Digit${index + 1}`, false); });
+        quiz.append(button);
+      });
+      return;
+    }
     turn.textContent = message.text;
     turn.classList.toggle('mine', message.owner !== 'termite');
   };
@@ -152,6 +179,7 @@ async function play(root: HTMLElement, code: string): Promise<void> {
 
   // The keyboard: the game's keys only, sent as pressed and released (held movement keys move Skanky).
   const held = new Set<string>();
+  const stick = { x: 0, y: 0 };
   const press = (code: string, down: boolean): void => {
     if (down ? held.has(code) : !held.has(code)) return;
     if (down) held.add(code); else held.delete(code);
@@ -163,10 +191,17 @@ async function play(root: HTMLElement, code: string): Promise<void> {
     press(event.code, true);
   });
   window.addEventListener('keyup', (event) => { if (GUEST_KEYS.has(event.code)) press(event.code, false); });
-  window.addEventListener('blur', () => { for (const code of [...held]) press(code, false); });
+  // Away from the page (another window, a locked phone): let go of everything, so Skanky does not run on.
+  const letGo = (): void => {
+    for (const code of [...held]) press(code, false);
+    stick.x = 0;
+    stick.y = 0;
+    guest.send({ t: 'move', x: 0, y: 0, throttle: 0, brake: 0 });
+  };
+  window.addEventListener('blur', letGo);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) letGo(); });
 
   // Touch: a stick, and buttons for the game's keys.
-  const stick = { x: 0, y: 0 };
   if (touch) {
     const pad = document.createElement('div');
     pad.className = 'b3g-touch';
@@ -220,7 +255,8 @@ async function play(root: HTMLElement, code: string): Promise<void> {
     // Held keys are sent as keys; this is the rest: the stick (pad or touch) and the triggers.
     const move = { x: Math.max(-1, Math.min(1, input.move.x + stick.x)), y: Math.max(-1, Math.min(1, input.move.y + stick.y)), throttle: input.throttle, brake: input.brake };
     const changed = Math.abs(move.x - sent.x) > 0.02 || Math.abs(move.y - sent.y) > 0.02 || Math.abs(move.throttle - sent.throttle) > 0.02 || Math.abs(move.brake - sent.brake) > 0.02;
-    if (changed || (time - lastSent > 500 && (move.x || move.y || move.throttle || move.brake))) {
+    // Changes go at once; otherwise a heartbeat, so the host knows this page is still here (onlineRules).
+    if (changed || time - lastSent > GUEST_HEARTBEAT_MS) {
       guest.send({ t: 'move', ...move });
       sent = move;
       lastSent = time;

@@ -76,7 +76,7 @@ export interface MallStore {
 export interface MallEvent {
   /** From `refuse` on, the 3D mall's Bentley run (MallModel3D): the refusal, mall security's questions, the chase. */
   type: 'pick' | 'load' | 'cart' | 'drop' | 'sign' | 'wrong' | 'run' | 'done' | 'refuse' | 'security' | 'handover'
-    | 'quiz' | 'right' | 'denied' | 'grab' | 'aim' | 'shot' | 'hit' | 'caught' | 'escape' | 'busted';
+    | 'quiz' | 'right' | 'denied' | 'grab' | 'aim' | 'shot' | 'hit' | 'caught' | 'escape' | 'busted' | 'down';
   message: string;
   storeId?: string;
 }

@@ -18,7 +18,13 @@
   BENTLEY signs. Get one wrong and he can ask again, or grab the box and run:
   shove it at BENTLEY, then make for the five-ton with the guard chasing,
   yelling and shooting (an aim band on the floor shows where; sidestep when it
-  turns red). The mall is now seven stores on four runs, in the 3D game only.
+  turns red). One hit and Skanky collapses: medics carry him out on a
+  stretcher, an ambulance takes him away with its lights and siren, and the
+  night is lost. The mall is now seven stores on four runs, in the 3D game only.
+- TRY THE MALL RUN · SKANKY'S DELIVERIES on the 3D briefing
+  (`?mode=3d&minigame=mall`): the mall run on its own, from the truck or
+  straight to BENTLEY's run with the six other stores signed, ending on a card
+  with the mall bonus, AGAIN and PLAY THE FULL NIGHT.
 
 ## 1.0.0 — 2026-10-23 — first public release
 

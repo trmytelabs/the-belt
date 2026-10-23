@@ -179,7 +179,7 @@ SORT!** countdown starts the shift.
   grab and deliver, B to throw, X to stop the belt, Y to switch, Back for the
   overview, Start to pause; on the road the triggers are gas and brake. On the
   briefing Y starts a peak night, X the endless shift, and LB / RB step through
-  the perks. On the briefing, pause and results screens the d-pad or stick
+  the perks (on the mall run's practice briefing, B starts at BENTLEY). On the briefing, pause and results screens the d-pad or stick
   highlights a button or setting, A presses it, left and right move a slider,
   and B goes back. A controller that drops out mid-play pauses the game. Pads
   with rumble shake on a wrong drop, a breakage and a bump on the road.
@@ -242,6 +242,12 @@ SORT!** countdown starts the shift.
   of 6–10 cartons; the cart carries two stops per trip. Taking freight highlights
   an available bundle for the current run and skips empty truck slots. Delivering
   a stop removes that stop's bundle while the other one stays on the cart.
+  Try just the mall run at `?mode=3d&minigame=mall` (TRY THE MALL RUN on the
+  briefing): all four runs from the truck, or START AT BENTLEY (B) for the fourth
+  run with the six other stores already signed, straight on to the refusal, mall
+  security and the chase. It ends on a card with the mall bonus instead of the
+  drive back to UPS; AGAIN plays it again from the same start. The Timmies and
+  Ralph runs open the same way, at `minigame=coffee` and `minigame=ralph`.
 - In 3D, drive the five-ton from UPS to Southgate Mall and back, about 40–60 seconds each
   way. W / up accelerates, A/D / left/right steers and S / down brakes. Touch has
   a steering stick plus held GAS and BRAKE pedals. Hold BRAKE after stopping to reverse.

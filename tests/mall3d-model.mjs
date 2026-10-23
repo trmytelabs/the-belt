@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { MallModel3D } from '../src/three/MallModel3D.ts';
+import { AMBULANCE, MallModel3D } from '../src/three/MallModel3D.ts';
 
 test('Space takes and parks the 3D cart; movement pushes it and pause freezes it', () => {
   const mall = new MallModel3D(() => 0.999);
@@ -134,6 +134,29 @@ test('the Bentley run: a run of its own, the cart full of it, a refusal, three q
   assert.match(mall.drainEvents().map((event) => event.message).join(' | '), /BENTLEY signed \(7\/7\)[\s\S]*All seven signed/);
 });
 
+test('START AT BENTLEY: six stores signed, the fourth run with both Bentley loads in the truck, Skanky at the tailgate beside the cart', () => {
+  const mall = new MallModel3D(() => 0.999);
+  mall.startAtBentley();
+  assert.deepEqual(mall.stores.filter((store) => store.state === 'signed').map((store) => store.id).sort(),
+    mall.stores.filter((store) => store.id !== 'bentley').map((store) => store.id).sort());
+  assert.deepEqual([mall.store('bentley').state, mall.signatures, mall.delivered, mall.run, mall.runComplete, mall.finished], ['waiting', 6, 6, 3, false, false]);
+  assert.deepEqual(mall.truckBundles.filter((id) => id !== null), ['bentley', 'bentley']);
+  assert.deepEqual([mall.cart.load, mall.cart.pushed, mall.carrying], [[], false, null]);
+  assert.match(mall.objective, /Run 4\/4 · BENTLEY only · load both BENTLEY loads onto the cart \(0\/2\)/);
+  // Straight into the run: both loads off the truck and onto the cart, then the cart to Bentley and its refusal.
+  for (let i = 0; i < 2; i++) {
+    assert.equal(mall.interaction.action, 'take'); mall.action();
+    assert.equal(mall.carrying, 'bentley');
+    assert.equal(mall.interaction.action, 'load'); mall.action();
+  }
+  assert.deepEqual([mall.cart.load, mall.run], [['bentley', 'bentley'], 3]);
+  assert.match(mall.objective, /push the full cart to BENTLEY/);
+  Object.assign(mall.skanky, { x: 1230, y: 450 });
+  Object.assign(mall.cart, { x: 1230, y: 420, pushed: true, facing: 'up' });
+  mall.action(); mall.action();
+  assert.deepEqual([mall.store('bentley').state, mall.bentley, mall.delivered], ['dropped', 'refused', 7]);
+});
+
 test('mall security: every question checks its own answer, a wrong one is refused, and asking again starts over', () => {
   const mall = refusedAtBentley();
   Object.assign(mall.skanky, { x: 2330, y: 799 });
@@ -168,7 +191,7 @@ test('grab it and run: Skanky runs faster, the guard follows, and standing still
   const from = mall.skanky.x;
   mall.update(100, { x: -1, y: 0 });
   assert.ok(Math.abs(from - mall.skanky.x - 235 * 1.08 * 0.1) < 0.5, `ran ${from - mall.skanky.x}`);
-  // The guard waits a moment (HEY!), then comes round his desk; standing still, Skanky is shot and caught.
+  // The guard waits a moment (HEY!), then comes round his desk; standing still, he has Skanky by the shoulder.
   const post = { ...mall.chase.guard };
   mall.update(600);
   assert.deepEqual({ x: mall.chase.guard.x, y: mall.chase.guard.y }, { x: post.x, y: post.y }, 'a head start');
@@ -179,7 +202,7 @@ test('grab it and run: Skanky runs faster, the guard follows, and standing still
   assert.deepEqual([mall.bentley, mall.handBox, mall.finished], ['denied', false, false], 'back at the desk to ask again or run again');
 });
 
-test('the guard aims, holds it, then fires: standing on the line is a hit, a sidestep once it holds is a miss, walls and corners are cover', () => {
+test('the guard aims, holds it, then fires: standing on the line puts him down, a sidestep once it holds is a miss, walls and corners are cover', () => {
   const chasing = () => {
     const mall = refusedAtBentley();
     Object.assign(mall.skanky, { x: 2330, y: 799 });
@@ -190,21 +213,34 @@ test('the guard aims, holds it, then fires: standing on the line is a hit, a sid
     mall.drainEvents();
     return mall;
   };
-  // On the line: hit, and slowed for a moment.
+  // On the line: one hit and he is down where he stood, the box dropped, the shot kept for the view.
   let mall = chasing();
   mall.update(10);
   assert.ok(mall.chase.aim, 'aiming down the hallway');
   assert.equal(mall.drainEvents()[0].type, 'aim');
-  for (let t = 0; t < 1000; t += 10) mall.update(10);
-  assert.equal(mall.chase.hits, 1);
-  assert.ok(mall.chase.shot.hit && mall.chase.stumbleMs > 0);
+  for (let t = 0; t < 1000 && mall.chase; t += 10) mall.update(10);
+  assert.equal(mall.chase, null);
+  assert.deepEqual([mall.down.x, mall.down.y, mall.down.box, mall.down.guard, mall.handBox], [1700, 824, true, { x: 1450, y: 824 }, false]);
+  assert.deepEqual(mall.down.shot.to, { x: 1700, y: 824 });
   assert.ok(mall.drainEvents().some((event) => event.type === 'hit'));
+  assert.deepEqual([mall.sweating, mall.interaction.action], [false, 'none']);
+  assert.match(mall.objective, /ambulance/);
+  // Down, he goes nowhere, whatever is pressed; the medics and the ambulance take their time; then the night is lost.
+  const at = { x: mall.skanky.x, y: mall.skanky.y };
+  for (let i = 0; i < 2000 && !mall.finished; i++) {
+    mall.update(16, { x: 1, y: 0 });
+    mall.action();
+  }
+  assert.deepEqual({ x: mall.skanky.x, y: mall.skanky.y }, at);
+  assert.deepEqual([mall.finished, mall.getaway], [true, 'shot']);
+  assert.ok(mall.down.ms >= AMBULANCE.overMs);
+  assert.equal(mall.drainEvents().at(-1).type, 'down');
   // Sidestepping once the aim holds: a miss.
   mall = chasing();
   mall.update(10);
   while (!mall.chase.aim.locked) mall.update(10);
   for (let t = 0; t < 470; t += 10) mall.update(10, { x: 0, y: 1 });
-  assert.equal(mall.chase.hits, 0, JSON.stringify(mall.skanky));
+  assert.equal(mall.down, null, JSON.stringify(mall.skanky));
   assert.ok(mall.chase.shot && !mall.chase.shot.hit);
   assert.ok(mall.drainEvents().some((event) => event.type === 'shot'));
   // Round the corner from the south leg, there is no line to shoot along.
@@ -219,15 +255,12 @@ test('the guard aims, holds it, then fires: standing on the line is a hit, a sid
   Object.assign(mall.skanky, { x: 1620, y: 851 });
   mall.update(10);
   assert.equal(mall.chase.aim, null, 'the pallet is cover');
-  // Three hits and he is caught.
+  // A hand on the shoulder (before Bentley has the box) catches him: the box back on the desk, Skanky at the counter.
   mall = chasing();
-  for (let shot = 0; shot < 3 && mall.chase; shot++) {
-    Object.assign(mall.chase, { cooldownMs: 0, guard: { x: 1450, y: 824, moving: false } });
-    Object.assign(mall.skanky, { x: 1700, y: 824 });
-    for (let t = 0; t < 1100 && mall.chase && mall.chase.hits === shot; t += 10) mall.update(10);
-  }
-  assert.equal(mall.chase, null);
-  assert.equal(mall.bentley, 'denied');
+  Object.assign(mall.chase, { guard: { x: 1690, y: 824, moving: false }, cooldownMs: 5000 });
+  mall.update(10);
+  assert.deepEqual([mall.chase, mall.down, mall.bentley, mall.handBox], [null, null, 'denied', false]);
+  assert.equal(mall.drainEvents().at(-1).type, 'caught');
 });
 
 test('on the run: the box to Bentley signs it at once, then into the five-ton is a getaway; caught after signing, he is marched out', () => {

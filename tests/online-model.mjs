@@ -28,6 +28,9 @@ test("the joining player's browser can send only the game's keys, a controller's
   assert.deepEqual(readHostMessage({ t: 'turn', owner: 'skanky', text: 'YOUR TURN'.padEnd(300, '!') }).text.length, 120);
   assert.equal(readHostMessage({ t: 'turn', owner: 'ralph', text: 'x' }), null);
   assert.deepEqual(readHostMessage({ t: 'bye' }), { t: 'bye' });
+  assert.deepEqual(readHostMessage({ t: 'card', title: 'WHAT MALL IS THIS?', options: ['A', 'B', 'C'] }), { t: 'card', title: 'WHAT MALL IS THIS?', options: ['A', 'B', 'C'] });
+  assert.equal(readHostMessage({ t: 'card', title: 'x', options: ['1', '2', '3', '4'] }), null);
+  assert.equal(readHostMessage({ t: 'card', title: 'x', options: [7] }), null);
 });
 
 test('held keys move the joining player (WASD or arrows); room codes are six clear characters, read forgivingly', () => {

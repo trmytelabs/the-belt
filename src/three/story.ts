@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 
 import { LOT_LAYOUT, MALL_LAYOUT, type KeyReturnModel, type MallEvent } from '../game/slice/MallModel';
-import { BENTLEY, CHASE, SECURITY_WING, type MallModel3D as MallModel } from './MallModel3D';
+import { AMBULANCE, BENTLEY, CHASE, SECURITY_WING, type MallDown, type MallModel3D as MallModel } from './MallModel3D';
 import type { Cutscene } from '../game/slice/StoryModel';
 import type { StoryScene } from '../game/slice/StoryScript';
 import { animateCharacter, blendPose, createCharacter, faceToward, lookToward, mergeCharacter, SEAT_BLEND_SECONDS, snapshotPose, type Character, type CharacterSpec } from './characters';
@@ -133,6 +133,8 @@ const WAITRESS: CharacterSpec = { name: 'WAITRESS', skin: SKIN.tan, shirt: 0x7a1
 const BENTLEY_CLERK: CharacterSpec = { name: 'BENTLEY CLERK', skin: SKIN.light, shirt: 0x15171a, pants: 0x2a2d33, hair: 0x2a1d14, hairStyle: 'short' };
 /** The mall's security guard, at the desk at the end of the service hallway (the depot drivers' model). */
 const SECURITY: CharacterSpec = { name: 'SECURITY', skin: SKIN.tan, shirt: 0x2a3550, pants: 0x1a1d22, hair: 0x15110d, hairStyle: 'short' };
+/** A paramedic, come for Skanky when the guard's shot lands (the unloader's model). */
+const MEDIC: CharacterSpec = { name: 'MEDIC', skin: SKIN.light, shirt: 0x1d2a44, pants: 0x1a1d22, hair: 0x2a1d14, hairStyle: 'short' };
 const CASHIER: CharacterSpec = { name: 'CASHIER', skin: SKIN.brown, shirt: 0x2e8b57, pants: 0x2b2f3a, hair: 0x1b1612, hairStyle: 'short', vest: 0xe85a2a };
 
 function specFor(id: string): CharacterSpec {
@@ -142,6 +144,7 @@ function specFor(id: string): CharacterSpec {
   if (id === 'bentley-clerk') return BENTLEY_CLERK;
   if (id === 'security') return SECURITY;
   if (id === 'waitress') return WAITRESS;
+  if (id.startsWith('medic')) return MEDIC;
   if (id === 'clerk' || id.startsWith('clerk-')) return CLERK;
   return RESIDENT_SPECS[id] ?? VISITORS[id] ?? { name: id.toUpperCase(), skin: SKIN.light, shirt: 0x667788, pants: 0x333333, hair: 0x222222, hairStyle: 'short' };
 }
@@ -202,6 +205,106 @@ export function createStoryFiveTon(): THREE.Group {
   rigTruckWheels(truck);
   mergeTruck(truck);
   return truck;
+}
+
+/** A box from corner to corner, added to `parent`. */
+function slab(parent: THREE.Object3D, material: THREE.Material, [x0, y0, z0, x1, y1, z1]: readonly number[]): THREE.Mesh {
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, y1 - y0, z1 - z0), material);
+  mesh.position.set((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
+  mesh.castShadow = true;
+  parent.add(mesh);
+  return mesh;
+}
+
+/**
+ * An ambulance, built along +x (its nose): a white box van with a red band, a light bar and corner lamps (their
+ * materials in `userData.lamps`, to flash), rear doors hinged at the outer edges (`userData.doors`) on a lit, open
+ * compartment, and AMBULANCE along both sides.
+ */
+function createAmbulance(): THREE.Group {
+  const van = new THREE.Group();
+  const white = standard(0xf1f1ec, 0.45, 0.15), red = standard(0xc62a22, 0.5, 0.15), dark = standard(0x1b2024, 0.8);
+  const glass = new THREE.MeshStandardMaterial({ color: 0x0d1a22, roughness: 0.1, metalness: 0.5 });
+  const lamp = (color: number): THREE.MeshStandardMaterial => new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 2.5, roughness: 0.3 });
+  const lamps = [lamp(0xff2a22), lamp(0x2a6bff), lamp(0xff2a22)];
+  // The compartment: walls, roof and floor, open at the back for the doors; lit inside, with cabinets at the front.
+  for (const z of [-1.1, 1.04]) slab(van, white, [-2.8, 0.5, z, 0.7, 2.8, z + 0.06]);
+  slab(van, white, [-2.8, 2.74, -1.1, 0.7, 2.8, 1.1]);
+  slab(van, white, [-2.8, 0.5, -1.1, 0.7, 0.6, 1.1]);
+  slab(van, white, [0.64, 0.5, -1.1, 0.7, 2.8, 1.1]);
+  slab(van, standard(0xb8c4c8, 0.6), [-0.1, 0.6, -1.03, 0.64, 2.5, 1.03]);
+  slab(van, new THREE.MeshStandardMaterial({ color: 0xf4f8ff, emissive: 0xe8f0ff, emissiveIntensity: 1.2 }), [-2.6, 2.7, -0.5, 0.4, 2.735, 0.5]);
+  slab(van, red, [-2.82, 1.15, -1.12, 0.72, 1.4, 1.12]);
+  // The cab and its hood, the windscreen and side windows, bumpers, wheels.
+  slab(van, white, [0.7, 0.5, -1.05, 2.5, 2.0, 1.05]);
+  slab(van, white, [2.5, 0.5, -1.05, 3.0, 1.25, 1.05]);
+  slab(van, red, [0.7, 1.15, -1.07, 3.02, 1.3, 1.07]);
+  slab(van, glass, [2.4, 1.32, -0.95, 2.53, 1.94, 0.95]);
+  for (const z of [-1.07, 1.05]) slab(van, glass, [1.2, 1.35, z, 2.3, 1.85, z + 0.02]);
+  slab(van, dark, [3.0, 0.38, -1.0, 3.12, 0.66, 1.0]);
+  slab(van, dark, [-2.96, 0.38, -1.1, -2.8, 0.6, 1.1]);
+  const tyre = standard(0x16181a, 0.9);
+  for (const x of [-1.9, 1.95]) for (const z of [-1.0, 1.0]) {
+    const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.3, 16), tyre);
+    wheel.rotation.x = Math.PI / 2;
+    wheel.position.set(x, 0.42, z);
+    van.add(wheel);
+  }
+  // The light bar over the cab, the corner lamps on the box, and the tail lamps.
+  slab(van, dark, [1.0, 2.0, -0.8, 1.9, 2.08, 0.8]);
+  slab(van, lamps[0], [1.05, 2.08, -0.78, 1.85, 2.2, -0.04]);
+  slab(van, lamps[1], [1.05, 2.08, 0.04, 1.85, 2.2, 0.78]);
+  for (const x of [-2.72, 0.5]) for (const z of [-1.0, 0.86]) slab(van, lamps[2], [x, 2.8, z, x + 0.18, 2.9, z + 0.14]);
+  for (const z of [-1.05, 0.85]) slab(van, lamp(0xc01810), [-2.83, 0.8, z, -2.8, 1.1, z + 0.2]);
+  // The rear doors, hinged at the outer edges, each with its band and window.
+  const doors = [-1, 1].map((side) => {
+    const door = new THREE.Group();
+    door.position.set(-2.8, 0, side * 1.1);
+    const span = [Math.min(0, -side * 1.1), Math.max(0, -side * 1.1)];
+    slab(door, white, [-0.06, 0.55, span[0], 0, 2.76, span[1]]);
+    slab(door, red, [-0.075, 1.15, span[0], -0.055, 1.4, span[1]]);
+    slab(door, glass, [-0.075, 1.75, span[0] + 0.2, -0.055, 2.3, span[1] - 0.2]);
+    van.add(door);
+    return door;
+  });
+  for (const side of [-1, 1]) {
+    const name = textPlane(['AMBULANCE'], 2.6, 0.46, { width: 520, height: 92, background: '#f1f1ec', color: '#c62a22', font: '900 SIZEpx "Arial Black", Impact, sans-serif' });
+    name.position.set(-1.1, 1.95, side * 1.125);
+    name.rotation.y = side < 0 ? Math.PI : 0;
+    van.add(name);
+  }
+  van.userData.lamps = lamps;
+  van.userData.doors = doors;
+  return van;
+}
+
+/** A stretcher, along x, its deck at the group's origin: a frame on folding legs, a mattress, a red blanket at the foot. */
+function createStretcher(): THREE.Group {
+  const stretcher = new THREE.Group();
+  const steel = standard(0x9aa4aa, 0.35, 0.8);
+  slab(stretcher, steel, [-1.0, -0.08, -0.3, 1.0, 0, 0.3]);
+  slab(stretcher, standard(0xeef0ee, 0.7), [-0.95, 0, -0.27, 0.95, 0.1, 0.27]);
+  slab(stretcher, standard(0xb83a32, 0.85), [-0.1, 0.1, -0.29, 0.95, 0.15, 0.29]);
+  for (const x of [-0.8, 0.8]) for (const z of [-0.24, 0.24]) {
+    slab(stretcher, steel, [x - 0.025, -0.78, z - 0.025, x + 0.025, -0.08, z + 0.025]);
+    slab(stretcher, standard(0x16181a, 0.9), [x - 0.06, -0.86, z - 0.03, x + 0.06, -0.78, z + 0.03]);
+  }
+  return stretcher;
+}
+
+/** The ambulance's way out: from the dock apron west across the berm, then north up 111 Street. */
+const AMBULANCE_ROUTE = [new THREE.Vector3(-24, 0, 4.2), new THREE.Vector3(-31.5, 0, 4.2), new THREE.Vector3(-35.5, 0, 0.2), new THREE.Vector3(-35.5, 0, -90)];
+function alongRoute(distance: number): { position: THREE.Vector3; heading: number } {
+  let left = distance;
+  for (let i = 1; i < AMBULANCE_ROUTE.length; i += 1) {
+    const from = AMBULANCE_ROUTE[i - 1], to = AMBULANCE_ROUTE[i];
+    const length = from.distanceTo(to);
+    if (left <= length || i === AMBULANCE_ROUTE.length - 1) {
+      return { position: from.clone().lerp(to, Math.min(1, left / length)), heading: Math.atan2(to.z - from.z, to.x - from.x) };
+    }
+    left -= length;
+  }
+  return { position: AMBULANCE_ROUTE[0].clone(), heading: Math.PI };
 }
 
 export function createCar(color: number, detailed = true): THREE.Group {
@@ -333,6 +436,8 @@ export class StoryStage {
   /** Skanky's sweat: seconds to the next drop, and the drops' own random sequence (the model's rolls are left alone). */
   private sweatWait = 0;
   private sweatSeed = 7;
+  /** Shot: the view is outside with the ambulance (the cut to it snaps the camera). */
+  private mallOutside = false;
   private mallYell = -1;
   private mallGuardTalk = -1;
   private southgate: SouthgateMall | null = null;
@@ -1520,7 +1625,7 @@ export class StoryStage {
     carried.visible = false;
     scene.add(carried);
     props.carried = carried;
-    this.cast(stage, ['skanky', ...MALL_LAYOUT.doors.map((_, index) => `clerk-${index}`), 'bentley-clerk', 'security']);
+    this.cast(stage, ['skanky', ...MALL_LAYOUT.doors.map((_, index) => `clerk-${index}`), 'bentley-clerk', 'security', 'medic-1', 'medic-2']);
     // The security guard keeps the missing Bentley box on the desk until Skanky comes for it.
     const securityBox = this.bundle(1);
     securityBox.position.set(mallX(SECURITY_WING.desk.x + 14), 1.0, mallZ(SECURITY_WING.desk.y + 40));
@@ -1585,6 +1690,16 @@ export class StoryStage {
     }
     scene.add(sweat);
     props.sweat = sweat;
+    // Shot on the chase: the medics' stretcher, and the ambulance outside the receiving dock.
+    const ambulance = createAmbulance();
+    ambulance.visible = false;
+    scene.add(ambulance);
+    props.ambulance = ambulance;
+    const stretcher = createStretcher();
+    stretcher.visible = false;
+    scene.add(stretcher);
+    props.stretcher = stretcher;
+    for (const id of ['medic-1', 'medic-2']) stage.actors.get(id)!.character.nameTag.visible = false;
     [...MALL_LAYOUT.doors.map((_, index) => `clerk-${index}`), 'bentley-clerk'].forEach((id) => {
       const actor = stage.actors.get(id)!;
       actor.character.nameTag.visible = false;
@@ -2588,14 +2703,16 @@ export class StoryStage {
     props.mallCut.visible = true;
     const skanky = actors.get('skanky')!;
     skanky.root.visible = true;
-    skanky.at(mallX(model.skanky.x), mallZ(model.skanky.y));
-    skanky.faceAngle = { right: Math.PI / 2, left: -Math.PI / 2, down: 0, up: Math.PI }[model.skanky.facing];
+    if (!model.down) {
+      skanky.at(mallX(model.skanky.x), mallZ(model.skanky.y));
+      skanky.faceAngle = { right: Math.PI / 2, left: -Math.PI / 2, down: 0, up: Math.PI }[model.skanky.facing];
+    }
     skanky.carrying = model.carrying !== null || model.cart.pushed || model.handBox;
     const sinceFrame = time - this.mallTime;
     this.mallTime = time;
     // Refused at Bentley, Skanky freaks out: swearing, a helpless shrug, swearing again, before he goes looking.
     const freakOut = 4.0 - (this.mallStress - time);
-    skanky.setPose(time < this.mallStress && !model.handBox && !model.cart.pushed ? freakOut > 1.4 && freakOut < 2.7 ? 'shrug' : 'swear' : 'none', time);
+    if (!model.down) skanky.setPose(time < this.mallStress && !model.handBox && !model.cart.pushed ? freakOut > 1.4 && freakOut < 2.7 ? 'shrug' : 'swear' : 'none', time);
     this.updateSweat(props.sweat, skanky, model.sweating, Math.max(0, Math.min(sinceFrame, 0.1)), model.bentley === 'quiz' || model.bentley === 'denied');
     const cart = props.cart;
     cart.position.set(mallX(model.cart.x), 0, mallZ(model.cart.y));
@@ -2738,6 +2855,15 @@ export class StoryStage {
         props[`drop-${store.id}`] = pile as THREE.Group;
       }
     });
+    // Shot: the collapse, the medics and the ambulance take over Skanky, the guard and the camera.
+    const shotView = model.down ? this.stageShot(stage, model, model.down, time) : null;
+    if (!model.down) {
+      for (const id of ['medic-1', 'medic-2']) actors.get(id)!.root.visible = false;
+      props.ambulance.visible = false;
+      props.stretcher.visible = false;
+      skanky.root.rotation.x = 0;
+      this.mallOutside = false;
+    }
     for (const actor of actors.values()) if (actor.root.visible) actor.animate(dt, time, this.reducedMotion);
     // Pushing, the hands hold the handle bar; the carry pose's fixed reach put them past it, over the deck.
     if (model.cart.pushed && !model.carrying) {
@@ -2754,6 +2880,12 @@ export class StoryStage {
         const local = over.clone().applyQuaternion(forearm.getWorldQuaternion(frame).invert());
         hand.rotation.set(Math.atan2(-local.z, -local.y), 0, 0);
       }
+    }
+    if (shotView) {
+      // Outside: a fixed view of the dock apron, turning to follow the ambulance away (the cut to it is instant).
+      this.cameraTo(shotView.at, shotView.look, dt, shotView.snap);
+      this.mallSnap = false;
+      return;
     }
     const target = skanky.root.position;
     // Kept inside the anchor wall at the concourse's east end; through the staff doors it follows him down the hallway.
@@ -2816,6 +2948,133 @@ export class StoryStage {
     if (!event.storeId) return null;
     const store = model.store(event.storeId);
     return new THREE.Vector3(mallX(store.door.x), 2.6, mallZ(store.door.y));
+  }
+
+  /**
+   * Shot on the chase, on the model's clock (MallModel3D AMBULANCE). Skanky collapses face down where the shot caught
+   * him, the guard on his radio; under a cut to black the medics are kneeling by him (he has been turned over) with
+   * their stretcher; they lift him on and carry him off, feet first. Under a second cut, outside the receiving dock,
+   * they slide him into the ambulance, shut the doors and climb in; it pulls away up 111 Street with its lights going.
+   * Inside, the usual camera follows him; outside, the camera returned here.
+   */
+  private stageShot(stage: Stage, model: MallModel, down: MallDown, time: number): { at: THREE.Vector3; look: THREE.Vector3; snap: boolean } | null {
+    const { props, actors } = stage;
+    const ms = down.ms;
+    const skanky = actors.get('skanky')!, guard = actors.get('security')!;
+    const medics = [actors.get('medic-1')!, actors.get('medic-2')!];
+    const { stretcher, ambulance, carried } = props;
+    const ease = (t: number): number => { const c = Math.max(0, Math.min(1, t)); return c * c * (3 - 2 * c); };
+    const fell = new THREE.Vector3(mallX(down.x), 0, mallZ(down.y));
+    const facing = { right: Math.PI / 2, left: -Math.PI / 2, down: 0, up: Math.PI }[model.skanky.facing];
+    // The way out: back up the hallway's south leg, out of the office toward the hallway, otherwise west, for the dock.
+    const sw = SECURITY_WING;
+    const inLeg = down.x >= sw.hallway.x && down.x <= sw.hallway.x + sw.hallway.w && down.y > sw.doors.y + sw.doors.h && down.y < sw.corridor.y;
+    const way = inLeg ? new THREE.Vector3(0, 0, -1)
+      : down.x >= sw.office.x ? new THREE.Vector3(mallX(sw.office.x) - fell.x, 0, mallZ(sw.corridor.y + sw.corridor.h / 2) - fell.z).normalize()
+        : new THREE.Vector3(-1, 0, 0);
+    const side = new THREE.Vector3(-way.z, 0, way.x);
+    const outside = ms >= AMBULANCE.outsideMs;
+    const snap = outside && !this.mallOutside;
+    this.mallOutside = outside;
+    skanky.root.rotation.order = 'YXZ';
+    props.mallFull.visible = outside;
+    props.mallCut.visible = !outside;
+    props.mallBeacon.visible = false;
+    props.guardGun.visible = !outside && ms < 400;
+    // The shot that dropped him: its tracer, flash and spark.
+    this.placeLine(props.guardTracer, ms < 140 ? down.shot : null, 0);
+    const muzzle = props.guardGun.getObjectByName('muzzle');
+    if (muzzle) muzzle.visible = ms < 90;
+    props.guardSpark.visible = ms < 240;
+    if (props.guardSpark.visible) {
+      props.guardSpark.position.set(mallX(down.shot.to.x), 1.25, mallZ(down.shot.to.y));
+      props.guardSpark.scale.setScalar(0.5 + ms / 240 * 1.6);
+    }
+    guard.root.visible = !outside;
+    for (const medic of medics) medic.root.visible = ms >= AMBULANCE.medicsMs && ms < AMBULANCE.departMs;
+    ambulance.visible = outside;
+    stretcher.visible = ms >= AMBULANCE.medicsMs && ms < AMBULANCE.doorsMs + 300;
+    skanky.root.visible = ms < AMBULANCE.doorsMs + 300;
+    // The box, dropped where he fell (if Bentley did not have it already).
+    carried.visible = !outside && down.box;
+    if (carried.visible) {
+      carried.position.set(fell.x + Math.sin(facing) * 0.8, 0.02, fell.z + Math.cos(facing) * 0.8);
+      carried.rotation.y = facing + 0.5;
+    }
+    if (!outside) {
+      guard.at(mallX(down.guard.x), mallZ(down.guard.y));
+      guard.faceAngle = Math.atan2(fell.x - guard.root.position.x, fell.z - guard.root.position.z);
+      guard.setPose(ms < 400 ? 'aim' : ms < AMBULANCE.medicsMs ? 'phone' : 'none', time);
+    }
+    // Placed directly, never walked: a figure moved by at() plays its walk, even lying down.
+    const lie = (feet: THREE.Vector3, heading: number, back: boolean): void => {
+      skanky.root.position.copy(feet);
+      skanky.faceAngle = heading;
+      skanky.root.rotation.x = back ? -Math.PI / 2 : Math.PI / 2;
+      skanky.setPose('lie', time);
+    };
+    if (ms < AMBULANCE.medicsMs) {
+      // Down, face first.
+      const fall = ease(ms / AMBULANCE.collapseMs);
+      skanky.root.position.set(fell.x, 0.06 * fall, fell.z);
+      skanky.faceAngle = facing;
+      skanky.root.rotation.x = Math.PI / 2 * fall;
+      skanky.setPose(fall > 0.5 ? 'lie' : 'none', time);
+      return null;
+    }
+    if (!outside) {
+      // Turned onto his back by the stretcher; lifted onto it; carried off.
+      const carry = Math.max(0, Math.min(1, (ms - AMBULANCE.carryMs) / (AMBULANCE.cutOutMs - AMBULANCE.carryMs))) * 4.6;
+      const deck = fell.clone().addScaledVector(side, 0.95).addScaledVector(way, carry).setY(0.85);
+      stretcher.position.copy(deck);
+      stretcher.rotation.y = -Math.atan2(way.z, way.x);
+      const lift = ease((ms - AMBULANCE.liftMs - 600) / 800);
+      const body = fell.clone().lerp(deck, lift);
+      body.y = 0.1 + lift * 0.89 + Math.sin(lift * Math.PI) * 0.25;
+      lie(body.clone().addScaledVector(way, 0.85), Math.atan2(way.x, way.z), true);
+      const kneel = ms < AMBULANCE.liftMs;
+      const gather = ease((ms - AMBULANCE.liftMs) / 600);
+      medics.forEach((medic, index) => {
+        const sign = index === 0 ? 1 : -1;
+        const knelt = fell.clone().addScaledVector(side, -0.75).addScaledVector(way, sign * 0.45);
+        const end = deck.clone().addScaledVector(way, sign * 1.3);
+        const at = kneel ? knelt : knelt.clone().lerp(end, gather);
+        medic.at(at.x, at.z);
+        medic.faceAngle = kneel ? Math.atan2(side.x, side.z) : Math.atan2(way.x, way.z);
+        medic.setPose(kneel ? 'crouch' : 'carry', time);
+      });
+      return null;
+    }
+    // Outside: the ambulance's lamps flash; the stretcher slides in head first; the doors shut; it pulls away.
+    const [red, blue, corner] = ambulance.userData.lamps as THREE.MeshStandardMaterial[];
+    const flash = this.reducedMotion || Math.floor(time * 6) % 2 === 0;
+    red.emissiveIntensity = flash ? 3 : 0.25;
+    blue.emissiveIntensity = flash && !this.reducedMotion ? 0.25 : 3;
+    corner.emissiveIntensity = this.reducedMotion || Math.floor(time * 9) % 2 === 0 ? 3 : 0.3;
+    const drive = Math.max(0, ms - AMBULANCE.departMs) / 1000;
+    const route = alongRoute(drive < 3 ? 2 * drive * drive : 18 + 12 * (drive - 3));
+    ambulance.position.copy(route.position);
+    ambulance.rotation.y = -route.heading;
+    const open = ms < AMBULANCE.doorsMs ? 1 : 1 - ease((ms - AMBULANCE.doorsMs) / 500);
+    const [left, right] = ambulance.userData.doors as THREE.Group[];
+    left.rotation.y = -1.75 * open;
+    right.rotation.y = 1.75 * open;
+    const slide = ease((ms - AMBULANCE.loadMs) / (AMBULANCE.doorsMs - AMBULANCE.loadMs));
+    const deck = new THREE.Vector3(-19.6, 0.85, 4.2).lerp(new THREE.Vector3(-23.3, 1.0, 4.2), slide);
+    stretcher.position.copy(deck);
+    stretcher.rotation.y = 0;
+    lie(deck.clone().add(new THREE.Vector3(0.85, 0.14, 0)), Math.PI / 2, true);
+    const climb = ease((ms - AMBULANCE.doorsMs) / (AMBULANCE.departMs - AMBULANCE.doorsMs - 200));
+    medics.forEach((medic, index) => {
+      const loading = index === 0 ? deck.clone().add(new THREE.Vector3(1.25, 0, 0)) : new THREE.Vector3(-20.6, 0, 5.75);
+      const cab = new THREE.Vector3(-25.5, 0, index === 0 ? 2.75 : 5.65);
+      const at = loading.lerp(cab, climb);
+      medic.at(at.x, at.z);
+      medic.faceAngle = -Math.PI / 2;
+      medic.setPose(index === 0 && ms < AMBULANCE.doorsMs ? 'push' : 'none', time);
+    });
+    const look = ambulance.position.clone().setY(1.2);
+    return { at: new THREE.Vector3(-19.5, 4.6, 14.5), look, snap };
   }
 
   /** Above the mall security guard's head, wherever he is (for his lines and his shots). */
