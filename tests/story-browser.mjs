@@ -483,8 +483,8 @@ try {
   }
   assert.deepEqual(await mallState().then(({ delivered, signatures, finished }) => ({ delivered, signatures, finished })), { delivered: 6, signatures: 6, finished: false },
     'six stores signed, and Bentley still to go');
-  // Run 4: Bentley only, both its loads filling the cart. Delivered, it will not sign: a box is missing, and mall
-  // security has it, through the staff doors in the south-east corner and down the service hallway.
+  // Run 4: Bentley only, both its loads filling the cart. Delivered, it will not sign: a box is missing. Mall security
+  // has it in lost and found, through the staff doors in the south-east corner and down the long service hallway.
   await read(() => Object.assign(window.fixtureApp.mall.cart, { x: 150, y: 400, pushed: false, facing: 'up' }));
   for (let load = 1; load <= 2; load += 1) {
     await at(70, await read(() => { const mall = window.fixtureApp.mall; return mall.slotPosition(mall.truckBundles.indexOf('bentley')).y; }));
@@ -505,17 +505,23 @@ try {
   assert.equal(await read(() => window.fixtureApp.mall.store('bentley').state), 'dropped', 'Bentley will not sign without the missing box');
   await page.waitForTimeout(600);
   await shot('mall-bentley-refused');
-  // To security on real keys: south through the staff doors and down the hallway, then east to the desk.
+  // To security on real keys: south through the staff doors and down the hallway's south leg, then the length of its
+  // east leg (sliding round the clutter) into the office, to the desk.
   await at(1215, 500);
   await page.keyboard.down('KeyS');
-  await wait(() => window.fixtureApp.mall.skanky.y > 1015);
+  await wait(() => window.fixtureApp.mall.skanky.y > 805);
   await page.keyboard.up('KeyS');
   await page.keyboard.down('KeyD');
-  await wait(() => window.fixtureApp.mall.skanky.x > 1236);
+  await wait(() => window.fixtureApp.mall.skanky.x > 2318);
   await page.keyboard.up('KeyD');
   await page.waitForTimeout(400);
   await shot('mall-security');
+  // The guard's three questions, each answered right by its number key.
   await page.keyboard.press('Space');
+  for (let question = 0; question < 3; question += 1) {
+    await wait((n) => window.fixtureApp.mall.quiz?.index === n, question);
+    await page.keyboard.press(`Digit${await read(() => window.fixtureApp.mall.question.answer) + 1}`);
+  }
   await wait(() => window.fixtureApp.mall.handBox);
   // Carried back by hand: handed over, then signed.
   await at(1246, 452);
