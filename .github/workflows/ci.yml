@@ -19,8 +19,44 @@ jobs:
   # (no BELT_3D_GPU), as on the hosted runners before, so they still check the
   # GPU-free fallback. Edge stands in for Playwright's bundled Chromium, which does
   # not launch on that machine. With one runner the two jobs take turns.
+  #
+  # A pull request merges only after both jobs pass on a branch that is up to date
+  # with main, so a merge commit's tree is the tree they just tested. On a push to
+  # main this job compares the two, and the jobs below skip a merge that was already
+  # tested, leaving the runner to the Pages publish and the next pull request. A
+  # direct push, a squash or rebase merge, or a merge whose tree differs still runs
+  # everything. It never runs for a pull request: those checks always run in full,
+  # as a skipped job would count as a passing required check. This relies on main's
+  # ruleset requiring both checks on up-to-date branches; remove it if that changes.
+  already-tested:
+    name: Check for an already-tested merge
+    if: github.event_name == 'push'
+    runs-on: [self-hosted, belt-pc]
+    timeout-minutes: 5
+    outputs:
+      tested: ${{ steps.compare.outputs.tested }}
+    steps:
+      # Depth 2 fetches both parents of a merge commit.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+      - id: compare
+        shell: powershell
+        run: |
+          $tree = git rev-parse 'HEAD^{tree}'
+          # Empty unless HEAD is a merge commit; its second parent is the pull request's head.
+          $pullRequestTree = git rev-parse --verify --quiet 'HEAD^2^{tree}'
+          if ($tree -and $pullRequestTree -eq $tree) { $tested = 'true' } else { $tested = 'false' }
+          Write-Output "Tree $tree, second parent's tree $pullRequestTree, already tested: $tested"
+          "tested=$tested" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          exit 0
   build:
     name: TypeScript and production build
+    needs: already-tested
+    # !cancelled() runs it when the job above is skipped (pull requests) or fails, so
+    # anything short of a confirmed tested merge gets the full checks.
+    if: ${{ !cancelled() && needs.already-tested.outputs.tested != 'true' }}
     runs-on: [self-hosted, belt-pc]
     # The 3D suite plays the larger city, both loading yards and touch detours; on the
     # software renderer it takes 21 to 29 minutes depending on the machine it runs on,
@@ -46,6 +82,8 @@ jobs:
           BELT_BROWSER_RENDERER: canvas
   windows-browser:
     name: Windows browser gameplay checks
+    needs: already-tested
+    if: ${{ !cancelled() && needs.already-tested.outputs.tested != 'true' }}
     runs-on: [self-hosted, belt-pc]
     timeout-minutes: 20
     steps:

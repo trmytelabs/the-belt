@@ -9,6 +9,19 @@ address; the repository itself stays private. To publish again without a
 merge, run the workflow by hand from the repository's Actions tab (Pages, Run
 workflow). To take the site down, turn Pages off in the repository's settings.
 
+CI does not hold the publish up. CI and Pages share the one runner, and CI used
+to re-test every merge on `main` for about 23 minutes while the publish waited.
+A pull request merges only after both checks pass on a branch that is up to date
+with `main`, so when it merges with a merge commit (the usual way here), that
+commit's tree is exactly the tree the checks just passed. CI's first job on a
+push to `main` compares the merge commit's tree with its second parent's (the
+pull request's head) and, when they match, skips the build and browser jobs;
+they show as skipped and the runner moves on to the publish. Pull request checks
+always run in full. A direct push, a squash or rebase merge, or a merge whose
+tree differs still runs every check on `main`. The skip relies on `main`'s
+ruleset requiring both checks on up-to-date branches; remove it if that rule
+ever changes.
+
 The game is a static site: `npm run build` writes everything it needs into
 `dist/` (the page, the scripts, and `public/`'s models, textures and audio,
 about 50 MB). There is no server component. The CI workflow never deploys; only

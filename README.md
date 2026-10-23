@@ -360,7 +360,10 @@ cannot run an install script on the PC that hosts the runner.
 
 CI runs on the owner's own Windows PC, a self-hosted GitHub Actions runner
 labelled `belt-pc`, so checks use no GitHub Actions minutes; that PC has to be on
-and logged in for checks to run, and they wait in a queue otherwise. The browser
+and logged in for checks to run, and they wait in a queue otherwise. Pull requests
+always get the full checks; after a merge, main's run skips them when the merge
+commit's tree is the one its pull request just passed (see
+[docs/deploying.md](docs/deploying.md)). The browser
 suites use Edge with software WebGL there, as on GPU-free hosted runners, so CI
 still checks the real Canvas fallback. Local
 checks retain the default renderer unless `BELT_BROWSER_RENDERER=canvas` is set.
