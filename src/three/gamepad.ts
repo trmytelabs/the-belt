@@ -112,6 +112,8 @@ export function padKey(state: string, button: PadButton): string | null {
     case 'story': return button === 'a' ? 'Space' : button === 'b' ? 'Enter' : null;
     case 'driving': return button === 'a' ? 'Space' : button === 'back' || button === 'rb' ? 'KeyV' : null;
     case 'mall': return button === 'a' ? 'Space' : button === 'x' ? 'KeyE' : null;
+    // Mall security's questions: A, B and Y pick the first, second and third answer (or grab it and run, or ask again).
+    case 'mall-quiz': return button === 'a' ? 'Digit1' : button === 'b' ? 'Digit2' : button === 'y' ? 'Digit3' : null;
     case 'lot': return button === 'a' ? 'Space' : null;
     // The Ralph run: A or B throws, as F does; BACK or RB the cab view. After the shift, A the mall run, B Ralph's.
     case 'paper': return button === 'a' || button === 'b' ? 'KeyF' : button === 'back' || button === 'rb' ? 'KeyV' : null;
