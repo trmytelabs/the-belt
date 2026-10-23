@@ -94,6 +94,14 @@ const CSS = `
 .b3d-bubble.edge::after { display: none; }
 .b3d-pop { position: absolute; transform: translate(-50%, -50%); font: 900 18px "Segoe UI", Arial, sans-serif; text-shadow: 0 2px 6px #000c; white-space: nowrap; }
 .b3d-center { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
+.b3d-title .b3d-hud { visibility: hidden; }
+.b3d-credits { margin: 14px 0 6px; padding-top: 12px; border-top: 1px solid #3b5a62; text-align: center; }
+.b3d-credits .kicker { font-size: 13px; letter-spacing: 6px; }
+.b3d-panel .b3d-credits p { margin: 4px 0; }
+.b3d-cast { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 12px; font-size: 12px; letter-spacing: 1.5px; color: #edb765; }
+@media (min-width: 1100px) and (min-aspect-ratio: 4/3) {
+  .b3d-panel.side { justify-self: start; margin-left: 3vw; width: min(540px, 40vw); }
+}
 .b3d-panel.docked { align-self: end; margin-bottom: 64px; padding: 16px 22px; width: min(560px, calc(100vw - 32px)); max-height: 46dvh; }
 .b3d-panel.docked h1 { font-size: 24px; margin: 4px 0 6px; }
 .b3d-panel.docked p { margin: 3px 0; font-size: 13px; }
@@ -146,8 +154,12 @@ const CSS = `
 .b3d-medal-list li.locked { opacity: .55; }
 .b3d-howto summary { cursor: pointer; margin: 6px 0; color: #cfd8cc; font-size: 15px; list-style: none; }
 .b3d-howto summary::-webkit-details-marker { display: none; }
-.b3d-howto summary::before { content: '▸ '; color: #edb765; }
-.b3d-howto[open] summary::before { content: '▾ '; }
+.b3d-howto > summary::before, .b3d-more > summary::before { content: '▸ '; color: #edb765; }
+.b3d-howto[open] > summary::before, .b3d-more[open] > summary::before { content: '▾ '; }
+/* The rules past the three steps and the controls fold away, so a first look at the start screen is short. */
+.b3d-more > summary { cursor: pointer; list-style: none; margin: 6px 0; font-size: 13px; letter-spacing: 1px; color: #9fb4b4; }
+.b3d-more > summary::-webkit-details-marker { display: none; }
+.b3d-panel p.b3d-origin { margin: -4px 0 10px; color: #cbbf9c; font-style: italic; font-size: 14px; }
 .b3d-panel p.b3d-sum { margin-top: 10px; padding-top: 8px; border-top: 1px solid #3b5a62; color: #9fb4b4; font-size: 13px; letter-spacing: .5px; }
 .b3d-trend { display: flex; align-items: flex-end; gap: 4px; height: 48px; margin: 4px 0 8px; border-bottom: 1px solid #3b5a62; }
 .b3d-trend span { flex: 1; min-width: 6px; border-radius: 2px 2px 0 0; background: #edb765; }
@@ -722,10 +734,13 @@ export class Overlay {
   }
 
   /** A centred panel; one handler for its button, or handlers by data-action. */
-  public showPanel(html: string, onButton?: (() => void) | Record<string, () => void>, options: { docked?: boolean } = {}): void {
+  public showPanel(html: string, onButton?: (() => void) | Record<string, () => void>, options: { docked?: boolean; side?: boolean } = {}): void {
     // A dialog named by its heading, so assistive technology announces what the panel is. A docked panel sits at
-    // the foot of the screen, leaving the scene it is about in view.
-    this.center.innerHTML = `<div class="b3d-panel${options.docked ? ' docked' : ''}" role="dialog" aria-labelledby="b3d-panel-title">${html}</div>`;
+    // the foot of the screen, leaving the scene it is about in view; a side panel (the start screen) stands at the
+    // left of a wide screen, beside the depot.
+    this.center.innerHTML = `<div class="b3d-panel${options.docked ? ' docked' : ''}${options.side ? ' side' : ''}" role="dialog" aria-labelledby="b3d-panel-title">${html}</div>`;
+    // The start screen is a title: the shift's HUD stays hidden behind it until the night starts.
+    this.root.classList.toggle('b3d-title', options.side === true);
     const heading = this.center.querySelector('.b3d-panel h1');
     if (heading) heading.id = 'b3d-panel-title';
     else this.center.querySelector('.b3d-panel')?.removeAttribute('aria-labelledby');
@@ -751,5 +766,6 @@ export class Overlay {
 
   public clearCenter(): void {
     this.center.innerHTML = '';
+    this.root.classList.remove('b3d-title');
   }
 }

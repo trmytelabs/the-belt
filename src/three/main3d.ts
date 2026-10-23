@@ -112,6 +112,15 @@ function showWebglFallback(host: HTMLElement): void {
  * owner's, 2026-10-22: the 7-Eleven lunch no longer fits). The shared script keeps 7-Eleven for the classic game.
  */
 const story3d = (random: () => number = Math.random, forced: Partial<StoryChoices> = {}): StoryRun => new StoryRun(random, { ...forced, breakPlace: 'timhortons' });
+/** The people of the night, as the game names them, for the credits. */
+const CREDITS_CAST = ['TERMITE', 'SKANKY', "SHAN O'MAC", 'VIC', 'KYLIE', 'JOHN RUSHTON', 'HUSSAN', 'AJ', 'BEN', 'BANNERMAN', 'FRUIT LOOP', 'DORIS', 'BRIAN', 'DONNA', 'PAULA ABDUL', 'RALPH'];
+
+/** The credits that close a full story night's results. */
+const creditsBlock = (): string => `<div class="b3d-credits"><div class="kicker">THE END</div>
+  <p><b>THE BELT</b> · a TRMYTE LABS game</p>
+  <p>Based on real nights on the belt at a UPS depot in Edmonton.</p>
+  <p class="b3d-cast">${CREDITS_CAST.map((name) => `<span>${escapeHtml(name)}</span>`).join('')}</p></div>`;
+
 const escapeHtml = (text: string): string => text.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
 
 export class Belt3d {
@@ -239,6 +248,8 @@ export class Belt3d {
   private ralphScene: RalphRunScene | null = null;
   /** Tonight's Ralph run once driven: the stops served, the dead-on ones and what it paid the night. */
   public ralphResult: { delivered: number; bullseyes: number; points: number; bumps: number } | null = null;
+  /** Whether tonight played through to its ending at Cha for Tea, so the results close with the credits. */
+  public sawEnding = false;
   private ralphBumps = 0;
   /** `?minigame=ralph`: the Ralph run on its own, from its own briefing. */
   private readonly practiceRalph = new URLSearchParams(window.location.search).get('minigame') === 'ralph';
@@ -662,14 +673,17 @@ export class Belt3d {
     }
     this.overlay.setMode('shift');
     this.overlay.showPanel(`
-      <div class="kicker">TERMITE &amp; SKANKY  /  ONE MORE OVERNIGHT</div>
+      <div class="kicker">TRMYTE LABS PRESENTS  /  TERMITE &amp; SKANKY  /  ONE MORE OVERNIGHT</div>
       <h1>ANOTHER NIGHT ON THE BELT.</h1>
+      <p class="b3d-origin">Based on real nights on the belt at a UPS depot in Edmonton.</p>
       <details class="b3d-howto"${this.record.completed > 0 ? '' : ' open'}><summary><b>HOW TO PLAY · Dispatch ${this.model.goal} packages together in three minutes.</b></summary>
       <ol class="b3d-steps">
         <li><b>Move beside a package.</b> ${this.touch.enabled ? 'Use the stick. Tap GRAB / DELIVER' : 'Use WASD / arrows. Press SPACE'} to grab the glowing parcel.</li>
         <li><b>Follow its destination.</b> The big street number chooses the truck: <b>27 ST → MILL WOODS (10–49 ST)</b>. The guide and gold marker show where to go.</li>
         <li><b>Walk through the truck’s open rear door.</b> ${this.touch.enabled ? 'Tap GRAB / DELIVER' : 'Press SPACE'} inside to load. OVERSIZE goes to BULK at the back; floor freight goes down the side stairs.</li>
       </ol>
+      </details>
+      <details class="b3d-more"><summary>MORE RULES AND CONTROLS</summary>
       <p><b>Missed one? Recover it at the belt end.</b> The shift ends at ${this.model.capacity} packages in recovery. ${this.touch.enabled ? 'STOP THE BELT' : 'E / STOP THE BELT'} gives you two seconds to catch up: 3 stops per run, with a 15-second cooldown after each use. You get ${this.model.cleanupMs / 1000} seconds to finish after intake closes.</p>
       <p>Your partner sorts their side automatically. ${this.touch.enabled ? 'SWITCH' : 'TAB / right-click'} changes worker; only your controlled worker picks up bulk. Partner deliveries count toward the goal. Wrong drops cost 10 points; throws can break freight. A gold PRIORITY ring marks urgent freight: load it before the ring runs out for +${PRIORITY_3D.bonus}. Twice a night a supervisor watches for ${INSPECTION_3D.durationMs / 1000} seconds: clean loads +${INSPECTION_3D.bonus}, wrong drops cost more.</p>
       ${this.touch.enabled ? `
@@ -694,7 +708,7 @@ export class Belt3d {
       <a href="${window.location.pathname}?mode=3d&amp;minigame=coffee">TRY THE TIMMIES RUN · THE LUNCH MINI-GAME</a>
       <a href="${window.location.pathname}?mode=3d&amp;minigame=ralph">TRY THE RALPH RUN · TERMITE'S PAPER ROUTE</a>
       <a href="${window.location.pathname}?mode=classic">PLAY THE ORIGINAL FULL SHIFT</a>`, { night: () => this.startNight(), play: () => this.startNight(false, true), players: () => this.togglePlayers(), peak: () => this.startNight(true), medals: () => this.showMedals(), endless: () => this.startEndless(), daily: () => this.startDaily(),
-        'perk-0': () => this.pickPerk(0), 'perk-1': () => this.pickPerk(1), 'perk-2': () => this.pickPerk(2) });
+        'perk-0': () => this.pickPerk(0), 'perk-1': () => this.pickPerk(1), 'perk-2': () => this.pickPerk(2) }, { side: true });
   }
 
   // ---------------------------------------------------------------- story flow
@@ -859,6 +873,7 @@ export class Belt3d {
       // Not home yet: breakfast with Vic at Cha for Tea.
       this.playScene(CHA_FOR_TEA);
     } else if (scene.id === 'cha-for-tea') {
+      this.sawEnding = true;
       this.showResults();
     }
   }
@@ -1385,6 +1400,7 @@ export class Belt3d {
   private restart(): void {
     audioSystem.stopMusic();
     this.justPlay = false;
+    this.sawEnding = false;
     for (const view of this.parcels.values()) disposeObject3D(view.root);
     for (const item of this.departing) disposeObject3D(item.view.root);
     this.parcels.clear();
@@ -2555,8 +2571,11 @@ export class Belt3d {
       // receiving, the belt in the middle and a row of trucks on either side. It drifts slowly from side to side.
       const sway = this.reducedMotion ? 0 : Math.sin(this.time * 0.11);
       const deck = PLATFORM_HEIGHT;
-      position = new THREE.Vector3(sway * 0.5, deck + (portrait ? 3.6 : 2.6), toWorldZ(SHIFT_LAYOUT.bulkPile.y) - (portrait ? 1.2 : 2.4));
-      look = new THREE.Vector3(sway * 0.25, deck - 0.9, toWorldZ(SHIFT_LAYOUT.beltTop) - 6);
+      // On a wide screen the start card stands at the left (overlay.ts .side): the view turns a little to the left so
+      // the belt sits in the open right of the screen, with the crew on both sides of it in view.
+      const aside = window.innerWidth >= 1100 && this.camera.aspect >= 4 / 3 ? -2.4 : 0;
+      position = new THREE.Vector3(sway * 0.5 + aside * 0.6, deck + (portrait ? 3.6 : 2.6), toWorldZ(SHIFT_LAYOUT.bulkPile.y) - (portrait ? 1.2 : 2.4));
+      look = new THREE.Vector3(sway * 0.25 + aside, deck - 0.9, toWorldZ(SHIFT_LAYOUT.beltTop) - 6);
     } else if (this.overview || this.state === 'briefing' || this.state === 'celebrating') {
       look = new THREE.Vector3(0, 0, toWorldZ((SHIFT_LAYOUT.worldTop + SHIFT_LAYOUT.worldBottom) / 2));
       position = look.clone().add(new THREE.Vector3(0, Math.max(portrait ? 104 : 80, 58 / this.camera.aspect), portrait ? 39 : 27));
@@ -2825,6 +2844,7 @@ export class Belt3d {
       ${this.ralphResult ? `<p>THE RALPH RUN · ${this.ralphResult.delivered}/${RALPH_STOPS.length} delivered${this.ralphResult.bullseyes ? ` · ${this.ralphResult.bullseyes} dead on` : ''}${this.ralphResult.bumps ? ` · ${this.ralphResult.bumps} bumps` : ''} · +${this.ralphResult.points}</p>
       <p class="b3d-sum">SHIFT ${m.score} + NIGHT GOALS ${judged.bonus} + RALPH RUN ${ralphPoints}</p>
       <p><b>NIGHT TOTAL ${String(total).padStart(5, '0')}</b> · ${m.gradeQuote}</p>` : ''}
+      ${this.sawEnding ? creditsBlock() : ''}
       <button type="button">ANOTHER NIGHT  ↵</button>
       <a href="${window.location.pathname}?mode=classic">PLAY THE ORIGINAL FULL SHIFT</a>`, () => this.restart());
   }
