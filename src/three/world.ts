@@ -104,7 +104,7 @@ export const VISITORS: Record<string, CharacterSpec & { x: number; y: number }> 
   kylie: { name: 'KYLIE', x: 850, y: 400, skin: SKIN.light, shirt: 0x8e3232, pants: 0x2b2f3a, hair: 0x171310, hairStyle: 'short', scale: 0.86 },
   john: { name: 'JOHN RUSHTON', x: 77, y: 397, skin: 0xbf9672, shirt: 0x2f4f64, pants: 0x2b3038, hair: 0x3a2a19, hairStyle: 'short', scale: 0.92 },
   // The owner's Vic: an old man in grimy work clothes (the imported model carries the same wear: rocketboxCast.ts).
-  vic: { name: 'VIC', x: 132, y: 286, skin: 0xc29c7a, shirt: 0x6b6352, pants: 0x3a372e, hair: 0xd2d2ca, hairStyle: 'short', moustache: true },
+  vic: { name: 'VIC', x: 132, y: 286, skin: 0xd2ad86, shirt: 0x6b6352, pants: 0x3a372e, hair: 0xd2d2ca, hairStyle: 'long' },
   shan: { name: SHAN_NAME, dynamicSkin: true, x: 610, y: SHIFT_LAYOUT.eventBays.brian.y, skin: SKIN.light, shirt: 0xe9e4d6, pants: 0x30343c, hair: 0x8b8b88, hairStyle: 'bald', tie: 0x8a2630, headwear: 'santaHat' },
 };
 

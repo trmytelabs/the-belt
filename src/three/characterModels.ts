@@ -47,14 +47,18 @@ export const CHARACTER_MODELS: CharacterModelEntry[] = ROCKETBOX_CAST.map(({ fil
   names, url: `/models/characters/${file}.glb`, skinMaterial: /head/i, clips: /Female/.test(source) ? 'female' : 'male', walk, wear,
 }));
 
-/** Each hair texture turned grey once, however many people wear it. */
-const greyed = new WeakMap<THREE.Texture, THREE.Texture>();
+/** Each hair texture turned grey once, however many people wear it: hair cards whole, head maps by their hair. */
+const greyed = { cards: new WeakMap<THREE.Texture, THREE.Texture>(), scalp: new WeakMap<THREE.Texture, THREE.Texture>() };
+/** On a Rocketbox head map, the corner holding the eye and the inside of the mouth: never greyed. */
+const EYE_CORNER = 0.37;
 /**
- * `map` in greys, lifted toward white: a person's hair gone grey. The source image is redrawn on a canvas; a map
- * that cannot be read (no image yet, or an image the canvas cannot draw) is returned as it is.
+ * `map` in greys, lifted toward white: a person's hair gone grey. Hair cards (`cards`) go grey whole; on a head
+ * map (`scalp`) only the hair does: its dark, colourless texels, blended in at the hairline, outside the corner
+ * holding the eye and the inside of the mouth. The source image is redrawn on a canvas; a map that cannot be read
+ * (no image yet, or an image the canvas cannot draw) is returned as it is.
  */
-function greyHair(map: THREE.Texture): THREE.Texture {
-  const known = greyed.get(map);
+function greyHair(map: THREE.Texture, part: 'cards' | 'scalp' = 'cards'): THREE.Texture {
+  const known = greyed[part].get(map);
   if (known) return known;
   const image = map.image as CanvasImageSource & { width?: number; height?: number } | undefined;
   const width = image?.width ?? 0, height = image?.height ?? 0;
@@ -70,7 +74,15 @@ function greyHair(map: THREE.Texture): THREE.Texture {
     for (let i = 0; i < data.length; i += 4) {
       const light = 0.3 * data[i] + 0.59 * data[i + 1] + 0.11 * data[i + 2];
       const grey = Math.min(255, 105 + light * 0.75);
-      data[i] = grey; data[i + 1] = grey; data[i + 2] = grey * 0.97;
+      let amount = 1;
+      if (part === 'scalp') {
+        const texel = i / 4, x = (texel % width) / width, y = Math.floor(texel / width) / height;
+        const colour = Math.max(data[i], data[i + 1], data[i + 2]) - Math.min(data[i], data[i + 1], data[i + 2]);
+        // Hair is dark and nearly colourless; skin is lighter and warm. The hairline blends between them.
+        amount = x < EYE_CORNER && y < EYE_CORNER ? 0 : Math.max(0, Math.min(1, (95 - light) / 40)) * Math.max(0, Math.min(1, (45 - colour) / 25));
+      }
+      if (amount <= 0) continue;
+      data[i] += (grey - data[i]) * amount; data[i + 1] += (grey - data[i + 1]) * amount; data[i + 2] += (grey * 0.97 - data[i + 2]) * amount;
     }
     context.putImageData(pixels, 0, 0);
     const texture = new THREE.CanvasTexture(canvas);
@@ -78,7 +90,69 @@ function greyHair(map: THREE.Texture): THREE.Texture {
     texture.colorSpace = map.colorSpace;
     texture.wrapS = map.wrapS; texture.wrapT = map.wrapT;
     texture.anisotropy = map.anisotropy;
-    greyed.set(map, texture);
+    greyed[part].set(map, texture);
+    return texture;
+  } catch {
+    return map;
+  }
+}
+
+/** Each body map stained once. */
+const stained = new WeakMap<THREE.Texture, THREE.Texture>();
+/**
+ * A Rocketbox body map (the clothes, with the arms and hands) worn and dirty: its clothing (its nearly colourless
+ * texels; skin is warm) faded a little and blotched with `stain`, the skin left as it is. A map that cannot be
+ * read is returned as it is.
+ */
+function grime(map: THREE.Texture, stain: number): THREE.Texture {
+  const known = stained.get(map);
+  if (known) return known;
+  const image = map.image as CanvasImageSource & { width?: number; height?: number } | undefined;
+  const width = image?.width ?? 0, height = image?.height ?? 0;
+  if (!image || !width || !height || typeof document === 'undefined') return map;
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = width; canvas.height = height;
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    if (!context) return map;
+    context.drawImage(image, 0, 0);
+    const pixels = context.getImageData(0, 0, width, height);
+    // The blotches: soft-edged patches of the stain, the same on every run (a fixed scatter).
+    const blotches = document.createElement('canvas');
+    blotches.width = width; blotches.height = height;
+    const ink = blotches.getContext('2d', { willReadFrequently: true })!;
+    const colour = new THREE.Color(stain);
+    let seed = 9;
+    const next = (): number => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+    for (let i = 0; i < 140; i++) {
+      const x = next() * width, y = next() * height, r = (0.012 + next() * 0.05) * width;
+      const gradient = ink.createRadialGradient(x, y, 0, x, y, r);
+      gradient.addColorStop(0, `rgba(${colour.r * 255 | 0}, ${colour.g * 255 | 0}, ${colour.b * 255 | 0}, ${0.35 + next() * 0.35})`);
+      gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ink.fillStyle = gradient;
+      ink.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+    const marks = ink.getImageData(0, 0, width, height).data;
+    const data = pixels.data;
+    for (let i = 0; i < data.length; i += 4) {
+      const spread = Math.max(data[i], data[i + 1], data[i + 2]) - Math.min(data[i], data[i + 1], data[i + 2]);
+      // Skin is warm (red well over blue); cloth here is grey, black, denim or khaki.
+      const skin = data[i] - data[i + 2] > 28 && spread > 30;
+      if (skin) continue;
+      const alpha = marks[i + 3] / 255;
+      for (let c = 0; c < 3; c++) {
+        // Faded: worn black goes charcoal; then the stain over it.
+        const faded = data[i + c] + (70 - data[i + c]) * 0.25;
+        data[i + c] = faded + (marks[i + c] - faded) * alpha * 0.8;
+      }
+    }
+    context.putImageData(pixels, 0, 0);
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.flipY = map.flipY;
+    texture.colorSpace = map.colorSpace;
+    texture.wrapS = map.wrapS; texture.wrapT = map.wrapT;
+    texture.anisotropy = map.anisotropy;
+    stained.set(map, texture);
     return texture;
   } catch {
     return map;
@@ -431,8 +505,9 @@ export function attachModel(character: Character, source: THREE.Object3D, entry:
       const copy = material.clone();
       const standard = copy as THREE.MeshStandardMaterial;
       // Wear: grime over the clothes (the body material), grey through the hair cards (their cut-out material).
-      if (standard.isMeshStandardMaterial && entry.wear?.clothes !== undefined && /body/i.test(material.name)) standard.color.multiply(new THREE.Color(entry.wear.clothes));
+      if (standard.isMeshStandardMaterial && entry.wear?.clothes !== undefined && /body/i.test(material.name) && standard.map) standard.map = grime(standard.map, entry.wear.clothes);
       if (standard.isMeshStandardMaterial && entry.wear?.greyHair && /opacity|hair/i.test(material.name) && standard.map) standard.map = greyHair(standard.map);
+      if (standard.isMeshStandardMaterial && entry.wear?.greyHair && /head/i.test(material.name) && standard.map) standard.map = greyHair(standard.map, 'scalp');
       if (standard.isMeshStandardMaterial && (entry.skinMaterial ?? /skin|body/i).test(material.name)) skin.push({ material: standard, base: standard.color.clone() });
       return copy;
     };

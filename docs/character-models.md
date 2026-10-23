@@ -241,6 +241,15 @@ prints a clip's hierarchy and tracks, for checking a new one.
 To recast someone, change their entry in `rocketboxCast.ts`, run the converter
 and check `npm run test:model`, which verifies every listed file.
 
+An entry's `wear` ages and dirties its source when the game loads it, without a new
+conversion: `clothes` fades the clothing on the body texture (its nearly colourless
+texels; the warm skin of the arms and hands is left) and blotches it with that
+stain colour, and `greyHair` turns the hair cards grey and the hair painted on the
+head texture with them (its dark, colourless texels, outside the corner holding the
+eye and the inside of the mouth). Vic uses both: the owner's Vic is an old Asian man
+in dirty clothes, and Rocketbox has no older Asian man, so he is `Male_Adult_09`
+(converted 2026-10-22, 1.4 MB, 7,428 triangles) greyed and stained.
+
 ## Making a model with MakeHuman
 
 MakeHuman gives realistic people with control over body, face, age, skin, hair
