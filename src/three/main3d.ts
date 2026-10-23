@@ -706,10 +706,10 @@ export class Belt3d {
       ${this.seniorityLine()}
       ${this.goalsLine()}
       ${this.perkLine()}
-      ${this.record.completed > 0 ? `<p class="b3d-record">PEAK NIGHT UNLOCKED · in the flow and the rush freight comes a fifth sooner, the belt runs faster and recovery holds ${PEAK_NIGHT.capacity}. ${this.touch.enabled ? 'Tap PEAK NIGHT.' : 'Press P or click PEAK NIGHT.'} ENDLESS SHIFT${this.touch.enabled ? '' : ' (N)'} has no clock: the belt speeds up every minute until recovery overflows.</p>` : ''}
+      ${this.record.completed > 0 ? `<p class="b3d-record">PEAK NIGHT UNLOCKED · the hardest mode: in the flow and the rush freight comes a fifth sooner, the belt runs faster and recovery holds ${PEAK_NIGHT.capacity}. ${this.touch.enabled ? 'Tap PEAK NIGHT.' : 'Press P or click PEAK NIGHT.'} ENDLESS SHIFT${this.touch.enabled ? '' : ' (N)'} has no clock: the belt speeds up every minute until recovery overflows.</p>` : ''}
       <div class="b3d-start">${this.touch.enabled ? '' : `<button type="button" data-action="players" class="b3d-players">${this.settings.twoPlayers ? '2 PLAYERS' : '1 PLAYER'}  C<small>${this.settings.twoPlayers ? 'P2 · ARROWS · ENTER' : 'C FOR TWO PLAYERS'}</small></button>`}<button type="button" data-action="night">START THE NIGHT  ↵</button><button type="button" data-action="play" title="The shift, the drives and the mall run, without the story scenes">JUST PLAY${this.touch.enabled ? '' : '  J'}<small>NO STORY SCENES</small></button></div>
       ${this.dailyButton()}
-      ${this.record.completed > 0 ? '<button type="button" data-action="peak">PEAK NIGHT  P</button><button type="button" data-action="endless">ENDLESS SHIFT  N</button>' : ''}
+      ${this.record.completed > 0 ? `<button type="button" data-action="peak">PEAK NIGHT (HARDEST MODE)${this.touch.enabled ? '' : '  P'}<small>FASTER FREIGHT · QUICKER BELT · LESS ROOM IN RECOVERY</small></button><button type="button" data-action="endless">ENDLESS SHIFT${this.touch.enabled ? '' : '  N'}<small>NO CLOCK · IT SPEEDS UP UNTIL RECOVERY OVERFLOWS</small></button>` : ''}
       ${this.record.played > 0 ? `<button type="button" class="b3d-medals-link" data-action="medals">MEDALS · ${this.record.medals.length} OF ${MEDALS.length} · RECENT NIGHTS</button>` : ''}
       <a href="${window.location.pathname}?mode=3d&amp;drive=mall">TRY JUST THE DRIVE · EXPLORE THE CITY</a>
       <a href="${window.location.pathname}?mode=3d&amp;minigame=coffee">TRY THE TIMMIES RUN · THE LUNCH MINI-GAME</a>
