@@ -3,9 +3,9 @@ import { chromium } from 'playwright';
 import { preview } from 'vite';
 
 // Online play between two tabs of one browser (?online=local: a BroadcastChannel stands in for PeerJS and WebRTC, with
-// no picture or voice): the host opens a room from PLAY ONLINE and plays Termite; the joining page plays Skanky. On the
-// belt the joining player's keys work Skanky (player 2); in the mall run they move Skanky and the host's own keys do
-// not; either can pause; the joining page shows whose turn it is.
+// no picture or voice): the host opens a room from PLAY ONLINE and plays Termite; the joining page plays Skanky. The game
+// online is the belt, endless (with no finished night needed): the joining player's keys work Skanky (player 2); either
+// can pause; the joining page shows whether Skanky is on the belt.
 const server = process.env.BELT_TEST_BASE_URL ? null : await preview({ preview: { host: '127.0.0.1', port: 0 }, logLevel: 'silent' });
 let browser;
 try {
@@ -49,12 +49,16 @@ try {
   await guest.locator('.b3g-card button').click();
   await wait(host, () => window.fixtureApp.online.joined);
   await wait(host, () => /SKANKY HAS JOINED/.test(document.querySelector('.b3d-panel')?.textContent ?? ''));
-  await wait(guest, () => /TERMITE IS ON THE MENU/.test(document.querySelector('.b3g-turn')?.textContent ?? ''));
+  await wait(guest, () => /BETWEEN SHIFTS/.test(document.querySelector('.b3g-turn')?.textContent ?? ''));
+  assert.match(await host.locator('.b3d-panel').innerText(), /START THE ENDLESS SHIFT/);
+  assert.equal(await host.locator('.b3d-panel button[data-action="play"]').count(), 0, 'no story, no JUST PLAY: the belt only');
 
-  // JUST PLAY: the belt, with the joining player as Skanky, player 2.
-  await host.locator('.b3d-panel button[data-action="play"]').click();
+  // START THE ENDLESS SHIFT (ENTER): the belt, endless, with the joining player as Skanky, player 2; no night finished
+  // on this browser, and no story.
+  assert.equal(await read(host, () => window.fixtureApp.record.completed), 0);
+  await host.keyboard.press('Enter');
   await wait(host, () => window.fixtureApp.state === 'playing', null, { timeout: 120_000 });
-  assert.equal(await read(host, () => window.fixtureApp.model.coop), true);
+  assert.deepEqual(await read(host, () => [window.fixtureApp.model.coop, window.fixtureApp.model.endless]), [true, true]);
   await wait(guest, () => /THE BELT · you are Skanky, player 2/.test(document.querySelector('.b3g-turn')?.textContent ?? ''));
   await wait(host, () => /TERMITE \+ SKANKY/.test(document.querySelector('.b3d-online-chip')?.textContent ?? ''));
   const partner = () => read(host, () => ({ x: window.fixtureApp.model.partnerWorker.x, y: window.fixtureApp.model.partnerWorker.y }));
@@ -68,23 +72,12 @@ try {
   await wait(guest, () => /PAUSED/.test(document.querySelector('.b3g-turn')?.textContent ?? ''));
   await guest.keyboard.press('Escape');
   await wait(host, () => window.fixtureApp.state === 'playing');
-
-  // The mall run is Skanky's: the joining player moves him, and the host's own keys leave him be.
-  await read(host, () => { const app = window.fixtureApp; app.model.paused = true; app.story.go('mall'); app.beginMall(); });
-  await wait(host, () => window.fixtureApp.state === 'mall');
-  await wait(guest, () => /YOUR TURN · you're Skanky/.test(document.querySelector('.b3g-turn')?.textContent ?? ''));
-  await wait(host, () => /SKANKY'S TURN/.test(document.querySelector('.b3d-online-chip')?.textContent ?? ''));
-  const skanky = () => read(host, () => window.fixtureApp.mall.skanky.x);
-  const before = await skanky();
-  await host.keyboard.down('KeyD');
-  await host.waitForTimeout(400);
-  await host.keyboard.up('KeyD');
-  assert.equal(await skanky(), before, "the host's keys do not move Skanky on his turn");
-  await guest.keyboard.down('KeyD');
-  await wait(host, (x) => window.fixtureApp.mall.skanky.x > x + 20, before);
-  await guest.keyboard.up('KeyD');
+  // Keys outside the belt's (the mall's answers, the host's mute) never reach the host.
+  await guest.keyboard.press('Digit1');
+  await guest.keyboard.press('KeyM');
+  assert.deepEqual(await read(host, () => [window.fixtureApp.state, window.fixtureApp.audio.muted]), ['playing', false]);
   assert.deepEqual(errors, []);
-  console.log('PASS online between two tabs: the host opens a room from PLAY ONLINE, the joining page (no engine) joins as Skanky, works player 2 on the belt, pauses and resumes the night, and moves Skanky in the mall run while the host\'s own keys cannot');
+  console.log('PASS online between two tabs: the host opens a room from PLAY ONLINE, the joining page (no engine) joins as Skanky, the room starts the endless belt with no unlock or story, the joining player works player 2, pauses and resumes the shift, and keys outside the belt never reach the host');
 } finally {
   await browser?.close();
   await server?.httpServer.close();

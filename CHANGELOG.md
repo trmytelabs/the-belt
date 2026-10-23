@@ -2,13 +2,13 @@
 
 ## Unreleased
 
-- PLAY ONLINE: Termite and Skanky on two computers. One player hosts and plays
+- PLAY ONLINE: Termite and Skanky on the belt from two computers, an endless
+  shift that speeds up until recovery overflows. One player hosts and plays
   Termite; the other joins from a link or a six-character room code and plays
-  Skanky, seeing the host's game streamed to a light page and playing with
-  keys, a controller or touch. They share the belt (Skanky is player 2);
-  Skanky's runs and drives are his, the Ralph run is Termite's. Voice chat
-  included (K mutes). Connected through PeerJS's free service, then directly
-  between the two browsers.
+  Skanky (player 2), seeing the host's game streamed to a light page and
+  playing with keys, a controller or touch. Voice chat included (K mutes).
+  Connected through PeerJS's free service, then directly between the two
+  browsers.
 - The mall run gets BENTLEY, on a fourth run of its own with the cart full of
   its freight. Delivered, the clerk yells about a missing box (with no idea
   where it went) and will not sign, and Skanky freaks out and sweats. Mall
