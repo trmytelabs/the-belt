@@ -7,6 +7,27 @@ export type { SoundEffect } from '../game/systems/AudioSystem';
  */
 const BASE: string = (import.meta as { env?: { BASE_URL?: string } }).env?.BASE_URL ?? '/';
 export const DEPOT_MUSIC_URL = `${BASE}audio/music/after-hours.mp3`;
+
+/** Where the night is, for its music (`SCENE_MUSIC`). */
+export type SceneMusic = 'depot' | 'rush' | 'home' | 'drive' | 'cafe' | 'lot' | 'mall' | 'ralph' | 'mesa' | 'dimsum' | 'dream';
+/**
+ * Each place and mini-game's track (public/audio/MUSIC-SOURCES.md), with a level that evens out how loud they were
+ * recorded. The shift keeps the owner's After Hours; its last minute, the rush, has its own.
+ */
+export const SCENE_MUSIC: Record<SceneMusic, { file: string; level: number }> = {
+  depot: { file: 'after-hours', level: 1 },
+  rush: { file: 'machinations', level: 0.8 },
+  home: { file: 'rollin-at-5', level: 0.85 },
+  drive: { file: 'miami-nights', level: 0.75 },
+  cafe: { file: 'lobby-time', level: 0.9 },
+  lot: { file: 'sneaky-snitch', level: 0.85 },
+  mall: { file: 'local-forecast-elevator', level: 0.9 },
+  ralph: { file: 'surf-shimmy', level: 0.8 },
+  mesa: { file: 'metalmania', level: 0.55 },
+  dimsum: { file: 'guzheng-city', level: 0.95 },
+  dream: { file: 'dreamy-flashback', level: 0.9 },
+};
+const sceneUrl = (scene: SceneMusic): string => `${BASE}audio/music/${SCENE_MUSIC[scene].file}.mp3`;
 const CROSSFADE_SECONDS = 1.6;
 type FoleyCue = { files: string[]; volume: number; cutoff?: number };
 // Small CC0 recordings replace the old oscillator-based handling/UI effects.
@@ -42,6 +63,10 @@ export class DepotAudio extends AudioSystem {
   private trackWanted = false;
   private trackMode: MusicMode = 'title';
   private nextTrackAt = 0;
+  /** The scene whose track is wanted, the one playing (or loading first), and each track once decoded. */
+  private scene: SceneMusic = 'depot';
+  private playing: SceneMusic = 'depot';
+  private readonly tracks = new Map<SceneMusic, Promise<AudioBuffer | null>>();
   private readonly recordings = new Map<AudioBufferSourceNode, GainNode>();
   private readonly foleyTimes = new Map<string, number>();
   private duckUntil = 0;
@@ -196,17 +221,55 @@ export class DepotAudio extends AudioSystem {
     this.trackMode = mode;
     this.updateMusicVolume();
     if (this.trackTimer === null) this.trackTimer = window.setInterval(() => this.scheduleTrack(), 200);
-    if (!this.trackLoad) {
-      this.trackLoad = fetch(DEPOT_MUSIC_URL).then(async response => {
+    if (!this.trackLoad || this.playing !== this.scene) this.changeTrack();
+    this.scheduleTrack();
+  }
+
+  /**
+   * The music for where the night is now. A new place's track loads in the background while the old one plays on,
+   * then the two cross: the old fades out over a second or so and the new one comes in.
+   */
+  public setScene(scene: SceneMusic): void {
+    if (scene === this.scene) return;
+    this.scene = scene;
+    if (this.trackWanted) this.changeTrack();
+  }
+
+  /** Loads (once) and decodes a scene's track; a failed download is null and is tried again next time. */
+  private loadTrack(scene: SceneMusic): Promise<AudioBuffer | null> {
+    const context = this.getContext();
+    if (!context) return Promise.resolve(null);
+    let load = this.tracks.get(scene);
+    if (!load) {
+      load = fetch(sceneUrl(scene)).then(async response => {
         if (!response.ok) throw new Error(`Music asset: ${response.status}`);
-        this.trackBuffer = await context.decodeAudioData(await response.arrayBuffer());
-        this.scheduleTrack();
+        return context.decodeAudioData(await response.arrayBuffer());
       }).catch(() => {
         // A failed audio download never interrupts the game or starts the old score.
-        this.trackLoad = null;
+        this.tracks.delete(scene);
+        return null;
       });
+      this.tracks.set(scene, load);
     }
-    this.scheduleTrack();
+    return load;
+  }
+
+  /** Brings in the wanted scene's track once it has loaded, crossing from the one playing. */
+  private changeTrack(): void {
+    const scene = this.scene;
+    this.trackLoad = this.loadTrack(scene).then(buffer => {
+      if (!buffer) {
+        if (this.scene === scene) this.trackLoad = null;
+        return;
+      }
+      if (this.scene !== scene || (this.playing === scene && this.trackBuffer === buffer)) return;
+      const crossing = this.trackBuffer !== null;
+      this.playing = scene;
+      this.trackBuffer = buffer;
+      if (crossing) this.stopRecordings(0.45);
+      this.updateMusicVolume();
+      this.scheduleTrack();
+    });
   }
 
   public override stopMusic(): void {
@@ -270,17 +333,18 @@ export class DepotAudio extends AudioSystem {
   }
 
   protected override updateMusicVolume(): void {
-    const volume = this.trackMode === 'title' || this.trackMode === 'results' ? 0.3 : 0.23;
+    const volume = (this.trackMode === 'title' || this.trackMode === 'results' ? 0.3 : 0.23) * SCENE_MUSIC[this.playing].level;
     const ducked = (this.context?.currentTime ?? 0) < this.duckUntil;
     this.fade(this.musicGain, this.muted || !this.trackWanted ? 0 : volume * (ducked ? 0.45 : 1) * this.musicLevel, 0.22);
   }
 
-  private stopRecordings(): void {
+  /** Fades every recording out (over `fade` seconds' time constant: quick to stop, slower to cross to another track). */
+  private stopRecordings(fade = 0.03): void {
     const now = this.context?.currentTime ?? 0;
     for (const [source, gain] of this.recordings) {
       gain.gain.cancelScheduledValues(now);
-      gain.gain.setTargetAtTime(0, now, 0.03);
-      source.stop(now + 0.15);
+      gain.gain.setTargetAtTime(0, now, fade);
+      source.stop(now + fade * 5);
     }
     this.recordings.clear();
     this.nextTrackAt = 0;

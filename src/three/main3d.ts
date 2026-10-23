@@ -33,7 +33,7 @@ import {
   DRIVE_TO_MALL, DRIVE_TO_UPS, GO_HOME, KEY_RETURN_LINES, MALL_ASSIGNMENT, MALL_INTRO, SCRUM, SPEAKER_NAMES,
   type StoryActor, type StoryBeat, type StoryScene,
 } from '../game/slice/StoryScript';
-import { audioSystem, type SoundEffect } from './audio';
+import { audioSystem, type SceneMusic, type SoundEffect } from './audio';
 import { clipRoleOf, modelFeet, syncCharacterModels, useCharacterClips, useCharacterModels, type CharacterModelEntry } from './characterModels';
 import { plantFeet } from './footing';
 import { footfall } from './footsteps';
@@ -119,6 +119,9 @@ const CREDITS_CAST = ['TERMITE', 'SKANKY', "SHAN O'MAC", 'VIC', 'KYLIE', 'JOHN R
 const creditsBlock = (): string => `<div class="b3d-credits"><div class="kicker">THE END</div>
   <p><b>THE BELT</b> · a TRMYTE LABS game</p>
   <p>Based on real nights on the belt at a UPS depot in Edmonton.</p>
+  <p class="b3d-music">Music: “After Hours” (the owner, Google Flow Music) · Kevin MacLeod (incompetech.com), licensed under
+  Creative Commons: By Attribution 4.0: “Rollin at 5”, “Miami Nights – Extended Theme”, “Machinations”, “Lobby Time”,
+  “Sneaky Snitch”, “Local Forecast – Elevator”, “Surf Shimmy”, “Metalmania”, “Guzheng City”, “Dreamy Flashback”.</p>
   <p class="b3d-cast">${CREDITS_CAST.map((name) => `<span>${escapeHtml(name)}</span>`).join('')}</p></div>`;
 
 const escapeHtml = (text: string): string => text.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
@@ -1771,6 +1774,8 @@ export class Belt3d {
     if (this.state === 'lot' && this.lot) this.stage.updateLot(this.lot, dt, this.time);
     this.mesa.update(dt * 1000, this.time);
 
+    // Each place and mini-game has its own track, crossfaded as the night moves between them.
+    audioSystem.setScene(this.sceneMusic());
     // The story sets' room tone: talk and clinks at Cha for Tea and in the Tim Hortons booth, night wind in the lot and on the road.
     const set = this.usesStage() ? this.stage.active : null;
     audioSystem.setRoomTone(set === 'dimsum' || set === 'coffee' ? 'restaurant' : set === 'lot' || set === 'road' ? 'outdoors' : null, dt);
@@ -1922,6 +1927,35 @@ export class Belt3d {
   private usesDriving(): boolean {
     const state = this.state === 'paused' ? this.pausedFrom : this.state;
     return this.drivingView !== null && (state === 'driving' || state === 'ended' && this.practiceDestination !== null || state === 'coffee' || state === 'coffee-done' || state === 'paper' || state === 'ralph-done');
+  }
+
+  /** The music for what is on screen (audio.ts SCENE_MUSIC). */
+  private sceneMusic(): SceneMusic {
+    const state = this.state === 'paused' ? this.pausedFrom : this.state;
+    switch (state) {
+      case 'dream': return 'dream';
+      case 'mesa': return 'mesa';
+      case 'decision': return 'home';
+      case 'coffee': case 'coffee-done': return 'cafe';
+      case 'paper': case 'ralph-done': return 'ralph';
+      // The Ralph run's drive back keeps its surf guitar.
+      case 'driving': return this.ralph ? 'ralph' : 'drive';
+      case 'mall': return 'mall';
+      case 'lot': return 'lot';
+      // The last minute of a timed shift is the rush.
+      case 'playing': return !this.model.endless && this.model.elapsedMs >= 120_000 && !this.model.ended ? 'rush' : 'depot';
+      case 'ended':
+        if (this.usesStage() && this.stage.active === 'house') return 'home';
+        // The night's results close on the credits: Cha for Tea's music plays on under them.
+        return this.sawEnding ? 'dimsum' : 'depot';
+      case 'story': {
+        if (this.cutscene?.scene.location === 'depot' || !this.stage.active) return 'depot';
+        const set = this.stage.active;
+        return set === 'house' ? 'home' : set === 'coffee' ? 'cafe' : set === 'road' ? 'drive' : set === 'mall' ? 'mall'
+          : set === 'dimsum' ? 'dimsum' : this.cutscene?.scene.id === 'go-home' ? 'drive' : 'lot';
+      }
+      default: return 'depot';
+    }
   }
 
   private usesStage(): boolean {
