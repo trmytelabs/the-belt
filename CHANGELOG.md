@@ -21,6 +21,10 @@
   turns red). One hit and Skanky collapses: medics carry him out on a
   stretcher, an ambulance takes him away with its lights and siren, and the
   night is lost. The mall is now seven stores on four runs, in the 3D game only.
+- TRY THE MALL RUN · SKANKY'S DELIVERIES on the 3D briefing
+  (`?mode=3d&minigame=mall`): the mall run on its own, from the truck or
+  straight to BENTLEY's run with the six other stores signed, ending on a card
+  with the mall bonus, AGAIN and PLAY THE FULL NIGHT.
 
 ## 1.0.0 — 2026-10-23 — first public release
 
