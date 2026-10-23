@@ -183,16 +183,14 @@ SORT!** countdown starts the shift.
   highlights a button or setting, A presses it, left and right move a slider,
   and B goes back. A controller that drops out mid-play pauses the game. Pads
   with rumble shake on a wrong drop, a breakage and a bump on the road.
-- PLAY ONLINE (O on the briefing) plays the night on two computers: one player
+- PLAY ONLINE (O on the briefing) plays the belt, the game's two-player part,
+  on two computers, as an endless shift (no finished night needed): one player
   hosts and is Termite, the other opens the room link (or PLAY ONLINE, JOIN and
-  the six-character code) and is Skanky. The night runs on the host's computer;
-  the host shares the game's tab (Chrome or Edge on a computer) and the joining
-  player sees it, with the game's sound, on a light page that loads no engine
-  (`?join=CODE`), playing with keys, a controller or touch. They work the belt
-  together (Skanky is player 2); the mall run, the key drop, the Timmies run's
-  trays and the five-ton drives are Skanky's, the Ralph run Termite's, and
-  either moves a story scene on or pauses. On Skanky's turns the host's own
-  keys do nothing. Voice chat rides the same link (K mutes the microphone on
+  the six-character code) and is Skanky, player 2. The shift runs on the host's
+  computer; the host shares the game's tab (Chrome or Edge on a computer) and
+  the joining player sees it, with the game's sound, on a light page that loads
+  no engine (`?join=CODE`), playing with keys, a controller or touch. Either
+  can pause; the joining player's keys can do nothing else. Voice chat rides the same link (K mutes the microphone on
   either side; headphones keep the game's sound from echoing). PeerJS's free
   public server introduces the two browsers, then everything goes directly
   between them over WebRTC; each player can see the other's internet address.

@@ -3,9 +3,9 @@ import { OnlineGuest, openMicrophone, setMicrophone, transportFromUrl } from './
 import { GUEST_HEARTBEAT_MS, GUEST_KEYS, readRoomCode } from './onlineRules';
 
 /**
- * The joining player's page (`?join=CODE`): Skanky, playing Termite's game from another computer. It does not run the
- * game. It shows the host's tab, streamed, and sends back this player's keys, controller and touch, which the host
- * routes to Skanky (onlineRules.ts). It is light: no 3D engine is loaded.
+ * The joining player's page (`?join=CODE`): Skanky, player 2 on Termite's endless belt from another computer. It does
+ * not run the game. It shows the host's tab, streamed, and sends back this player's keys, controller and touch, which
+ * the host gives to Skanky (onlineRules.ts). It is light: no 3D engine is loaded.
  */
 const CSS = `
 .b3g { position: fixed; inset: 0; background: #0b1520; color: #f0e6d0; font: 600 14px/1.45 "Segoe UI", Arial, sans-serif; overflow: hidden; }
@@ -34,10 +34,7 @@ const CSS = `
 .b3g-pads { position: absolute; right: 18px; bottom: 0; display: grid; grid-template-columns: repeat(3, 64px); gap: 10px; pointer-events: auto; }
 .b3g-pads button { height: 56px; padding: 0; touch-action: none; }
 .b3g-pads button.big { grid-column: span 3; height: 64px; }
-.b3g-quiz { position: absolute; left: 50%; bottom: 60px; transform: translateX(-50%); width: min(520px, calc(100vw - 32px)); box-sizing: border-box;
-  background: #142a31f2; border: 1px solid #3b5a62; border-radius: 12px; padding: 14px 18px; }
-.b3g-quiz h2 { font: 800 20px "Segoe UI", Arial, sans-serif; margin: 0 0 8px; }
-.b3g-quiz button { display: block; width: 100%; margin-top: 8px; }
+.b3g-pads button.wide { grid-column: span 2; }
 `;
 
 export function startGuest(codeText: string | null): void {
@@ -54,7 +51,7 @@ export function startGuest(codeText: string | null): void {
   card.setAttribute('role', 'dialog');
   card.innerHTML = `<div class="kicker">THE BELT · PLAY ONLINE</div>
     <h1>JOIN TERMITE'S GAME</h1>
-    <p>You're Skanky. The game runs on Termite's computer; you see it here and play with your keys, a controller or the touch controls.</p>
+    <p>You're Skanky, on the belt with Termite: an endless shift that speeds up until recovery overflows. It runs on Termite's computer; you see it here and play with your keys, a controller or the touch controls.</p>
     <label for="b3g-code">ROOM CODE</label>
     <input id="b3g-code" maxlength="9" autocomplete="off" spellcheck="false" value="${code ?? ''}">
     <button type="button" data-action="join">JOIN AS SKANKY</button>
@@ -90,8 +87,8 @@ async function play(root: HTMLElement, code: string): Promise<void> {
   status.setAttribute('role', 'status');
   const help = document.createElement('div');
   help.className = 'b3g-help';
-  const keysHelp = 'WASD / ARROWS MOVE · SPACE GRAB / ACT · F THROW · E · 1 2 3 ANSWER · ESC PAUSE · K MIC';
-  help.textContent = touch ? 'STICK MOVES · GRAB / ACT · THROW · E · 1 2 3 ANSWER · PAUSE' : keysHelp;
+  const keysHelp = 'WASD / ARROWS MOVE · SPACE GRAB / DELIVER · F THROW · ESC PAUSE · K MIC';
+  help.textContent = touch ? 'STICK MOVES · GRAB / DELIVER · THROW · PAUSE' : keysHelp;
   root.append(video, bar, status, help);
   const turn = bar.querySelector<HTMLElement>('.b3g-turn')!;
   const say = (title: string, text: string, rejoin = false): void => {
@@ -141,29 +138,8 @@ async function play(root: HTMLElement, code: string): Promise<void> {
     video.muted = false;
     void video.play().catch(() => { video.muted = true; return video.play(); }).catch(() => undefined);
   };
-  // Mall security's card, sent only when Termite shares just the 3D view: its answers can be clicked as well as keyed.
-  const quiz = document.createElement('div');
-  quiz.className = 'b3g-quiz';
-  quiz.hidden = true;
-  root.append(quiz);
   guest.onMessage = (message) => {
     if (message.t === 'bye') { say('TERMITE STOPPED HOSTING', 'Thanks for playing.', true); return; }
-    if (message.t === 'card') {
-      quiz.hidden = !message.title;
-      quiz.replaceChildren();
-      if (!message.title) return;
-      const title = document.createElement('h2');
-      title.textContent = message.title;
-      quiz.append(title);
-      message.options.forEach((option, index) => {
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.textContent = `${index + 1} · ${option}`;
-        button.addEventListener('click', () => { press(`Digit${index + 1}`, true); press(`Digit${index + 1}`, false); });
-        quiz.append(button);
-      });
-      return;
-    }
     turn.textContent = message.text;
     turn.classList.toggle('mine', message.owner !== 'termite');
   };
@@ -206,9 +182,8 @@ async function play(root: HTMLElement, code: string): Promise<void> {
     const pad = document.createElement('div');
     pad.className = 'b3g-touch';
     pad.innerHTML = `<div class="b3g-stick" aria-label="Move"><div class="b3g-knob"></div></div>
-      <div class="b3g-pads"><button type="button" data-key="Digit1">1</button><button type="button" data-key="Digit2">2</button><button type="button" data-key="Digit3">3</button>
-      <button type="button" data-key="KeyE" class="quiet">E</button><button type="button" data-key="KeyF">THROW</button><button type="button" data-key="Escape" class="quiet">PAUSE</button>
-      <button type="button" data-key="Space" class="big">GRAB / ACT</button></div>`;
+      <div class="b3g-pads"><button type="button" data-key="Escape" class="quiet">PAUSE</button><button type="button" data-key="KeyF" class="wide">THROW</button>
+      <button type="button" data-key="Space" class="big">GRAB / DELIVER</button></div>`;
     root.append(pad);
     const area = pad.querySelector<HTMLElement>('.b3g-stick')!;
     const knob = pad.querySelector<HTMLElement>('.b3g-knob')!;
@@ -249,7 +224,7 @@ async function play(root: HTMLElement, code: string): Promise<void> {
     const input = gamepad.poll(pads);
     if (input.connected !== padShown) {
       padShown = input.connected;
-      help.textContent = padShown ? 'CONTROLLER · STICK MOVES · A GRAB / ACT · B THROW · X · Y · START PAUSE' : touch ? help.textContent : keysHelp;
+      help.textContent = padShown ? 'CONTROLLER · STICK MOVES · A GRAB / DELIVER · B THROW · START PAUSE' : touch ? help.textContent : keysHelp;
     }
     for (const button of input.pressed) guest.send({ t: 'pad', button });
     // Held keys are sent as keys; this is the rest: the stick (pad or touch) and the triggers.
