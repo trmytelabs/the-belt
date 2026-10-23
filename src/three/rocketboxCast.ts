@@ -60,9 +60,9 @@ export const ROCKETBOX_CAST: RocketboxCasting[] = [
   { file: 'ralph', source: 'Professions/Wood_Male_01', names: ['RALPH'], textureSize: 512 },
   { file: 'gunman', source: 'Adults/Male_Adult_18', names: ['GUNMAN'], textureSize: 512 },
   { file: 'donnas-husband', source: 'Adults/Male_Adult_07', names: ["DONNA'S HUSBAND"], textureSize: 512 },
-  { file: 'cashier', source: 'Adults/Male_Adult_12', names: ['CASHIER'], textureSize: 512 },
+  { file: 'cashier', source: 'Adults/Male_Adult_12', names: ['CASHIER', 'BENTLEY CLERK'], textureSize: 512 },
   { file: 'clerk', source: 'Adults/Female_Adult_11', names: ['CLERK', 'WAITRESS'], textureSize: 512 },
   { file: 'unloader', source: 'Professions/Construction_Male_08', names: ['UNLOADER'], textureSize: 512 },
-  { file: 'driver', source: 'Adults/Male_Adult_16', names: ['DRIVER'], textureSize: 512 },
+  { file: 'driver', source: 'Adults/Male_Adult_16', names: ['DRIVER', 'SECURITY'], textureSize: 512 },
   { file: 'dockhand', source: 'Adults/Male_Adult_04', names: ['DOCKHAND'], textureSize: 512 },
 ];

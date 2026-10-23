@@ -23,7 +23,7 @@ import { DepotAmbientOcclusion } from './ambientOcclusion';
 import { MESA } from './references';
 import { clearDepotFootprint, DEPOT_BODY_RADIUS, DEPOT_CARRY_RADIUS, depotSolidFootprints, type FootprintCircle } from '../game/slice/DepotClearance';
 import { KeyReturnModel, MALL_RULES, type MallEvent } from '../game/slice/MallModel';
-import { MallModel3D as MallModel } from './MallModel3D';
+import { MALL_3D_BUNDLES, MALL_3D_STOPS, MallModel3D as MallModel } from './MallModel3D';
 import {
   CARRY_MULTIPLIER, THROWING, type Parcel, type Route, type ShiftEvent, type WorkerId,
 } from '../game/slice/ShiftModel';
@@ -1896,17 +1896,17 @@ export class Belt3d {
         [this.practiceDestination ? 'PENALTY' : 'NIGHT SCORE', this.practiceDestination ? `−${drive.penalty} PTS` : String(Math.max(0, m.score + this.mallBonus - this.drivingPenalty + this.driveBonus))],
         ...(drive.origin === 'home' ? [] : [['TIME', `${driveClock(drive.elapsed)} · PAR ${driveClock(DRIVE_PAR.fast)}${this.ghost ? ` · GHOST ${driveClock(this.ghost.seconds)}` : ''}`] as [string, string]]),
         drive.origin === 'home' ? ['IN THE CAR', 'TERMITE + SKANKY']
-          : ['CARGO', this.practiceDestination ? 'PRACTICE · SAFE' : drive.destination === 'mall' ? '6 BUNDLES · SAFE' : '6 / 6 SIGNED'],
+          : ['CARGO', this.practiceDestination ? 'PRACTICE · SAFE' : drive.destination === 'mall' ? `${MALL_3D_BUNDLES} BUNDLES · SAFE` : `${MALL_3D_STOPS} / ${MALL_3D_STOPS} SIGNED`],
       ], hint,
       'W / ↑ GAS · A D / ← → STEER · S / ↓ BRAKE · SPACE PARK · V VIEW · M MUTE · ESC PAUSE');
     } else if (this.state === 'mall' && this.mall) {
       const mall = this.mall;
       this.overlay.chapterHud([
-        ['RUN', `${Math.min(3, mall.run + 1)} / 3`], ['DELIVERED', `${mall.delivered} / 6`], ['SIGNED', `${mall.signatures} / 6`],
+        ['RUN', `${Math.min(mall.runCount, mall.run + 1)} / ${mall.runCount}`], ['DELIVERED', `${mall.delivered} / ${mall.stores.length}`], ['SIGNED', `${mall.signatures} / ${mall.stores.length}`],
         ['CART', mall.cart.load.length === 0 ? 'EMPTY' : mall.cart.load.map((id) => mall.store(id).name).join(' + ')],
-      ], `${mall.interaction.label} · ${mall.objective}`, 'WASD MOVE · SPACE TAKE / LOAD / GRAB CART / DROP / SIGN · E ALSO GRABS CART · ESC PAUSE');
+      ], mall.interaction.label === mall.objective ? mall.objective : `${mall.interaction.label} · ${mall.objective}`, 'WASD MOVE · SPACE TAKE / LOAD / GRAB CART / DROP / SIGN · E ALSO GRABS CART · ESC PAUSE');
     } else if (this.state === 'lot' && this.lot) {
-      this.overlay.chapterHud([['MALL', '6 / 6 SIGNED'], ['FIVE-TON', this.lot.done ? 'RETURNED' : 'PARKED']],
+      this.overlay.chapterHud([['MALL', `${MALL_3D_STOPS} / ${MALL_3D_STOPS} SIGNED`], ['FIVE-TON', this.lot.done ? 'RETURNED' : 'PARKED']],
         this.lot.atKeyDrop ? 'Press SPACE to drop the keys' : this.chapterHint, 'WASD MOVE · SPACE DROP KEYS · ESC PAUSE');
     }
     const driving = this.state === 'driving' || this.state === 'paper';
@@ -2201,10 +2201,13 @@ export class Belt3d {
   private handleMallEvent(event: MallEvent): void {
     const sounds: Record<MallEvent['type'], SoundEffect> = {
       pick: 'grab', load: 'drop', cart: 'switch', drop: 'bulk', sign: 'sign', wrong: 'wrong', run: 'event-alert', done: 'correct',
+      refuse: 'wrong', security: 'grab', handover: 'drop',
     };
     if (event.type !== 'wrong' || /Nothing on the cart for|goes out on run/.test(event.message)) audioSystem.play(sounds[event.type]);
     this.chapterHint = event.message;
     if (event.type === 'run' || event.type === 'done') this.overlay.showToast(event.message, 2600);
+    // The Bentley run's turns, long enough to read: the refusal (and where to go), the box from security, the hand-over.
+    if (event.type === 'refuse' || event.type === 'security' || event.type === 'handover') this.overlay.showToast(event.message, 4200);
     const mall = this.mall;
     if (!mall) return;
     const at = this.stage.mallEvent(mall, event);
@@ -2214,6 +2217,14 @@ export class Belt3d {
     if (event.type === 'sign' && event.storeId) {
       const store = mall.store(event.storeId);
       this.overlay.say(`clerk-${store.id}`, `${store.name} CLERK`, store.clerkLine, 3000, () => at ?? new THREE.Vector3());
+    }
+    // Bentley yells and will not sign; mall security has the box. (Handed over, the clerk signs with "Finally.")
+    if (event.type === 'refuse' && at) {
+      // Skanky's stress, over his head (the clerk's bubble carries the why).
+      this.overlay.pop('STRESSED!', '#e0705a', new THREE.Vector3((mall.skanky.x - 640) / 32, 2.3, (mall.skanky.y - 400) / 32), 1.3);
+      this.overlay.say('clerk-bentley', 'BENTLEY CLERK', "A BOX IS MISSING. I'M NOT SIGNING.\nSECURITY HAS IT. BACK HALLWAY.", 4200, () => at);
+    } else if (event.type === 'security' && at) {
+      this.overlay.say('mall-security', 'SECURITY', 'THIS CAME IN LAST NIGHT.\nBENTLEY, RIGHT?', 3400, () => at);
     }
   }
 
@@ -2922,7 +2933,7 @@ export class Belt3d {
       ${m.inspectionsHeld ? `<p>INSPECTIONS · ${m.inspectionLoads} clean ${m.inspectionLoads === 1 ? 'load' : 'loads'} watched · +${m.inspectionBonus}</p>` : ''}
       ${this.coffeeResult ? `<p>TIMMIES RUN · ${this.coffeeResult.cups} of ${COFFEE_RUN.cups} coffees made it · +${this.coffeeResult.points}</p>` : ''}
       <p>${m.thrownDeliveries} thrown in clean · ${m.damaged} broken (−${m.breakagePenalty} points${m.damaged > THROWING.gradeForgivenBreaks ? `, ${m.gradedBreaks} counted against the grade` : ''})</p>
-      ${mall ? `<p>MALL RUN · ${mall.delivered}/6 delivered · ${mall.signatures}/6 signed · five-ton ${home ? 'returned' : 'not returned'} · +${this.mallBonus}</p>
+      ${mall ? `<p>MALL RUN · ${mall.delivered}/${mall.stores.length} delivered · ${mall.signatures}/${mall.stores.length} signed · five-ton ${home ? 'returned' : 'not returned'} · +${this.mallBonus}</p>
       <p>DRIVING · ${this.drivingCollisions} bumps${this.drivingRedLights ? ` · ${this.drivingRedLights} red lights` : ''} · −${this.drivingPenalty} points · cargo safe${this.driveTimes.length ? ` · ${this.driveTimes.map(driveClock).join(' and ')}${this.driveBonus ? ` · against par +${this.driveBonus}` : ''}` : ''}</p>
       <p class="b3d-sum">SHIFT ${m.score} + NIGHT GOALS ${judged.bonus} + MALL RUN ${this.mallBonus} + ON PAR ${this.driveBonus} − ROAD ${this.drivingPenalty}</p>
       <p><b>NIGHT TOTAL ${String(total).padStart(5, '0')}</b> · ${m.gradeQuote}</p>` : ''}

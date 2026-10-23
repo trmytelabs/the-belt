@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 
 import { LOT_LAYOUT, MALL_LAYOUT, type KeyReturnModel, type MallEvent } from '../game/slice/MallModel';
-import type { MallModel3D as MallModel } from './MallModel3D';
+import { BENTLEY, SECURITY_WING, type MallModel3D as MallModel } from './MallModel3D';
 import type { Cutscene } from '../game/slice/StoryModel';
 import type { StoryScene } from '../game/slice/StoryScript';
 import { animateCharacter, blendPose, createCharacter, faceToward, lookToward, mergeCharacter, SEAT_BLEND_SECONDS, snapshotPose, type Character, type CharacterSpec } from './characters';
@@ -129,12 +129,18 @@ export class StageActor {
 const CLERK: CharacterSpec = { name: 'CLERK', skin: SKIN.tan, shirt: 0x2f7d6b, pants: 0x2b2f3a, hair: 0x2a1d14, hairStyle: 'bun' };
 /** The Cha for Tea waitress, who wheels the dim sum cart (the clerk's model, rocketboxCast.ts). */
 const WAITRESS: CharacterSpec = { name: 'WAITRESS', skin: SKIN.tan, shirt: 0x7a1c22, pants: 0x1a1a1f, hair: 0x1b1612, hairStyle: 'bun' };
+/** Bentley's clerk, in the old anchor space at the mall's east end (the cashier's model). */
+const BENTLEY_CLERK: CharacterSpec = { name: 'BENTLEY CLERK', skin: SKIN.light, shirt: 0x15171a, pants: 0x2a2d33, hair: 0x2a1d14, hairStyle: 'short' };
+/** The mall's security guard, at the desk at the end of the service hallway (the depot drivers' model). */
+const SECURITY: CharacterSpec = { name: 'SECURITY', skin: SKIN.tan, shirt: 0x2a3550, pants: 0x1a1d22, hair: 0x15110d, hairStyle: 'short' };
 const CASHIER: CharacterSpec = { name: 'CASHIER', skin: SKIN.brown, shirt: 0x2e8b57, pants: 0x2b2f3a, hair: 0x1b1612, hairStyle: 'short', vest: 0xe85a2a };
 
 function specFor(id: string): CharacterSpec {
   if (id === 'termite') return TERMITE_SPEC;
   if (id === 'skanky') return SKANKY_SPEC;
   if (id === 'cashier') return CASHIER;
+  if (id === 'bentley-clerk') return BENTLEY_CLERK;
+  if (id === 'security') return SECURITY;
   if (id === 'waitress') return WAITRESS;
   if (id === 'clerk' || id.startsWith('clerk-')) return CLERK;
   return RESIDENT_SPECS[id] ?? VISITORS[id] ?? { name: id.toUpperCase(), skin: SKIN.light, shirt: 0x667788, pants: 0x333333, hair: 0x222222, hairStyle: 'short' };
@@ -321,6 +327,11 @@ export class StoryStage {
   /** Seconds of weather so far, for the wind. */
   private weatherClock = 0;
   private mallStoreText = new Map<string, string>();
+  /** The mall's clock as of its last frame; until when Skanky shows his stress, Bentley's clerk yells, and the guard talks. */
+  private mallTime = 0;
+  private mallStress = -1;
+  private mallYell = -1;
+  private mallGuardTalk = -1;
   private southgate: SouthgateMall | null = null;
   private mallIntroBeat = -1;
   private mallSnap = false;
@@ -1465,11 +1476,10 @@ export class StoryStage {
     ramp.position.set(mallX(52), 0.55, mallZ(400));
     ramp.rotation.z = -0.9;
     scene.add(ramp);
-    // Six labelled bundles in the truck, one per store.
-    for (let slot = 0; slot < 6; slot += 1) {
-      const bundle = this.bundle(6 + slot % 3 * 2);
-      // The slots are squeezed to fit between the truck's side walls; the model's slot rows are unchanged.
-      bundle.position.set(mallX(22), 1.1, mallZ(350 + slot * 20) * 0.62);
+    // Eight labelled bundles in the truck: one per store and two for Bentley (placed each frame from the model's slots).
+    for (let slot = 0; slot < 8; slot += 1) {
+      const bundle = this.bundle(slot < 6 ? 6 + slot % 3 * 2 : BENTLEY.boxes);
+      bundle.scale.setScalar(0.88);
       scene.add(bundle);
       props[`slot-${slot}`] = bundle;
     }
@@ -1507,9 +1517,28 @@ export class StoryStage {
     carried.visible = false;
     scene.add(carried);
     props.carried = carried;
-    this.cast(stage, ['skanky', ...MALL_LAYOUT.doors.map((_, index) => `clerk-${index}`)]);
-    MALL_LAYOUT.doors.forEach((_, index) => {
-      const actor = stage.actors.get(`clerk-${index}`)!;
+    this.cast(stage, ['skanky', ...MALL_LAYOUT.doors.map((_, index) => `clerk-${index}`), 'bentley-clerk', 'security']);
+    // The security guard keeps the missing Bentley box on the desk until Skanky comes for it.
+    const securityBox = this.bundle(1);
+    securityBox.position.set(mallX(SECURITY_WING.desk.x + 14), 1.0, mallZ(SECURITY_WING.desk.y + 40));
+    this.setLabel(securityBox, 'BENTLEY');
+    scene.add(securityBox);
+    props.securityBox = securityBox;
+    // A pulsing gold ring and arrow over where to go next on the Bentley run: the staff doors, then Bentley again.
+    const beacon = new THREE.Group();
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.75, 0.95, 32), new THREE.MeshBasicMaterial({ color: 0xf2c14e, transparent: true, opacity: 0.85, depthWrite: false, side: THREE.DoubleSide }));
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = 0.03;
+    const arrow = new THREE.Mesh(new THREE.ConeGeometry(0.28, 0.6, 12), new THREE.MeshBasicMaterial({ color: 0xf2c14e }));
+    arrow.rotation.x = Math.PI;
+    arrow.position.y = 2.6;
+    arrow.name = 'beacon-arrow';
+    beacon.add(ring, arrow);
+    beacon.visible = false;
+    scene.add(beacon);
+    props.mallBeacon = beacon;
+    [...MALL_LAYOUT.doors.map((_, index) => `clerk-${index}`), 'bentley-clerk'].forEach((id) => {
+      const actor = stage.actors.get(id)!;
       actor.character.nameTag.visible = false;
       const pad = rounded(0.24, 0.32, 0.03, standard(0x7a5a3a, 0.7), 0.02);
       pad.position.set(0, -0.1, 0.07);
@@ -2513,7 +2542,10 @@ export class StoryStage {
     skanky.root.visible = true;
     skanky.at(mallX(model.skanky.x), mallZ(model.skanky.y));
     skanky.faceAngle = { right: Math.PI / 2, left: -Math.PI / 2, down: 0, up: Math.PI }[model.skanky.facing];
-    skanky.carrying = model.carrying !== null || model.cart.pushed;
+    skanky.carrying = model.carrying !== null || model.cart.pushed || model.handBox;
+    this.mallTime = time;
+    // Refused at Bentley, Skanky is stressed: a frustrated gesture before he goes for the box.
+    skanky.setPose(time < this.mallStress && !model.handBox && !model.cart.pushed ? 'swear' : 'none', time);
     const cart = props.cart;
     cart.position.set(mallX(model.cart.x), 0, mallZ(model.cart.y));
     const facing = model.cart.facing;
@@ -2531,6 +2563,8 @@ export class StoryStage {
     }
     model.truckBundles.forEach((id, slot) => {
       const bundle = props[`slot-${slot}`];
+      // The slots are squeezed to fit between the truck's side walls; the model's slot rows are unchanged.
+      bundle.position.set(mallX(22), 1.1, mallZ(model.slotPosition(slot).y) * 0.62);
       bundle.visible = id !== null;
       if (id) {
         const store = model.store(id);
@@ -2549,34 +2583,72 @@ export class StoryStage {
       this.highlightBundle(props[`slot-${slot}`], selected);
     });
     const carried = props.carried;
-    carried.visible = model.carrying !== null;
-    if (model.carrying) {
-      this.setBundleCount(carried, model.store(model.carrying).boxes);
+    carried.visible = model.carrying !== null || model.handBox;
+    if (model.carrying || model.handBox) {
+      // A store's bundle, or Bentley's missing box carried back by hand from security.
+      const store = model.store(model.carrying ?? BENTLEY.id);
+      this.setBundleCount(carried, model.handBox ? 1 : store.boxes);
       const forward = new THREE.Vector3(Math.sin(skanky.root.rotation.y), 0, Math.cos(skanky.root.rotation.y));
-      carried.position.copy(skanky.root.position).addScaledVector(forward, 0.58).setY(0.75);
+      carried.position.copy(skanky.root.position).addScaledVector(forward, model.handBox ? 0.42 : 0.58).setY(model.handBox ? 0.95 : 0.75);
       carried.rotation.y = skanky.root.rotation.y;
-      this.setLabel(carried, model.store(model.carrying).name);
+      this.setLabel(carried, store.name);
+    }
+    // The missing box waits on the security desk until it is collected; the guard at the desk, facing the hallway.
+    props.securityBox.visible = model.bentley === 'pending' || model.bentley === 'refused';
+    const guard = actors.get('security')!;
+    guard.root.visible = true;
+    guard.at(mallX(SECURITY_WING.desk.x + SECURITY_WING.desk.w + 10), mallZ(SECURITY_WING.desk.y + 40));
+    guard.faceAngle = -Math.PI / 2;
+    guard.setPose(time < this.mallGuardTalk ? 'announce' : 'none', time);
+    // Where to go next on the Bentley run: the staff doors once refused, Bentley's portal with the box.
+    const beacon = props.mallBeacon;
+    beacon.visible = model.bentley === 'refused' || model.bentley === 'fetched';
+    if (beacon.visible) {
+      const doors = SECURITY_WING.doors;
+      const at = model.bentley === 'refused' ? { x: doors.x + doors.w / 2, y: doors.y + 4 } : { x: BENTLEY.zone.x + BENTLEY.zone.w / 2, y: BENTLEY.door.y };
+      beacon.position.set(mallX(at.x), 0, mallZ(at.y));
+      const pulse = this.reducedMotion ? 1 : 1 + Math.sin(time * 4) * 0.08;
+      beacon.scale.setScalar(pulse);
+      const arrow = beacon.getObjectByName('beacon-arrow');
+      if (arrow) arrow.position.y = 2.6 + (this.reducedMotion ? 0 : Math.sin(time * 3) * 0.15);
     }
     model.stores.forEach((store, index) => {
-      const clerk = actors.get(`clerk-${index}`)!;
+      const bentley = store.id === BENTLEY.id;
+      const clerk = actors.get(bentley ? 'bentley-clerk' : `clerk-${index}`)!;
       const north = store.side === 'north';
       clerk.root.visible = store.state !== 'waiting';
-      clerk.at(mallX(store.door.x + 30), mallZ(north ? store.door.y - 26 : store.door.y + 26));
-      clerk.faceAngle = north ? 0 : Math.PI;
-      clerk.setPose(store.state === 'dropped' ? 'press' : 'none', time);
+      // Bentley's clerk stands in its portal at the east end, facing back down the concourse.
+      if (bentley) clerk.at(mallX(store.door.x + 28), mallZ(store.door.y + 18));
+      else clerk.at(mallX(store.door.x + 30), mallZ(north ? store.door.y - 26 : store.door.y + 26));
+      clerk.faceAngle = bentley ? -Math.PI / 2 : north ? 0 : Math.PI;
+      // Refusing to sign, Bentley's clerk yells, then waits with no pad; otherwise a clerk holds out the pad while a signature is due.
+      const refusing = bentley && store.state === 'dropped' && (model.bentley === 'refused' || model.bentley === 'fetched');
+      clerk.setPose(refusing ? time < this.mallYell ? 'shout' : 'none' : store.state === 'dropped' ? 'press' : 'none', time);
       // Each storefront's lit status board, angled up to the gameplay camera.
       const thisRun = store.run === model.run && !model.runComplete;
-      const text = store.state === 'signed' ? '✓ SIGNED' : store.state === 'dropped' ? 'SIGN HERE' : thisRun ? 'THIS RUN · DELIVER' : `RUN ${store.run + 1}`;
+      const text = refusing ? 'MISSING A BOX' : store.state === 'signed' ? '✓ SIGNED' : store.state === 'dropped' ? 'SIGN HERE' : thisRun ? 'THIS RUN · DELIVER' : `RUN ${store.run + 1}`;
       if (this.mallStoreText.get(store.id) !== text) {
         this.mallStoreText.set(store.id, text);
-        this.southgate?.setStatus(index, text, store.state === 'signed' ? '#8fd18a' : store.state === 'dropped' ? '#f2c14e' : thisRun ? '#f0e0b0' : '#9aa4a8');
+        this.southgate?.setStatus(index, text, refusing ? '#e0705a' : store.state === 'signed' ? '#8fd18a' : store.state === 'dropped' ? '#f2c14e' : thisRun ? '#f0e0b0' : '#9aa4a8');
       }
       const drop = props[`drop-${store.id}`];
       if (store.state !== 'waiting' && !drop) {
-        const pile = this.bundle(store.boxes);
-        pile.position.set(mallX(store.door.x - 30), 0, mallZ(north ? store.door.y - 30 : store.door.y + 30));
+        let pile: THREE.Object3D;
+        if (bentley) {
+          // Both of Bentley's loads, side by side just inside its portal.
+          pile = new THREE.Group();
+          for (const side of [-1, 1]) {
+            const load = this.bundle(store.boxes);
+            load.position.set(0, 0, side * 0.45);
+            pile.add(load);
+          }
+          pile.position.set(mallX(store.door.x + 40), 0, mallZ(store.door.y - 40));
+        } else {
+          pile = this.bundle(store.boxes);
+          pile.position.set(mallX(store.door.x - 30), 0, mallZ(north ? store.door.y - 30 : store.door.y + 30));
+        }
         stage.scene.add(pile);
-        props[`drop-${store.id}`] = pile;
+        props[`drop-${store.id}`] = pile as THREE.Group;
       }
     });
     for (const actor of actors.values()) if (actor.root.visible) actor.animate(dt, time, this.reducedMotion);
@@ -2635,6 +2707,16 @@ export class StoryStage {
 
   /** A short "SIGNED" or "DROPPED" pop above a store, for feedback beyond sound. */
   public mallEvent(model: MallModel, event: MallEvent): THREE.Vector3 | null {
+    if (event.type === 'refuse') {
+      this.mallStress = this.mallTime + 3.2;
+      this.mallYell = this.mallTime + 4.2;
+    }
+    // Asked again without the box, Bentley's clerk yells again.
+    if (event.type === 'wrong' && event.storeId === BENTLEY.id && model.bentley === 'refused') this.mallYell = this.mallTime + 2.2;
+    if (event.type === 'security') {
+      this.mallGuardTalk = this.mallTime + 2.6;
+      return new THREE.Vector3(mallX(SECURITY_WING.desk.x + SECURITY_WING.desk.w + 10), 2.6, mallZ(SECURITY_WING.desk.y + 40));
+    }
     if (!event.storeId) return null;
     const store = model.store(event.storeId);
     return new THREE.Vector3(mallX(store.door.x), 2.6, mallZ(store.door.y));
