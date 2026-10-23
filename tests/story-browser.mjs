@@ -269,6 +269,9 @@ try {
   });
   await wait(() => window.fixtureApp.state === 'celebrating');
   await read(() => { window.fixtureApp.crew.celebrationMs = 12_950; });
+  // Who takes the five-ton is a choice, not a story scene: it asks even when just playing. M is Skanky's mall run.
+  await wait(() => window.fixtureApp.state === 'run-choice');
+  await page.keyboard.press('KeyM');
   await wait(() => window.fixtureApp.state === 'driving');
   const justPlay = await read(() => { clearInterval(window.justPlaySampler); return { states: [...window.justPlayStates], destination: window.fixtureApp.driving.destination }; });
   assert.equal(justPlay.destination, 'mall');
@@ -384,6 +387,10 @@ try {
   await wait(() => window.fixtureApp.state === 'celebrating');
   assert.equal(await read(() => window.fixtureApp.story.chapter), 'clockout');
   await read(() => { window.fixtureApp.crew.celebrationMs = 12_950; });
+  // Who takes the five-ton out: Skanky's mall run (M) or Termite's run with Ralph (R).
+  await wait(() => window.fixtureApp.state === 'run-choice');
+  assert.match(await page.locator('.b3d-panel').innerText(), /WHO TAKES IT OUT\?[\s\S]*SKANKY · THE MALL RUN[\s\S]*TERMITE · THE RALPH RUN/);
+  await page.keyboard.press('KeyM');
   await wait(() => window.fixtureApp.cutscene?.scene.id === 'mall-assignment');
   // Shan walks down to Skanky facing the way he goes (he used to crab-walk sideways).
   const shanWalk = [];

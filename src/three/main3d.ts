@@ -50,6 +50,8 @@ import { COFFEE_RUN, CoffeeRunModel, type CoffeeRunEvent } from './coffeeRun';
 import { CoffeeRunScene } from './coffeeRunView';
 import { DECISION, HOME_DECISION, LEAVE_HOUSE, QUIT_ENDING, QUIT_NIGHT, type HomeBeat } from './homeScript';
 import { CHA_FOR_TEA, homeScene3d } from './dimSumScript';
+import { RALPH_RUN, RALPH_STOPS, RalphRunModel, type RalphRunEvent } from './ralphRun';
+import { RalphRunScene } from './ralphRunView';
 import { DrivingView } from './driving';
 import { BELT_SOLID_WIDTH, HEAD_DRIVE, clearReceiving } from './receivingCollision';
 import { TouchControls } from './touch';
@@ -65,8 +67,8 @@ import {
 } from './space';
 import { DepotWorld, SKANKY_SPEC, TERMITE_SPEC } from './world';
 
-type AppState = 'briefing' | 'story' | 'decision' | 'countdown' | 'playing' | 'break-alert' | 'interlude' | 'mesa' | 'dream' | 'paused' | 'celebrating' | 'driving' | 'mall' | 'lot' | 'ended' | 'coffee' | 'coffee-done';
-type Resumable = 'playing' | 'break-alert' | 'interlude' | 'story' | 'driving' | 'mall' | 'lot' | 'coffee';
+type AppState = 'briefing' | 'story' | 'decision' | 'countdown' | 'playing' | 'break-alert' | 'interlude' | 'mesa' | 'dream' | 'paused' | 'celebrating' | 'driving' | 'mall' | 'lot' | 'ended' | 'coffee' | 'coffee-done' | 'run-choice' | 'paper' | 'ralph-done';
+type Resumable = 'playing' | 'break-alert' | 'interlude' | 'story' | 'driving' | 'mall' | 'lot' | 'coffee' | 'paper';
 
 const PHASE_LABELS: Record<string, string> = {
   lesson: '01  /  FIND YOUR RHYTHM', flow: '02  /  KEEP IT MOVING', rush: '03  /  LAST DISPATCH',
@@ -227,6 +229,14 @@ export class Belt3d {
   private coffeeScene: CoffeeRunScene | null = null;
   /** Tonight's Timmies run once played: the coffees that made it and what they paid the shift. */
   public coffeeResult: { cups: number; points: number } | null = null;
+  /** The Ralph run (`ralphRun.ts`), Termite's five-ton paper route with Ralph after the shift, and its marks (made once). */
+  private ralph: RalphRunModel | null = null;
+  private ralphScene: RalphRunScene | null = null;
+  /** Tonight's Ralph run once driven: the stops served, the dead-on ones and what it paid the night. */
+  public ralphResult: { delivered: number; bullseyes: number; points: number; bumps: number } | null = null;
+  private ralphBumps = 0;
+  /** `?minigame=ralph`: the Ralph run on its own, from its own briefing. */
+  private readonly practiceRalph = new URLSearchParams(window.location.search).get('minigame') === 'ralph';
   /** `?minigame=coffee`: the Timmies run on its own, from its own briefing. */
   private readonly practiceCoffee = new URLSearchParams(window.location.search).get('minigame') === 'coffee';
   private breakAlertMs = 0;
@@ -366,9 +376,9 @@ export class Belt3d {
         if (this.state === 'playing') this.model.brake();
         else if (this.state === 'mall') this.mall?.toggleCart();
       },
-      throwParcel: () => { if (this.state === 'playing') this.model.throwHeld(); },
+      throwParcel: () => { if (this.state === 'playing') this.model.throwHeld(); else if (this.state === 'paper') this.throwRalphParcel(); },
       // VIEW: the depot's overview, or on the drive the five-ton's cab.
-      overview: () => { if (this.state === 'driving') this.drivingView?.toggleView(); else this.overview = !this.overview; },
+      overview: () => { if (this.state === 'driving' || this.state === 'paper') this.drivingView?.toggleView(); else this.overview = !this.overview; },
       pause: () => { if (this.canPause()) this.pause(); },
       mute: () => { audioSystem.toggleMuted(); },
     });
@@ -501,7 +511,7 @@ export class Belt3d {
   }
 
   private canPause(): boolean {
-    return this.state === 'playing' || this.state === 'break-alert' || this.state === 'interlude' || this.state === 'story' || this.state === 'driving' || this.state === 'mall' || this.state === 'lot' || this.state === 'coffee';
+    return this.state === 'playing' || this.state === 'break-alert' || this.state === 'interlude' || this.state === 'story' || this.state === 'driving' || this.state === 'mall' || this.state === 'lot' || this.state === 'coffee' || this.state === 'paper';
   }
 
   /** The primary action: grab/deliver on the belt, next line in a story, interact in the mall or lot. */
@@ -511,6 +521,7 @@ export class Belt3d {
     else if (this.state === 'mall') this.mall?.action();
     else if (this.state === 'lot') this.lot?.action();
     else if (this.state === 'driving') this.driving?.park();
+    else if (this.state === 'paper') this.throwRalphParcel();
   }
 
   private bindInput(): void {
@@ -526,6 +537,16 @@ export class Belt3d {
         event.preventDefault();
         return;
       }
+      if (this.state === 'run-choice') {
+        if (event.code === 'KeyM') this.chooseRun('mall');
+        else if (event.code === 'KeyR') this.chooseRun('ralph');
+
+        return;
+      }
+      if (this.state === 'paper') {
+        if (event.code === 'KeyF' || event.code === 'Space') { this.throwRalphParcel(); return; }
+        if (event.code === 'KeyV') { this.drivingView?.toggleView(); return; }
+      }
       if (this.state === 'decision') {
         if (event.code === 'KeyG') this.decide('go');
         else if (event.code === 'KeyQ') this.decide('quit');
@@ -533,9 +554,10 @@ export class Belt3d {
         return;
       }
       if (event.code === 'Enter') {
-        if (['briefing', 'story', 'ended', 'paused', 'coffee-done'].includes(this.state)) event.preventDefault();
+        if (['briefing', 'story', 'ended', 'paused', 'coffee-done', 'ralph-done'].includes(this.state)) event.preventDefault();
         if (this.state === 'briefing') this.startNight();
         else if (this.state === 'coffee-done') this.afterCoffee();
+        else if (this.state === 'ralph-done') this.afterRalph();
         else if (this.state === 'story') this.cutscene?.skip();
         else if (this.state === 'ended') {
           if (this.practiceDestination) this.beginDriving(this.practiceDestination);
@@ -617,6 +639,14 @@ export class Belt3d {
         <button type="button">START DRIVE  ↵</button><a href="${window.location.pathname}?mode=3d">PLAY THE FULL NIGHT</a>`, () => this.startNight());
       return;
     }
+    if (this.practiceRalph) {
+      this.overlay.setMode('shift');
+      this.overlay.showPanel(`<div class="kicker">TERMITE &amp; RALPH  /  THE FIVE-TON'S OTHER RUN</div><h1>THE RALPH RUN.</h1>
+        <p>The five-ton is loaded for the businesses on the streets by the depot, and Ralph is riding along. Drive the loop and throw each of the eight businesses its parcel out of the window as you go by: ${RALPH_RUN.parcels} parcels, two minutes.</p>
+        <p>${this.touch.enabled ? 'GAS, BRAKE and the stick drive; THROW throws.' : 'WASD or the arrows drive; F throws, out of whichever window faces the next stop.'} The parcel keeps the truck's speed, so throw a little before you reach the business. Each delivery pays +${RALPH_RUN.hitPoints}, dead on its mark +${RALPH_RUN.bullseyePoints} more, and every second to spare +${RALPH_RUN.secondPoints}.</p>
+        <button type="button">START  ↵</button><a href="${window.location.pathname}?mode=3d">PLAY THE FULL NIGHT</a>`, () => this.startNight());
+      return;
+    }
     if (this.practiceCoffee) {
       this.overlay.setMode('shift');
       this.overlay.showPanel(`<div class="kicker">TERMITE &amp; SKANKY  /  THE LUNCH MINI-GAME</div><h1>THE TIMMIES RUN.</h1>
@@ -657,6 +687,7 @@ export class Belt3d {
       ${this.record.played > 0 ? `<button type="button" class="b3d-medals-link" data-action="medals">MEDALS · ${this.record.medals.length} OF ${MEDALS.length} · RECENT NIGHTS</button>` : ''}
       <a href="${window.location.pathname}?mode=3d&amp;drive=mall">TRY JUST THE DRIVE · EXPLORE THE CITY</a>
       <a href="${window.location.pathname}?mode=3d&amp;minigame=coffee">TRY THE TIMMIES RUN · THE LUNCH MINI-GAME</a>
+      <a href="${window.location.pathname}?mode=3d&amp;minigame=ralph">TRY THE RALPH RUN · TERMITE'S PAPER ROUTE</a>
       <a href="${window.location.pathname}?mode=classic">PLAY THE ORIGINAL FULL SHIFT</a>`, { night: () => this.startNight(), play: () => this.startNight(false, true), players: () => this.togglePlayers(), peak: () => this.startNight(true), medals: () => this.showMedals(), endless: () => this.startEndless(), daily: () => this.startDaily(),
         'perk-0': () => this.pickPerk(0), 'perk-1': () => this.pickPerk(1), 'perk-2': () => this.pickPerk(2) });
   }
@@ -678,6 +709,7 @@ export class Belt3d {
     audioSystem.startMusic('game');
     if (this.practiceDestination) { this.beginDriving(this.practiceDestination); return; }
     if (this.practiceCoffee) { this.overlay.clearCenter(); this.beginCoffeeRun(); return; }
+    if (this.practiceRalph) { this.overlay.clearCenter(); this.beginRalphRun(); return; }
     this.overlay.clearCenter();
     if (this.playPrologue && !this.justPlay) {
       this.story.go('prologue');
@@ -826,6 +858,105 @@ export class Belt3d {
   }
 
   /** Termite and Skanky choose: go in to work, or quit UPS. */
+  /** Who takes the five-ton out after the shift: Skanky to the mall, or Termite on a paper route with Ralph. */
+  private showRunChoice(): void {
+    this.state = 'run-choice';
+    this.keys.clear(); this.touch.reset();
+    this.overlay.clearSpeech();
+    this.overlay.setMode('shift');
+    this.overlay.showPanel(`<div class="kicker">THE FIVE-TON'S LOADED</div>
+      <h1>WHO TAKES IT OUT?</h1>
+      <p>Skanky can take it to Southgate Mall and walk the deliveries in. Or Termite can take it round the streets by the depot with Ralph riding along, throwing each business its parcel out of the window as he drives by.</p>
+      <p style="color:#8da7ac;font-size:12px;letter-spacing:1px">${this.touch.enabled ? 'TAP A CHOICE' : this.pad.connected ? 'A THE MALL RUN · B THE RALPH RUN' : 'M THE MALL RUN · R THE RALPH RUN · OR CLICK A CHOICE'}</p>
+      <div class="b3d-choices"><button type="button" class="steal" data-action="mall">SKANKY · THE MALL RUN</button><button type="button" class="leave" data-action="ralph">TERMITE · THE RALPH RUN</button></div>`,
+    { mall: () => this.chooseRun('mall'), ralph: () => this.chooseRun('ralph') });
+  }
+
+  private chooseRun(run: 'mall' | 'ralph'): void {
+    if (this.state !== 'run-choice') return;
+    audioSystem.play('button');
+    this.overlay.clearCenter();
+    if (run === 'mall') {
+      this.story.go('assignment');
+      this.playScene(MALL_ASSIGNMENT);
+    } else this.beginRalphRun();
+  }
+
+  /**
+   * The Ralph run: Termite drives the five-ton round the loop by the depot with Ralph, throwing each of eight
+   * businesses its parcel out of the window (F, a pad's A or B, or THROW), against the clock, while Ralph talks.
+   */
+  private beginRalphRun(): void {
+    this.story.go('ralph');
+    const view = this.ensureDrivingView();
+    this.driving = new DrivingModel('mall');
+    view.begin(this.driving, 'truck');
+    view.guidesHidden = true;
+    this.ralphScene ??= new RalphRunScene(view);
+    this.ralphScene.begin();
+    this.ralph = new RalphRunModel();
+    this.ralphBumps = 0;
+    this.stage.end();
+    this.state = 'paper';
+    this.keys.clear(); this.touch.reset();
+    this.overlay.clearCenter(); this.overlay.clearSpeech();
+    this.overlay.setMode('chapter');
+    this.overlay.storyTitle('THE RALPH RUN', 'TERMITE · FIVE-TON · RALPH RIDING ALONG', '5:05 AM');
+    this.overlay.showToast(this.touch.enabled ? 'Drive past each business and tap THROW a little before you reach it' : 'Drive past each business · F throws out of the window · throw a little before you reach it', 4200);
+    audioSystem.startMusic('game');
+  }
+
+  private throwRalphParcel(): void {
+    const run = this.ralph, drive = this.driving;
+    if (this.state !== 'paper' || !run || !drive) return;
+    run.throwParcel({ x: drive.x, z: drive.z, heading: drive.heading, speed: drive.speed });
+  }
+
+  private handleRalphEvent(event: RalphRunEvent): void {
+    if (event.type === 'throw') audioSystem.play('throw');
+    else if (event.type === 'hit') {
+      audioSystem.play('register');
+      this.gamepad.rumble(event.bullseye ? 0.5 : 0.3, 140);
+      this.overlay.pop(`${event.bullseye ? 'DEAD ON' : 'DELIVERED'} +${event.points}`, event.bullseye ? '#ffd56a' : '#9fe3a5', new THREE.Vector3(event.stop.x, 2.4, event.stop.z), event.bullseye ? 1.4 : 1.15);
+      this.overlay.showToast(`${event.stop.name} · ${event.bullseye ? 'DEAD ON' : 'DELIVERED'} · +${event.points}`, 1800);
+    } else if (event.type === 'miss') audioSystem.play('drop');
+    else if (event.type === 'empty') this.overlay.showToast('NO PARCELS LEFT', 1600);
+    else if (event.type === 'line') {
+      const scene = this.ralphScene;
+      if (scene) this.overlay.say('ralph-run', 'RALPH', event.line, 5200, () => scene.cabAnchor());
+      audioSystem.play('npc-talk');
+    }
+  }
+
+  /** The run is over: its points go to the night, and a card says how it went. */
+  private finishRalphRun(reason: 'all' | 'time' | 'parcels'): void {
+    const run = this.ralph;
+    if (!run) return;
+    this.ralphResult = { delivered: run.delivered, bullseyes: run.bullseyes, points: run.points, bumps: this.ralphBumps };
+    this.state = 'ralph-done';
+    this.keys.clear(); this.touch.reset();
+    audioSystem.setDriving(null);
+    if (run.points) audioSystem.play('register');
+    const all = run.delivered === run.stops.length;
+    this.overlay.showPanel(`<div class="kicker">THE RALPH RUN · ${reason === 'time' ? 'OUT OF TIME' : reason === 'parcels' ? 'OUT OF PARCELS' : 'EVERY STOP SERVED'}</div>
+      <h1>${all ? 'EIGHT FOR EIGHT.' : `${run.delivered} OF ${run.stops.length} DELIVERED.`}</h1>
+      <p>${run.delivered} delivered × ${RALPH_RUN.hitPoints}${run.bullseyes ? ` · ${run.bullseyes} dead on × ${RALPH_RUN.bullseyePoints}` : ''}${all ? ` · ${Math.floor(run.remainingMs / 1000)} s to spare` : ''} · <b>+${run.points}</b>${this.ralphBumps ? ` · ${this.ralphBumps} ${this.ralphBumps === 1 ? 'bump' : 'bumps'} on the way` : ''}</p>
+      ${this.practiceRalph ? `<button type="button">AGAIN  ↵</button><a href="${window.location.pathname}?mode=3d">PLAY THE FULL NIGHT</a>` : '<button type="button">CLOCK OUT  ↵</button>'}`,
+    () => this.afterRalph(), { docked: true });
+  }
+
+  /** After the card: the practice drives again; a night goes on to clocking out. */
+  private afterRalph(): void {
+    if (this.state !== 'ralph-done') return;
+    this.overlay.clearCenter();
+    this.overlay.dropSpeech((key) => key === 'ralph-run');
+    if (this.practiceRalph) { this.ralphResult = null; this.ralphScene?.end(); this.beginRalphRun(); return; }
+    this.ralphScene?.end();
+    this.ralph = null;
+    this.story.go('home');
+    this.playScene(GO_HOME);
+  }
+
   private showDecision(): void {
     this.state = 'decision';
     this.keys.clear(); this.touch.reset();
@@ -1081,6 +1212,7 @@ export class Belt3d {
     if (this.mall) this.mall.paused = true;
     if (this.lot) this.lot.paused = true;
     if (this.driving) this.driving.paused = true;
+    if (this.state === 'paused' && this.pausedFrom === 'paper') audioSystem.setDriving(null);
     this.keys.clear();
     this.touch.reset();
     audioSystem.stopMusic();
@@ -1125,6 +1257,7 @@ export class Belt3d {
       ['DAILY CHALLENGE', `One night a day, the same on every device: the date picks the freight, the surprises, the goals and a rule. It plays without the story scenes${this.touch.enabled ? '' : ' (Y on the briefing)'}; today's best and the days in a row are kept on this device.`],
       ['GHOST DRIVES', 'Your fastest drive to each yard in the five-ton is kept on this device and drives beside you next time as a see-through truck. Beat it to keep the new one.'],
       ['TIMMIES RUN', `After a Tim Hortons lunch, Skanky rides back up front holding two trays of coffees for thirty seconds. ${touch ? 'The stick tilts' : pad ? 'The left stick tilts' : 'WASD or the arrows tilt'} the trays: lean into turns, back when Termite brakes, forward as he pulls away. +${COFFEE_RUN.pointsPerCup} a coffee, +${COFFEE_RUN.allSafeBonus} more for all eight.`],
+      ['THE RALPH RUN', `After the shift, Termite can take the five-ton out with Ralph instead of Skanky's mall run: drive the loop by the depot and throw each of eight businesses its parcel out of the window (${touch ? 'THROW' : pad ? 'A or B' : 'F'}), leading each throw a little, while Ralph talks. +${RALPH_RUN.hitPoints} a delivery, +${RALPH_RUN.bullseyePoints} more dead on.`],
       ['ENDLESS SHIFT', 'Also unlocked by a finished night: no clock. From the rush on, freight comes sooner and the belt runs faster every minute until recovery overflows. It keeps its own best.'],
       ['CONTROLS', touch ? 'The stick moves; SWITCH changes worker; GRAB / DELIVER, THROW and STOP THE BELT do what they say; VIEW shows the whole warehouse.'
         : pad ? 'Left stick or d-pad moves · A grabs and delivers · B throws · X stops the belt · Y switches worker · BACK overview · START pause. On menus the d-pad or stick picks, A presses and B goes back.'
@@ -1191,7 +1324,7 @@ export class Belt3d {
     this.keys.clear(); this.touch.reset();
     this.overlay.clearCenter();
     this.renderer.domElement.focus({ preventScroll: true });
-    if (this.state === 'playing' || this.state === 'mall' || this.state === 'driving' || this.state === 'coffee'
+    if (this.state === 'playing' || this.state === 'mall' || this.state === 'driving' || this.state === 'coffee' || this.state === 'paper'
       || this.state === 'story' && this.story.chapter !== 'break') audioSystem.startMusic('game');
   }
 
@@ -1287,6 +1420,8 @@ export class Belt3d {
     this.ghost = null; this.ghostRecorder = null;
     if (this.coffee) this.coffeeScene?.end();
     this.coffee = null; this.coffeeResult = null;
+    if (this.ralph) this.ralphScene?.end();
+    this.ralph = null; this.ralphResult = null; this.ralphBumps = 0;
     this.mallBonus = 0;
     this.breakAlertMs = 0;
     this.overlay.setLunchAlert(false);
@@ -1502,9 +1637,8 @@ export class Belt3d {
       }
     } else if (this.state === 'celebrating') {
       if (this.crew.updateCelebration(dt, this.time)) {
-        // The warehouse is done; Skanky's night is not.
-        this.story.go('assignment');
-        this.playScene(MALL_ASSIGNMENT);
+        // The warehouse is done; the five-ton's night is not: Skanky's mall run, or Termite's run with Ralph.
+        this.showRunChoice();
       }
     } else if (this.state === 'interlude') {
       this.benClock = Math.min(BEN_END, this.benClock + Math.min(dt * 1000, 100));
@@ -1538,6 +1672,26 @@ export class Belt3d {
       this.drivingView?.setGhost(this.ghost ? ghostPose(this.ghost, drive.elapsed) : null);
       this.drivingView?.update(drive, dt);
       if (drive.parked) this.finishDrive();
+    } else if (this.state === 'paper' && this.driving && this.ralph && this.ralphScene) {
+      const drive = this.driving, run = this.ralph, move = this.movement();
+      const wasBraking = drive.braking;
+      drive.update(dt, { steer: move.x, throttle: Math.max(0, -move.y, this.touch.pedals.throttle, this.pad.throttle), brake: Math.max(0, move.y, this.touch.pedals.brake, this.pad.brake) });
+      if (drive.braking && !wasBraking) audioSystem.drivingCue('brake');
+      // Bumps jolt the cab and are counted; a paper route keeps no road penalties.
+      for (const event of drive.drainEvents()) {
+        if (event.type !== 'collision') continue;
+        this.ralphBumps += 1;
+        audioSystem.drivingCue('collision');
+        this.gamepad.rumble(event.kind === 'cone' ? 0.35 : 0.7, 220);
+        this.drivingView?.jolt(event.kind === 'cone' ? 0.18 : 0.4);
+      }
+      run.update(dt * 1000);
+      for (const event of run.drainEvents()) {
+        if (event.type === 'done') this.finishRalphRun(event.reason);
+        else this.handleRalphEvent(event);
+      }
+      this.drivingView?.update(drive, dt);
+      this.ralphScene.update(run, drive, this.time, this.reducedMotion);
     } else if (this.state === 'coffee' && this.coffee && this.coffeeScene) {
       this.coffee.update(dt * 1000, this.movement());
       const events = this.coffee.drainEvents();
@@ -1572,7 +1726,7 @@ export class Belt3d {
     // The conveyor runs while sorting goes on, and falls quiet when it stops (a brake, a story stop, a pause, the end).
     const beltRunning = this.state === 'playing' && !m.paused && !m.ended && !m.eventStopped && m.brakeRemainingMs <= 0;
     audioSystem.setBelt(beltRunning ? m.beltSpeed : null, beltRunning ? m.packages.filter((parcel) => parcel.state === 'belt').length : 0);
-    audioSystem.setDriving(this.state === 'driving' && this.driving ? this.driving.speed : null);
+    audioSystem.setDriving((this.state === 'driving' || this.state === 'paper') && this.driving ? this.driving.speed : null);
     if (this.state === 'playing') this.crew.updateReceiving(m, dt, this.time);
     this.world.update(running ? dt : 0, this.time, m.beltTravel, this.reducedMotion);
     // Depot snow only falls while the depot is on screen; the wall piles always follow the shift clock.
@@ -1656,7 +1810,19 @@ export class Belt3d {
     const coffeeShown = (this.state === 'coffee' || this.state === 'coffee-done' || this.state === 'paused' && this.pausedFrom === 'coffee') && this.coffee !== null;
     this.overlay.coffeeGauge(coffeeShown && this.coffee ? { forward: this.coffee.slosh.forward, right: this.coffee.slosh.right,
       tiltForward: this.coffee.tilt.forward, tiltRight: this.coffee.tilt.right, danger: this.coffee.danger, cups: this.coffee.cups } : null);
-    if (coffeeShown && this.coffee) {
+    if ((this.state === 'paper' || this.state === 'ralph-done' || this.state === 'paused' && this.pausedFrom === 'paper') && this.ralph && this.driving) {
+      const run = this.ralph, drive = this.driving, next = run.routeNext(drive);
+      let where = '';
+      if (next) {
+        const right = { x: Math.sin(drive.heading), z: Math.cos(drive.heading) }, forward = { x: Math.cos(drive.heading), z: -Math.sin(drive.heading) };
+        const dx = next.stop.x - drive.x, dz = next.stop.z - drive.z;
+        const side = dx * right.x + dz * right.z >= 0 ? 'RIGHT' : 'LEFT', ahead = dx * forward.x + dz * forward.z;
+        where = `NEXT: ${next.stop.name} · ${Math.round(next.distance)} m · ${ahead < -2 ? 'BEHIND YOU' : `on your ${side}`}`;
+      }
+      this.overlay.chapterHud([['STOPS', `${run.delivered} / ${run.stops.length}`], ['TIME', driveClock(run.remainingMs / 1000)], ['PARCELS', String(run.parcelsLeft)], ['POINTS', `+${run.points}`]],
+        next ? `${where} · throw a little before you reach it` : 'Every stop served',
+        this.touch.enabled ? 'GAS · BRAKE · STICK STEERS · THROW' : 'W / ↑ GAS · A D / ← → STEER · S / ↓ BRAKE · F THROW · V VIEW · ESC PAUSE');
+    } else if (coffeeShown && this.coffee) {
       const run = this.coffee, next = run.upcoming;
       this.overlay.chapterHud([['COFFEES', `${run.cupsLeft} / ${COFFEE_RUN.cups}`], ['TIME', `0:${String(Math.ceil(run.remainingMs / 1000)).padStart(2, '0')}`], ['POINTS', `+${run.points}`]],
         next ? `${next.label} · ${next.hint}` : run.waiting ? 'RED LIGHT · hold the trays steady' : 'Keep the coffee in the middle of the gauge',
@@ -1685,9 +1851,9 @@ export class Belt3d {
       this.overlay.chapterHud([['MALL', '6 / 6 SIGNED'], ['FIVE-TON', this.lot.done ? 'RETURNED' : 'PARKED']],
         this.lot.atKeyDrop ? 'Press SPACE to drop the keys' : this.chapterHint, 'WASD MOVE · SPACE DROP KEYS · ESC PAUSE');
     }
-    const driving = this.state === 'driving';
+    const driving = this.state === 'driving' || this.state === 'paper';
     this.overlay.root.classList.toggle('driving', driving);
-    this.touch.setDriving(driving, driving && this.driving?.canPark === true);
+    this.touch.setDriving(driving, this.state === 'paper' || driving && this.driving?.canPark === true, this.state === 'paper' ? 'THROW' : 'PARK');
     const chapter = this.state === 'mall' || this.state === 'lot' || driving || this.state === 'coffee';
     this.touch.setLive(this.state === 'playing' || this.state === 'interlude' || chapter,
       chapter ? (this.state === 'mall' ? (this.mall?.cart.pushed ? 'PARK' : 'CART') : '—')
@@ -1702,7 +1868,7 @@ export class Belt3d {
 
   private usesDriving(): boolean {
     const state = this.state === 'paused' ? this.pausedFrom : this.state;
-    return this.drivingView !== null && (state === 'driving' || state === 'ended' && this.practiceDestination !== null || state === 'coffee' || state === 'coffee-done');
+    return this.drivingView !== null && (state === 'driving' || state === 'ended' && this.practiceDestination !== null || state === 'coffee' || state === 'coffee-done' || state === 'paper' || state === 'ralph-done');
   }
 
   private usesStage(): boolean {
@@ -2606,7 +2772,8 @@ export class Belt3d {
     const routes = (['A', 'D', 'T', 'B', 'E', 'S', 'C'] as const).map((route) => `${ROUTE_INFO[route].name} ${m.routeSorted[route]}`).join(' · ');
     const judged = judgeGoals(this.goals, m);
     this.goalBonus = judged.bonus;
-    const total = Math.max(0, m.score + this.mallBonus - this.drivingPenalty + this.driveBonus + judged.bonus);
+    const ralphPoints = this.ralphResult?.points ?? 0;
+    const total = Math.max(0, m.score + this.mallBonus - this.drivingPenalty + this.driveBonus + judged.bonus + ralphPoints);
     const goals = this.goals.map((goal) => `${judged.met.includes(goal) ? '✓' : '✗'} ${escapeHtml(goal.label)}`).join(' · ');
     const record = this.recordResults(m.won, total, m.won ? m.grade : 'F', {
       won: m.won, grade: m.won ? m.grade : 'F', peak: m.peak, goalsMet: judged.met.length, goalsTotal: this.goals.length,
@@ -2636,6 +2803,9 @@ export class Belt3d {
       ${mall ? `<p>MALL RUN · ${mall.delivered}/6 delivered · ${mall.signatures}/6 signed · five-ton ${home ? 'returned' : 'not returned'} · +${this.mallBonus}</p>
       <p>DRIVING · ${this.drivingCollisions} bumps${this.drivingRedLights ? ` · ${this.drivingRedLights} red lights` : ''} · −${this.drivingPenalty} points · cargo safe${this.driveTimes.length ? ` · ${this.driveTimes.map(driveClock).join(' and ')}${this.driveBonus ? ` · against par +${this.driveBonus}` : ''}` : ''}</p>
       <p class="b3d-sum">SHIFT ${m.score} + NIGHT GOALS ${judged.bonus} + MALL RUN ${this.mallBonus} + ON PAR ${this.driveBonus} − ROAD ${this.drivingPenalty}</p>
+      <p><b>NIGHT TOTAL ${String(total).padStart(5, '0')}</b> · ${m.gradeQuote}</p>` : ''}
+      ${this.ralphResult ? `<p>THE RALPH RUN · ${this.ralphResult.delivered}/${RALPH_STOPS.length} delivered${this.ralphResult.bullseyes ? ` · ${this.ralphResult.bullseyes} dead on` : ''}${this.ralphResult.bumps ? ` · ${this.ralphResult.bumps} bumps` : ''} · +${this.ralphResult.points}</p>
+      <p class="b3d-sum">SHIFT ${m.score} + NIGHT GOALS ${judged.bonus} + RALPH RUN ${ralphPoints}</p>
       <p><b>NIGHT TOTAL ${String(total).padStart(5, '0')}</b> · ${m.gradeQuote}</p>` : ''}
       <button type="button">ANOTHER NIGHT  ↵</button>
       <a href="${window.location.pathname}?mode=classic">PLAY THE ORIGINAL FULL SHIFT</a>`, () => this.restart());

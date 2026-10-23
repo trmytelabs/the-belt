@@ -129,7 +129,7 @@ try {
   // HOW TO PLAY lists the rules and controls, and BACK returns to the pause screen.
   await page.getByRole('button', { name: 'HOW TO PLAY' }).click();
   const help = await read(() => [...document.querySelectorAll('.b3d-help dt')].map((term) => [term.textContent, term.nextElementSibling.textContent]));
-  assert.deepEqual(help.map(([term]) => term), ['SORT', 'RECOVERY', 'STOP THE BELT', 'THROW', 'PRIORITY', 'SURPRISES', 'INSPECTIONS', 'STREAKS', 'GOALS', 'PERKS', 'DAILY CHALLENGE', 'GHOST DRIVES', 'TIMMIES RUN', 'ENDLESS SHIFT', 'CONTROLS']);
+  assert.deepEqual(help.map(([term]) => term), ['SORT', 'RECOVERY', 'STOP THE BELT', 'THROW', 'PRIORITY', 'SURPRISES', 'INSPECTIONS', 'STREAKS', 'GOALS', 'PERKS', 'DAILY CHALLENGE', 'GHOST DRIVES', 'TIMMIES RUN', 'THE RALPH RUN', 'ENDLESS SHIFT', 'CONTROLS']);
   assert.match(help[2][1], /^E holds the belt for two seconds, three times a night/);
   assert.match(help.at(-1)[1], /^WASD or arrows move/);
   await page.getByRole('button', { name: 'BACK' }).click();

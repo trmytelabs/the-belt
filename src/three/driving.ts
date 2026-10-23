@@ -384,6 +384,9 @@ export class DrivingView {
     this.beam.update(dt, this.reducedMotion, wind.x, wind.z);
   }
 
+  /** While true (the Ralph run), the bays' beacons and the arrow stay hidden: the run has its own marks. `begin` clears it. */
+  public guidesHidden = false;
+
   /** Switches between the chase camera and the cab; the cab view is the five-ton's, so Skanky's car keeps the chase camera. */
   public toggleView(): 'chase' | 'cab' {
     this.view = this.view === 'chase' && this.vehicle === this.truck ? 'cab' : 'chase';
@@ -446,6 +449,7 @@ export class DrivingView {
         this.cones.set(obstacle.id, cone); this.scene.add(cone);
       }
     }
+    this.guidesHidden = false;
     for (const [destination, beacon] of this.goalBeacons) beacon.visible = destination === model.destination;
     this.snapped = false;
     this.update(model, 0);
@@ -531,7 +535,10 @@ export class DrivingView {
     const wind = windAt(this.weatherClock);
     this.snow.update(model.paused ? 0 : dt, this.reducedMotion, wind.x, wind.z);
     this.beam.update(model.paused ? 0 : dt, this.reducedMotion, wind.x, wind.z);
-    this.navigation.update(model, this.camera);
+    if (this.guidesHidden) {
+      this.navigation.root.visible = false;
+      for (const beacon of this.goalBeacons.values()) beacon.visible = false;
+    } else this.navigation.update(model, this.camera);
   }
 
   /**

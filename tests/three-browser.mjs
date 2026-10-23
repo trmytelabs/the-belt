@@ -424,7 +424,9 @@ try {
   const truckEnd = await crew(() => window.fixtureApp.world.trucks.map((truck) => truck.group.position.x));
   truckEnd.forEach((x, index) => assert.ok(Math.abs(x - truckStart[index]) > 4, `truck ${index} must drive out`));
   await read(() => { window.fixtureApp.crew.celebrationMs = Math.max(window.fixtureApp.crew.celebrationMs, 12_950); });
-  // The warehouse is finished, but Skanky's night is not: the results wait for the mall run.
+  // The warehouse is finished, but the night is not: the results wait for a five-ton run, here Skanky's mall run (M).
+  await page.waitForFunction(() => window.fixtureApp.state === 'run-choice', null, { timeout: 120_000 });
+  await page.keyboard.press('KeyM');
   await page.waitForFunction(() => window.fixtureApp.cutscene?.scene.id === 'mall-assignment', null, { timeout: 120_000 });
   await page.keyboard.press('Enter');
   await page.waitForFunction(() => window.fixtureApp.cutscene?.scene.id === 'drive-to-mall');
