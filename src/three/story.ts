@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 
 import { LOT_LAYOUT, MALL_LAYOUT, type KeyReturnModel, type MallEvent } from '../game/slice/MallModel';
-import { BENTLEY, SECURITY_WING, type MallModel3D as MallModel } from './MallModel3D';
+import { BENTLEY, CHASE, SECURITY_WING, type MallModel3D as MallModel } from './MallModel3D';
 import type { Cutscene } from '../game/slice/StoryModel';
 import type { StoryScene } from '../game/slice/StoryScript';
 import { animateCharacter, blendPose, createCharacter, faceToward, lookToward, mergeCharacter, SEAT_BLEND_SECONDS, snapshotPose, type Character, type CharacterSpec } from './characters';
@@ -327,9 +327,12 @@ export class StoryStage {
   /** Seconds of weather so far, for the wind. */
   private weatherClock = 0;
   private mallStoreText = new Map<string, string>();
-  /** The mall's clock as of its last frame; until when Skanky shows his stress, Bentley's clerk yells, and the guard talks. */
+  /** The mall's clock as of its last frame; until when Skanky freaks out, Bentley's clerk yells, and the guard talks. */
   private mallTime = 0;
   private mallStress = -1;
+  /** Skanky's sweat: seconds to the next drop, and the drops' own random sequence (the model's rolls are left alone). */
+  private sweatWait = 0;
+  private sweatSeed = 7;
   private mallYell = -1;
   private mallGuardTalk = -1;
   private southgate: SouthgateMall | null = null;
@@ -1537,6 +1540,51 @@ export class StoryStage {
     beacon.visible = false;
     scene.add(beacon);
     props.mallBeacon = beacon;
+    // The guard's pistol, drawn for the chase, with its flash; his aim, as a red band on the floor where the shot will go
+    // and a laser at gun height; the shot's tracer and its spark.
+    const gun = new THREE.Group();
+    const pistol = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.22, 0.1), standard(0x1a1a1a, 0.4, 0.6));
+    pistol.position.set(0, -0.15, 0.04);
+    const muzzle = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 8), new THREE.MeshStandardMaterial({ color: 0xffd36b, emissive: 0xffa030, emissiveIntensity: 5 }));
+    muzzle.position.set(0, -0.32, 0.04);
+    muzzle.name = 'muzzle';
+    gun.add(pistol, muzzle);
+    gun.visible = false;
+    stage.actors.get('security')!.character.rightHand.add(gun);
+    props.guardGun = gun;
+    const line = (name: string, color: number, opacity: number): THREE.Group => {
+      const group = new THREE.Group();
+      const band = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false }));
+      band.rotation.x = -Math.PI / 2;
+      band.name = 'band';
+      const laser = new THREE.Mesh(new THREE.BoxGeometry(1, 0.03, 0.03), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, depthWrite: false }));
+      laser.name = 'laser';
+      group.add(band, laser);
+      group.name = name;
+      group.visible = false;
+      group.renderOrder = 3;
+      scene.add(group);
+      return group;
+    };
+    props.guardAim = line('guard-aim', 0xff3b30, 0.3);
+    props.guardTracer = line('guard-tracer', 0xfff1b0, 0);
+    const spark = new THREE.Group();
+    spark.add(new THREE.Mesh(new THREE.SphereGeometry(0.18, 10, 8), new THREE.MeshBasicMaterial({ color: 0xffd36b, transparent: true, opacity: 0.9, depthWrite: false })));
+    spark.visible = false;
+    scene.add(spark);
+    props.guardSpark = spark;
+    // Skanky's sweat: a few drops flicking off his head.
+    const sweat = new THREE.Group();
+    const drop = new THREE.SphereGeometry(0.055, 8, 6);
+    const dropMaterial = new THREE.MeshBasicMaterial({ color: 0x9fd8ff, transparent: true, opacity: 0.95 });
+    for (let i = 0; i < 14; i += 1) {
+      const mesh = new THREE.Mesh(drop, dropMaterial);
+      mesh.visible = false;
+      mesh.userData = { life: 0, velocity: new THREE.Vector3() };
+      sweat.add(mesh);
+    }
+    scene.add(sweat);
+    props.sweat = sweat;
     [...MALL_LAYOUT.doors.map((_, index) => `clerk-${index}`), 'bentley-clerk'].forEach((id) => {
       const actor = stage.actors.get(id)!;
       actor.character.nameTag.visible = false;
@@ -2543,9 +2591,12 @@ export class StoryStage {
     skanky.at(mallX(model.skanky.x), mallZ(model.skanky.y));
     skanky.faceAngle = { right: Math.PI / 2, left: -Math.PI / 2, down: 0, up: Math.PI }[model.skanky.facing];
     skanky.carrying = model.carrying !== null || model.cart.pushed || model.handBox;
+    const sinceFrame = time - this.mallTime;
     this.mallTime = time;
-    // Refused at Bentley, Skanky is stressed: a frustrated gesture before he goes for the box.
-    skanky.setPose(time < this.mallStress && !model.handBox && !model.cart.pushed ? 'swear' : 'none', time);
+    // Refused at Bentley, Skanky freaks out: swearing, a helpless shrug, swearing again, before he goes looking.
+    const freakOut = 4.0 - (this.mallStress - time);
+    skanky.setPose(time < this.mallStress && !model.handBox && !model.cart.pushed ? freakOut > 1.4 && freakOut < 2.7 ? 'shrug' : 'swear' : 'none', time);
+    this.updateSweat(props.sweat, skanky, model.sweating, Math.max(0, Math.min(sinceFrame, 0.1)), model.bentley === 'quiz' || model.bentley === 'denied');
     const cart = props.cart;
     cart.position.set(mallX(model.cart.x), 0, mallZ(model.cart.y));
     const facing = model.cart.facing;
@@ -2593,19 +2644,55 @@ export class StoryStage {
       carried.rotation.y = skanky.root.rotation.y;
       this.setLabel(carried, store.name);
     }
-    // The missing box waits on the security desk until it is collected; the guard at the desk, facing the hallway.
-    props.securityBox.visible = model.bentley === 'pending' || model.bentley === 'refused';
+    // The missing box waits on the security desk until it is handed over or grabbed; the guard at the desk, facing the
+    // hallway, or after Skanky: running his trail, stopping to aim, firing.
+    props.securityBox.visible = !model.handBox && model.bentley !== 'fetched' && model.bentley !== 'returned';
     const guard = actors.get('security')!;
     guard.root.visible = true;
-    guard.at(mallX(SECURITY_WING.desk.x + SECURITY_WING.desk.w + 10), mallZ(SECURITY_WING.desk.y + 40));
-    guard.faceAngle = -Math.PI / 2;
-    guard.setPose(time < this.mallGuardTalk ? 'announce' : 'none', time);
-    // Where to go next on the Bentley run: the staff doors once refused, Bentley's portal with the box.
+    const chase = model.chase;
+    props.guardGun.visible = chase !== null;
+    const aim = model.aimLine;
+    if (chase) {
+      guard.at(mallX(chase.guard.x), mallZ(chase.guard.y));
+      const shot = chase.shot && chase.shot.ageMs < 260 ? chase.shot : null;
+      const toward = aim ? { x: aim.dx, y: aim.dy } : shot ? { x: shot.to.x - shot.from.x, y: shot.to.y - shot.from.y } : null;
+      guard.faceAngle = toward ? Math.atan2(toward.x, toward.y) : null;
+      guard.setPose(toward ? 'aim' : 'none', time);
+    } else {
+      guard.at(mallX(SECURITY_WING.guardPost.x), mallZ(SECURITY_WING.guardPost.y));
+      guard.faceAngle = -Math.PI / 2;
+      guard.setPose(time < this.mallGuardTalk ? 'announce' : 'none', time);
+    }
+    this.placeLine(props.guardAim, aim, aim ? CHASE.hitRadius * 2 / 32 : 0);
+    if (aim) {
+      // Tracking, the band is amber; held (the shot is coming: sidestep now), it is red and flickers.
+      const band = (props.guardAim.getObjectByName('band') as THREE.Mesh).material as THREE.MeshBasicMaterial;
+      const laser = (props.guardAim.getObjectByName('laser') as THREE.Mesh).material as THREE.MeshBasicMaterial;
+      band.color.setHex(aim.locked ? 0xff2a1a : 0xffb02e);
+      laser.color.copy(band.color);
+      band.opacity = aim.locked ? 0.42 + (this.reducedMotion ? 0 : Math.sin(time * 40) * 0.12) : 0.22;
+    }
+    const shot = chase?.shot ?? null;
+    const flash = shot !== null && shot.ageMs < 140;
+    this.placeLine(props.guardTracer, flash ? { from: shot.from, to: shot.to } : null, 0);
+    if (flash) ((props.guardTracer.getObjectByName('laser') as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = 1 - shot.ageMs / 140;
+    const muzzle = props.guardGun.getObjectByName('muzzle');
+    if (muzzle) muzzle.visible = shot !== null && shot.ageMs < 90;
+    props.guardSpark.visible = shot !== null && shot.ageMs < 240;
+    if (shot && props.guardSpark.visible) {
+      props.guardSpark.position.set(mallX(shot.to.x), shot.hit ? 1.25 : 1.1, mallZ(shot.to.y));
+      props.guardSpark.scale.setScalar(0.5 + shot.ageMs / 240 * (shot.hit ? 1.6 : 1.0));
+    }
+    // Where to go next on the Bentley run: the staff doors once refused, Bentley's portal with the box, the five-ton
+    // once the chase's box is signed for.
     const beacon = props.mallBeacon;
-    beacon.visible = model.bentley === 'refused' || model.bentley === 'fetched';
+    beacon.visible = model.bentley === 'refused' || model.bentley === 'fetched' || chase?.delivered === true;
     if (beacon.visible) {
       const doors = SECURITY_WING.doors;
-      const at = model.bentley === 'refused' ? { x: doors.x + doors.w / 2, y: doors.y + 4 } : { x: BENTLEY.zone.x + BENTLEY.zone.w / 2, y: BENTLEY.door.y };
+      const tailgate = MALL_LAYOUT.tailgate;
+      const at = model.bentley === 'refused' ? { x: doors.x + doors.w / 2, y: doors.y + 4 }
+        : chase?.delivered ? { x: tailgate.x + tailgate.w / 2, y: tailgate.y + tailgate.h / 2 }
+          : { x: BENTLEY.zone.x + BENTLEY.zone.w / 2, y: BENTLEY.door.y };
       beacon.position.set(mallX(at.x), 0, mallZ(at.y));
       const pulse = this.reducedMotion ? 1 : 1 + Math.sin(time * 4) * 0.08;
       beacon.scale.setScalar(pulse);
@@ -2622,7 +2709,7 @@ export class StoryStage {
       else clerk.at(mallX(store.door.x + 30), mallZ(north ? store.door.y - 26 : store.door.y + 26));
       clerk.faceAngle = bentley ? -Math.PI / 2 : north ? 0 : Math.PI;
       // Refusing to sign, Bentley's clerk yells, then waits with no pad; otherwise a clerk holds out the pad while a signature is due.
-      const refusing = bentley && store.state === 'dropped' && (model.bentley === 'refused' || model.bentley === 'fetched');
+      const refusing = bentley && store.state === 'dropped' && model.bentley !== 'pending' && model.bentley !== 'returned';
       clerk.setPose(refusing ? time < this.mallYell ? 'shout' : 'none' : store.state === 'dropped' ? 'press' : 'none', time);
       // Each storefront's lit status board, angled up to the gameplay camera.
       const thisRun = store.run === model.run && !model.runComplete;
@@ -2669,9 +2756,15 @@ export class StoryStage {
       }
     }
     const target = skanky.root.position;
-    // Kept inside the anchor wall at the concourse's east end.
-    const cameraX = Math.min(target.x + 1.0, mallX(1260) - 0.4);
-    this.cameraTo(new THREE.Vector3(cameraX, 11.5, target.z + 7.2), new THREE.Vector3(target.x, 0.5, target.z - 1.0), dt, this.mallSnap);
+    // Kept inside the anchor wall at the concourse's east end; through the staff doors it follows him down the hallway.
+    // On the chase it rises and pulls back a little, to show the guard behind.
+    const inWing = model.skanky.y > SECURITY_WING.doors.y + SECURITY_WING.doors.h;
+    // At the security desk the view takes in Skanky and the guard, above the card with the guard's questions.
+    const asking = model.bentley === 'quiz' || model.bentley === 'denied';
+    const focus = asking ? new THREE.Vector3((target.x + mallX(SECURITY_WING.guardPost.x)) / 2, 0, target.z + 2.2) : target;
+    const cameraX = inWing ? focus.x + 1.0 : Math.min(focus.x + 1.0, mallX(1260) - 0.4);
+    const far = chase ? 1.22 : 1;
+    this.cameraTo(new THREE.Vector3(cameraX, 11.5 * far, focus.z + 7.2 * far), new THREE.Vector3(focus.x, 0.5, focus.z - 1.0), dt, this.mallSnap);
     this.mallSnap = false;
   }
 
@@ -2708,18 +2801,70 @@ export class StoryStage {
   /** A short "SIGNED" or "DROPPED" pop above a store, for feedback beyond sound. */
   public mallEvent(model: MallModel, event: MallEvent): THREE.Vector3 | null {
     if (event.type === 'refuse') {
-      this.mallStress = this.mallTime + 3.2;
+      this.mallStress = this.mallTime + 4.0;
       this.mallYell = this.mallTime + 4.2;
     }
     // Asked again without the box, Bentley's clerk yells again.
     if (event.type === 'wrong' && event.storeId === BENTLEY.id && model.bentley === 'refused') this.mallYell = this.mallTime + 2.2;
-    if (event.type === 'security') {
+    // At the desk the guard talks with his hands; on the chase, his lines and shots come from wherever he is.
+    if (event.type === 'security' || event.type === 'quiz' || event.type === 'right' || event.type === 'denied' || event.type === 'caught') {
       this.mallGuardTalk = this.mallTime + 2.6;
-      return new THREE.Vector3(mallX(SECURITY_WING.desk.x + SECURITY_WING.desk.w + 10), 2.6, mallZ(SECURITY_WING.desk.y + 40));
+      return this.mallGuardAnchor();
     }
+    if (event.type === 'grab' || event.type === 'aim' || event.type === 'shot' || event.type === 'escape' || event.type === 'busted') return this.mallGuardAnchor();
+    if (event.type === 'hit') return new THREE.Vector3(mallX(model.skanky.x), 2.3, mallZ(model.skanky.y));
     if (!event.storeId) return null;
     const store = model.store(event.storeId);
     return new THREE.Vector3(mallX(store.door.x), 2.6, mallZ(store.door.y));
+  }
+
+  /** Above the mall security guard's head, wherever he is (for his lines and his shots). */
+  public mallGuardAnchor(): THREE.Vector3 {
+    const guard = this.stages.mall?.actors.get('security');
+    return guard ? guard.root.position.clone().setY(2.6) : new THREE.Vector3(mallX(SECURITY_WING.guardPost.x), 2.6, mallZ(SECURITY_WING.guardPost.y));
+  }
+
+  /** Lays a line group (a floor band `width` wide and a laser at gun height) from one mall point to another, or hides it. */
+  private placeLine(group: THREE.Object3D, line: { from: { x: number; y: number }; to: { x: number; y: number } } | null, width: number): void {
+    group.visible = line !== null;
+    if (!line) return;
+    const fx = mallX(line.from.x), fz = mallZ(line.from.y);
+    const dx = mallX(line.to.x) - fx, dz = mallZ(line.to.y) - fz;
+    const length = Math.max(0.05, Math.hypot(dx, dz));
+    group.position.set(fx, 0.03, fz);
+    group.rotation.y = -Math.atan2(dz, dx);
+    const band = group.getObjectByName('band')!;
+    band.visible = width > 0;
+    band.scale.set(length, Math.max(width, 0.01), 1);
+    band.position.x = length / 2;
+    const laser = group.getObjectByName('laser')!;
+    laser.scale.x = length;
+    laser.position.set(length / 2, 1.25, 0);
+  }
+
+  /** Skanky sweats: drops flick off his head and fall, more of them at the security desk. */
+  private updateSweat(sweat: THREE.Object3D, skanky: StageActor, sweating: boolean, dt: number, hard: boolean): void {
+    const roll = (): number => {
+      this.sweatSeed = (this.sweatSeed * 16807) % 2147483647;
+      return this.sweatSeed / 2147483647;
+    };
+    this.sweatWait -= dt;
+    const head = skanky.character.head.getWorldPosition(new THREE.Vector3());
+    for (const drop of sweat.children) {
+      const data = drop.userData as { life: number; velocity: THREE.Vector3 };
+      if (sweating && this.sweatWait <= 0 && data.life <= 0 && !this.reducedMotion) {
+        this.sweatWait = hard ? 0.07 : 0.14;
+        data.life = 0.55;
+        drop.position.copy(head).add(new THREE.Vector3((roll() - 0.5) * 0.22, 0.1, (roll() - 0.5) * 0.22));
+        data.velocity.set((roll() - 0.5) * 1.4, 0.8 + roll() * 0.6, (roll() - 0.5) * 1.4);
+      }
+      if (data.life > 0) {
+        data.life -= dt;
+        data.velocity.y -= 7 * dt;
+        drop.position.addScaledVector(data.velocity, dt);
+      }
+      drop.visible = data.life > 0;
+    }
   }
 
   /** Clears a previous run's delivered piles so a replay starts clean. */
