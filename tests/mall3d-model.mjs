@@ -134,6 +134,29 @@ test('the Bentley run: a run of its own, the cart full of it, a refusal, three q
   assert.match(mall.drainEvents().map((event) => event.message).join(' | '), /BENTLEY signed \(7\/7\)[\s\S]*All seven signed/);
 });
 
+test('START AT BENTLEY: six stores signed, the fourth run with both Bentley loads in the truck, Skanky at the tailgate beside the cart', () => {
+  const mall = new MallModel3D(() => 0.999);
+  mall.startAtBentley();
+  assert.deepEqual(mall.stores.filter((store) => store.state === 'signed').map((store) => store.id).sort(),
+    mall.stores.filter((store) => store.id !== 'bentley').map((store) => store.id).sort());
+  assert.deepEqual([mall.store('bentley').state, mall.signatures, mall.delivered, mall.run, mall.runComplete, mall.finished], ['waiting', 6, 6, 3, false, false]);
+  assert.deepEqual(mall.truckBundles.filter((id) => id !== null), ['bentley', 'bentley']);
+  assert.deepEqual([mall.cart.load, mall.cart.pushed, mall.carrying], [[], false, null]);
+  assert.match(mall.objective, /Run 4\/4 · BENTLEY only · load both BENTLEY loads onto the cart \(0\/2\)/);
+  // Straight into the run: both loads off the truck and onto the cart, then the cart to Bentley and its refusal.
+  for (let i = 0; i < 2; i++) {
+    assert.equal(mall.interaction.action, 'take'); mall.action();
+    assert.equal(mall.carrying, 'bentley');
+    assert.equal(mall.interaction.action, 'load'); mall.action();
+  }
+  assert.deepEqual([mall.cart.load, mall.run], [['bentley', 'bentley'], 3]);
+  assert.match(mall.objective, /push the full cart to BENTLEY/);
+  Object.assign(mall.skanky, { x: 1230, y: 450 });
+  Object.assign(mall.cart, { x: 1230, y: 420, pushed: true, facing: 'up' });
+  mall.action(); mall.action();
+  assert.deepEqual([mall.store('bentley').state, mall.bentley, mall.delivered], ['dropped', 'refused', 7]);
+});
+
 test('mall security: every question checks its own answer, a wrong one is refused, and asking again starts over', () => {
   const mall = refusedAtBentley();
   Object.assign(mall.skanky, { x: 2330, y: 799 });

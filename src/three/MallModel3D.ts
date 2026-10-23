@@ -156,6 +156,21 @@ export class MallModel3D extends MallModel {
     return BENTLEY.run + 1;
   }
 
+  /**
+   * The mall practice's START AT BENTLEY: the first three runs done, the six stores delivered and signed, and the fourth
+   * under way with Bentley's two loads still in the truck, the cart parked at the tailgate and Skanky beside it.
+   */
+  public startAtBentley(): void {
+    for (const store of this.stores) if (store.id !== BENTLEY.id) store.state = 'signed';
+    this.signatures = this.delivered = this.stores.length - 1;
+    this.run = BENTLEY.run;
+    this.truckBundles.forEach((id, slot) => { if (id !== BENTLEY.id) this.truckBundles[slot] = null; });
+    this.carrying = null;
+    this.cart.load = [];
+    Object.assign(this.cart, { x: 130, y: 400, facing: 'up', pushed: false });
+    Object.assign(this.skanky, { x: 75, y: 400, facing: 'left', moving: false });
+  }
+
   /** Eight bundles at the tailgate: closer together than the shared model's six, so all stay within reach. */
   public override slotPosition(index: number): { x: number; y: number } {
     return { x: 22, y: 351 + index * 14 };
