@@ -248,6 +248,8 @@ export class Belt3d {
   private ralphScene: RalphRunScene | null = null;
   /** Tonight's Ralph run once driven: the stops served, the dead-on ones and what it paid the night. */
   public ralphResult: { delivered: number; bullseyes: number; points: number; bumps: number } | null = null;
+  /** How the Ralph run ended, for its card once the five-ton is back at UPS. */
+  private ralphReason: 'all' | 'time' | 'parcels' = 'time';
   /** Whether tonight played through to its ending at Cha for Tea, so the results close with the credits. */
   public sawEnding = false;
   private ralphBumps = 0;
@@ -952,14 +954,32 @@ export class Belt3d {
   }
 
   /** The run is over: its points go to the night, and a card says how it went. */
+  /**
+   * The run is over, however it went: the five-ton has to go back, so the compass turns to the UPS yard and parking there
+   * brings up the run's card (`showRalphCard`). Ending on the card out on the street left the truck there.
+   */
   private finishRalphRun(reason: 'all' | 'time' | 'parcels'): void {
+    const run = this.ralph, drive = this.driving;
+    if (!run || !drive) return;
+    this.ralphResult = { delivered: run.delivered, bullseyes: run.bullseyes, points: run.points, bumps: this.ralphBumps };
+    this.ralphReason = reason;
+    if (run.points) audioSystem.play('register');
+    drive.redirect('ups');
+    if (this.drivingView) { this.drivingView.guidesHidden = false; this.drivingView.guideTarget = null; }
+    this.state = 'driving';
+    this.overlay.dropSpeech((key) => key === 'ralph-run');
+    this.overlay.storyTitle('THE RALPH RUN', 'TERMITE · TAKE THE FIVE-TON BACK TO UPS', '5:50 AM');
+    this.overlay.showToast(`${reason === 'time' ? 'OUT OF TIME' : reason === 'parcels' ? 'OUT OF PARCELS' : 'EVERY STOP SERVED'} · ${run.delivered} of ${run.stops.length} delivered · drive back to UPS and park`, 4600);
+  }
+
+  /** Back at UPS from the Ralph run: its card; CLOCK OUT goes on to the ending (or, practising, AGAIN drives it again). */
+  private showRalphCard(): void {
     const run = this.ralph;
     if (!run) return;
-    this.ralphResult = { delivered: run.delivered, bullseyes: run.bullseyes, points: run.points, bumps: this.ralphBumps };
+    const reason = this.ralphReason;
     this.state = 'ralph-done';
     this.keys.clear(); this.touch.reset();
     audioSystem.setDriving(null);
-    if (run.points) audioSystem.play('register');
     const all = run.delivered === run.stops.length;
     this.overlay.showPanel(`<div class="kicker">THE RALPH RUN · ${reason === 'time' ? 'OUT OF TIME' : reason === 'parcels' ? 'OUT OF PARCELS' : 'EVERY STOP SERVED'}</div>
       <h1>${all ? 'EIGHT FOR EIGHT.' : `${run.delivered} OF ${run.stops.length} DELIVERED.`}</h1>
@@ -1183,6 +1203,8 @@ export class Belt3d {
     const ghostNote = this.keepGhost();
     audioSystem.setDriving(null);
     this.keys.clear(); this.touch.reset();
+    // Back from the Ralph run and parked at UPS: its card. (It keeps no ghost and earns no par bonus.)
+    if (this.ralph && this.ralphResult) { this.showRalphCard(); return; }
     if (this.practiceDestination && this.driving) {
       const drive = this.driving;
       this.practiceDestination = destination === 'mall' ? 'ups' : 'mall';
@@ -1715,6 +1737,9 @@ export class Belt3d {
         if (event.type === 'done') this.finishRalphRun(event.reason);
         else this.handleRalphEvent(event);
       }
+      // The arrow points at the next business along the loop while the run lasts.
+      const ahead = this.state === 'paper' ? run.routeNext(drive) : null;
+      if (this.drivingView && this.state === 'paper') this.drivingView.guideTarget = ahead ? { x: ahead.stop.x, z: ahead.stop.z } : null;
       this.drivingView?.update(drive, dt);
       this.ralphScene.update(run, drive, this.time, this.reducedMotion);
     } else if (this.state === 'coffee' && this.coffee && this.coffeeScene) {
@@ -1837,7 +1862,7 @@ export class Belt3d {
     } : null);
     const coffeeShown = (this.state === 'coffee' || this.state === 'coffee-done' || this.state === 'paused' && this.pausedFrom === 'coffee') && this.coffee !== null;
     this.overlay.coffeeGauge(coffeeShown && this.coffee ? { forward: this.coffee.slosh.forward, right: this.coffee.slosh.right,
-      tiltForward: this.coffee.tilt.forward, tiltRight: this.coffee.tilt.right, danger: this.coffee.danger, cups: this.coffee.cups } : null);
+      zone: this.coffee.danger ? 'red' : this.coffee.level >= COFFEE_RUN.caution ? 'yellow' : 'green', cups: this.coffee.cups } : null);
     if ((this.state === 'paper' || this.state === 'ralph-done' || this.state === 'paused' && this.pausedFrom === 'paper') && this.ralph && this.driving) {
       const run = this.ralph, drive = this.driving, next = run.routeNext(drive);
       let where = '';
@@ -2064,8 +2089,9 @@ export class Belt3d {
     } else {
       audioSystem.play(event.score > 0 ? 'register' : 'event-alert');
       const fragile = event.message.startsWith('HANDLED');
-      this.overlay.pop(event.message.replace('MYSTERY · ', ''), fragile ? '#ff9f8f' : '#c9a8ff', toWorld(event, surfaceAt(event.x, event.y) + 2.6), 1.3);
-      if (!fragile) this.overlay.showToast(event.message, 2600);
+      // Over the drop, the prize's name; across the top, what it does, long enough to read.
+      this.overlay.pop(event.message.replace('MYSTERY · ', '').split(' · ')[0], fragile ? '#ff9f8f' : '#c9a8ff', toWorld(event, surfaceAt(event.x, event.y) + 2.6), 1.3);
+      if (!fragile) this.overlay.showToast(event.message.replace('MYSTERY · ', 'POWER-UP · '), 4200);
     }
   }
 

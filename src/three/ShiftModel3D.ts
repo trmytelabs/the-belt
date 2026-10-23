@@ -340,9 +340,10 @@ export class ShiftModel3D extends ShiftModel {
     this.score += prize.points;
     if (prize.id === 'stop') this.beltStopsRemaining += 1;
     if (prize.id === 'fire') this.combo = Math.max(this.combo + 5, FLOW_3D.combo);
-    const message = prize.id === 'jackpot' ? `MYSTERY · JACKPOT +${prize.points}`
-      : prize.id === 'stop' ? `MYSTERY · A SPARE BELT STOP · ${this.beltStopsRemaining} left`
-        : prize.id === 'fire' ? `MYSTERY · ON FIRE · streak ${this.combo}` : `MYSTERY · JUST SOCKS +${prize.points}`;
+    // Each prize says what it does: "ON FIRE · streak 10" and "A SPARE BELT STOP" left the owner asking what the power-ups were.
+    const message = prize.id === 'jackpot' ? `MYSTERY · JACKPOT · +${prize.points} POINTS`
+      : prize.id === 'stop' ? `MYSTERY · FREE BELT STOP · freezes the belt for ${BELT_STOPS_3D.durationMs / 1000} s when you need it · ${this.beltStopsRemaining} left`
+        : prize.id === 'fire' ? `MYSTERY · ON FIRE · you walk faster until a miss or a wrong drop` : `MYSTERY · JUST SOCKS · +${prize.points} POINTS`;
     this.emit('surprise', message, parcel, parcel, prize.points);
   }
 

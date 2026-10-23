@@ -899,13 +899,13 @@ test('a mystery box pays its prize when the player delivers it, and the partner 
     return { m, prize, gained: m.score - before.score - sort.score, stops: m.beltStopsRemaining - before.stops };
   };
   const jackpot = open(0.1);
-  assert.deepEqual([jackpot.prize.message, jackpot.prize.score, jackpot.gained, jackpot.m.lastPrize], ['MYSTERY · JACKPOT +200', 200, 200, 'jackpot']);
+  assert.deepEqual([jackpot.prize.message, jackpot.prize.score, jackpot.gained, jackpot.m.lastPrize], ['MYSTERY · JACKPOT · +200 POINTS', 200, 200, 'jackpot']);
   const stop = open(0.4);
-  assert.deepEqual([stop.prize.message, stop.gained, stop.stops], ['MYSTERY · A SPARE BELT STOP · 4 left', 0, 1]);
+  assert.deepEqual([stop.prize.message, stop.gained, stop.stops], ['MYSTERY · FREE BELT STOP · freezes the belt for 2 s when you need it · 4 left', 0, 1]);
   const fire = open(0.6);
-  assert.deepEqual([fire.prize.message, fire.gained, fire.m.onFire], ['MYSTERY · ON FIRE · streak 10', 0, true]);
+  assert.deepEqual([fire.prize.message, fire.gained, fire.m.onFire], ['MYSTERY · ON FIRE · you walk faster until a miss or a wrong drop', 0, true]);
   const socks = open(0.9);
-  assert.deepEqual([socks.prize.message, socks.gained], ['MYSTERY · JUST SOCKS +25', 25]);
+  assert.deepEqual([socks.prize.message, socks.gained], ['MYSTERY · JUST SOCKS · +25 POINTS', 25]);
   const m = new ShiftModel3D({ freightRandom: seededFreight(47) }); m.capacity = 999;
   const box = untilSurprise(m, 'mystery');
   const score = m.score;
