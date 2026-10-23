@@ -113,7 +113,7 @@ hair, beard, clothes and role:
 | Gunman | Adults/Male_Adult_18 | `gunman.glb` |
 | Donna's husband | Adults/Male_Adult_07 | `donnas-husband.glb` |
 | Cashier | Adults/Male_Adult_12 | `cashier.glb` |
-| Clerk | Adults/Female_Adult_11 | `clerk.glb` |
+| Clerk, and the Cha for Tea waitress | Adults/Female_Adult_11 | `clerk.glb` |
 | Unloaders | Professions/Construction_Male_08 | `unloader.glb` |
 | Driver | Adults/Male_Adult_16 | `driver.glb` |
 | Dockhand | Adults/Male_Adult_04 | `dockhand.glb` |

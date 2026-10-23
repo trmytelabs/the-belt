@@ -127,12 +127,15 @@ export class StageActor {
 }
 
 const CLERK: CharacterSpec = { name: 'CLERK', skin: SKIN.tan, shirt: 0x2f7d6b, pants: 0x2b2f3a, hair: 0x2a1d14, hairStyle: 'bun' };
+/** The Cha for Tea waitress, who wheels the dim sum cart (the clerk's model, rocketboxCast.ts). */
+const WAITRESS: CharacterSpec = { name: 'WAITRESS', skin: SKIN.tan, shirt: 0x7a1c22, pants: 0x1a1a1f, hair: 0x1b1612, hairStyle: 'bun' };
 const CASHIER: CharacterSpec = { name: 'CASHIER', skin: SKIN.brown, shirt: 0x2e8b57, pants: 0x2b2f3a, hair: 0x1b1612, hairStyle: 'short', vest: 0xe85a2a };
 
 function specFor(id: string): CharacterSpec {
   if (id === 'termite') return TERMITE_SPEC;
   if (id === 'skanky') return SKANKY_SPEC;
   if (id === 'cashier') return CASHIER;
+  if (id === 'waitress') return WAITRESS;
   if (id === 'clerk' || id.startsWith('clerk-')) return CLERK;
   return RESIDENT_SPECS[id] ?? VISITORS[id] ?? { name: id.toUpperCase(), skin: SKIN.light, shirt: 0x667788, pants: 0x333333, hair: 0x222222, hairStyle: 'short' };
 }
@@ -2160,8 +2163,8 @@ export class StoryStage {
     const sun = new THREE.DirectionalLight(0xffd2a0, 0.9);
     sun.position.set(9, 4, 1);
     scene.add(warm, room, sun);
-    // The waitress (the clerk's figure and model) wheels the cart.
-    this.cast(stage, ['skanky', 'vic', 'clerk-dimsum']);
+    // The waitress wheels the cart.
+    this.cast(stage, ['skanky', 'vic', 'waitress']);
   }
 
   /** A red-cushioned dining chair at (x, z), facing `facing` (0 faces +z). */
@@ -2280,13 +2283,13 @@ export class StoryStage {
     skanky.setPose(cueProgress(cutscene, 'look') > 0 && index === 4 || skankySpeaking ? 'shrug' : index > 5 && Math.sin(time * 1.4) > 0.6 ? 'sip' : 'sit', time);
     // The waitress wheels the cart over while Vic and Skanky talk, lifts a stack of steamers onto the table, and wheels
     // it back toward the window. (The stack used to fly to the table from the cart by itself.)
-    const cart = props.dimSumCart, waitress = actors.get('clerk-dimsum')!;
+    const cart = props.dimSumCart, waitress = actors.get('waitress')!;
     const over = ease(Math.min(1, cueProgress(cutscene, 'fun') + cueProgress(cutscene, 'sure') * 0.5));
     const more = cueProgress(cutscene, 'more');
     const serve = ease(Math.min(1, more / 0.45)), away = ease(Math.max(0, (more - 0.6) / 0.4));
     cart.position.x = mix(mix(DIM_SUM_CART.window, DIM_SUM_CART.table, over), DIM_SUM_CART.parked, away);
     waitress.root.visible = true;
-    // She is the waitress here, not the clerk whose figure she wears: no name over her head.
+    // Only the night's own cast wear names over their heads.
     waitress.character.nameTag.visible = false;
     waitress.at(cart.position.x + 0.78, DIM_SUM_CART.z);
     waitress.faceAngle = -Math.PI / 2;
