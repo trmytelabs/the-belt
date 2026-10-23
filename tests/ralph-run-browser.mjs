@@ -21,6 +21,8 @@ try {
   await page.route('https://fonts.gstatic.com/**', (route) => route.fulfill({ body: '' }));
   const base = process.env.BELT_TEST_BASE_URL ?? server.resolvedUrls.local[0];
   const read = (fn, arg) => page.evaluate(fn, arg);
+  /** Sets the five-ton down in the UPS bay, stopped, and parks it (the drive back after the run is the drive's own). */
+  const parkAtUps = () => { const d = window.fixtureApp.driving; Object.assign(d, { x: d.goal.x, z: d.goal.z, speed: 0 }); if (!d.park()) throw new Error('could not park at UPS'); };
   const wait = (fn, arg, options = {}) => page.waitForFunction(fn, arg, { polling: 10, timeout: 90_000, ...options });
 
   await page.goto(new URL('?mode=3d&minigame=ralph', base).href);
@@ -28,14 +30,14 @@ try {
   assert.match(await page.locator('.b3d-panel').innerText(), /THE RALPH RUN\.[\s\S]*Ralph is riding along[\s\S]*START/);
   await page.keyboard.press('Enter');
   await wait(() => window.fixtureApp.state === 'paper');
-  // Eight businesses' marks in the city, the drive's own guides hidden (from the first frame of the run), the five-ton.
-  await wait(() => window.fixtureApp.drivingView.navigation.root.visible === false);
+  // Eight businesses' marks in the city, the five-ton, and the drive's arrow pointing at the first stop, the barber.
+  await wait(() => window.fixtureApp.drivingView.navigation.root.visible === true);
   const setup = await read(() => {
     const app = window.fixtureApp, view = app.drivingView;
     return { stops: view.scene.getObjectByName('ralph-run')?.children.filter((child) => child.name.startsWith('ralph-stop:')).length,
-      arrow: view.navigation.root.visible, truck: view.truck.visible, parcels: app.ralph.parcelsLeft };
+      arrow: view.navigation.root.userData.target, truck: view.truck.visible, parcels: app.ralph.parcelsLeft };
   });
-  assert.deepEqual(setup, { stops: 8, arrow: false, truck: true, parcels: 12 });
+  assert.deepEqual(setup, { stops: 8, arrow: { x: -51.5, z: 45 }, truck: true, parcels: 12 });
   await wait(() => /STOPS\s*0 \/ 8[\s\S]*PARCELS\s*12/.test(document.querySelector('.b3d-chapterhud')?.textContent ?? ''));
   // Down the x = −60 street in the right-hand lane toward the barber on the right; F, real key, a little before it.
   await read(() => { Object.assign(window.fixtureApp.driving, { x: -56.5, z: 62, heading: Math.PI / 2, speed: 8 }); });
@@ -45,8 +47,9 @@ try {
   await page.keyboard.press('KeyF');
   await wait(() => window.fixtureApp.ralph.delivered === 1);
   assert.equal(await read(() => window.fixtureApp.ralph.stops[0].name), 'BARBER');
-  // The HUD's next stop follows the loop: the pizza place, on the left.
+  // The HUD's next stop follows the loop: the pizza place, on the left, and the arrow turns to it.
   await wait(() => /NEXT: PIZZA[\s\S]*on your LEFT/.test(document.querySelector('.b3d-chapterhud .objective')?.textContent ?? ''));
+  await wait(() => window.fixtureApp.drivingView.navigation.root.userData.target?.x === -68.5);
   // Ralph talks over the cab.
   await wait(() => window.fixtureApp.overlay.activeSpeech().some((speech) => speech.speaker === 'RALPH' && /three sets of triplets/.test(speech.text)));
   // ESC pauses the run where it is.
@@ -57,8 +60,12 @@ try {
   assert.equal(await read(() => window.fixtureApp.ralph.elapsedMs), paused, 'paused, the clock stands still');
   await page.keyboard.press('Enter');
   await wait(() => window.fixtureApp.state === 'paper');
-  // Out of time: the card counts the deliveries, and AGAIN drives the loop again.
+  // Out of time: the five-ton still has to go back. The arrow turns to the UPS yard; parked there, the card counts the
+  // deliveries, and AGAIN drives the loop again.
   await read(() => { window.fixtureApp.ralph.elapsedMs = 119_990; });
+  await wait(() => window.fixtureApp.state === 'driving' && window.fixtureApp.driving.destination === 'ups');
+  assert.equal(await read(() => window.fixtureApp.drivingView.navigation.root.visible), true, 'the arrow points back to UPS');
+  await read(parkAtUps);
   await wait(() => window.fixtureApp.state === 'ralph-done');
   assert.match(await page.locator('.b3d-panel').innerText(), /THE RALPH RUN · OUT OF TIME[\s\S]*1 OF 8 DELIVERED[\s\S]*\+(50|75)[\s\S]*AGAIN/);
   await page.keyboard.press('Enter');
@@ -74,6 +81,8 @@ try {
   await page.keyboard.press('KeyR');
   await wait(() => window.fixtureApp.state === 'paper' && window.fixtureApp.story.chapter === 'ralph');
   await read(() => { const run = window.fixtureApp.ralph; for (const stop of run.stops) stop.delivered = true; run.points = 400; });
+  await wait(() => window.fixtureApp.state === 'driving' && window.fixtureApp.driving.destination === 'ups');
+  await read(parkAtUps);
   await wait(() => window.fixtureApp.state === 'ralph-done');
   const card = await page.locator('.b3d-panel').innerText();
   assert.match(card, /EVERY STOP SERVED[\s\S]*EIGHT FOR EIGHT\.[\s\S]*CLOCK OUT/);

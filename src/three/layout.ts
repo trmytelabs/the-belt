@@ -26,6 +26,11 @@ export const DEPOT_3D_LAYOUT = {
   bulkLeft: { x: 400, y: 1146 },
   bulkRight: { x: 560, y: 1146 },
   recoveryPile: { x: 480, y: 918 },
+  /**
+   * The recovery tray's size: long down the belt's line and narrow across it, so both walkways past it stay wide.
+   * Laid across the deck (3.4 m by 1.6 m) it stuck out into them and caught the owner walking by.
+   */
+  recoveryTray: { width: 70, height: 90 },
   bulkRearWall: { x: 480, y: 1197, width: 960, height: 6 },
   ralphBay: { x: 244, y: 1060, from: -120 },
   fishTank: { x: 716, y: 868, width: 52, height: 36 },

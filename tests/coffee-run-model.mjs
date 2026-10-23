@@ -55,14 +55,23 @@ test('thirty seconds of driving: every hazard warned well ahead, in order, with 
   assert.deepEqual(COFFEE_HAZARDS['turn-right'].hint, 'lean right');
 });
 
-test('hands that never move spill every coffee; steady hands keep all eight for 300 points', () => {
+/** Keys pressed as a player does, a reaction (`delayMs`) behind the gauge: toward the middle while the dot is off it. */
+const keys = (delayMs, margin = 0.15) => {
+  const seen = [];
+  return (run) => {
+    seen.push({ forward: run.slosh.forward, right: run.slosh.right });
+    const was = seen[Math.max(0, seen.length - 1 - Math.round(delayMs / FRAME))];
+    return { x: Math.abs(was.right) > margin ? -Math.sign(was.right) : 0, y: Math.abs(was.forward) > margin ? Math.sign(was.forward) : 0 };
+  };
+};
+
+test('hands that never move spill most of the coffee; steady hands keep all eight for 300 points', () => {
   const idle = ride();
-  assert.equal(idle.run.cupsLeft, 0);
-  assert.equal(idle.run.points, 0);
+  assert.ok(idle.run.cupsLeft <= 4, `${idle.run.cupsLeft} coffees left`);
   const spills = idle.events.filter((event) => event.type === 'spill');
-  assert.equal(spills.length, COFFEE_RUN.cups);
-  assert.deepEqual(spills.map((event) => event.left), [7, 6, 5, 4, 3, 2, 1, 0]);
-  assert.equal(new Set(spills.map((event) => event.cup)).size, COFFEE_RUN.cups, 'each cup spills once');
+  assert.equal(spills.length, COFFEE_RUN.cups - idle.run.cupsLeft);
+  assert.deepEqual(spills.map((event) => event.left), spills.map((_, i) => COFFEE_RUN.cups - 1 - i));
+  assert.equal(new Set(spills.map((event) => event.cup)).size, spills.length, 'each cup spills once');
   for (let i = 1; i < spills.length; i++) assert.ok(spills[i].at - spills[i - 1].at >= COFFEE_RUN.spillGapMs - 10, 'one cup at a time');
   const good = ride(steady);
   assert.equal(good.run.cupsLeft, 8);
@@ -70,6 +79,12 @@ test('hands that never move spill every coffee; steady hands keep all eight for 
   assert.ok(good.maxLevel < 1, `never at the rim: ${good.maxLevel}`);
   const done = good.events.at(-1);
   assert.deepEqual([done.type, done.cups, done.points], ['done', 8, 300]);
+});
+
+test('the keys pressed toward the middle keep every coffee, even a slow reaction behind the gauge', () => {
+  // The owner found the run too hard: a key tilts all the way, which threw the coffee past the middle and back.
+  for (const delayMs of [250, 400]) assert.equal(ride(keys(delayMs)).run.cupsLeft, 8, `${delayMs} ms behind`);
+  assert.ok(ride(keys(500, 0.3)).run.cupsLeft >= 6, 'and a sloppy pair of hands keeps most');
 });
 
 test('barely-trying hands keep some: the points are 25 a coffee, with the bonus only for all eight', () => {
@@ -83,14 +98,15 @@ test('the coffee goes the way the car throws it, and tilting the trays against i
   const run = new CoffeeRunModel();
   for (let t = 0; t < 600; t += FRAME) run.update(FRAME);
   assert.ok(run.acceleration.forward > 2 && run.slosh.forward < -0.3, JSON.stringify({ a: run.acceleration, s: run.slosh }));
-  // Leaning forward just enough (W, held part way on a stick: the controls' y is back) holds it in the middle;
-  // all the way, it overcorrects and the coffee runs forward instead.
+  // Leaning forward just enough (W, held part way on a stick: the controls' y is back) holds it in the middle; all
+  // the way (a key), the trays tilt only as far as holds it there too, rather than overcorrecting it forward.
   const leaning = new CoffeeRunModel(), over = new CoffeeRunModel();
   for (let t = 0; t < 600; t += FRAME) { leaning.update(FRAME, { x: 0, y: -2.8 / COFFEE_RUN.tiltPush }); over.update(FRAME, { x: 0, y: -1 }); }
   assert.ok(Math.abs(leaning.slosh.forward) < 0.1, `held: ${leaning.slosh.forward}`);
-  assert.ok(over.slosh.forward > 0.2 && over.tilt.forward > 0.99, `overcorrected at full tilt: ${over.slosh.forward}`);
-  // The trays follow the controls at a hand's pace, not at once.
+  assert.ok(Math.abs(over.slosh.forward) < 0.15 && over.tilt.forward < 0.9, `a full key holds it too: ${over.slosh.forward}, tilt ${over.tilt.forward}`);
+  // Away from the middle, the trays follow the controls at a hand's pace, not at once.
   const quick = new CoffeeRunModel();
+  quick.slosh.right = 0.5;
   quick.update(50, { x: 1, y: 0 });
   assert.ok(quick.tilt.right > 0.1 && quick.tilt.right < 0.3, `${quick.tilt.right}`);
   // A spill takes the cup furthest toward the coffee: to the passenger's side, the door tray's outer cups.

@@ -45,10 +45,13 @@ try {
   await wait(() => /COFFEES/.test(document.querySelector('.b3d-chapterhud')?.textContent ?? ''));
   assert.match(await page.locator('.b3d-chapterhud').innerText(), /COFFEES\s*8 \/ 8[\s\S]*TIME[\s\S]*POINTS\s*\+300/);
   assert.equal(await page.locator('.b3d-coffee').isVisible(), true);
-  // A real key tilts the trays at a hand's pace: A lowers the left, toward the console.
+  // A real key tilts the trays at a hand's pace: A lowers the left, toward the console. (With the coffee out to the left,
+  // that is away from the middle: toward it, the trays tilt only as far as brings the coffee back.)
+  await read(() => { window.fixtureApp.coffee.slosh.right = -0.5; });
   await page.keyboard.down('KeyA');
   await wait(() => window.fixtureApp.coffee.tilt.right < -0.6);
   await page.keyboard.up('KeyA');
+  await read(() => { window.fixtureApp.coffee.slosh.forward = 0.5; });
   await page.keyboard.down('KeyW');
   await wait(() => window.fixtureApp.coffee.tilt.forward > 0.6);
   await page.keyboard.up('KeyW');

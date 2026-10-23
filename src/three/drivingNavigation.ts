@@ -42,8 +42,8 @@ export class DrivingNavigation {
       halfHeight - (compact ? 30 : portrait ? 198 : 62) * units, -12);
   }
 
-  public update(model: DrivingModel, camera: THREE.PerspectiveCamera): void {
-    const target = model.goal;
+  /** Points at `target`: the drive's bay, or (the Ralph run) its next stop. */
+  public update(model: DrivingModel, camera: THREE.PerspectiveCamera, target: { x: number; z: number } = model.goal): void {
     camera.getWorldDirection(this.forward);
     const cameraHeading = Math.atan2(-this.forward.z, this.forward.x);
     const targetHeading = Math.atan2(-(target.z - model.z), target.x - model.x);

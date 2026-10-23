@@ -277,7 +277,8 @@ export class DrivingView {
     this.truck.add(this.headlight, this.headlight.target);
     this.pool = new THREE.PointLight(0xffc58b, 35, 24, 1.4);
     scene.add(this.pool);
-    this.snow = new Snowfall(new THREE.Box3(new THREE.Vector3(-35, 0, -35), new THREE.Vector3(35, 16, 35)), { count: quality === 'high' ? 5000 : 1400, size: 0.14, fall: 1.1 });
+    // Within 16 m of the vehicle, at the same density: flakes out to 35 m all drew in a band along the horizon.
+    this.snow = new Snowfall(new THREE.Box3(new THREE.Vector3(-16, 0, -16), new THREE.Vector3(16, 14, 16)), { count: quality === 'high' ? 1800 : 520, size: 0.14, fall: 1.1 });
     scene.add(this.snow.points);
     this.beam = new Snowfall(new THREE.Box3(new THREE.Vector3(-6, 0, -6), new THREE.Vector3(6, 4.5, 6)), { count: quality === 'high' ? 600 : 180, size: 0.11, fall: 1.3, color: 0xfff6e0, opacity: 1 });
     this.beam.points.name = 'snowfall-beam';
@@ -396,6 +397,8 @@ export class DrivingView {
 
   /** While true (the Ralph run), the bays' beacons and the arrow stay hidden: the run has its own marks. `begin` clears it. */
   public guidesHidden = false;
+  /** With the guides hidden, where the arrow points instead (the Ralph run's next stop), or nowhere. `begin` clears it. */
+  public guideTarget: { x: number; z: number } | null = null;
 
   /** Switches between the chase camera and the cab; the cab view is the five-ton's, so Skanky's car keeps the chase camera. */
   public toggleView(): 'chase' | 'cab' {
@@ -460,6 +463,7 @@ export class DrivingView {
       }
     }
     this.guidesHidden = false;
+    this.guideTarget = null;
     for (const [destination, beacon] of this.goalBeacons) beacon.visible = destination === model.destination;
     this.snapped = false;
     this.update(model, 0);
@@ -548,8 +552,9 @@ export class DrivingView {
     this.emitExhaust(model, model.paused ? 0 : dt);
     this.exhaust.update(model.paused ? 0 : dt);
     if (this.guidesHidden) {
-      this.navigation.root.visible = false;
       for (const beacon of this.goalBeacons.values()) beacon.visible = false;
+      if (this.guideTarget) this.navigation.update(model, this.camera, this.guideTarget);
+      else this.navigation.root.visible = false;
     } else this.navigation.update(model, this.camera);
   }
 

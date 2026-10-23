@@ -67,7 +67,7 @@ function inLane(pose: Pick<CityPose, 'x' | 'z' | 'tx' | 'tz'>, other: CityPoint,
 
 /** Free Cartesian driving. Roads are scenery and guidance, never a player rail. */
 export class DrivingModel {
-  public readonly destination: DriveDestination;
+  public destination: DriveDestination;
   public readonly origin: DriveOrigin;
   public x: number;
   public z: number;
@@ -107,6 +107,8 @@ export class DrivingModel {
   }
 
   public get goal(): CityPoint { return DESTINATIONS[this.destination]; }
+  /** Heads somewhere else from where the vehicle is: the Ralph run, over, turns back to the UPS yard. */
+  public redirect(destination: DriveDestination): void { this.destination = destination; this.parked = false; }
   public get remaining(): number { return separation(this, this.goal); }
   public get pose(): CityPose { return { x: this.x, z: this.z, heading: this.heading, tx: Math.cos(this.heading), tz: -Math.sin(this.heading) }; }
   public get offRoad(): boolean { return !inLoadingYard(this) && nearestRoad(this).distance > CITY.roadHalfWidth + 3; }

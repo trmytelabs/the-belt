@@ -18,15 +18,26 @@ export const COFFEE_RUN = {
    * The coffee's slosh: a damped spring of natural frequency `omega` (radians a second) and damping ratio `damping`,
    * pushed by the car's acceleration and the trays' tilt. A steady push of `spillPush` m/s² holds it at the rim.
    */
-  omega: 5, damping: 0.45, spillPush: 4.5,
+  omega: 3.5, damping: 0.6, spillPush: 4.5,
   /** The push a full tilt of the trays gives (m/s²), and how fast the trays follow the controls (full tilts a second). */
   tiltPush: 5, tiltRate: 4,
   /** A spill lets this much of the slosh go, and the next cup cannot go for this long. */
   spillSettle: 0.45, spillGapMs: 450,
-  /** Past this much of the way to the rim the coffee is in danger (the HUD turns red, drips fly). */
+  /** Past this much of the way to the rim the coffee is getting close (the gauge turns yellow), and in danger (red, drips fly). */
+  caution: 0.4,
   danger: 0.72,
   /** A warning shows this long before its event. */
   warnMs: 1_200,
+  /** How hard the bumps kick the coffee, against their listed strengths. */
+  bumpScale: 0.8,
+  /**
+   * Tilting toward the middle tilts only as far as brings the coffee back there (`assist` of the way back each
+   * second, held against the car), however far the key or stick goes. A key is all or nothing, and a full tilt
+   * pushes the coffee harder than the car does: pressing toward the middle overshot, swung back, and spilled.
+   */
+  assist: 0.9,
+  /** How much of the coffee's swing that tilt takes out, and inside what share of the way to the rim any tilt only steadies it. */
+  settle: 1.5, calm: 0.35,
 } as const;
 
 /** How Termite drives: cruising speed, cornering grip, pulling away and braking (m/s, m/s²). */
@@ -276,9 +287,15 @@ export class CoffeeRunModel {
   private step(target: CoffeeVector): void {
     const h = STEP;
     this.elapsedMs += h * 1000;
-    // The trays follow the controls at a hand's pace.
+    // The trays follow the controls at a hand's pace; toward the middle, no further than brings the coffee back.
+    const { spillPush: rim, tiltPush: lean, assist } = COFFEE_RUN;
     for (const axis of ['forward', 'right'] as const) {
-      const change = target[axis] - this.tilt[axis];
+      const input = target[axis];
+      // The tilt that holds the coffee against the car and settles it back to the middle without swinging past.
+      const back = (this.acceleration[axis] - rim * (assist * this.slosh[axis] + COFFEE_RUN.settle * this.sloshRate[axis] / COFFEE_RUN.omega)) / lean;
+      const toward = Math.sign(input) === -Math.sign(this.slosh[axis]) || Math.abs(this.slosh[axis]) < COFFEE_RUN.calm;
+      const want = assist > 0 && input !== 0 && toward ? Math.max(-Math.abs(input), Math.min(Math.abs(input), back)) : input;
+      const change = want - this.tilt[axis];
       this.tilt[axis] += Math.max(-COFFEE_RUN.tiltRate * h, Math.min(COFFEE_RUN.tiltRate * h, change));
     }
     this.drive(h);
@@ -337,8 +354,8 @@ export class CoffeeRunModel {
     for (let bump = BUMPS[this.bumped]; bump && this.distance >= bump.at; bump = BUMPS[this.bumped]) {
       this.bumped += 1;
       const angle = this.kick() * Math.PI * 2;
-      this.sloshRate.forward += Math.cos(angle) * bump.strength;
-      this.sloshRate.right += Math.sin(angle) * bump.strength;
+      this.sloshRate.forward += Math.cos(angle) * bump.strength * COFFEE_RUN.bumpScale;
+      this.sloshRate.right += Math.sin(angle) * bump.strength * COFFEE_RUN.bumpScale;
       this.events.push({ type: 'bump', strength: bump.strength });
     }
   }

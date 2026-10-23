@@ -349,7 +349,7 @@ try {
   console.log('PASS the pickable package has a halo and Space prompt; empty grabs stay quiet, while the wrong truck deducts ten points and plays the short recorded error cue');
   await read(() => { window.fixtureApp.audio.ambienceIn = 6; });
 
-  // Priority freight: a gold ring and countdown label ride the parcel, run down to red, hide while carried,
+  // Priority freight: a gold ring and countdown label ride the parcel, run down to red, stay round the carrier's feet,
   // and a real Space load inside the window pays the bonus with its own pop and a results line.
   await read(() => {
     const app = window.fixtureApp; app.restart(); app.forceStory({ breakAtMs: 1e12 }); app.benStarted = true;
@@ -391,7 +391,13 @@ try {
     app.overlay.pop = (text, ...rest) => { window.priorityPops.push(text); return pop(text, ...rest); };
     return m.score;
   });
-  await wait(() => { const app = window.fixtureApp; return app.priorityMarkers.get(app.model.packages[0].id)?.ring.visible === false; });
+  // Carried, the ring stays in view (the owner asked for it after pickup), flat on the floor round the carrier's feet.
+  await wait(() => {
+    const app = window.fixtureApp, marker = app.priorityMarkers.get(app.model.packages[0].id), carrier = app.workers[app.model.activeWorker.id];
+    if (!marker?.ring.visible) return false;
+    const Vec = app.camera.position.constructor, ring = marker.ring.getWorldPosition(new Vec()), feet = carrier.root.getWorldPosition(new Vec());
+    return Math.hypot(ring.x - feet.x, ring.z - feet.z) < 0.05 && Math.abs(ring.y - feet.y - 0.03) < 0.05;
+  });
   await page.keyboard.press('Space');
   await wait(() => window.fixtureApp.model.priorityOnTime === 1);
   await wait(() => window.fixtureApp.priorityMarkers.size === 0);
@@ -400,7 +406,7 @@ try {
   assert.ok(paid.pops.includes('PRIORITY +100'), `the bonus pops: ${JSON.stringify(paid.pops)}`);
   await read(() => { const app = window.fixtureApp; Object.assign(app.model, { ended: true, won: true }); app.state = 'celebrating'; app.showResults(); });
   { const results = await page.locator('.b3d-panel').innerText(); assert.ok(results.includes('1 of 1 priority parcels on time · +100'), results); }
-  console.log('PASS a priority parcel wears a gold countdown ring and label that run down to red and hide while carried; a real Space load in time pays +100 with its own pop and a results line');
+  console.log('PASS a priority parcel wears a gold countdown ring and label that run down to red and stay on, at the feet of whoever carries it; a real Space load in time pays +100 with its own pop and a results line');
 
   // Night goals: tonight's are named in the briefing; a goal reached mid-shift is announced once with a toast,
   // and the results tick what was met and pay it into the night total.

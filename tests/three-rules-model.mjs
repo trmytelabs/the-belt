@@ -92,10 +92,10 @@ test('open deck beside the belt, bulk and stair approach has no invisible lane f
   const m = new ShiftModel3D();
   for (const [side, sign] of [['left', 1], ['right', -1]]) {
     const mirror = x => side === 'left' ? x : 960 - x;
-    for (const point of [{ x: 414, y: 700 }, { x: 430, y: 1040 }, { x: 432, y: 1132 }, { x: 350, y: 1080 }]) {
+    for (const point of [{ x: 414, y: 700 }, { x: 430, y: 1040 }, { x: 432, y: 1132 }, { x: 350, y: 1080 }, { x: 428, y: 918 }]) {
       assert.equal(m.walkable(side, mirror(point.x), point.y), true, `open floor ${side}: ${JSON.stringify(point)}`);
     }
-    for (const point of [{ x: 438, y: 700 }, { x: 430, y: 918 }, { x: 444, y: 1132 }]) {
+    for (const point of [{ x: 438, y: 700 }, { x: 438, y: 918 }, { x: 444, y: 1132 }]) {
       assert.equal(m.walkable(side, mirror(point.x), point.y), false, 'visible equipment still blocks the body');
     }
     m.activeIndex = side === 'left' ? 0 : 1;
@@ -899,13 +899,13 @@ test('a mystery box pays its prize when the player delivers it, and the partner 
     return { m, prize, gained: m.score - before.score - sort.score, stops: m.beltStopsRemaining - before.stops };
   };
   const jackpot = open(0.1);
-  assert.deepEqual([jackpot.prize.message, jackpot.prize.score, jackpot.gained, jackpot.m.lastPrize], ['MYSTERY · JACKPOT +200', 200, 200, 'jackpot']);
+  assert.deepEqual([jackpot.prize.message, jackpot.prize.score, jackpot.gained, jackpot.m.lastPrize], ['MYSTERY · JACKPOT · +200 POINTS', 200, 200, 'jackpot']);
   const stop = open(0.4);
-  assert.deepEqual([stop.prize.message, stop.gained, stop.stops], ['MYSTERY · A SPARE BELT STOP · 4 left', 0, 1]);
+  assert.deepEqual([stop.prize.message, stop.gained, stop.stops], ['MYSTERY · FREE BELT STOP · freezes the belt for 2 s when you need it · 4 left', 0, 1]);
   const fire = open(0.6);
-  assert.deepEqual([fire.prize.message, fire.gained, fire.m.onFire], ['MYSTERY · ON FIRE · streak 10', 0, true]);
+  assert.deepEqual([fire.prize.message, fire.gained, fire.m.onFire], ['MYSTERY · ON FIRE · you walk faster until a miss or a wrong drop', 0, true]);
   const socks = open(0.9);
-  assert.deepEqual([socks.prize.message, socks.gained], ['MYSTERY · JUST SOCKS +25', 25]);
+  assert.deepEqual([socks.prize.message, socks.gained], ['MYSTERY · JUST SOCKS · +25 POINTS', 25]);
   const m = new ShiftModel3D({ freightRandom: seededFreight(47) }); m.capacity = 999;
   const box = untilSurprise(m, 'mystery');
   const score = m.score;

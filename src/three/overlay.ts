@@ -228,16 +228,29 @@ const CSS = `
 .b3d-chapterhud .stat b { font: 800 20px 'Segoe UI', Arial, sans-serif; }
 .b3d-chapterhud .objective { flex: 1; min-width: 200px; font-weight: 700; font-size: 14px; color: #f3e6c6; }
 .b3d-chapterhud .keys { color: #8eaaae; font-size: 11px; letter-spacing: 1px; }
-.b3d-coffee { position: absolute; z-index: 3; right: 22px; bottom: 96px; width: 150px; text-align: center; pointer-events: none; }
+/* The Timmies run's gauge, top middle: the coffee (the dot) in a dish, green in the middle, yellow, then red at the rim. */
+.b3d-coffee { position: absolute; z-index: 3; top: 64px; left: 50%; transform: translateX(-50%); width: 280px; text-align: center; pointer-events: none; }
 .b3d-coffee[hidden] { display: none; }
-.b3d-coffee .dish { position: relative; width: 132px; height: 132px; margin: 0 auto; border-radius: 50%; background: radial-gradient(#3b2414 0 34%, #1d130c 35% 62%, #0b171cdd 63%);
-  border: 3px solid #e9dcc2; box-shadow: 0 0 0 2px #0b171c99; }
-.b3d-coffee.danger .dish { border-color: #ff6a4f; }
-.b3d-coffee .dot { position: absolute; left: 50%; top: 50%; width: 22px; height: 22px; margin: -11px 0 0 -11px; border-radius: 50%; background: #c98a4b; box-shadow: 0 0 8px #e7b47a; }
-.b3d-coffee.danger .dot { background: #ff8a5a; box-shadow: 0 0 10px #ff6a4f; }
-.b3d-coffee .tilt { position: absolute; left: 50%; top: 50%; width: 10px; height: 10px; margin: -5px 0 0 -5px; border: 2px solid #9fe3a5; border-radius: 50%; }
-.b3d-coffee .cups { margin-top: 6px; font-size: 15px; letter-spacing: 2px; color: #f3e6c6; text-shadow: 0 2px 4px #000; }
-.b3d-coffee small { display: block; font-size: 10px; letter-spacing: 2px; color: #8eaaae; text-shadow: 0 2px 4px #000; }
+.b3d-coffee .dish { --size: min(200px, 40vw); position: relative; width: var(--size); height: var(--size); margin: 0 auto; border-radius: 50%;
+  background: radial-gradient(circle closest-side, #2e9a4c 0 39%, #0b171c 39.5% 40.5%, #e0b532 41% 71%, #0b171c 71.5% 72.5%, #d0432f 73% 100%);
+  border: 4px solid #f3e6c6; box-shadow: 0 4px 18px #000b; opacity: 0.94; }
+.b3d-coffee .dish::after { content: ''; position: absolute; left: 50%; top: 50%; width: 14px; height: 14px; margin: -9px 0 0 -9px; border: 2px solid #ffffffcc; border-radius: 50%; }
+.b3d-coffee.yellow .dish { border-color: #ffe27a; }
+.b3d-coffee.red .dish { border-color: #ff6a4f; animation: b3d-coffee-alarm 0.4s ease-in-out infinite alternate; }
+@keyframes b3d-coffee-alarm { to { box-shadow: 0 0 26px #ff4a2f; } }
+@media (prefers-reduced-motion: reduce) { .b3d-coffee.red .dish { animation: none; } }
+.b3d-coffee .dot { position: absolute; left: 50%; top: 50%; width: 34px; height: 34px; margin: -17px 0 0 -17px; border-radius: 50%; background: #5b3416;
+  border: 3px solid #fff6e8; box-shadow: 0 2px 6px #000; z-index: 2; }
+.b3d-coffee .arrow { position: absolute; left: 50%; top: 50%; width: 0; height: 0; margin: -16px 0 0 -14px; border-left: 30px solid #ffffff; border-top: 16px solid transparent;
+  border-bottom: 16px solid transparent; transform-origin: 14px 16px; filter: drop-shadow(0 0 4px #000); z-index: 1; }
+.b3d-coffee .arrow[hidden] { display: none; }
+.b3d-coffee .press { display: inline-block; margin-top: 8px; padding: 5px 14px; border-radius: 8px; background: #0b171cdd; color: #fff6e8;
+  font: 800 22px 'Segoe UI', Arial, sans-serif; letter-spacing: 1px; text-shadow: 0 2px 4px #000; }
+.b3d-coffee.green .press { color: #9fe3a5; font-size: 15px; }
+.b3d-coffee.red .press { color: #ffb19f; }
+/* Messages drop below the gauge while it shows. */
+.b3d.coffee-run .b3d-toast { top: calc(84px + min(200px, 40vw) + 92px); }
+.b3d-coffee .cups { margin-top: 6px; font-size: 20px; letter-spacing: 3px; color: #f3e6c6; text-shadow: 0 2px 4px #000; }
 .b3d-drive-nav { position: absolute; z-index: 3; top: 118px; left: 50%; transform: translateX(-50%); width: 210px; text-align: center; pointer-events: none; text-shadow: 0 2px 6px #000; }
 .b3d-drive-nav[hidden] { display: none; }
 .b3d-drive-nav b, .b3d-drive-nav small { display: block; width: max-content; max-width: 100%; margin: 2px auto 0; background: #0b171cdd; border-radius: 4px; padding: 3px 7px; }
@@ -369,7 +382,7 @@ export class Overlay {
     this.driveNav = this.div('b3d-drive-nav', this.root);
     this.coffee = this.div('b3d-coffee', this.root);
     this.coffee.hidden = true;
-    this.coffee.innerHTML = '<small>THE COFFEE</small><div class="dish"><div class="tilt"></div><div class="dot"></div></div><div class="cups"></div>';
+    this.coffee.innerHTML = '<div class="dish"><div class="arrow" hidden></div><div class="dot"></div></div><div class="press"></div><div class="cups"></div>';
     this.driveNav.hidden = true;
     this.driveNav.innerHTML = '<b></b><small></small>';
     this.lunchAlert = this.div('b3d-lunch-alert', this.root);
@@ -499,16 +512,27 @@ export class Overlay {
   }
 
   /**
-   * The Timmies run's gauge (seen from above, the car's nose up): the coffee's slosh as a dot that spills at the dish's
-   * rim, the trays' tilt as a ring, and the eight cups, or hidden (null).
+   * The Timmies run's gauge (seen from above, the car's nose up): the coffee's slosh as a dot in a dish, green in the
+   * middle, yellow, red at the rim where it spills (`zone`); off the green, an arrow from the dot back to the middle and
+   * the keys that bring it there, which tilt the trays toward the middle. Then the eight cups; hidden (null).
    */
-  public coffeeGauge(state: { forward: number; right: number; tiltForward: number; tiltRight: number; danger: boolean; cups: readonly boolean[] } | null): void {
+  public coffeeGauge(state: { forward: number; right: number; zone: 'green' | 'yellow' | 'red'; cups: readonly boolean[] } | null): void {
     this.coffee.hidden = state === null;
+    this.root.classList.toggle('coffee-run', state !== null);
     if (!state) return;
-    const reach = 55, clamp = (value: number): number => Math.max(-1.1, Math.min(1.1, value));
-    (this.coffee.querySelector('.dot') as HTMLElement).style.transform = `translate(${clamp(state.right) * reach}px, ${-clamp(state.forward) * reach}px)`;
-    (this.coffee.querySelector('.tilt') as HTMLElement).style.transform = `translate(${state.tiltRight * 30}px, ${-state.tiltForward * 30}px)`;
-    this.coffee.classList.toggle('danger', state.danger);
+    const dish = this.coffee.querySelector('.dish') as HTMLElement;
+    const reach = dish.clientWidth / 2 - 17, clamp = (value: number): number => Math.max(-1.05, Math.min(1.05, value));
+    const dx = clamp(state.right) * reach, dy = -clamp(state.forward) * reach;
+    (this.coffee.querySelector('.dot') as HTMLElement).style.transform = `translate(${dx}px, ${dy}px)`;
+    const arrow = this.coffee.querySelector('.arrow') as HTMLElement;
+    arrow.hidden = state.zone === 'green';
+    if (!arrow.hidden) arrow.style.transform = `translate(${dx * 0.45}px, ${dy * 0.45}px) rotate(${Math.atan2(-dy, -dx)}rad)`;
+    // W tilts the trays forward, so the coffee runs up the dish; the key to press is the one toward the middle.
+    const keys = [state.forward > 0.12 ? '▼ S' : state.forward < -0.12 ? '▲ W' : '', state.right > 0.12 ? '◀ A' : state.right < -0.12 ? '▶ D' : ''].filter(Boolean);
+    const press = state.zone === 'green' ? 'KEEP IT IN THE GREEN' : `PRESS ${keys.join(' + ')}`;
+    const prompt = this.coffee.querySelector('.press') as HTMLElement;
+    if (prompt.textContent !== press) prompt.textContent = press;
+    for (const zone of ['green', 'yellow', 'red'] as const) this.coffee.classList.toggle(zone, state.zone === zone);
     const cups = state.cups.map((full) => (full ? '●' : '○')).join('');
     const label = this.coffee.querySelector('.cups') as HTMLElement;
     if (label.textContent !== cups) { label.textContent = cups; label.setAttribute('aria-label', `${state.cups.filter(Boolean).length} coffees left`); }
