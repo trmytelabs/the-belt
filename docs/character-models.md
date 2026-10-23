@@ -94,17 +94,17 @@ hair, beard, clothes and role:
 
 | Character | Rocketbox avatar | File |
 | --- | --- | --- |
-| Termite (TERMITE, TRMYTE) | Professions/Delivery_Male_01 | `termite.glb` |
-| Skanky | Adults/Male_Adult_06 | `skanky.glb` |
+| Termite (TERMITE, TRMYTE) | Adults/Male_Adult_01, polo and jeans | `termite.glb` |
+| Skanky | Adults/Male_Adult_06, black henley | `skanky.glb` |
 | Shan O'Mac | Professions/Business_Male_07 | `shan.glb` |
 | Kylie | Adults/Male_Adult_10 | `kylie.glb` |
-| Vic | Adults/Male_Adult_05 | `vic.glb` |
+| Vic | Adults/Male_Adult_09, greyed and stained | `vic.glb` |
 | John Rushton | Adults/Male_Adult_08 | `john-rushton.glb` |
 | Hussan | Adults/Male_Adult_17 | `hussan.glb` |
 | AJ | Adults/Male_Adult_14 | `aj.glb` |
 | Ben | Adults/Male_Adult_02 | `ben.glb` |
 | Bannerman | Adults/Male_Adult_13 | `bannerman.glb` |
-| Fruit Loop | Adults/Male_Adult_01 | `fruit-loop.glb` |
+| Fruit Loop | Adults/Male_Adult_11 | `fruit-loop.glb` |
 | Doris | Adults/Female_Adult_04 | `doris.glb` |
 | Brian | Professions/Gardener_Male_01 | `brian.glb` |
 | Donna | Adults/Female_Adult_15 | `donna.glb` |
@@ -249,6 +249,17 @@ head texture with them (its dark, colourless texels, outside the corner holding 
 eye and the inside of the mouth). Vic uses both: the owner's Vic is an old Asian man
 in dirty clothes, and Rocketbox has no older Asian man, so he is `Male_Adult_09`
 (converted 2026-10-22, 1.4 MB, 7,428 triangles) greyed and stained.
+
+An entry's `restyle` is baked into the GLB by the converter instead: `paint` repaints
+the body texture's texels on the triangles lying wholly between two heights
+(fractions of the standing height), keeping their light and shade, optionally only
+the texels of one hue range and saturation, with a fine weave for denim. The owner
+asked (2026-10-22) for Termite as a white guy in a polo and jeans, not a bearded
+lumberjack in a beanie: he is `Male_Adult_01`, the striped polo, its khaki shorts and
+bare shins painted as jeans (1.6 MB). Skanky is a rocker with messy, wavy, Bruce
+Banner hair, his own, and his red henley painted black (1.8 MB). Fruit Loop moved to
+`Male_Adult_11` (1.2 MB) to free `Male_Adult_01`. No Rocketbox man has long, loose
+hair, and grafting a woman's long hair on did not look right, so Skanky keeps his.
 
 ## Making a model with MakeHuman
 

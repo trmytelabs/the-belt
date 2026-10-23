@@ -214,16 +214,134 @@ function prepare(avatar, size) {
   };
 }
 
+/** The avatar's detailed skinned mesh (the one `prepare` keeps). */
+function skinnedMeshOf(avatar) {
+  let found = null;
+  avatar.traverse((object) => { if (!found && object.isSkinnedMesh && object.parent) found = object; });
+  return found;
+}
+
+/** Each triangle of `mesh` (corner indices, its material's name and its corners in world space). */
+function trianglesOf(mesh) {
+  const { index, attributes } = mesh.geometry;
+  const materials = [mesh.material].flat();
+  const groups = mesh.geometry.groups.length ? mesh.geometry.groups : [{ start: 0, count: index.count, materialIndex: 0 }];
+  const corner = (i) => new THREE.Vector3().fromBufferAttribute(attributes.position, i).applyMatrix4(mesh.matrixWorld);
+  const triangles = [];
+  for (const group of groups) {
+    for (let t = group.start; t < group.start + group.count; t += 3) {
+      const corners = [index.getX(t), index.getX(t + 1), index.getX(t + 2)];
+      triangles.push({ corners, group, material: materials[group.materialIndex], points: corners.map(corner) });
+    }
+  }
+  return triangles;
+}
+
+/** `map`'s canvas with every texel passed through `change([r, g, b, a], x, y)`, in place. */
+function repaint(map, change) {
+  const canvas = map.image;
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  const image = context.getImageData(0, 0, canvas.width, canvas.height);
+  const { data, width } = image;
+  for (let i = 0; i < data.length; i += 4) {
+    const next = change([data[i], data[i + 1], data[i + 2], data[i + 3]], (i / 4) % width, Math.floor(i / 4 / width));
+    if (next) { data[i] = next[0]; data[i + 1] = next[1]; data[i + 2] = next[2]; }
+  }
+  context.putImageData(image, 0, 0);
+  map.needsUpdate = true;
+}
+
+/** A hex colour's sRGB channels, 0 to 255. */
+const srgb = (hex) => [(hex >> 16) & 255, (hex >> 8) & 255, hex & 255];
+
+const luminance = (r, g, b) => 0.2126 * r + 0.7152 * g + 0.0722 * b;
+
+/** Hue in degrees (-180 to 180, red at 0) and saturation (0 to 1) of an sRGB texel. */
+function hueSaturation(r, g, b) {
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  if (max === min) return { hue: 0, saturation: 0 };
+  const d = max - min;
+  let hue = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  hue *= 60;
+  if (hue > 180) hue -= 360;
+  return { hue, saturation: d / max };
+}
+
+/**
+ * Paints the body material's texels on triangles lying wholly between two heights (`from` and `to`, fractions of
+ * the standing height) a new colour with their light and shade kept (`restyle.paint`): shorts and bare shins into
+ * jeans, say. `hue` and `minSaturation` limit it to texels of one colour (a red shirt, not the arms' skin), and
+ * `weave` adds a fine fixed grain.
+ */
+function paintRegions(avatar, casting) {
+  const mesh = skinnedMeshOf(avatar);
+  avatar.updateMatrixWorld(true);
+  const triangles = trianglesOf(mesh);
+  let floor = Infinity, top = -Infinity;
+  for (const { points } of triangles) for (const point of points) { floor = Math.min(floor, point.y); top = Math.max(top, point.y); }
+  const uv = mesh.geometry.attributes.uv;
+  const notes = [];
+  for (const paint of casting.restyle.paint) {
+    const body = triangles.filter(({ material, points }) => /body/i.test(material.name)
+      && points.every((point) => (point.y - floor) / (top - floor) >= paint.from && (point.y - floor) / (top - floor) <= paint.to));
+    if (!body.length) continue;
+    const map = body[0].material.map;
+    const { width, height } = map.image;
+    // The triangles' footprint on the map, as a mask.
+    const mask = document.createElement('canvas');
+    mask.width = width; mask.height = height;
+    const ink = mask.getContext('2d', { willReadFrequently: true });
+    ink.fillStyle = ink.strokeStyle = '#fff';
+    const texel = (corner) => [uv.getX(corner) * width, (map.flipY ? 1 - uv.getY(corner) : uv.getY(corner)) * height];
+    for (const { corners } of body) {
+      ink.beginPath();
+      corners.map(texel).forEach(([x, y], k) => (k ? ink.lineTo(x, y) : ink.moveTo(x, y)));
+      ink.closePath();
+      ink.fill();
+      ink.stroke();
+    }
+    const covered = ink.getImageData(0, 0, width, height).data;
+    const chosen = (rgba, x, y) => {
+      if (covered[(y * width + x) * 4] < 128) return false;
+      if (!paint.hue) return true;
+      const { hue, saturation } = hueSaturation(rgba[0], rgba[1], rgba[2]);
+      return hue >= paint.hue[0] && hue <= paint.hue[1] && saturation >= (paint.minSaturation ?? 0);
+    };
+    let sum = 0, count = 0;
+    repaint(map, (rgba, x, y) => { if (chosen(rgba, x, y)) { sum += luminance(rgba[0], rgba[1], rgba[2]); count += 1; } return null; });
+    const mean = Math.max(1, sum / Math.max(1, count));
+    const colour = srgb(paint.color);
+    let seed = 11;
+    const grain = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+    repaint(map, (rgba, x, y) => {
+      if (!chosen(rgba, x, y)) return null;
+      const shade = Math.min(1.7, 0.35 + 0.65 * luminance(rgba[0], rgba[1], rgba[2]) / mean) * (paint.weave ? 0.92 + 0.16 * grain() : 1);
+      return colour.map((c) => Math.min(255, Math.round(c * shade)));
+    });
+    notes.push({ from: paint.from, to: paint.to, triangles: body.length, texels: count });
+  }
+  return notes;
+}
+
+/** The cast entry's baked restyle, if any (rocketboxCast.ts `restyle`). */
+function restyle(avatar, casting) {
+  if (!casting.restyle) return null;
+  const notes = {};
+  if (casting.restyle.paint) notes.paint = paintRegions(avatar, casting);
+  return notes;
+}
+
 async function convertOne(casting) {
   report(casting.file, 'loading');
   const avatar = await loadAvatar(casting.source);
   report(casting.file, 'converting');
   const { triangles, normals } = prepare(avatar, casting.textureSize);
+  const restyled = restyle(avatar, casting);
   const glb = await new GLTFExporter().parseAsync(avatar, { binary: true });
   report(casting.file, 'saving');
   const response = await fetch(`/__save?file=${casting.file}`, { method: 'POST', body: glb });
   if (!response.ok) throw new Error(await response.text());
-  const summary = { file: casting.file, bytes: glb.byteLength, triangles: Math.round(triangles), normals };
+  const summary = { file: casting.file, bytes: glb.byteLength, triangles: Math.round(triangles), normals, ...(restyled ? { restyled } : {}) };
   report(casting.file, `saved, ${(glb.byteLength / 1e6).toFixed(2)} MB, ${summary.triangles} triangles`, 'done');
   return summary;
 }
