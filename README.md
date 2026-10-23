@@ -84,9 +84,10 @@ to go in or quit UPS (quitting ends the night on the couch with a Wii; going in
 means driving Skanky's car to work), then one of three random
 arrivals outside the locked gate, Shan's morning scrum, the warehouse shift
 (peak season: cartons pile up against the walls until they hit the top and
-overflow) with a break at the 7-Eleven counter or inside Tim Hortons, then Skanky's mall run in the five-ton
-(a 3D mall inspired by Edmonton's Southgate Centre),
-returning the truck and going home. Story scenes advance by themselves; Space
+overflow) with a lunch inside Tim Hortons and the Timmies run back (balance two trays of coffees
+through Termite's driving), then the five-ton: Skanky's mall run (a 3D mall inspired by Edmonton's
+Southgate Centre) or Termite's paper route with Ralph, and at last breakfast with Vic at Cha for Tea
+before going home. Story scenes advance by themselves; Space
 shows the next line and Enter skips the scene. See
 [the overnight shift expansion](docs/overnight-shift-expansion.md).
 

@@ -129,7 +129,7 @@ try {
     });
     reveal(app.world.scene);
     app.lastRender = -Infinity; app.draw(); inspect(app.world.scene);
-    for (const id of ['lot', 'store', 'coffee', 'mall']) {
+    for (const id of ['lot', 'coffee', 'mall', 'dimsum']) {
       const stage = app.stage.stage(id);
       app.stage.active = id; app.pausedFrom = 'mall'; reveal(stage.scene);
       app.lastRender = -Infinity; app.draw(); inspect(stage.scene);

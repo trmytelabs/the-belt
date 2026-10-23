@@ -31,7 +31,7 @@ import { snowBank, snowCap, snowField, snowfall, type Snowfall } from './snow';
  * Every pose is a function of how far each cue has progressed, so skipping a
  * scene always lands on its final staging.
  */
-export type StageId = 'lot' | 'store' | 'coffee' | 'road' | 'mall' | 'house' | 'dimsum';
+export type StageId = 'lot' | 'coffee' | 'road' | 'mall' | 'house' | 'dimsum';
 
 const ease = (t: number): number => t * t * (3 - 2 * t);
 const mix = (a: number, b: number, t: number): number => a + (b - a) * Math.max(0, Math.min(1, t));
@@ -403,7 +403,6 @@ export class StoryStage {
     stage = { scene, actors: new Map(), props: {}, puffs: new PuffField(scene), snow: [], breaths: new Map() };
     this.stages[id] = stage;
     if (id === 'lot') this.buildLot(stage);
-    else if (id === 'store') this.buildStore(stage);
     else if (id === 'coffee') this.buildCoffee(stage);
     else if (id === 'road') this.buildRoad(stage);
     else if (id === 'house') this.buildHouse(stage);
@@ -642,124 +641,6 @@ export class StoryStage {
     this.cast(stage, ['termite', 'skanky', 'shan', 'doris', 'hussan', 'brian', 'fruitloop', 'vic']);
   }
 
-  private buildStore(stage: Stage): void {
-    const { scene, props } = stage;
-    scene.background = new THREE.Color(0x0e1418);
-    scene.add(new THREE.HemisphereLight(0xf4f8ff, 0x3a3a3a, 1.0));
-    const tiles = document.createElement('canvas');
-    tiles.width = tiles.height = 64;
-    const tctx = tiles.getContext('2d')!;
-    tctx.fillStyle = '#d8d8d0'; tctx.fillRect(0, 0, 64, 64);
-    tctx.fillStyle = '#b8bcb4'; tctx.fillRect(0, 0, 32, 32); tctx.fillRect(32, 32, 32, 32);
-    const tileTexture = new THREE.CanvasTexture(tiles);
-    tileTexture.wrapS = tileTexture.wrapT = THREE.RepeatWrapping;
-    tileTexture.repeat.set(10, 10);
-    tileTexture.colorSpace = THREE.SRGBColorSpace;
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(16, 14), new THREE.MeshStandardMaterial({ map: tileTexture, roughness: 0.4 }));
-    floor.rotation.x = -Math.PI / 2;
-    scene.add(floor);
-    const wall = standard(0xe8e4d8, 0.8);
-    for (const [x, z, w, d] of [[0, -7, 16, 0.2], [-8, 0, 0.2, 14]] as const) {
-      const panel = new THREE.Mesh(new THREE.BoxGeometry(w, 4, d), wall);
-      panel.position.set(x, 2, z);
-      scene.add(panel);
-    }
-    // The east wall has a window onto the snowy street.
-    for (const [y, z, h, d] of [[0.5, 0, 1, 14], [3.3, 0, 1.4, 14], [1.8, -6.25, 1.6, 1.5], [1.8, 3.75, 1.6, 6.5]] as const) {
-      const panel = new THREE.Mesh(new THREE.BoxGeometry(0.2, h, d), wall);
-      panel.position.set(8, y, z);
-      scene.add(panel);
-    }
-    const pane = new THREE.Mesh(new THREE.PlaneGeometry(6, 1.6), new THREE.MeshStandardMaterial({ color: 0x9cb6c8, roughness: 0.05, metalness: 0.2, transparent: true, opacity: 0.16, depthWrite: false }));
-    pane.rotation.y = -Math.PI / 2;
-    pane.position.set(7.95, 1.8, -2.5);
-    scene.add(pane);
-    scene.add(snowField(30, 24, 23, 0, -0.02));
-    const street = new THREE.PointLight(0xffc080, 14, 16, 1.5);
-    street.position.set(13, 4.5, -2.5);
-    scene.add(street);
-    stage.snow.push(snowfall([8.3, 0, -10], [26, 8, 6], { count: this.quality === 'high' ? 1200 : 350, size: 0.08 }));
-    // Generic convenience-store stripes and a plain sign.
-    for (const [y, color] of [[3.2, 0xe8702a], [3.0, 0x2e8b57], [2.8, 0xc8302a]] as const) {
-      const stripe = new THREE.Mesh(new THREE.BoxGeometry(16, 0.16, 0.05), standard(color, 0.6));
-      stripe.position.set(0, y, -6.88);
-      scene.add(stripe);
-    }
-    const sign = textPlane(['7-ELEVEN'], 3.2, 0.7, { width: 300, height: 66, background: '#ffffff', color: '#2e8b57', radius: 8 });
-    sign.position.set(0, 3.7, -6.86);
-    scene.add(sign);
-    const counter = rounded(6.4, 1.0, 1.0, standard(0x6a4a3a, 0.6), 0.05);
-    counter.position.set(0.4, 0.5, -2.2);
-    const register = rounded(0.6, 0.4, 0.5, standard(0x222428, 0.4), 0.04);
-    register.position.set(1.8, 1.2, -2.3);
-    const screen = new THREE.Mesh(new THREE.PlaneGeometry(0.4, 0.25), new THREE.MeshStandardMaterial({ color: 0x103020, emissive: 0x40ff90, emissiveIntensity: 0.8 }));
-    screen.position.set(1.8, 1.36, -2.04);
-    scene.add(counter, register, screen);
-    // Shelves of junk food, a fridge wall and the slushie machine.
-    const colors = [0xe03030, 0xf0c030, 0x3070e0, 0x30a050, 0xe07020, 0xa040c0];
-    for (let shelf = 0; shelf < 3; shelf += 1) {
-      const unit = rounded(3.4, 1.7, 0.7, standard(0x9aa0a4, 0.5, 0.4), 0.03);
-      unit.position.set(-4.8 + shelf * 4.4, 0.85, -6.2);
-      scene.add(unit);
-      for (let i = 0; i < 18; i += 1) {
-        const item = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.32, 0.18), standard(colors[(i + shelf) % colors.length], 0.6));
-        item.position.set(-6.2 + shelf * 4.4 + (i % 9) * 0.34, 0.55 + Math.floor(i / 9) * 0.55, -5.82);
-        scene.add(item);
-      }
-    }
-    const fridge = new THREE.Mesh(new THREE.BoxGeometry(0.6, 2.4, 5), new THREE.MeshStandardMaterial({ color: 0xbfe8ff, emissive: 0x7fc8ff, emissiveIntensity: 0.5, transparent: true, opacity: 0.8 }));
-    fridge.position.set(-7.6, 1.2, -1);
-    const slushie = rounded(0.9, 1.3, 0.6, standard(0x303438, 0.4), 0.05);
-    slushie.position.set(6.4, 1.65, -2.4);
-    scene.add(fridge, slushie);
-    for (const [x, color] of [[6.2, 0x3080ff], [6.6, 0xff3040]] as const) {
-      const drum = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.5, 14), new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.4, transparent: true, opacity: 0.85 }));
-      drum.position.set(x, 2.55, -2.4);
-      scene.add(drum);
-    }
-    // On the counter: the crew's junk food, and Termite's bag of apples.
-    const junk = new THREE.Group();
-    for (let i = 0; i < 9; i += 1) {
-      const bag = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.42, 0.12), standard(colors[i % colors.length], 0.5));
-      bag.position.set(-0.4 + (i % 5) * 0.4, 1.21, -1.95 - Math.floor(i / 5) * 0.25);
-      bag.rotation.z = (i % 3 - 1) * 0.2;
-      junk.add(bag);
-    }
-    scene.add(junk);
-    props.junk = junk;
-    const apples = new THREE.Group();
-    const paperBag = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.42, 0.26), standard(0xb89868, 0.9));
-    paperBag.position.y = 0.21;
-    apples.add(paperBag);
-    for (let i = 0; i < 5; i += 1) {
-      const apple = new THREE.Mesh(new THREE.SphereGeometry(0.08, 12, 10), standard(i % 2 ? 0xc02020 : 0x60b030, 0.4));
-      apple.position.set(-0.1 + (i % 3) * 0.1, 0.45 + Math.floor(i / 3) * 0.06, (i % 2) * 0.06 - 0.03);
-      apples.add(apple);
-    }
-    scene.add(apples);
-    props.apples = apples;
-    const bars = new THREE.Group();
-    for (let i = 0; i < 3; i += 1) {
-      const bar = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.04, 0.12), standard(0x5a3018, 0.6));
-      bar.position.set(0, 0.02 + i * 0.045, 0);
-      bars.add(bar);
-    }
-    scene.add(bars);
-    props.bars = bars;
-    const extraBar = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.04, 0.12), standard(0x7a2810, 0.6));
-    scene.add(extraBar);
-    props.extraBar = extraBar;
-    const light = new THREE.PointLight(0xffffff, 18, 18, 1.4);
-    light.position.set(0, 3.6, 0);
-    scene.add(light);
-    this.cast(stage, ['termite', 'skanky', 'bannerman', 'doris', 'brian', 'cashier']);
-  }
-
-  /**
-   * Inside a Tim Hortons on a snowy Christmas night: the counter and menu
-   * boards along the back wall, two booths by the side windows, and Skanky's
-   * car parked in the snow outside.
-   */
   private buildCoffee(stage: Stage): void {
     const { scene, props } = stage;
     scene.background = new THREE.Color(0x0b1520);
@@ -1728,7 +1609,6 @@ export class StoryStage {
     this.frameDt = dt;
     const id = cutscene.scene.id;
     if (id.startsWith('opener')) this.directOpener(stage, cutscene, time);
-    else if (id.startsWith('7eleven')) this.directStore(stage, cutscene, time);
     else if (id.startsWith('timhortons')) this.directCoffee(stage, cutscene, time);
     else if (id === 'drive-to-mall' || id === 'drive-to-ups') this.directRoad(stage, cutscene, dt);
     else if (id === 'go-home') this.directHome(stage, cutscene, time);
@@ -1949,39 +1829,6 @@ export class StoryStage {
     // In his hand as he walks, not a fixed drop below the shoulder (which left it hanging off the arm).
     if (props.shanCoffee.visible) palmOf(shan.character, 'left', props.shanCoffee.position);
     this.cameraTo(new THREE.Vector3(13, 8.5, 21), new THREE.Vector3(1.5, 1, 2.5), this.frameDt, cutscene.index === 0 && cutscene.elapsedMs < 50);
-  }
-
-  private directStore(stage: Stage, cutscene: Cutscene, time: number): void {
-    const { props, actors } = stage;
-    const a = (id: string): StageActor => actors.get(id)!;
-    const variant = cutscene.scene.id;
-    const place = (id: string, x: number, z: number, face = Math.PI): void => {
-      const actor = a(id);
-      actor.root.visible = true;
-      actor.at(x, z);
-      actor.faceAngle = face;
-    };
-    place('cashier', 1.6, -3.1, 0);
-    place('doris', 2.6, -0.6);
-    place('brian', 3.4, 0.2, Math.PI - 0.4);
-    if (variant === '7eleven-2') place('bannerman', -2.6, -0.7, Math.PI + 0.5);
-    place('skanky', 0.6, -1.0);
-    const leave = ease(cueProgress(cutscene, 'leave'));
-    const bag = cueProgress(cutscene, 'termite-bag') > 0 || leave > 0;
-    place('termite', mix(-0.9, variant === '7eleven-1' ? -1.2 : -2.2, leave), mix(-1.0, variant === '7eleven-1' ? 3.8 : 2.6, leave), leave > 0.6 && variant === '7eleven-1' ? 0.2 : Math.PI);
-    a('termite').carrying = bag;
-    const apples = props.apples;
-    if (bag) {
-      const termite = a('termite').root;
-      const forward = new THREE.Vector3(Math.sin(termite.rotation.y), 0, Math.cos(termite.rotation.y));
-      apples.position.copy(termite.position).addScaledVector(forward, 0.4).setY(0.75);
-    } else apples.position.set(-0.9, 1.0, -2.0);
-    const chocolate = ease(cueProgress(cutscene, 'skanky-chocolate'));
-    props.bars.position.set(0.6, 1.0, -1.95);
-    props.extraBar.position.set(mix(3.6, 0.6, chocolate), 1.0 + 0.14 + Math.sin(chocolate * Math.PI) * 0.4, mix(-5.7, -1.95, chocolate));
-    a('skanky').setPose(chocolate > 0 && chocolate < 1 ? 'press' : 'none', time);
-    a('cashier').setPose(variant === '7eleven-3' && cutscene.index === 1 ? 'announce' : 'none', time);
-    this.cameraTo(new THREE.Vector3(-4.6, 3.0, 3.2), new THREE.Vector3(0.6, 1.2, -1.6), this.frameDt, cutscene.index === 0 && cutscene.elapsedMs < 50);
   }
 
   /** Inside Tim Hortons: the crew's booth, the tray and donut box on its table, and the pickup counter. */
