@@ -28,7 +28,7 @@ import { CrewPatrols, type PatrolId } from './crewPatrols';
  * Times are shift milliseconds unless named otherwise.
  */
 export type Say = (id: string, copy: string, durationMs: number) => void;
-export type Pose = 'none' | 'shout' | 'crouch' | 'squat' | 'massage' | 'dance' | 'swear' | 'cough' | 'cheer' | 'announce' | 'push' | 'phone' | 'keys' | 'aim' | 'carry' | 'press' | 'handup' | 'sit' | 'shrug' | 'wii' | 'sip' | 'queasy' | 'retch';
+export type Pose = 'none' | 'shout' | 'crouch' | 'squat' | 'massage' | 'dance' | 'swear' | 'cough' | 'cheer' | 'announce' | 'push' | 'phone' | 'keys' | 'aim' | 'carry' | 'press' | 'handup' | 'sit' | 'shrug' | 'wii' | 'sip' | 'queasy' | 'retch' | 'lie';
 
 const RESIDENT_IDS = ['hussan', 'aj', 'ben', 'bannerman', 'fruitloop', 'doris', 'brian', 'donna'] as const;
 const TRUCK_DOORS: Record<string, { x: number; y: number }> = {
@@ -243,12 +243,21 @@ export function applyPose(c: Character, pose: Pose, t: number, still: boolean): 
       bendElbows(c, -1.25);
       break;
     case 'keys':
-      c.rightArm.rotation.set(-1.0 + wave(8, 0.08), 0, -0.1);
-      bendElbows(c, -0.12, -0.6);
+      // The car keys held at the waist, the forearm forward. A straight arm held out and bobbing read as stiff.
+      c.rightArm.rotation.set(-0.42, 0, 0.12);
+      bendElbows(c, -0.15, -1.15);
       break;
     case 'handup':
-      c.rightArm.rotation.set(-3.0 + wave(6, 0.05), 0, -0.15);
-      bendElbows(c, -0.12, -0.15);
+      // A hand up beside the head with the elbow bent, the way people put a hand up (or hold up a Wii remote);
+      // the old arm went straight up like a post.
+      c.rightArm.rotation.set(-2.25 + wave(3, 0.04), 0, 0.28);
+      bendElbows(c, -0.15, -0.95);
+      break;
+    case 'lie':
+      // Lying still (face down on AJ's table): the arms along the sides, the legs straight.
+      c.leftArm.rotation.set(0.1, 0, -0.16);
+      c.rightArm.rotation.set(0.1, 0, 0.16);
+      bendElbows(c, -0.2);
       break;
     case 'sit':
       c.leftLeg.rotation.x = c.rightLeg.rotation.x = -1.5;
@@ -351,7 +360,7 @@ export class CrewLife {
     this.kylieCup.position.set(0, -0.085, 0.05);
     this.actor('kylie').character.rightHand.add(this.kylieCup);
 
-    this.towel = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.06, 0.7), standard(0xf2efe6, 0.95));
+    this.towel = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.06, 0.7), standard(0xd9d3c6, 0.95));
     this.towel.visible = false;
     world.scene.add(this.towel);
 
@@ -767,7 +776,7 @@ export class CrewLife {
   }
 
   private updateMassage(t: number, wallTime: number, reserved: Set<string>): void {
-    // Vic walks to AJ's table, lies down under a towel, then leaves.
+    // Vic walks to AJ's table, lies face down on it under a towel, then leaves.
     this.once('massage', t, 23500, () => this.say('vic', 'I NEED A\nQUICK TUNE UP', 4800));
     const vic = this.actor('vic');
     const aj = this.actor('aj');
@@ -784,22 +793,26 @@ export class CrewLife {
     reserved.add('aj');
     const table = toWorld(MASSAGE_TABLE);
     if (lying) {
-      // Lie face up along the table, head toward the wall end.
-      const settle = Math.min(1, (t - 24700) / 450);
-      vic.root.position.set(table.x, 0.92 * settle, table.z + 0.92);
-      vic.root.rotation.set(-Math.PI / 2 * settle, 0, 0);
+      // Face down along the table, his face in the cradle at its far end: he tips forward onto it from where he
+      // stood beside its foot. Lying is a pose of its own, so his model holds still rather than playing a standing
+      // idle on its back, and the crew's footprint pass leaves him on the table rather than on the floor under it.
+      const settle = Math.min(1, (t - 24700) / 600);
+      const stood = toWorld({ x: MASSAGE_TABLE.x - 22, y: MASSAGE_TABLE.y - 26 });
+      vic.root.position.set(mix(stood.x, table.x, settle), 0.99 * settle, mix(stood.z, table.z - 0.8, settle));
+      vic.root.rotation.set(Math.PI / 2 * settle, 0, 0);
       vic.faceAngle = 0;
-      vic.pose = 'none';
-      this.towel.position.set(table.x, 1.12, table.z + 0.05);
-      aj.place(MASSAGE_TABLE.x + 22, MASSAGE_TABLE.y + 4);
+      vic.pose = 'lie';
+      this.towel.position.set(table.x, 1.05, table.z + 0.18);
+      aj.place(MASSAGE_TABLE.x + 20, MASSAGE_TABLE.y + 10);
       aj.faceAngle = -Math.PI / 2;
       if (aj.pose !== 'massage') { aj.pose = 'massage'; aj.poseStart = wallTime; }
       return;
     }
     vic.root.rotation.x = 0;
     vic.faceAngle = null;
+    vic.pose = 'none';
     vic.place(t < 23700 ? mix(10, MASSAGE_TABLE.x - 22, (t - 21000) / 2700)
-      : t < 30800 ? MASSAGE_TABLE.x - 22 : mix(MASSAGE_TABLE.x - 22, 10, (t - 30800) / 2700), MASSAGE_TABLE.y + 30);
+      : t < 30800 ? MASSAGE_TABLE.x - 22 : mix(MASSAGE_TABLE.x - 22, 10, (t - 30800) / 2700), MASSAGE_TABLE.y - 26);
     const home = DEPOT.eventBays.aj;
     aj.place(t < 30800 ? mix(home.x, MASSAGE_TABLE.x + 22, (t - 21000) / 1200) : mix(MASSAGE_TABLE.x + 22, home.x, (t - 30800) / 1200),
       t < 30800 ? mix(home.y, MASSAGE_TABLE.y + 4, (t - 21000) / 1200) : mix(MASSAGE_TABLE.y + 4, home.y, (t - 30800) / 1200));

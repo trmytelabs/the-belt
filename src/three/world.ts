@@ -57,6 +57,15 @@ const CARDBOARD_TILE = 0.6;
  * Resize UVs for the photo surfaces only: the canvas fallbacks keep the UVs
  * and texture repeats they were drawn for.
  */
+/** The top of the depot's walls, where the roof deck sits. */
+const ROOF_HEIGHT = 7.4;
+/** The sodium work lights over the working areas (depot x, y), each under a high-bay lamp in the roof. */
+const DEPOT_WORK_LIGHTS: readonly (readonly [number, number])[] = [
+  [480, 150], [480, 480], [480, 820], [480, SHIFT_LAYOUT.stairs.centerY],
+  [SHIFT_LAYOUT.floorT.x, SHIFT_LAYOUT.floorT.y], [SHIFT_LAYOUT.floorS.x, SHIFT_LAYOUT.floorS.y],
+  [244, 260], [716, 260], [480, -120],
+  [150, 420], [810, 420],
+];
 const photoUVs = <T extends THREE.BufferGeometry>(geometry: T, resize: (geometry: T) => void): T => {
   if (surfacesLoaded()) resize(geometry);
   return geometry;
@@ -166,6 +175,8 @@ export class DepotWorld {
   public recoverySurface!: THREE.Mesh;
   public bulkSurface!: THREE.Mesh;
   public bulkRearWall!: THREE.Mesh;
+  /** The roof's underside: deck, joists, girders, sprinkler pipes and high-bay lamps. See `showRoofFor`. */
+  public roof!: THREE.Group;
   public readonly stairTreads: { side: 'left' | 'right'; index: number; mesh: THREE.Mesh }[] = [];
   public readonly stairRails: THREE.Mesh[] = [];
   public groundSurface!: THREE.Mesh;
@@ -203,6 +214,7 @@ export class DepotWorld {
 
     this.addLights(quality);
     this.addShell();
+    this.addRoof();
     this.addPlatform();
     this.tread = this.addBelt();
     this.addReceiving();
@@ -253,12 +265,9 @@ export class DepotWorld {
     scene.add(key, key.target);
 
     // Sodium work lights make warm pools over each working area, including the lower floor.
-    const pools: [number, number, number, number][] = [
-      [480, 150, 0xffc07a, 70], [480, 480, 0xffc07a, 76], [480, 820, 0xffcf96, 72], [480, SHIFT_LAYOUT.stairs.centerY, 0xffc98c, 72],
-      [SHIFT_LAYOUT.floorT.x, SHIFT_LAYOUT.floorT.y, 0xffc98c, 32], [SHIFT_LAYOUT.floorS.x, SHIFT_LAYOUT.floorS.y, 0xffc98c, 32],
-      [244, 260, 0xffb26a, 40], [716, 260, 0xffb26a, 40], [480, -120, 0x8fc4ff, 55],
-      [150, 420, 0xffb26a, 26], [810, 420, 0xffb26a, 26],
-    ];
+    const colors = [0xffc07a, 0xffc07a, 0xffcf96, 0xffc98c, 0xffc98c, 0xffc98c, 0xffb26a, 0xffb26a, 0x8fc4ff, 0xffb26a, 0xffb26a];
+    const powers = [70, 76, 72, 72, 32, 32, 40, 40, 55, 26, 26];
+    const pools = DEPOT_WORK_LIGHTS.map(([x, y], index): [number, number, number, number] => [x, y, colors[index], powers[index]]);
     const fixtureMaterial = new THREE.MeshStandardMaterial({ color: 0x222222, emissive: 0xffe2b0, emissiveIntensity: 4 });
     // Software renderers get the four central pools only.
     for (const [x, y, color, power] of quality === 'high' ? pools : pools.slice(0, 4)) {
@@ -503,6 +512,94 @@ export class DepotWorld {
    * The fade is a function of where the camera is, not of time, so the near
    * plane never meets a visible wall. Returns the wall's opacity.
    */
+  /**
+   * The depot's roof, from underneath: a corrugated deck on open-web joists across the building, two girders along it,
+   * red sprinkler mains and a high-bay lamp over each work light. The play cameras look down from well above the walls,
+   * so it shows only to a camera below the joists (the start screen, the low story shots) and hides otherwise; it casts
+   * no shadow and is no obstacle. The start screen looked straight up into the night sky.
+   */
+  private addRoof(): void {
+    const roof = new THREE.Group();
+    roof.name = 'depot-roof';
+    const back = toWorldZ(SHIFT_LAYOUT.worldTop) - 0.6;
+    const rear = SHIFT_LAYOUT.bulkRearWall;
+    const front = toWorldZ(rear.y + rear.height / 2);
+    const length = front - back, middle = (back + front) / 2, width = 31.2;
+    const deck = new THREE.Mesh(
+      photoUVs(new THREE.PlaneGeometry(width, length), (geometry) => scaleUVs(geometry, width / SURFACE_TILE.siding, length / SURFACE_TILE.siding)),
+      surfaceMaterial('siding', { color: 0x7d868b, roughness: 0.8, metalness: 0.3 }),
+    );
+    // Facing down: from above, its back face is culled as well as the group being hidden.
+    deck.rotation.x = Math.PI / 2;
+    deck.position.set(0, ROOF_HEIGHT, middle);
+    roof.add(deck);
+    const steel = standard(0x3b4349, 0.6, 0.55);
+    // Open-web joists: top and bottom chords with the zigzag web between them (a cut-out texture).
+    const web = new THREE.CanvasTexture((() => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 128; canvas.height = 32;
+      const g = canvas.getContext('2d')!;
+      g.strokeStyle = '#fff'; g.lineWidth = 5;
+      g.beginPath(); g.moveTo(0, 30); g.lineTo(64, 2); g.lineTo(128, 30); g.stroke();
+      return canvas;
+    })());
+    web.wrapS = THREE.RepeatWrapping;
+    web.repeat.set(width / 0.9, 1);
+    const webMaterial = new THREE.MeshStandardMaterial({ color: 0x3b4349, roughness: 0.6, metalness: 0.55, alphaMap: web, alphaTest: 0.5, side: THREE.DoubleSide });
+    for (let z = back + 1.4; z < front - 0.6; z += 2.4) {
+      const top = new THREE.Mesh(new THREE.BoxGeometry(width, 0.06, 0.09), steel);
+      top.position.set(0, ROOF_HEIGHT - 0.06, z);
+      const bottom = new THREE.Mesh(new THREE.BoxGeometry(width, 0.05, 0.08), steel);
+      bottom.position.set(0, ROOF_HEIGHT - 0.46, z);
+      const zigzag = new THREE.Mesh(new THREE.PlaneGeometry(width, 0.36), webMaterial);
+      zigzag.position.set(0, ROOF_HEIGHT - 0.26, z);
+      roof.add(top, bottom, zigzag);
+    }
+    // Two girders along the building carry the joists.
+    for (const x of [-5.6, 5.6]) {
+      const girder = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.5, length), standard(0x2f363b, 0.55, 0.6));
+      girder.position.set(x, ROOF_HEIGHT - 0.74, middle);
+      roof.add(girder);
+    }
+    // Sprinkler mains, under the joists either side of the belt.
+    for (const x of [-2.8, 2.8, -10.4, 10.4]) {
+      const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, length, 8), standard(0xa3302a, 0.5, 0.2));
+      pipe.rotation.x = Math.PI / 2;
+      pipe.position.set(x, ROOF_HEIGHT - 0.58, middle);
+      roof.add(pipe);
+    }
+    // A high-bay lamp over each warm work light, hung on a rod from the joists.
+    const housing = standard(0x4a5257, 0.5, 0.6);
+    housing.side = THREE.DoubleSide;
+    const lens = new THREE.MeshStandardMaterial({ color: 0x222222, emissive: 0xffe2b0, emissiveIntensity: 3 });
+    for (const [x, y] of DEPOT_WORK_LIGHTS) {
+      const at = toWorld({ x, y }, 0);
+      const shade = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.42, 0.34, 16, 1, true), housing);
+      shade.position.set(at.x, 6.25, at.z);
+      const glow = new THREE.Mesh(new THREE.CircleGeometry(0.4, 16), lens);
+      glow.rotation.x = Math.PI / 2;
+      glow.position.set(at.x, 6.09, at.z);
+      const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, ROOF_HEIGHT - 0.46 - 6.42, 6), steel);
+      rod.position.set(at.x, (ROOF_HEIGHT - 0.46 + 6.42) / 2, at.z);
+      roof.add(shade, glow, rod);
+    }
+    roof.traverse((child) => {
+      child.userData.solid = false;
+      const mesh = child as THREE.Mesh;
+      if (mesh.isMesh) { mesh.castShadow = false; mesh.receiveShadow = false; }
+    });
+    mergeStatic(roof);
+    roof.traverse((child) => { child.userData.solid = false; });
+    roof.visible = false;
+    this.roof = roof;
+    this.scene.add(roof);
+  }
+
+  /** Shows the roof to a camera below its joists (inside the depot), hides it from the cameras above. */
+  public showRoofFor(camera: THREE.Camera): void {
+    this.roof.visible = camera.position.y < ROOF_HEIGHT - 0.9;
+  }
+
   public fadeRearWall(camera: THREE.Vector3): number {
     const wall = this.bulkRearWall;
     const front = wall.position.z - SHIFT_LAYOUT.bulkRearWall.height * WORLD_SCALE / 2;

@@ -1617,6 +1617,18 @@ export class StoryStage {
     if (OUTDOORS.has(this.active) && !this.reducedMotion) this.breathe(stage, time, wind);
   }
 
+  /**
+   * Holds the active set where its last scene left it, under a choice card: the people breathe and idle on where
+   * they stand or sit. Left undirected they froze mid-frame.
+   */
+  public hold(dt: number, time: number): void {
+    if (!this.active) return;
+    const stage = this.stage(this.active);
+    for (const actor of stage.actors.values()) if (actor.root.visible) actor.animate(dt, time, this.reducedMotion);
+    for (const actor of stage.actors.values()) if (actor.root.visible && actor.seatedIn && actor.seat) this.settleInSeat(actor);
+    stage.puffs.update(dt);
+  }
+
   /** Out in the cold, everyone standing breathes out a faint cloud every few seconds, carried off by the wind. */
   private breathe(stage: Stage, time: number, wind: Wind): void {
     for (const [id, actor] of stage.actors) {

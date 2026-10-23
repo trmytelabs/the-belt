@@ -1601,6 +1601,7 @@ export class Belt3d {
       }
       if (cutscene.done) this.finishScene();
     }
+    if (this.state === 'decision') this.stage.hold(dt, this.time);
     if (this.state === 'countdown') {
       const step = Math.min(dt, this.time - this.countdownStartedAt);
       this.crew.disperse(step, this.time);
@@ -1913,6 +1914,7 @@ export class Belt3d {
     const camera = this.activeCamera();
     // Trucks open a window onto the people behind them, except on the start screen: its view down the deck between
     // the rows shows the trucks whole.
+    if (!stageScene) this.world.showRoofFor(camera);
     if (!stageScene && this.state !== 'dream') this.world.truckCutaway.update(camera, this.state === 'briefing' && !this.overview ? []
       : [...Object.values(this.workers).map(worker => worker.root), ...[...this.crew.actors.values()].map(actor => actor.root)]);
     syncCharacterModels(this.state === 'dream' ? this.dream.scene : scene);
@@ -2296,7 +2298,7 @@ export class Belt3d {
     for (const parcel of this.model.packages) if (parcel.state === 'floor') occupied.push({ x: parcel.x, y: parcel.y, radius: SHIFT_LAYOUT.parcelRadius });
     for (const [id, actor] of this.crew.clearanceActors) {
       // Authored seated/lying contact scenes use their own poses and staging.
-      if (!actor.root.visible || actor.pose === 'massage' || actor.pose === 'sit' || Math.abs(actor.character.body.rotation.z) > 0.8) continue;
+      if (!actor.root.visible || actor.pose === 'massage' || actor.pose === 'sit' || actor.pose === 'lie' || Math.abs(actor.character.body.rotation.z) > 0.8) continue;
       const intended = { x: actor.root.position.x * 32 + 480, y: actor.root.position.z * 32 + 340 };
       const radius = actor.carrying ? DEPOT_CARRY_RADIUS : DEPOT_BODY_RADIUS;
       let clear = clearDepotFootprint(intended, radius, occupied, this.depotSolids, SHIFT_LAYOUT);
