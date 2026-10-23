@@ -1727,6 +1727,9 @@ export class Belt3d {
     if (this.state === 'lot' && this.lot) this.stage.updateLot(this.lot, dt, this.time);
     this.mesa.update(dt * 1000, this.time);
 
+    // The story sets' room tone: talk and clinks at Cha for Tea and in the Tim Hortons booth, night wind in the lot and on the road.
+    const set = this.usesStage() ? this.stage.active : null;
+    audioSystem.setRoomTone(set === 'dimsum' || set === 'coffee' ? 'restaurant' : set === 'lot' || set === 'road' ? 'outdoors' : null, dt);
     const running = this.state === 'playing' || this.state === 'celebrating' || this.state === 'ended';
     audioSystem.setTruckIdle((this.state === 'playing' && !m.endless && m.elapsedMs >= 120_000) || this.state === 'celebrating');
     // The conveyor runs while sorting goes on, and falls quiet when it stops (a brake, a story stop, a pause, the end).
