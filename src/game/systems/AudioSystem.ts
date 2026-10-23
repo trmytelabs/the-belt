@@ -23,6 +23,8 @@ const COOLDOWN: Partial<Record<SoundEffect, number>> = {
 export class AudioSystem {
   protected context: AudioContext | null = null;
   private masterGain: GainNode | null = null;
+  /** The last node before the speakers: everything the game plays passes through it. */
+  protected output: AudioNode | null = null;
   protected musicGain: GainNode | null = null;
   protected sfxGain: GainNode | null = null;
   protected noiseBuffer: AudioBuffer | null = null;
@@ -307,6 +309,7 @@ export class AudioSystem {
     this.musicGain.connect(compressor); this.sfxGain.connect(compressor);
     compressor.connect(this.masterGain); this.masterGain.connect(lowpass);
     lowpass.connect(rumbleCut); rumbleCut.connect(context.destination);
+    this.output = rumbleCut;
     this.noiseBuffer = context.createBuffer(1, context.sampleRate * 2, context.sampleRate);
     const data = this.noiseBuffer.getChannelData(0);
     let seed = 0x71b37; let smooth = 0;
