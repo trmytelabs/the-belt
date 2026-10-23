@@ -659,10 +659,10 @@ export class StoryStage {
     floor.receiveShadow = true;
     scene.add(floor);
     // Walls: cream above a dark wood wainscot. The window wall (east) is built round its glass.
-    const cream = standard(0xe9dcc4, 0.85);
-    const wood = standard(0x5a3826, 0.6);
+    const cream = surfaceMaterial('plaster', { color: 0xe9dcc4, roughness: 0.85 });
+    const wood = surfaceMaterial('wood', { color: 0x5a3826, roughness: 0.6 });
     const wall = (x: number, y: number, z: number, w: number, h: number, d: number, material: THREE.Material = cream): void => {
-      const panel = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
+      const panel = new THREE.Mesh(boxUVs(new THREE.BoxGeometry(w, h, d), material === wood ? SURFACE_TILE.wood : SURFACE_TILE.plaster), material);
       panel.position.set(x, y, z);
       scene.add(panel);
     };

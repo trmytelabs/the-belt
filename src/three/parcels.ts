@@ -130,9 +130,9 @@ function lobster(shell: THREE.Material, belly: THREE.Material, dark: THREE.Mater
     const eye = new THREE.Mesh(new THREE.SphereGeometry(0.008, 6, 5), dark);
     eye.position.set(side * 0.018, 0.068, 0.1);
     // Long antennae sweeping back over the body, and short antennules forward.
-    const antenna = new THREE.Mesh(new THREE.CylinderGeometry(0.0025, 0.004, 0.3, 4), shell);
-    antenna.position.set(side * 0.06, 0.07, 0.17);
-    antenna.rotation.set(Math.PI / 2 - 0.35, 0, side * -0.9);
+    const antenna = new THREE.Mesh(new THREE.CylinderGeometry(0.0025, 0.004, 0.18, 4), shell);
+    antenna.position.set(side * 0.03, 0.075, 0.12);
+    antenna.rotation.set(Math.PI / 2 - 0.5, 0, side * -0.35);
     const antennule = new THREE.Mesh(new THREE.CylinderGeometry(0.002, 0.003, 0.07, 4), shell);
     antennule.position.set(side * 0.012, 0.055, 0.15);
     antennule.rotation.set(Math.PI / 2 - 0.2, 0, side * -0.3);
@@ -274,9 +274,11 @@ function buildBody(parcel: Parcel, parts: Record<string, THREE.Object3D>): { gro
         group.add(strand);
       }
       const shell = standard(0x8a2f1f, 0.42), belly = standard(0xc8683a, 0.5), dark = standard(0x1e1310, 0.35);
-      for (const [offset, z, turn] of [[-0.17, 0.06, 0.25], [0.15, -0.07, 2.8], [0.02, 0.13, -1.4]] as const) {
+      // Lying lengthwise in the crate, every claw, leg and feeler inside its walls (whoever carries it stays clear).
+      for (const [offset, z, turn] of [[-0.1, 0.11, Math.PI / 2 + 0.12], [0.11, -0.1, -Math.PI / 2 + 0.15], [0.02, 0.01, Math.PI / 2 - 0.1]] as const) {
         const { body, claws } = lobster(shell, belly, dark);
         claws.forEach((claw, index) => { parts[`claw${offset}${index ? 1 : -1}`] = claw; });
+        body.scale.setScalar(0.85);
         body.position.set(offset, 0.345, z);
         body.rotation.y = turn;
         group.add(body);
