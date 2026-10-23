@@ -662,7 +662,7 @@ export class Belt3d {
     }
     this.overlay.setMode('shift');
     this.overlay.showPanel(`
-      <div class="kicker">TERMITE &amp; SKANKY  /  ONE MORE OVERNIGHT</div>
+      <div class="kicker">TRMYTE LABS PRESENTS  /  TERMITE &amp; SKANKY  /  ONE MORE OVERNIGHT</div>
       <h1>ANOTHER NIGHT ON THE BELT.</h1>
       <p class="b3d-origin">Based on real nights on the belt at a UPS depot in Edmonton.</p>
       <details class="b3d-howto"${this.record.completed > 0 ? '' : ' open'}><summary><b>HOW TO PLAY · Dispatch ${this.model.goal} packages together in three minutes.</b></summary>
