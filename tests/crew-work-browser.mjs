@@ -66,6 +66,16 @@ try {
   // Attention: a line from Shan turns the heads of the crew in earshot toward him, by the look record and the head itself.
   const attention = await read(() => {
     const app = window.fixtureApp, crew = app.crew, shan = crew.actor('shan');
+    // Shan stops a step in front of one of the crew, who waits at their station for the line, so someone is in earshot
+    // wherever the shift had taken everyone before this check; the rest of the crew carry on with their freight.
+    const listener = [...app.world.residents.keys()].find(id => {
+      const actor = crew.actor(id);
+      return actor.root.visible && actor.pose === 'none' && !crew.staged.has(id);
+    });
+    crew.crewTrips.delete(listener); crew.crewEpoch.set(listener, Infinity);
+    const station = crew.workStation(listener);
+    crew.staged.add('shan');
+    shan.place(station.x + (station.x < 480 ? 48 : -48), station.y);
     shan.root.visible = true;
     crew.say('shan', 'HEADS UP', 4000);
     // The crew step by hand, so the check does not depend on the frame rate.
@@ -80,6 +90,7 @@ try {
       const dx = head.x - actor.root.position.x, dz = head.z - actor.root.position.z, raw = Math.atan2(dx, dz) - actor.root.rotation.y;
       report.push({ id, distance: Math.hypot(dx, dz), bearing: Math.atan2(Math.sin(raw), Math.cos(raw)), look: actor.look, yaw: actor.character.head.rotation.y, head });
     }
+    crew.staged.delete('shan');
     return report;
   });
   const listeners = attention.filter(a => a.distance < 8.95 && Math.abs(a.bearing) <= 1.74);
@@ -99,6 +110,9 @@ try {
     const previousFreight = new Map();
     app.model.beltTravel = 0; app.model.beltSpeed = 50;
     for (const parcel of app.model.packages) parcel.state = 'delivered';
+    // The paused shift froze the countdown to the next player parcel at whatever it read; the crew at the head of the
+    // belt lift freight only while none is due there, so the routine is measured with none due.
+    Object.defineProperty(app.model, 'nextArrivalInMs', { configurable:true, value:60_000 });
     for (let time = 0; time < 20000; time += 100) {
       app.model.beltTravel += 5;
       app.model.elapsedMs = time; crew.update(0.1, app.model, time / 1000);
@@ -126,6 +140,7 @@ try {
         previous.set(id, root.position.clone());
       }
     }
+    delete app.model.nextArrivalInMs;
     return totals;
   });
   assert.equal(work.hidden, 0);
