@@ -43,6 +43,15 @@ try {
     const rendered=await music.offline.startRendering(),level=metrics(rendered,3,join-2),seam=metrics(rendered,join,join+1.6);
     ensure(level.rms>.002 && level.peak<.5,'music is audible with headroom');
     ensure(seam.rms>.001,'the loop crossfade has no silent gap');
+    // A new place crosses to its own track: the old recording fades out, the new one starts; the same place again changes nothing.
+    const places=make(20),p=places.system;
+    p.startMusic('game');await p.trackLoad;window.clearInterval(p.trackTimer);
+    const depotTrack=p.trackBuffer,old=[...p.recordings.keys()][0];
+    p.setScene('cafe');await p.trackLoad;window.clearInterval(p.trackTimer);
+    ensure(p.trackBuffer!==depotTrack && p.trackBuffer.duration>150 && p.playing==='cafe','the cafe loads its own track');
+    ensure(p.recordings.size===1 && !p.recordings.has(old),'the depot recording fades out and the cafe one starts');
+    p.setScene('cafe');ensure(p.recordings.size===1,'the same place again changes nothing');
+    p.stopMusic();
     ensure(metrics(rendered,after+.5).peak<.000001,'music stops cleanly after the fade');
 
     const cues=[];

@@ -45,8 +45,10 @@ Cars use two detailed sedan models, and the devil uses an animated
 horned, winged model. These compact CC0 models retain the existing story paths
 and have procedural fallbacks; see [prop sources](public/models/PROP-SOURCES.md).
 Kylie is a short Asian man; AJ is a clothed bald man with fitted glasses.
-The 3D soundtrack is a recorded chill lo-fi instrumental made in Google Flow
-Music, with smooth loop transitions, quieter package foley and music ducking
+The shift plays a recorded chill lo-fi instrumental made in Google Flow
+Music; each other place and mini-game has its own track by Kevin MacLeod
+(incompetech.com, CC BY 4.0, credited in the ending), crossfaded as the night
+moves on. Loops are smooth, package foley quieter, and music ducks
 under dialogue. It starts with START THE NIGHT, during the arrival scene.
 Package rustles, impacts, mechanical latches and tablet clicks use small local
 recordings, with subtle variation and controlled volume. M mutes both music and
