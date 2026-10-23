@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { MALL_LAYOUT } from '../game/slice/MallModel';
 import { MALL_STORES } from '../game/slice/StoryScript';
 import { mergeStatic } from './merge';
+import { SECURITY_WING } from './MallModel3D';
 import { placeProp } from './propModels';
 import { standard, textTexture } from './space';
 import { SURFACE_TILE, boxUVs, scaleUVs, surfaceMaterial } from './textures';
@@ -511,6 +512,8 @@ export function buildSouthgateMall(scene: THREE.Scene, quality: 'high' | 'low', 
 
   // ---------------------------------------------------------------- the two levels on each side
   const storeEdges = [280, 580, 880, 1180].map(mallX);
+  // The service hallway to security leaves the concourse's south-east corner (built below).
+  const hallX0 = mallX(SECURITY_WING.hallway.x), hallX1 = mallX(SECURITY_WING.hallway.x + SECURITY_WING.hallway.w);
   for (const north of [true, false]) {
     const s = north ? -1 : 1;
     const zf = front * s;
@@ -531,9 +534,16 @@ export function buildSouthgateMall(scene: THREE.Scene, quality: 'high' | 'low', 
     const [rz0, rz1] = span2(zf, zb);
     for (const x of storeEdges.slice(1)) wall(m.paint, [x - 0.1, 0, rz0, x + 0.1, LOWER, rz1], cutaway);
     wall(m.paint, [west - 0.2, 0, Math.min(zf, zb), west, ROOF, Math.max(zf, zb)], cutaway);
-    wall(m.precast, [west - 0.2, 0, Math.min(zb, zb + 0.2 * s), east + 0.2, ROOF, Math.max(zb, zb + 0.2 * s)], cutaway);
-    // The east corner: a corridor to the washrooms and guest services.
-    wall(m.stone, [storeEdges[3] + 0.35, 0, fz0, east - 0.7, LOWER, fz1], cutaway);
+    // The outside wall; on the south it opens where the service hallway to security runs out through it.
+    const [oz0, oz1] = [Math.min(zb, zb + 0.2 * s), Math.max(zb, zb + 0.2 * s)];
+    if (north) wall(m.precast, [west - 0.2, 0, oz0, east + 0.2, ROOF, oz1], cutaway);
+    else {
+      wall(m.precast, [west - 0.2, 0, oz0, hallX0, ROOF, oz1], cutaway);
+      wall(m.precast, [hallX1, 0, oz0, east + 0.2, ROOF, oz1], cutaway);
+    }
+    // The east corner: on the north a corridor to the washrooms and guest services; on the south the staff doors to
+    // the security hallway (built with it, below).
+    if (north) wall(m.stone, [storeEdges[3] + 0.35, 0, fz0, east - 0.7, LOWER, fz1], cutaway);
     // Gallery slab with its lit edge, the glass balustrade, and the clerestory band.
     const slab = north ? scene : full;
     const [gz0, gz1] = span2(zf, into(3.0));
@@ -798,16 +808,124 @@ export function buildSouthgateMall(scene: THREE.Scene, quality: 'high' | 'low', 
   sign(full, ['SERVICE CORRIDOR · STAFF ONLY'], 3.0, 0.32, west + 0.02, 3.2, 0, Math.PI / 2, { background: '#f4efe6', color: '#2b2f33', depth: 0.04 });
   sign(scene, ['EXIT'], 0.7, 0.28, west + 0.03, 2.55, -passageHalf - 0.6, Math.PI / 2, { background: '#1e8a4a', color: '#ffffff', glow: 1.3, depth: 0.06 });
   sign(scene, ['LRT · 111 ST', '↑ LEVEL 2'], 2.0, 0.7, west + 0.03, 6.2, -2.6, Math.PI / 2, { background: '#1b2a33', color: '#f0e6d0', depth: 0.05 });
-  // East end: the old anchor's portal, closed behind a rolling grille.
+  // East end: the old anchor's portal, open now on BENTLEY (the owner's, 2026-10-23), its grille rolled up into its box.
   const portalHalf = 3.0;
   wall(m.stone, [east, 0, -front, east + 0.4, SPRING, -portalHalf], false);
   wall(m.stone, [east, 0, portalHalf, east + 0.4, SPRING, front], true);
   box(scene, m.stone, [east, 6.5, -portalHalf, east + 0.4, SPRING, portalHalf]);
-  panel(scene, grilleFor(portalHalf * 2, 6.5), portalHalf * 2, 6.5, east + 0.2, 3.25, 0, '-x');
-  sign(scene, ['ANCHOR SPACE · OPENING SOON'], 4.6, 0.55, east - 0.02, 7.4, 0, -Math.PI / 2, { background: '#f4efe6', color: '#2b2f33', glow: 0.6 });
+  box(scene, standard(0x6a7278, 0.5, 0.5), [east + 0.05, 6.05, -portalHalf, east + 0.45, 6.5, portalHalf]);
+  // A black fascia with the name in white and brass over the portal, and the lit status board under it (store 6).
+  box(scene, standard(0x0e1012, 0.35, 0.2), [east - 0.08, 4.55, -portalHalf + 0.15, east, 6.0, portalHalf - 0.15]);
+  sign(scene, ['BENTLEY'], 4.6, 1.0, east - 0.1, 5.28, 0, -Math.PI / 2, { background: '#0e1012', color: '#f6f1e6', border: '#c8a45a', glow: 1.1 });
+  const bentleyBoard = sign(scene, ['—'], 3.6, 0.46, east - 0.12, 4.18, 0, -Math.PI / 2, { background: '#9aa4a8', color: '#14232a', glow: 0.7, depth: 0.08 }, -0.3);
+  bentleyBoard.userData.keep = true;
+  boards[6] = bentleyBoard;
   sign(scene, ['WASHROOMS · GUEST SERVICES'], 1.6, 0.34, 17.9, 3.4, -front + 0.08, 0, { background: '#1b2a33', color: '#f0e6d0', depth: 0.05 });
-  floor(standard(0x2a2c30, 0.25), east + 0.4, -8, 30, 8, 0.002);
-  for (const [fx, fz] of [[22.5, -3.5], [24.5, 2.0], [27, -1.0]]) box(scene, standard(0x50565a, 0.6), [fx - 0.8, 0, fz - 0.3, fx + 0.8, 1.3, fz + 0.3]);
+  // Inside BENTLEY: a warm, dark-wood luggage store. Suitcases stand on plinths and line the walls; the cash wrap is at
+  // the back.
+  floor(m.darkWood, east + 0.4, -8, 30, 8, 0.002);
+  wall(m.paint, [east + 0.4, 0, -8.2, 30, 6.4, -8], false);
+  wall(m.paint, [east + 0.4, 0, 8, 30, 6.4, 8.2], true);
+  box(scene, standard(0x2a2018, 0.6), [29.8, 0, -8, 30, 6.4, 8]);
+  ceiling(scene, m.white, east + 0.4, -8, 30, 8, 6.4);
+  const bentleyLight = new THREE.PointLight(0xffd9a8, 16 * strong, 14, 1.4);
+  bentleyLight.position.set(24.5, 4.2, 0);
+  scene.add(bentleyLight);
+  const shells = [0x15171a, 0x8a5a32, 0x1f2f4a, 0x5a1e24, 0xb8bcc0, 0x2f4a3a].map((color) => standard(color, 0.35, 0.25));
+  const suitcase = (x: number, z: number, y: number, scale: number, shell: THREE.Material): void => {
+    const [w, h, d] = [0.42 * scale, 0.66 * scale, 0.26 * scale];
+    box(scene, shell, [x - w / 2, y, z - d / 2, x + w / 2, y + h, z + d / 2]);
+    for (const dx of [-0.09, 0.09]) box(scene, m.steel, [x + dx * scale - 0.012, y + h, z - 0.012, x + dx * scale + 0.012, y + h + 0.22 * scale, z + 0.012]);
+    box(scene, m.steel, [x - 0.1 * scale, y + h + 0.2 * scale, z - 0.015, x + 0.1 * scale, y + h + 0.24 * scale, z + 0.015]);
+  };
+  [[22.2, -3.2], [22.2, 3.2], [25.4, 0]].forEach(([px, pz], plinth) => {
+    box(scene, standard(0xe8e0d0, 0.4), [px - 0.8, 0, pz - 0.5, px + 0.8, 0.4, pz + 0.5]);
+    for (let k = 0; k < 3; k += 1) suitcase(px - 0.5 + k * 0.5, pz, 0.4, 1 - k * 0.12, shells[(plinth * 2 + k) % shells.length]);
+  });
+  for (const wz of [-7.6, 7.6]) for (let level = 0; level < 3; level += 1) {
+    box(scene, m.darkWood, [21, 0.5 + level * 1.1, wz - 0.3, 29, 0.56 + level * 1.1, wz + 0.3]);
+    for (let k = 0; k < 9; k += 1) suitcase(21.5 + k * 0.85, wz, 0.56 + level * 1.1, 0.7, shells[(k + level) % shells.length]);
+  }
+  box(scene, m.darkWood, [28.0, 0, -1.6, 28.8, 1.0, 1.6]);
+  box(scene, standard(0xd8c8a8, 0.3, 0.3), [27.97, 1.0, -1.65, 28.83, 1.05, 1.65]);
+
+  // ---------------------------------------------------------------- the way to mall security (the Bentley run)
+  // Staff doors in the concourse's south-east corner, a block-walled service hallway running south from them, and the
+  // security office at its end (MallModel3D SECURITY_WING). The play camera looks from the south: the hallway's walls run
+  // along its line of sight, and the office's far wall is cut low like every south wall.
+  const sw = SECURITY_WING;
+  const [hz0, hz1] = [mallZ(sw.hallway.y), mallZ(sw.hallway.y + sw.hallway.h)];
+  const [dx0, dx1] = [mallX(sw.doors.x), mallX(sw.doors.x + sw.doors.w)];
+  const [ox0, ox1, oz0, oz1] = [mallX(sw.office.x), mallX(sw.office.x + sw.office.w), mallZ(sw.office.y), mallZ(sw.office.y + sw.office.h)];
+  // The door frame in the corner's front wall, and both leaves swung back against the hallway's sides.
+  wall(m.stone, [storeEdges[3] + 0.35, 0, front, dx0, LOWER, front + 0.35], true);
+  wall(m.stone, [dx1, 0, front, east - 0.7, LOWER, front + 0.35], true);
+  wall(m.stone, [dx0, 2.3, front, dx1, LOWER, front + 0.35], true);
+  const leaf = standard(0x7a8288, 0.5, 0.4);
+  box(scene, leaf, [dx0, 0, front + 0.4, dx0 + 0.05, 2.2, front + 1.0]);
+  box(scene, leaf, [dx1 - 0.05, 0, front + 0.4, dx1, 2.2, front + 1.0]);
+  for (const x of [dx0 + 0.05, dx1 - 0.05]) box(scene, m.steel, [x - 0.02, 1.0, front + 0.8, x + 0.02, 1.05, front + 0.95]);
+  // For play, a plaque by the doors angled up to the camera, as the south stores have.
+  const staffPlaque = new THREE.Group();
+  staffPlaque.position.set(hallX0 - 1.05, CUT + 0.5, front + 0.5);
+  staffPlaque.rotation.x = -0.75;
+  cut.add(staffPlaque);
+  sign(staffPlaque, ['SECURITY', 'STAFF ONLY'], 1.5, 0.62, 0, 0, 0, 0, { background: '#1b2a33', color: '#f0e6d0', border: '#c8a45a', glow: 0.8 });
+  // The hallway: sealed concrete, block walls, conduit, strip lights and SECURITY painted on the floor.
+  floor(m.block, hallX0, front, hallX1, hz1, 0.004);
+  wall(m.block, [hallX0 - 0.2, 0, front + 0.35, hallX0, 2.8, oz0], false);
+  wall(m.block, [hallX1, 0, front + 0.35, hallX1 + 0.2, 2.8, oz0], false);
+  box(scene, m.steel, [hallX0 + 0.02, 2.4, hz0, hallX0 + 0.1, 2.48, hz1]);
+  box(scene, standard(0xa3302a, 0.5, 0.2), [hallX1 - 0.12, 2.3, hz0, hallX1 - 0.05, 2.37, hz1]);
+  for (let z = hz0 + 1.6; z < hz1 - 1; z += 3.4) {
+    sign(scene, ['SECURITY ↓'], 1.5, 0.42, (hallX0 + hallX1) / 2, 0.012, z, 0, { background: '#2a2e30', color: '#e0b23c', depth: 0.004 }, -Math.PI / 2);
+    box(scene, m.led, [hallX0 + 0.01, 2.5, z - 0.6, hallX0 + 0.04, 2.58, z + 0.6]);
+    box(scene, m.led, [hallX1 - 0.04, 2.5, z + 1.1, hallX1 - 0.01, 2.58, z + 2.3]);
+  }
+  for (const z of quality === 'high' ? [hz0 + 2, (hz0 + hz1) / 2, hz1 - 2] : [(hz0 + hz1) / 2]) {
+    const strip = new THREE.PointLight(0xe6eeff, 8 * strong, 9, 1.6);
+    strip.position.set((hallX0 + hallX1) / 2, 2.6, z);
+    scene.add(strip);
+  }
+  // A mop bucket, a stack of empties and a fire extinguisher along the way.
+  box(scene, m.yellow, [hallX0 + 0.12, 0, 8.0, hallX0 + 0.52, 0.4, 8.4]);
+  for (let k = 0; k < 3; k += 1) box(scene, standard(k % 2 ? 0xb8875a : 0xa47650, 0.9), [hallX1 - 0.55, k * 0.32, 12.0, hallX1 - 0.12, 0.3 + k * 0.32, 12.5]);
+  const extinguisher = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.5, 10), standard(0xc0281e, 0.4, 0.2));
+  extinguisher.position.set(hallX1 - 0.12, 1.0, 10.0);
+  scene.add(extinguisher);
+  panel(full, standard(0x4a4c4e, 0.95), hallX1 - hallX0 + 0.4, hz1 - front, (hallX0 + hallX1) / 2, 2.85, (front + hz1) / 2, 'up');
+  // The security office: walls (the south one cut low), the desk under a wall of CCTV screens, lost and found.
+  floor(standard(0x6e7478, 0.6), ox0, oz0, ox1, oz1, 0.005);
+  wall(m.paint, [ox0, 0, oz0 - 0.2, hallX0 - 0.2, 2.8, oz0], false);
+  wall(m.paint, [hallX1 + 0.2, 0, oz0 - 0.2, ox1, 2.8, oz0], false);
+  wall(m.paint, [ox0 - 0.2, 0, oz0 - 0.2, ox0, 2.8, oz1], false);
+  wall(m.paint, [ox1, 0, oz0 - 0.2, ox1 + 0.2, 2.8, oz1], false);
+  wall(m.paint, [ox0 - 0.2, 0, oz1, ox1 + 0.2, 2.8, oz1 + 0.2], true);
+  box(scene, m.paint, [hallX0 - 0.2, 2.25, oz0 - 0.2, hallX1 + 0.2, 2.8, oz0]);
+  sign(scene, ['LOST & FOUND'], 1.4, 0.3, (ox0 + hallX0 - 0.2) / 2, 2.35, oz0 + 0.03, 0, { background: '#f4efe6', color: '#2b2f33', glow: 0.5, depth: 0.04 });
+  sign(scene, ['MALL SECURITY'], 2.3, 0.44, (hallX0 + hallX1) / 2, 2.52, oz0 + 0.03, 0, { background: '#1b2a33', color: '#f0e6d0', border: '#c8a45a', glow: 0.8, depth: 0.05 });
+  const [kx0, kx1, kz0, kz1] = [mallX(sw.desk.x), mallX(sw.desk.x + sw.desk.w), mallZ(sw.desk.y), mallZ(sw.desk.y + sw.desk.h)];
+  box(scene, standard(0x4a3a2c, 0.6), [kx0, 0, kz0, kx1, 0.95, kz1]);
+  box(scene, standard(0xd8d0c0, 0.4), [kx0 - 0.04, 0.95, kz0 - 0.04, kx1 + 0.04, 1.0, kz1 + 0.04]);
+  const cctv = canvasTexture(128, 96, (ctx) => {
+    ctx.fillStyle = '#1c2226'; ctx.fillRect(0, 0, 128, 96);
+    for (let i = 0; i < 260; i += 1) { ctx.fillStyle = `rgba(200,220,230,${0.05 + (i * 37 % 10) / 60})`; ctx.fillRect(i * 53 % 128, i * 29 % 96, 2, 1); }
+    ctx.strokeStyle = '#8fa0a8'; ctx.lineWidth = 2; ctx.strokeRect(14, 30, 100, 50);
+    ctx.fillStyle = '#d8e8f0'; ctx.font = '700 11px monospace'; ctx.fillText('CAM 3  05:41', 8, 14);
+  });
+  const screen = new THREE.MeshStandardMaterial({ map: cctv, emissiveMap: cctv, emissive: 0xffffff, emissiveIntensity: 0.9, roughness: 0.3 });
+  for (let row = 0; row < 2; row += 1) for (let col = 0; col < 3; col += 1) {
+    box(scene, standard(0x101214, 0.5), [ox1 - 0.08, 1.38 + row * 0.5, kz0 + 0.2 + col * 0.8, ox1, 1.82 + row * 0.5, kz0 + 0.82 + col * 0.8]);
+    panel(scene, screen, 0.58, 0.4, ox1 - 0.085, 1.6 + row * 0.5, kz0 + 0.51 + col * 0.8, '-x');
+  }
+  for (let level = 0; level < 3; level += 1) {
+    box(scene, m.steel, [ox0 + 0.2, 0.4 + level * 0.7, oz0 + 0.05, hallX0 - 0.6, 0.44 + level * 0.7, oz0 + 0.55]);
+    for (let k = 0; k < 3; k += 1) box(scene, standard([0xb8875a, 0x3a3f44, 0x8a5a32][(k + level) % 3], 0.8), [ox0 + 0.35 + k * 0.5, 0.44 + level * 0.7, oz0 + 0.12, ox0 + 0.7 + k * 0.5, 0.74 + level * 0.7, oz0 + 0.48]);
+  }
+  const officeLight = new THREE.PointLight(0xe8f0ff, 10 * strong, 9, 1.5);
+  officeLight.position.set((ox0 + ox1) / 2, 2.5, (oz0 + oz1) / 2);
+  scene.add(officeLight);
+  panel(full, standard(0x4a4c4e, 0.95), ox1 - ox0 + 0.4, oz1 - oz0 + 0.4, (ox0 + ox1) / 2, 2.85, (oz0 + oz1) / 2, 'up');
   for (const fz of [-5, 5]) box(scene, m.exit, [29.6, 3.0, fz - 0.3, 29.8, 3.3, fz + 0.3]);
 
   // ---------------------------------------------------------------- the receiving dock
