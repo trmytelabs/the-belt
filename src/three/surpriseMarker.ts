@@ -38,8 +38,14 @@ export function createSurpriseMarker(kind: SurpriseKind): SurpriseMarker {
 /** How far a marker lifts the grab prompt that would otherwise sit over it. */
 export const SURPRISE_PROMPT_LIFT = LABEL_HEIGHT + 0.08;
 
-/** Hangs the label just above the tag's top (`tagTop`, in the parcel's frame); a mystery box's label bobs. */
-export function updateSurpriseMarker(marker: SurpriseMarker, tagTop: number, time: number, reducedMotion: boolean): void {
+/**
+ * Hangs the label just above the address tag (a sprite anchored at its foot, `tagY` up the parcel's frame and
+ * `tagHeight` tall); a mystery box's label bobs. Both face the camera, so the label is stacked in the sprites' own
+ * frame, up the screen: lifted along the world's up instead, the play camera's downward look foreshortened the lift
+ * and the label sat over the tag's street number.
+ */
+export function updateSurpriseMarker(marker: SurpriseMarker, tagY: number, tagHeight: number, time: number, reducedMotion: boolean): void {
   const bob = marker.kind === 'mystery' && !reducedMotion ? 0.05 * Math.sin(time * 4) : 0;
-  marker.label.position.set(0, tagTop + 0.05 + bob, 0);
+  marker.label.position.set(0, tagY, 0);
+  marker.label.center.set(0.5, -(tagHeight + 0.05 + bob) / LABEL_HEIGHT);
 }

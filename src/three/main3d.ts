@@ -287,7 +287,9 @@ export class Belt3d {
   private tickTimer: number | undefined;
   private disposed = false;
   private readonly depotSolids = [...depotSolidFootprints(SHIFT_LAYOUT, SHIFT_LAYOUT.crewTruckRows, SHIFT_LAYOUT.playerTruckDepth).map(rect =>
-    rect.x === SHIFT_LAYOUT.beltX && rect.width === 104 ? { ...rect, width: BELT_SOLID_WIDTH, height: rect.height + 16 } : rect), HEAD_DRIVE];
+    rect.x === SHIFT_LAYOUT.beltX && rect.width === 104 ? { ...rect, width: BELT_SOLID_WIDTH, height: rect.height + 16 }
+      : rect.x === SHIFT_LAYOUT.recoveryPile.x && rect.y === SHIFT_LAYOUT.recoveryPile.y
+        ? { ...rect, width: SHIFT_LAYOUT.recoveryTray.width + 8, height: SHIFT_LAYOUT.recoveryTray.height + 8 } : rect), HEAD_DRIVE];
 
   constructor(host: HTMLElement) {
     this.applySettings();
@@ -2078,7 +2080,7 @@ export class Belt3d {
     }
     if (marker.root.parent !== view.root) view.root.add(marker.root);
     marker.root.visible = view.tag.visible;
-    updateSurpriseMarker(marker, view.tag.position.y + view.tag.scale.y, this.time, this.reducedMotion);
+    updateSurpriseMarker(marker, view.tag.position.y, view.tag.scale.y, this.time, this.reducedMotion);
   }
 
   /** The supervisor on the player's side: Vic on Termite's, Shan on Skanky's. */
@@ -2114,9 +2116,17 @@ export class Belt3d {
     // The countdown sits on the floor side of the ring nearest the camera (+z in the world), where
     // nothing else is drawn; the parcel's own turn is undone so it stays there when the parcel turns.
     const reach = view.highlight.scale.x * 0.84 + 0.12, turn = view.root.rotation.y;
+    // In someone's hands the ring goes round their feet, on the floor, so the countdown stays in view to the drop.
+    const carrier = parcel.state === 'held' && parcel.workerId ? this.workers[parcel.workerId]?.root : undefined;
+    let ground: THREE.Vector3 | undefined;
+    if (carrier) {
+      view.root.updateMatrixWorld(true);
+      ground = view.root.worldToLocal(carrier.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, 0.03, 0)));
+    }
     updatePriorityMarker(marker, remaining, PRIORITY_3D.windowMs, this.time, {
       label: { x: -reach * Math.sin(turn), y: 0.05, z: reach * Math.cos(turn) },
       carried: parcel.state === 'held' || parcel.state === 'thrown',
+      ground,
       reducedMotion: this.reducedMotion,
     });
   }
@@ -2328,11 +2338,11 @@ export class Belt3d {
     if (parcel.state === 'missed') {
       const missed = this.model.packages.filter((item) => item.state === 'missed');
       const index = missed.indexOf(parcel);
-      // Two columns stay inside the recovery tray and clear of both workers.
+      // Two stacks, one behind the other along the long, narrow tray, stay inside it and clear of both workers.
       // Stack by actual model height so mixed parcel forms never intersect.
       let height = PLATFORM_HEIGHT + 0.12;
       for (let i = index % 2; i < index; i += 2) height += (this.parcels.get(missed[i].id)?.height ?? 1) + 0.04;
-      return setFromModel(target, { x: SHIFT_LAYOUT.recoveryPile.x + (index % 2 === 0 ? -24 : 24), y: SHIFT_LAYOUT.recoveryPile.y }, height);
+      return setFromModel(target, { x: SHIFT_LAYOUT.recoveryPile.x, y: SHIFT_LAYOUT.recoveryPile.y + (index % 2 === 0 ? -22 : 22) }, height);
     }
     if (parcel.state === 'thrown' && parcel.flight) {
       // An arc from the hands to the drop, dropping to floor level for a throw down the stairs.

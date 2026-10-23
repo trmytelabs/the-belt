@@ -490,12 +490,16 @@ export class ShiftModel3D extends ShiftModel {
     const held = this.packages.find(parcel => parcel.id === worker.heldId);
     if (!held) return null;
     const stairs = this.layout.stairs;
-    const atStairTop = !onLowerFloor(worker) && Math.abs(worker.x - stairs[worker.side].topX) <= 28
-      && Math.abs(worker.y - stairs.centerY) <= 8;
+    // Down the stairs: from the top step anything goes to this side's lower floor (a wrong address costs a little),
+    // and the side's own lower-floor freight goes down to its pile from anywhere on the deck in range. Thrown from
+    // beside the stairs rather than on the top step, it went to bulk, the nearest drop there.
+    const floorRoute = worker.side === 'left' ? 'T' : 'S';
+    const atStairTop = !onLowerFloor(worker) && (Math.abs(worker.x - stairs[worker.side].topX) <= 28 && Math.abs(worker.y - stairs.centerY) <= 8
+      || held.route === floorRoute && distance(worker, this.destinationCenter(floorRoute, worker.side)) <= THROWING.rangePx);
     // Bulk freight goes to bulk whenever bulk is in range. The truck drops beside the bulk area can never take a
     // throw, but the nearest-drop rule picked them, which kept every bulk throw under about six metres.
     const toBulk = !atStairTop && held.route === 'C' && distance(worker, this.destinationCenter('C', worker.side)) <= THROWING.rangePx;
-    const route = atStairTop ? worker.side === 'left' ? 'T' : 'S' : toBulk ? 'C'
+    const route = atStairTop ? floorRoute : toBulk ? 'C'
       : [...WORKER_ROUTES[worker.id], 'C' as const].sort((a, b) =>
         distance(worker, this.destinationCenter(a, worker.side)) - distance(worker, this.destinationCenter(b, worker.side)))[0];
     const target = this.destinationCenter(route, worker.side);
@@ -528,13 +532,16 @@ export class ShiftModel3D extends ShiftModel {
     // for a box are a few centimetres wide. Empty hands fit with room to spare, so they walk where they are
     // pointed: steered empty-handed, a worker was pulled into a truck when passing it, dragged across to the
     // stair line when walking down beside the stairs, and down the flight when walking sideways near it,
-    // which the owner felt as invisible walls.
-    const steered = held !== undefined;
-    // A shallow funnel at each rear door guides a walking approach into the
+    // which the owner felt as invisible walls. A box is lined up only with where it is going: its own truck's
+    // door, or the stairs for lower-floor freight. Bulk freight carried down the deck to the bulk pallet was
+    // dragged toward the stair line too.
+    const going = held ? ROUTE_INFO[held.route].kind : null;
+    const steered = going === 'floor';
+    // A shallow funnel at the rear door of the box's truck guides a walking approach into the
     // shelf aisle. It uses normal movement speed, including with a heavy box.
-    const entering = steered && (worker.side === 'left' ? x < 0 && worker.x >= 306 && worker.x <= 380
+    const entering = going === 'truck' && (worker.side === 'left' ? x < 0 && worker.x >= 306 && worker.x <= 380
       : x > 0 && worker.x >= 580 && worker.x <= 654);
-    const doorway = entering ? TRUCK_ROUTES.find(route => ROUTE_INFO[route].side === worker.side
+    const doorway = entering ? TRUCK_ROUTES.find(route => route === held!.route
       && Math.abs(worker.y - this.layout.playerTrucks[route].y) <= 52) : undefined;
     if (doorway) y = clamp((this.layout.playerTrucks[doorway].y - worker.y) / 16, -1, 1);
     const { stairs } = this.layout;
@@ -611,7 +618,7 @@ export class ShiftModel3D extends ShiftModel {
     if (receivingBlocked({ x, y }, radius)) return false;
     const equipment = [
       { x: this.layout.beltX, y: (this.layout.beltTop + this.layout.beltBottom) / 2, width: BELT_SOLID_WIDTH, height: this.layout.beltBottom - this.layout.beltTop + 16 },
-      { ...this.layout.recoveryPile, width: 3.4 * 32, height: 1.6 * 32 },
+      { ...this.layout.recoveryPile, ...DEPOT_3D_LAYOUT.recoveryTray },
       { ...this.layout.bulkPile, width: 2 * 32, height: 2.5 * 32 },
     ];
     if (equipment.some(rect => Math.hypot(Math.max(0, Math.abs(x - rect.x) - rect.width / 2),

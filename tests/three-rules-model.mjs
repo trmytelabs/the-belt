@@ -92,10 +92,10 @@ test('open deck beside the belt, bulk and stair approach has no invisible lane f
   const m = new ShiftModel3D();
   for (const [side, sign] of [['left', 1], ['right', -1]]) {
     const mirror = x => side === 'left' ? x : 960 - x;
-    for (const point of [{ x: 414, y: 700 }, { x: 430, y: 1040 }, { x: 432, y: 1132 }, { x: 350, y: 1080 }]) {
+    for (const point of [{ x: 414, y: 700 }, { x: 430, y: 1040 }, { x: 432, y: 1132 }, { x: 350, y: 1080 }, { x: 428, y: 918 }]) {
       assert.equal(m.walkable(side, mirror(point.x), point.y), true, `open floor ${side}: ${JSON.stringify(point)}`);
     }
-    for (const point of [{ x: 438, y: 700 }, { x: 430, y: 918 }, { x: 444, y: 1132 }]) {
+    for (const point of [{ x: 438, y: 700 }, { x: 438, y: 918 }, { x: 444, y: 1132 }]) {
       assert.equal(m.walkable(side, mirror(point.x), point.y), false, 'visible equipment still blocks the body');
     }
     m.activeIndex = side === 'left' ? 0 : 1;

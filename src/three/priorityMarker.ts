@@ -48,13 +48,16 @@ export function priorityRingSegments(remainingMs: number, windowMs: number): num
 /**
  * Show `remainingMs` of the window: the ring's lit arc, the label's seconds, and the
  * urgent colour and pulse in the last five seconds. `label` is where the label sits in
- * the parcel's own frame (in front of it, clear of its address tag and the grab prompt);
- * `carried` hides the ring, which would float at the hands.
+ * the parcel's own frame (in front of it, clear of its address tag and the grab prompt).
+ * Carried, the ring goes round the carrier's feet (`ground`, in the parcel's frame) so the countdown stays in
+ * view all the way to the drop; in the air (a throw, or carried with no `ground`) it hides rather than float.
  */
 export function updatePriorityMarker(marker: PriorityMarker, remainingMs: number, windowMs: number, time: number,
-  options: { label: { x: number; y: number; z: number }; carried: boolean; reducedMotion: boolean }): void {
+  options: { label: { x: number; y: number; z: number }; carried: boolean; ground?: { x: number; y: number; z: number }; reducedMotion: boolean }): void {
   const urgent = remainingMs < PRIORITY_URGENT_MS;
-  marker.ring.visible = !options.carried;
+  marker.ring.visible = !options.carried || options.ground !== undefined;
+  if (options.carried && options.ground) marker.ring.position.set(options.ground.x, options.ground.y, options.ground.z);
+  else marker.ring.position.set(0, 0.03, 0);
   marker.ring.geometry.setDrawRange(0, priorityRingSegments(remainingMs, windowMs) * 6);
   marker.ring.material.color.setHex(urgent ? URGENT : GOLD);
   const pulse = urgent && !options.reducedMotion ? 1 + 0.08 * Math.sin(time * 12) : 1;

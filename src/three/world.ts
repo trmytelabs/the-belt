@@ -1136,23 +1136,24 @@ export class DepotWorld {
     }
     this.bulkStack.position.set(bulk.x, deck + 0.16, bulk.z);
 
-    // Recovery tray for missed freight, hazard-striped.
+    // Recovery tray for missed freight, hazard-striped: long down the belt's line, narrow across the deck.
     const tray = toWorld(SHIFT_LAYOUT.recoveryPile);
+    const trayWidth = SHIFT_LAYOUT.recoveryTray.width / 32, trayLength = SHIFT_LAYOUT.recoveryTray.height / 32;
     const stripeTex = hazardStripes();
-    stripeTex.repeat.set(3, 1);
-    const trayBase = rounded(3.4, 0.12, 1.6, standard(0x2c3a40, 0.8), 0.03);
+    stripeTex.repeat.set(2, 1);
+    const trayBase = rounded(trayWidth, 0.12, trayLength, standard(0x2c3a40, 0.8), 0.03);
     trayBase.position.set(tray.x, deck + 0.06, tray.z);
     trayBase.userData.keep = true;
     this.recoverySurface = trayBase;
     scene.add(shadowed(trayBase, false, true));
-    for (const [w, d, ox, oz] of [[3.4, 0.08, 0, -0.8], [3.4, 0.08, 0, 0.8], [0.08, 1.6, -1.7, 0], [0.08, 1.6, 1.7, 0]] as const) {
+    for (const [w, d, ox, oz] of [[trayWidth, 0.08, 0, -trayLength / 2], [trayWidth, 0.08, 0, trayLength / 2], [0.08, trayLength, -trayWidth / 2, 0], [0.08, trayLength, trayWidth / 2, 0]] as const) {
       const lip = new THREE.Mesh(new THREE.BoxGeometry(w, 0.22, d), new THREE.MeshStandardMaterial({ map: stripeTex, roughness: 0.6 }));
       lip.position.set(tray.x + ox, deck + 0.15, tray.z + oz);
       scene.add(lip);
     }
     const trayTag = textPlane(['RECOVERY'], 1.2, 0.26, { width: 140, height: 30, background: '#e05c4bdd', color: '#fff6e8' });
     trayTag.rotation.x = -Math.PI / 2;
-    trayTag.position.set(tray.x, deck + 0.13, tray.z + 0.3);
+    trayTag.position.set(tray.x, deck + 0.13, tray.z + trayLength / 2 - 0.3);
     scene.add(trayTag);
   }
 
