@@ -515,6 +515,7 @@ export function attachModel(character: Character, source: THREE.Object3D, entry:
     mesh.material = Array.isArray(mesh.material) ? mesh.material.map(cloneMaterial) : cloneMaterial(mesh.material);
   });
 
+  moveMouthProps(character, head, bones);
   character.root.add(container);
   setFigureVisible(character, false);
   const rig: ModelRig = {
@@ -529,6 +530,32 @@ export function attachModel(character: Character, source: THREE.Object3D, entry:
   };
   driveModel(character, rig);
   return rig;
+}
+
+/**
+ * Things held in the mouth (Doris's cigarette: a group on the figure's head marked `userData.mouth`) move onto the
+ * model's head bone at its mouth: below and a little in front of the middle of its eyes, turned as the figure's head
+ * is at rest. Called while the model stands in its rest pose in the container's frame. A model without eye bones
+ * leaves them on the figure's head.
+ */
+function moveMouthProps(character: Character, head: THREE.Bone, bones: Map<string, THREE.Bone>): void {
+  const props = character.head.children.filter((child) => child.userData.mouth === true);
+  const eyes = ['bip01leye', 'bip01reye'].map((name) => bones.get(name)).filter((bone): bone is THREE.Bone => bone !== undefined);
+  if (!props.length || eyes.length < 2) return;
+  const mouth = eyes[0].getWorldPosition(new THREE.Vector3()).add(eyes[1].getWorldPosition(new THREE.Vector3())).multiplyScalar(0.5)
+    .add(new THREE.Vector3(0, -0.066, 0.024));
+  for (const prop of props) {
+    const anchor = new THREE.Group();
+    anchor.name = 'mouth-anchor';
+    head.add(anchor);
+    anchor.position.copy(head.worldToLocal(mouth.clone()));
+    anchor.quaternion.copy(head.getWorldQuaternion(new THREE.Quaternion()).invert());
+    // The bone carries the model's centimetre-to-metre scale; the prop is made in metres.
+    anchor.scale.setScalar(1 / head.getWorldScale(new THREE.Vector3()).x);
+    anchor.add(prop);
+    prop.position.set(0, 0, 0);
+    prop.quaternion.identity();
+  }
 }
 
 /** Copies `source` with its own skeleton (SkeletonUtils.clone, kept here to avoid another import). */

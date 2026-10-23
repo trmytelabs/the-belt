@@ -97,7 +97,7 @@ const RESIDENTS: [string, number, number, CharacterSpec][] = [
   ['fruitloop', 810, 198, { name: 'FRUIT LOOP', skin: SKIN.light, shirt: 0x5fae4e, pants: 0x354052, hair: 0x2f2318, hairStyle: 'curly', scale: 0.78 }],
   ['doris', 810, 294, { name: 'DORIS', skin: SKIN.pale, shirt: 0x7d4d9c, pants: 0x2f3440, hair: 0xf0d35a, hairStyle: 'curly' }],
   ['brian', 810, 390, { name: 'BRIAN', skin: SKIN.tan, shirt: 0x7a5534, pants: 0x5b4330, hair: 0x3a2618, hairStyle: 'short' }],
-  ['donna', 810, 486, { name: 'DONNA', skin: SKIN.pale, shirt: 0x3f8a86, pants: 0x2f3440, hair: 0x9a3f25, hairStyle: 'long', necklace: true }],
+  ['donna', 810, 486, { name: 'DONNA', skin: SKIN.pale, shirt: 0x3f8a86, pants: 0x2f3440, hair: 0x9a3f25, hairStyle: 'long', necklace: true, scale: 0.9 }],
 ];
 export const RESIDENT_SPECS: Record<string, CharacterSpec> = Object.fromEntries(RESIDENTS.map(([id, , , spec]) => [id, spec]));
 
@@ -109,8 +109,9 @@ export const VISITORS: Record<string, CharacterSpec & { x: number; y: number }> 
   shan: { name: SHAN_NAME, dynamicSkin: true, x: 610, y: SHIFT_LAYOUT.eventBays.brian.y, skin: SKIN.light, shirt: 0xe9e4d6, pants: 0x30343c, hair: 0x8b8b88, hairStyle: 'bald', tie: 0x8a2630, headwear: 'santaHat' },
 };
 
-export const TERMITE_SPEC: CharacterSpec = { name: 'TERMITE', skin: 0xe2b088, shirt: 0x2f5f8f, pants: 0x2a3f5c, overalls: 0x2a3f5c, hair: 0x5a3a20, hairStyle: 'short', headwear: 'termiteHat', beard: true };
-export const SKANKY_SPEC: CharacterSpec = { name: 'SKANKY', skin: 0xe8b98f, shirt: 0x8f3f34, pants: 0x34404c, hair: 0x5b3a22, hairStyle: 'long', beard: true };
+// The stand-ins match the models (rocketboxCast.ts): Termite in a light polo and jeans, Skanky in black.
+export const TERMITE_SPEC: CharacterSpec = { name: 'TERMITE', skin: 0xe2b088, shirt: 0xe6e0d4, pants: 0x3d5675, hair: 0x3a2a1c, hairStyle: 'short' };
+export const SKANKY_SPEC: CharacterSpec = { name: 'SKANKY', skin: 0xe8b98f, shirt: 0x1f1f23, pants: 0x2c3540, hair: 0x5b3a22, hairStyle: 'long', beard: true };
 
 /** Where Ralph's five-ton backs in: the empty bay beside the bulk pile, west side. */
 export const RALPH_BAY = SHIFT_LAYOUT.ralphBay;
@@ -1217,13 +1218,21 @@ export class DepotWorld {
       this.eventProps.set('lego', bricks);
       this.scene.add(bricks);
     } else if (id === 'doris') {
-      const cigarette = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.12, 6), standard(0xf3efe6, 0.6));
-      cigarette.rotation.x = Math.PI / 2;
-      cigarette.position.set(0.06, 0.15, 0.24);
-      const ember = new THREE.Mesh(new THREE.SphereGeometry(0.016, 6, 4), new THREE.MeshStandardMaterial({ color: 0xff6a20, emissive: 0xff5010, emissiveIntensity: 4 }));
-      ember.position.set(0.06, 0.15, 0.3);
+      // From the corner of her mouth, drooping a little, lit at the tip. The group sits at the figure's mouth, and
+      // moves to her model's mouth once it loads (characterModels.ts).
+      const mouth = new THREE.Group();
+      mouth.position.set(0, 0.072, 0.105);
+      mouth.userData.mouth = true;
+      mouth.userData.keep = true;
+      const cigarette = new THREE.Mesh(new THREE.CylinderGeometry(0.0055, 0.0055, 0.085, 8), standard(0xf3efe6, 0.6));
+      cigarette.rotation.x = Math.PI / 2 + 0.3;
+      cigarette.position.set(0.016, -0.012, 0.04);
+      cigarette.userData.keep = true;
+      const ember = new THREE.Mesh(new THREE.SphereGeometry(0.007, 8, 6), new THREE.MeshStandardMaterial({ color: 0xff6a20, emissive: 0xff5010, emissiveIntensity: 5 }));
+      ember.position.set(0.016, -0.024, 0.08);
       ember.userData.keep = true;
-      character.head.add(cigarette, ember);
+      mouth.add(cigarette, ember);
+      character.head.add(mouth);
       this.emitters.push({ anchor: ember, kind: 'smoke', timer: 0 });
     } else if (id === 'brian') {
       this.emitters.push({ anchor: character.body, kind: 'stink', timer: 0 });
@@ -1375,8 +1384,10 @@ export class DepotWorld {
       if (emitter.timer > 0) continue;
       emitter.anchor.getWorldPosition(position);
       if (emitter.kind === 'smoke') {
-        emitter.timer = 0.22;
-        this.puffs.emit(position, { color: 0xc9ccd0, size: 0.12, life: 2.6, velocity: new THREE.Vector3(0.05, 0.35, 0), opacity: 0.35, grow: 4 });
+        // A steady curl of smoke from the tip, enough to read from the gameplay camera.
+        emitter.timer = 0.12;
+        const curl = reducedMotion ? 0 : Math.sin(time * 1.7) * 0.12;
+        this.puffs.emit(position, { color: 0xd4d7da, size: 0.07, life: 3.2, velocity: new THREE.Vector3(0.04 + curl, 0.32, 0.02), opacity: 0.5, grow: 7 });
       } else {
         // Brian's much larger curling green stink trails.
         emitter.timer = 0.16;

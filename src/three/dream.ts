@@ -88,7 +88,7 @@ export class MesaDream {
     this.buildAmp();
 
     // Trmyte in the armchair with the controller, facing the TV.
-    this.trmyte = createCharacter({ name: 'TRMYTE', skin: 0xe2b088, shirt: 0x2f5f8f, pants: 0x2a3f5c, overalls: 0x2a3f5c, hair: 0x5a3a20, hairStyle: 'short', headwear: 'termiteHat', beard: true });
+    this.trmyte = createCharacter({ ...{ name: 'TERMITE', skin: 0xe2b088, shirt: 0xe6e0d4, pants: 0x3d5675, hair: 0x3a2a1c, hairStyle: 'short' }, name: 'TRMYTE' });
     this.seat(this.trmyte, new THREE.Vector3(0.75, 0.05, 0.55), -2.7);
     // A pad-sized controller held in both hands over the lap; poseHands puts his hands on its grips.
     this.controller = rounded(0.19, 0.05, 0.1, standard(0x161616, 0.4), 0.025);
@@ -115,7 +115,7 @@ export class MesaDream {
     scene.add(shadowed(armchair), this.trmyte.root);
 
     // Long-haired Skanky on a stool with the guitar, cabled to the Mesa.
-    this.skanky = createCharacter({ name: 'SKANKY', skin: 0xe8b98f, shirt: 0x8f3f34, pants: 0x34404c, hair: 0x5b3a22, hairStyle: 'long', beard: true });
+    this.skanky = createCharacter({ name: 'SKANKY', skin: 0xe8b98f, shirt: 0x1f1f23, pants: 0x2c3540, hair: 0x5b3a22, hairStyle: 'long', beard: true });
     this.seat(this.skanky, new THREE.Vector3(-1.35, 0.1, -0.25), 0.75);
     const stool = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.22, 0.5, 14), standard(0x5b4636, 0.8));
     stool.position.set(-1.35, 0.25, -0.25);
