@@ -49,6 +49,7 @@ import { GhostRecorder, ghostPose, keepFaster, loadGhosts, saveGhosts, type Ghos
 import { COFFEE_RUN, CoffeeRunModel, type CoffeeRunEvent } from './coffeeRun';
 import { CoffeeRunScene } from './coffeeRunView';
 import { DECISION, HOME_DECISION, LEAVE_HOUSE, QUIT_ENDING, QUIT_NIGHT, type HomeBeat } from './homeScript';
+import { CHA_FOR_TEA, homeScene3d } from './dimSumScript';
 import { DrivingView } from './driving';
 import { BELT_SOLID_WIDTH, HEAD_DRIVE, clearReceiving } from './receivingCollision';
 import { TouchControls } from './touch';
@@ -765,7 +766,7 @@ export class Belt3d {
     // The 3D road now has a playable journey after the departure and original quip.
     // Keep shared cutscenes intact for both legacy versions.
     if (scene.id === 'drive-to-mall' || scene.id === 'drive-to-ups') scene = { ...scene, beats: scene.beats.slice(0, 2) };
-    scene = breakScene3d(scene);
+    scene = homeScene3d(breakScene3d(scene));
     this.overlay.setLunchAlert(false);
     this.state = 'story';
     this.cutscene = new Cutscene(scene);
@@ -773,7 +774,7 @@ export class Belt3d {
     this.touch.reset();
     this.overlay.clearSpeech();
     this.overlay.setMode('story');
-    const kicker = scene.location === 'depot' ? 'THE DEPOT' : scene.location === 'road' ? 'ON THE ROAD' : scene.location === 'mall' ? 'THE MALL RUN' : scene.location === 'home' ? 'FINALLY' : scene.location === 'house' ? 'AT HOME' : 'THE NIGHT SHIFT';
+    const kicker = scene.location === 'depot' ? 'THE DEPOT' : scene.location === 'road' ? 'ON THE ROAD' : scene.location === 'mall' ? 'THE MALL RUN' : scene.location === 'home' ? 'FINALLY' : scene.location === 'dimsum' ? 'BREAKFAST' : scene.location === 'house' ? 'AT HOME' : 'THE NIGHT SHIFT';
     this.storyHeading = { title: scene.title, kicker };
     this.overlay.storyTitle(scene.title, kicker, scene.clock ?? '');
     if (scene.location === 'depot') {
@@ -817,6 +818,9 @@ export class Belt3d {
     } else if (scene.id === 'drive-to-ups') {
       this.beginDriving('ups');
     } else if (scene.id === 'go-home') {
+      // Not home yet: breakfast with Vic at Cha for Tea.
+      this.playScene(CHA_FOR_TEA);
+    } else if (scene.id === 'cha-for-tea') {
       this.showResults();
     }
   }
