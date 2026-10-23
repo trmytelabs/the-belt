@@ -270,6 +270,8 @@ const BOOTH_X = 3.4;
 const BOOTHS = { north: -1.45, south: 0.25, next: 1.15, table: -0.6 } as const;
 /** Cha for Tea's table: its top's height and radius, where each chair stands from its centre, and the chairs' seat height. */
 const DIM_SUM = { tableTop: 0.76, radius: 0.72, seat: 1.02, seatTop: 0.46 } as const;
+/** The lazy Susan: its glass disc's radius, its top over the table top, and the ring its dishes stand on (centres, metres out). */
+const LAZY_SUSAN = { radius: 0.5, top: 0.0325, ring: 0.36 } as const;
 /** The dim sum cart's track along x: by the window, beside the table to serve, and parked after; its line in z. */
 const DIM_SUM_CART = { window: 5.6, table: 1.35, parked: 3.4, z: 0.4 } as const;
 const TABLE_TOP = 0.76;
@@ -2104,13 +2106,13 @@ export class StoryStage {
     scene.add(props.chairSkanky, props.chairVic);
     // The lazy Susan: a glass disc that turns, laden with steamers, plates and a teapot.
     const susan = new THREE.Group();
-    const glass = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 0.025, 36), new THREE.MeshStandardMaterial({ color: 0xd8e4e0, roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.55 }));
+    const glass = new THREE.Mesh(new THREE.CylinderGeometry(LAZY_SUSAN.radius, LAZY_SUSAN.radius, 0.025, 36), new THREE.MeshStandardMaterial({ color: 0xd8e4e0, roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.55 }));
     susan.add(glass);
     const spots = 9;
     for (let i = 0; i < spots; i++) {
       const angle = (i / spots) * Math.PI * 2;
       const item = i === 4 ? this.teapot() : i % 3 === 2 ? this.dimSumPlate(i) : this.steamerStack(1 + (i % 2), i);
-      item.position.set(Math.sin(angle) * 0.36, 0.013, Math.cos(angle) * 0.36);
+      item.position.set(Math.sin(angle) * LAZY_SUSAN.ring, 0.013, Math.cos(angle) * LAZY_SUSAN.ring);
       susan.add(item);
     }
     susan.position.y = DIM_SUM.tableTop + 0.02;
@@ -2298,7 +2300,13 @@ export class StoryStage {
     waitress.setPose('none', time);
     waitress.carrying = more > 0 && more < 0.6 || over > 0 && over < 1 || away > 0 && away < 1;
     props.moreSteamers.visible = more > 0;
-    props.moreSteamers.position.set(mix(cart.position.x - 0.2, 0.32, serve), mix(0.9, DIM_SUM.tableTop + 0.03, serve) + Math.sin(serve * Math.PI) * 0.25, mix(DIM_SUM_CART.z, 0.05, serve));
+    // Set down in the empty middle of the lazy Susan, clear of the ring of dishes round it: carried in above them until
+    // it is over the middle, then lowered straight down. Set down 0.32 m out it landed in that ring, through the food
+    // already there; brought down on a slope, it still grazed a dish on the way.
+    const across = ease(Math.min(1, serve / 0.7)), lower = ease(Math.max(0, (serve - 0.7) / 0.3));
+    const above = DIM_SUM.tableTop + LAZY_SUSAN.top + 0.26;
+    props.moreSteamers.position.set(mix(cart.position.x - 0.2, 0, across),
+      lower > 0 ? mix(above, DIM_SUM.tableTop + LAZY_SUSAN.top, lower) : mix(0.9, above, Math.sin(across * Math.PI / 2)), mix(DIM_SUM_CART.z, 0, across));
     const snap = index === 0 && cutscene.elapsedMs < 50;
     // A wide shot of the table; Vic over Skanky's shoulder while he talks; Skanky's look; and back out at the end.
     const leave = cueProgress(cutscene, 'leave');
