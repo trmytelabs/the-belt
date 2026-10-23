@@ -21,6 +21,10 @@ export function sceneOwner(state: string, ralph: boolean): SceneOwner {
   }
 }
 
+/** The joining page says it is there this often; the host lets go of their keys after this long without a word. */
+export const GUEST_HEARTBEAT_MS = 400;
+export const GUEST_SILENCE_MS = 1500;
+
 /** Movement keys: held, they move the joining player's character (they are never replayed as key presses). */
 export const MOVE_KEYS: ReadonlySet<string> = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
 /**
@@ -40,8 +44,11 @@ export type GuestMessage =
   | { t: 'key'; code: string; down: boolean }
   | { t: 'move'; x: number; y: number; throttle: number; brake: number }
   | { t: 'pad'; button: string };
-/** What the host sends back: whose turn it is, for the joining page's banner. */
-export type HostMessage = { t: 'turn'; owner: SceneOwner; text: string } | { t: 'bye' };
+/**
+ * What the host sends back: whose turn it is, for the joining page's banner; and, when the joining player sees only the
+ * 3D view (no HUD or cards), mall security's card, with its answers (an empty title clears it).
+ */
+export type HostMessage = { t: 'turn'; owner: SceneOwner; text: string } | { t: 'card'; title: string; options: string[] } | { t: 'bye' };
 
 const unit = (value: unknown, low: number): number => typeof value === 'number' && Number.isFinite(value) ? Math.max(low, Math.min(1, value)) : 0;
 
@@ -63,6 +70,9 @@ export function readHostMessage(raw: unknown): HostMessage | null {
   if (m.t === 'bye') return { t: 'bye' };
   if (m.t === 'turn' && (m.owner === 'termite' || m.owner === 'skanky' || m.owner === 'both') && typeof m.text === 'string') {
     return { t: 'turn', owner: m.owner, text: m.text.slice(0, 120) };
+  }
+  if (m.t === 'card' && typeof m.title === 'string' && Array.isArray(m.options) && m.options.length <= 3 && m.options.every((option) => typeof option === 'string')) {
+    return { t: 'card', title: m.title.slice(0, 120), options: (m.options as string[]).map((option) => option.slice(0, 60)) };
   }
   return null;
 }

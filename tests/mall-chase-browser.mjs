@@ -137,7 +137,7 @@ try {
   });
   await wait(() => window.fixtureApp.mall.down !== null);
   await wait(() => window.fixtureApp.overlay.history.some((line) => /SECURITY: SHOTS FIRED!/.test(line)));
-  await wait(() => window.fixtureApp.sirenOn);
+  await wait(() => window.fixtureApp.sirenStop !== null);
   await shot('down');
   await read(() => { window.fixtureApp.mall.down.ms = 5000; });
   await wait(() => window.fixtureApp.stage.stages.mall.actors.get('medic-1').root.visible && window.fixtureApp.stage.stages.mall.props.stretcher.visible);

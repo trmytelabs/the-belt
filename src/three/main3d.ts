@@ -25,7 +25,7 @@ import { clearDepotFootprint, DEPOT_BODY_RADIUS, DEPOT_CARRY_RADIUS, depotSolidF
 import { KeyReturnModel, MALL_RULES, type MallEvent } from '../game/slice/MallModel';
 import { AMBULANCE, MALL_3D_BUNDLES, MALL_3D_STOPS, MallModel3D as MallModel } from './MallModel3D';
 import { OnlineHost, openMicrophone, setMicrophone, transportFromUrl } from './online';
-import { MOVE_KEYS, heldMove, roomCode, sceneOwner, turnText, type GuestMessage } from './onlineRules';
+import { GUEST_SILENCE_MS, MOVE_KEYS, heldMove, roomCode, sceneOwner, turnText, type GuestMessage } from './onlineRules';
 import {
   CARRY_MULTIPLIER, THROWING, type Parcel, type Route, type ShiftEvent, type WorkerId,
 } from '../game/slice/ShiftModel';
@@ -244,8 +244,8 @@ export class Belt3d {
   /** Until the guard's next yell on the chase, and which. */
   private chaseYellMs = 0;
   private chaseYell = 0;
-  /** Shot: the siren started, and the black for the cuts to the medics and to the ambulance. */
-  private sirenOn = false;
+  /** Shot: the siren (its stop, while it sounds), and the black for the cuts to the medics and to the ambulance. */
+  private sirenStop: (() => void) | null = null;
   /** The night ended shot at the mall: its GAME OVER card stays over the mall, outside where the ambulance left. */
   private shotEnded = false;
   private shotBlack: HTMLDivElement | null = null;
@@ -255,6 +255,11 @@ export class Belt3d {
   private readonly remoteAnalog = { x: 0, y: 0, throttle: 0, brake: 0 };
   private onlineTurn = '';
   private onlineChip: HTMLDivElement | null = null;
+  /** When the joining player was last heard from (their page sends a heartbeat), and the room being opened. */
+  private guestHeardAt = 0;
+  private onlineOpening = 0;
+  /** The card last sent to a guest who sees only the 3D view. */
+  private onlineCard = '';
   /** Voice chat: this player's microphone (null if refused), whether it is on, and the game's sound sent with it. */
   private onlineMic: MediaStream | null = null;
   private onlineMicOn = true;
@@ -1123,7 +1128,6 @@ export class Belt3d {
     this.mall = new MallModel();
     this.mallPanel = '';
     this.mallCaught = false;
-    this.sirenOn = false;
     this.shotEnded = false;
     this.stage.resetMall();
     this.stage.beginMall();
@@ -1803,7 +1807,6 @@ export class Belt3d {
       for (const event of this.mall.drainEvents()) this.handleMallEvent(event);
       this.syncMallPanel();
       this.chaseYells(dt);
-      this.shotCuts();
       if (this.mall.finished && this.mall.getaway === 'shot') this.showShotEnding();
       else if (this.mall.finished) {
         // Seven signatures at 50; getting away from mall security earns 100 more, being marched out costs 100.
@@ -1830,6 +1833,7 @@ export class Belt3d {
     // Each place and mini-game has its own track, crossfaded as the night moves between them.
     audioSystem.setScene(this.sceneMusic());
     this.updateOnline();
+    this.shotCuts();
     // The story sets' room tone: talk and clinks at Cha for Tea and in the Tim Hortons booth, night wind in the lot and on the road.
     const set = this.usesStage() ? this.stage.active : null;
     audioSystem.setRoomTone(set === 'dimsum' || set === 'coffee' ? 'restaurant' : set === 'lot' || set === 'road' ? 'outdoors' : null, dt);
@@ -2348,13 +2352,20 @@ export class Belt3d {
   /** Opens a room (a fresh code if one is taken) and shows its link; the joining player's messages come to onGuest. */
   private async hostOnline(): Promise<void> {
     if (this.online || this.state !== 'briefing') return;
-    this.overlay.showPanel('<div class="kicker">PLAY ONLINE</div><h1>OPENING A ROOM…</h1>');
+    const opening = ++this.onlineOpening;
+    this.overlay.showPanel('<div class="kicker">PLAY ONLINE</div><h1>OPENING A ROOM…</h1><button type="button" data-action="back">BACK</button>',
+      { back: () => { this.onlineOpening += 1; this.showBriefing(); } });
     const transport = transportFromUrl();
-    for (let attempt = 0; attempt < 3 && !this.online; attempt += 1) {
-      try { this.online = await OnlineHost.open(roomCode(), transport); } catch { /* the code was taken, or no service: try again */ }
+    let opened: OnlineHost | null = null;
+    for (let attempt = 0; attempt < 3 && !opened && opening === this.onlineOpening; attempt += 1) {
+      try { opened = await OnlineHost.open(roomCode(), transport); } catch { /* the code was taken, or no service: try again */ }
     }
-    const online = this.online;
-    if (this.state !== 'briefing') return;
+    if (opening !== this.onlineOpening || this.state !== 'briefing' || this.online) {
+      opened?.close();
+      return;
+    }
+    this.online = opened;
+    const online = opened;
     if (!online) {
       this.overlay.showPanel(`<div class="kicker">PLAY ONLINE</div><h1>COULD NOT OPEN A ROOM</h1>
         <p>The connection service did not answer. Check the internet connection, then try again.</p>
@@ -2434,6 +2445,7 @@ export class Belt3d {
     this.onlineSound = null;
     this.online?.close();
     this.online = null;
+    this.onlineCard = '';
     this.releaseRemote();
     this.onlineTurn = '';
     this.onlineChip?.remove();
@@ -2443,6 +2455,7 @@ export class Belt3d {
 
   /** A message from the joining player, already checked (onlineRules.readGuestMessage). */
   private onGuest(message: GuestMessage): void {
+    this.guestHeardAt = performance.now();
     if (message.t === 'hello') return;
     if (message.t === 'move') {
       Object.assign(this.remoteAnalog, { x: message.x, y: message.y, throttle: message.throttle, brake: message.brake });
@@ -2510,6 +2523,9 @@ export class Belt3d {
   private updateOnline(): void {
     const online = this.online;
     if (!online) return;
+    if (performance.now() - this.guestHeardAt > GUEST_SILENCE_MS && (this.remoteKeys.size || this.remoteAnalog.x || this.remoteAnalog.y || this.remoteAnalog.throttle || this.remoteAnalog.brake)) {
+      this.releaseRemote();
+    }
     const state = this.state === 'paused' ? this.pausedFrom : this.state;
     const owner = sceneOwner(state, this.ralph !== null);
     const text = this.state === 'paused' ? 'PAUSED · ESC carries on' : turnText(owner, state);
@@ -2539,6 +2555,13 @@ export class Belt3d {
     if (key === this.mallPanel) return;
     const shown = this.mallPanel !== '';
     this.mallPanel = key;
+    // A guest who sees only the 3D view (no HUD or cards) is sent the card itself, to answer from their page.
+    const card = question && this.online?.picture === '3d' ? { title: question.question, options: question.options }
+      : mall.bentley === 'denied' && this.online?.picture === '3d' ? { title: "HE WON'T HAND IT OVER", options: ['GRAB IT AND RUN', 'ASK AGAIN'] } : { title: '', options: [] };
+    if (JSON.stringify(card) !== this.onlineCard) {
+      this.onlineCard = JSON.stringify(card);
+      this.online?.send({ t: 'card', ...card });
+    }
     if (!key) {
       if (shown) this.overlay.clearCenter();
       return;
@@ -2585,12 +2608,18 @@ export class Belt3d {
     }
   }
 
-  /** Shot: the siren, and the cuts to black, as MallModel3D AMBULANCE times them (the view changes under the black). */
+  /**
+   * Every frame: the shot's siren and cuts to black, as MallModel3D AMBULANCE times them (the view changes under the
+   * black). Only while it plays in the mall: paused, ended or gone, there is no veil and no siren (it starts again for
+   * the time left on resuming).
+   */
   private shotCuts(): void {
-    const ms = this.mall?.down?.ms ?? -1;
-    if (ms >= AMBULANCE.sirenMs && !this.sirenOn) {
-      this.sirenOn = true;
-      audioSystem.siren((AMBULANCE.overMs - AMBULANCE.sirenMs) / 1000);
+    const ms = this.state === 'mall' ? this.mall?.down?.ms ?? -1 : -1;
+    const sounding = ms >= AMBULANCE.sirenMs && ms < AMBULANCE.overMs - 500;
+    if (sounding && !this.sirenStop) this.sirenStop = audioSystem.siren((AMBULANCE.overMs - ms) / 1000);
+    else if (!sounding && this.sirenStop && ms < AMBULANCE.sirenMs) {
+      this.sirenStop();
+      this.sirenStop = null;
     }
     const cut = (into: number, at: number): number => ms >= into && ms < at ? (ms - into) / (at - into) : ms >= at && ms < at + 600 ? 1 - (ms - at) / 600 : 0;
     const black = ms < 0 ? 0 : Math.max(cut(AMBULANCE.cutInMs, AMBULANCE.medicsMs), cut(AMBULANCE.cutOutMs, AMBULANCE.outsideMs));
@@ -2609,6 +2638,8 @@ export class Belt3d {
   private showShotEnding(): void {
     this.state = 'ended';
     this.shotEnded = true;
+    this.sirenStop?.();
+    this.sirenStop = null;
     if (this.shotBlack) this.shotBlack.style.opacity = '0';
     this.overlay.clearSpeech();
     this.overlay.setMode('shift');

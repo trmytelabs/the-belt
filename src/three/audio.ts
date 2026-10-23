@@ -57,15 +57,10 @@ const FOLEY: Partial<Record<SoundEffect | 'drive-collision', FoleyCue>> = {
 
 /** Recorded lo-fi and softer foley for the active 3D game. */
 export class DepotAudio extends AudioSystem {
-  /**
-   * Online play: everything the game plays, as a stream for the joining player, with `voice` (the host's microphone)
-   * mixed in. Taken from the game's own sound rather than the shared tab's, so the joining player's voice, played
-   * here, never goes back to them as an echo.
-   */
-  /** An ambulance siren for `seconds`: a two-tone wail, rising in and fading out at the end. */
-  public siren(seconds: number): void {
+  /** An ambulance siren for `seconds`: a two-tone wail, rising in and fading out. Returns a stop, for pause and quit. */
+  public siren(seconds: number): () => void {
     const context = this.getContext();
-    if (!context || !this.sfxGain) return;
+    if (!context || !this.sfxGain) return () => undefined;
     const now = context.currentTime;
     const tone = context.createOscillator();
     tone.type = 'sawtooth';
@@ -91,13 +86,28 @@ export class DepotAudio extends AudioSystem {
     wail.start(now);
     tone.stop(now + seconds);
     wail.stop(now + seconds);
+    return () => {
+      const at = context.currentTime;
+      level.gain.cancelScheduledValues(at);
+      level.gain.setTargetAtTime(0, at, 0.05);
+      try { tone.stop(at + 0.3); wail.stop(at + 0.3); } catch { /* already stopped */ }
+    };
   }
 
+  /**
+   * Online play: everything the game plays, as a stream for the joining player, with `voice` (the host's microphone)
+   * mixed in. Taken from the game's own sound rather than the shared tab's, so the joining player's voice, played
+   * here, never goes back to them as an echo; and before the master volume, so the host's mute is the host's own.
+   */
   public broadcast(voice: MediaStream | null): MediaStream | null {
     const context = this.getContext();
-    if (!context || !this.output) return null;
+    const source = this.mix ?? this.output;
+    if (!context || !source) return null;
     const out = context.createMediaStreamDestination();
-    this.output.connect(out);
+    const level = context.createGain();
+    level.gain.value = 0.72;
+    source.connect(level);
+    level.connect(out);
     if (voice) context.createMediaStreamSource(voice).connect(out);
     return out.stream;
   }

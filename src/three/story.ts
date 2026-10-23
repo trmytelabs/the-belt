@@ -2995,8 +2995,8 @@ export class StoryStage {
     ambulance.visible = outside;
     stretcher.visible = ms >= AMBULANCE.medicsMs && ms < AMBULANCE.doorsMs + 300;
     skanky.root.visible = ms < AMBULANCE.doorsMs + 300;
-    // The box he was carrying, dropped where he fell.
-    carried.visible = !outside;
+    // The box, dropped where he fell (if Bentley did not have it already).
+    carried.visible = !outside && down.box;
     if (carried.visible) {
       carried.position.set(fell.x + Math.sin(facing) * 0.8, 0.02, fell.z + Math.cos(facing) * 0.8);
       carried.rotation.y = facing + 0.5;

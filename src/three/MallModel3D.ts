@@ -85,11 +85,12 @@ export interface MallChase {
   /** The box is with Bentley, signed for: now for the five-ton. */
   delivered: boolean;
 }
-/** Skanky shot: where he fell, where the guard stood, the shot itself, and the clock since (`AMBULANCE`). */
+/** Skanky shot: where he fell, whether he still had the box, where the guard stood, the shot, the clock since (`AMBULANCE`). */
 export interface MallDown {
   x: number;
   y: number;
   ms: number;
+  box: boolean;
   guard: Point;
   shot: { from: Point; to: Point };
 }
@@ -511,7 +512,7 @@ export class MallModel3D extends MallModel {
       return;
     }
     // Down: the box falls where he does, and the chase is over.
-    this.down = { x: s.x, y: s.y, ms: 0, guard: { x: g.x, y: g.y }, shot: { from: chase.shot.from, to: chase.shot.to } };
+    this.down = { x: s.x, y: s.y, ms: 0, box: this.handBox, guard: { x: g.x, y: g.y }, shot: { from: chase.shot.from, to: chase.shot.to } };
     this.chase = null;
     this.handBox = false;
     s.moving = false;

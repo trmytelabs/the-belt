@@ -197,7 +197,7 @@ test('the guard aims, holds it, then fires: standing on the line puts him down, 
   assert.equal(mall.drainEvents()[0].type, 'aim');
   for (let t = 0; t < 1000 && mall.chase; t += 10) mall.update(10);
   assert.equal(mall.chase, null);
-  assert.deepEqual([mall.down.x, mall.down.y, mall.down.guard, mall.handBox], [1700, 824, { x: 1450, y: 824 }, false]);
+  assert.deepEqual([mall.down.x, mall.down.y, mall.down.box, mall.down.guard, mall.handBox], [1700, 824, true, { x: 1450, y: 824 }, false]);
   assert.deepEqual(mall.down.shot.to, { x: 1700, y: 824 });
   assert.ok(mall.drainEvents().some((event) => event.type === 'hit'));
   assert.deepEqual([mall.sweating, mall.interaction.action], [false, 'none']);
