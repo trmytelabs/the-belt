@@ -192,6 +192,8 @@ interface Drive {
   arm: boolean;
   /** A leg bone, which follows the figure on a stair flight even when clips move the rest of the body. */
   leg: boolean;
+  /** A right-arm bone, which follows the figure for a one-handed pose (keys in hand) over the idle or walk. */
+  right: boolean;
 }
 
 interface ModelRig {
@@ -212,6 +214,8 @@ interface ModelRig {
   clipsTried: boolean;
   /** The foot bones (left, right), whose world heights say when a foot lands. */
   feet: [THREE.Bone, THREE.Bone];
+  /** The head's clip rotation and the turned one written over it last frame, while a look turns the head. */
+  look: { clip: THREE.Quaternion; turned: THREE.Quaternion } | null;
 }
 
 /**
@@ -230,6 +234,8 @@ interface ClipRig {
   arms: number;
   /** The same for the legs alone, raised on a stair flight where the figure plants its feet on the treads. */
   legs: number;
+  /** The same for the right arm alone, raised for a one-handed pose with no clip of its own (keys in hand). */
+  hand: number;
   /** The lift or put-down the crouch clips are playing, by the figure action's start time. */
   lift: { start: number; belt: boolean } | null;
   /** The fidget breaking the idle, and when it ends; when the next may start. */
@@ -262,6 +268,11 @@ const POSE_CLIPS: Partial<Record<string, ClipRole>> = {
  * (Termite catching his hat as he ran from the car). Standing still, each plays its clip as before.
  */
 const ARM_GESTURES = new Set(['handup', 'phone', 'sip', 'cough', 'shout', 'swear', 'announce', 'shrug', 'press']);
+/**
+ * One-handed poses with no clip: the idle or walk plays on and only the right arm takes the figure's pose. Made with
+ * the whole figure, holding up the car keys stood Termite as stiff as a mannequin.
+ */
+const HAND_POSES = new Set(['keys']);
 /** Seconds a lift or put-down takes on a model: down on the crouch-in clip, up on the crouch-out. */
 export const LIFT_SECONDS = 0.84;
 /** Seated idles for the car seats, the couch and the booths. */
@@ -478,18 +489,18 @@ export function attachModel(character: Character, source: THREE.Object3D, entry:
   }
 
   const drives: Drive[] = [];
-  const add = (pivot: THREE.Object3D, bone: THREE.Bone, arm = false, leg = false): void => {
-    drives.push({ pivot, bone, rest: frameQuaternion(bone, container), arm, leg });
+  const add = (pivot: THREE.Object3D, bone: THREE.Bone, arm = false, leg = false, right = false): void => {
+    drives.push({ pivot, bone, rest: frameQuaternion(bone, container), arm, leg, right });
   };
   // Parents before children, so each bone is set after its parent. The body
   // pivot moves the container, so the hips need no drive of their own.
   add(character.head, head);
   add(character.leftArm, upperArm.neg, true);
-  add(character.rightArm, upperArm.pos, true);
+  add(character.rightArm, upperArm.pos, true, false, true);
   add(character.leftForearm, forearm.neg, true);
-  add(character.rightForearm, forearm.pos, true);
+  add(character.rightForearm, forearm.pos, true, false, true);
   add(character.leftHand, hand.neg, true);
-  add(character.rightHand, hand.pos, true);
+  add(character.rightHand, hand.pos, true, false, true);
   add(character.leftLeg, thigh.neg, false, true);
   add(character.rightLeg, thigh.pos, false, true);
   add(character.leftShin, shin.neg, false, true);
@@ -526,6 +537,7 @@ export function attachModel(character: Character, source: THREE.Object3D, entry:
     walk: entry.walk ?? null,
     clips: null,
     clipsTried: false,
+    look: null,
     feet: [foot.neg, foot.pos],
   };
   driveModel(character, rig);
@@ -652,6 +664,7 @@ function buildClipRig(rig: ModelRig, name: string): ClipRig | null {
     figure: 1,
     arms: 1,
     legs: 1,
+    hand: 1,
     lift: null,
     fidget: null,
     fidgetAt: FIDGET_EVERY * (0.3 + phaseOf(name)),
@@ -702,6 +715,7 @@ function advanceClips(character: Character, rig: ModelRig, clips: ClipRig): void
   const seatedPlain = seated && (motion!.pose === 'none' || motion!.pose === 'sit');
   const has = (clip: ClipRole): boolean => clipLibrary?.has(clipName(clip, clips.female)) === true;
   const gestureOnTheMove = motion?.moving === true && ARM_GESTURES.has(motion.pose);
+  const handPose = motion !== undefined && HAND_POSES.has(motion.pose) && !seated;
   // A driver holding the wheel keeps the whole figure, so the hands stay exactly on the rim; a seated idle's swaying
   // torso would carry the model's wrists off it. Other seats play the seated idle.
   if (!clipsWanted || !motion || motion.reduced || (action && !lift) || (seated && !seatedPlain) || (seatedPlain && (motion.hands || !has('sitIdle')))) figure = 1;
@@ -710,7 +724,7 @@ function advanceClips(character: Character, rig: ModelRig, clips: ClipRig): void
   else if (motion.turn && has('turnLeft90')) {
     const { angle } = motion.turn;
     role = angle > 0 ? (angle > TURN_SPLIT ? 'turnLeft180' : 'turnLeft90') : (angle < -TURN_SPLIT ? 'turnRight180' : 'turnRight90');
-  } else if (motion.pose !== 'none' && !gestureOnTheMove) {
+  } else if (motion.pose !== 'none' && !gestureOnTheMove && !handPose) {
     role = POSE_CLIPS[motion.pose] ?? null;
     if (!role || !has(role)) { role = null; figure = 1; }
   }
@@ -781,6 +795,7 @@ function advanceClips(character: Character, rig: ModelRig, clips: ClipRig): void
   clips.figure += (figure - clips.figure) * ease;
   clips.arms += (arms - clips.arms) * ease;
   clips.legs += (legs - clips.legs) * ease;
+  clips.hand += ((handPose ? 1 : 0) - clips.hand) * ease;
 }
 
 /**
@@ -796,6 +811,7 @@ function driveModel(character: Character, rig: ModelRig): void {
   const figure = clips ? clips.figure : 1;
   const arms = clips ? Math.max(clips.figure, clips.arms) : 1;
   const legs = clips ? Math.max(clips.figure, clips.legs) : 1;
+  const hand = clips ? Math.max(clips.figure, clips.hand) : 1;
   // The body pivot's bob, crouch, lean and seat height move the whole model; a clip carries its own.
   rig.container.position.copy(body.position).multiplyScalar(figure);
   rig.container.quaternion.copy(IDENTITY).slerp(body.quaternion, figure);
@@ -816,8 +832,13 @@ function driveModel(character: Character, rig: ModelRig): void {
       rig.container.position.y += offset / Math.max(1e-6, character.root.getWorldScale(rootScale).y) * (1 - figure);
     }
   }
-  for (const { pivot, bone, rest, arm, leg } of rig.drives) {
-    const weight = arm ? arms : leg ? legs : figure;
+  // The mixer writes a bone only when its clip's value changes, so on a held frame (a paused game, a choice card over
+  // a scene, a clip clamped at its end) the head still holds last frame's look turned over the clip. Turning that
+  // again piled the turns up and spun every head on pause: start from the clip's own head instead.
+  const head = rig.drives[0].bone;
+  if (rig.look && head.quaternion.equals(rig.look.turned)) head.quaternion.copy(rig.look.clip);
+  for (const { pivot, bone, rest, arm, leg, right } of rig.drives) {
+    const weight = arm ? right ? Math.max(arms, hand) : arms : leg ? legs : figure;
     if (weight <= 0) continue;
     // The pivot's rotation away from its rest (no rotation at all) within the body...
     frameQuaternion(pivot, body, pivotFrame);
@@ -829,12 +850,14 @@ function driveModel(character: Character, rig: ModelRig): void {
   }
   // With clips, the figure's head turn (Termite and Skanky look at their work) is added on top of the clip's head.
   if (clips && figure < 1 && !character.head.quaternion.equals(IDENTITY)) {
-    const head = rig.drives[0].bone;
+    rig.look ??= { clip: new THREE.Quaternion(), turned: new THREE.Quaternion() };
+    rig.look.clip.copy(head.quaternion);
     lookTurn.copy(IDENTITY).slerp(character.head.quaternion, 1 - figure);
     frameQuaternion(head, rig.container, boneFrame).premultiply(lookTurn);
     frameQuaternion(head.parent ?? rig.container, rig.container, parentFrame).invert();
     head.quaternion.copy(parentFrame.multiply(boneFrame));
-  }
+    rig.look.turned.copy(head.quaternion);
+  } else rig.look = null;
   // Held props ride on the figure's hands; put those hands at the model's wrists.
   character.root.updateMatrixWorld(true);
   for (const { pivot, bone } of rig.hands) {
