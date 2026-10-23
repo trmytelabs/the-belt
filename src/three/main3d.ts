@@ -23,7 +23,7 @@ import { DepotAmbientOcclusion } from './ambientOcclusion';
 import { MESA } from './references';
 import { clearDepotFootprint, DEPOT_BODY_RADIUS, DEPOT_CARRY_RADIUS, depotSolidFootprints, type FootprintCircle } from '../game/slice/DepotClearance';
 import { KeyReturnModel, MALL_RULES, type MallEvent } from '../game/slice/MallModel';
-import { MALL_3D_BUNDLES, MALL_3D_STOPS, MallModel3D as MallModel } from './MallModel3D';
+import { CHASE, MALL_3D_BUNDLES, MALL_3D_STOPS, MallModel3D as MallModel } from './MallModel3D';
 import {
   CARRY_MULTIPLIER, THROWING, type Parcel, type Route, type ShiftEvent, type WorkerId,
 } from '../game/slice/ShiftModel';
@@ -235,6 +235,13 @@ export class Belt3d {
   private readonly pileVisible: Record<'T' | 'S', number> = { T: 0, S: 0 };
   private fumeTimer = 0;
   private mallBonus = 0;
+  /** The mall security card on screen (a question, or the choice after a wrong answer), so it is drawn once. */
+  private mallPanel = '';
+  /** Caught on the chase: the choice card says so. */
+  private mallCaught = false;
+  /** Until the guard's next yell on the chase, and which. */
+  private chaseYellMs = 0;
+  private chaseYell = 0;
   /** What tonight's delivery drives earned against par, and their times in seconds. */
   public driveBonus = 0;
   public driveTimes: number[] = [];
@@ -566,6 +573,7 @@ export class Belt3d {
 
         return;
       }
+      if (this.state === 'mall' && this.mallChoiceKey(event.code)) return;
       if (this.state === 'paper') {
         if (event.code === 'KeyF' || event.code === 'Space') { this.throwRalphParcel(); return; }
         if (event.code === 'KeyV') { this.drivingView?.toggleView(); return; }
@@ -1088,6 +1096,8 @@ export class Belt3d {
 
   private beginMall(): void {
     this.mall = new MallModel();
+    this.mallPanel = '';
+    this.mallCaught = false;
     this.stage.resetMall();
     this.stage.beginMall();
     this.state = 'mall';
@@ -1372,6 +1382,8 @@ export class Belt3d {
     this.keys.clear(); this.touch.reset();
     this.overlay.clearCenter();
     this.renderer.domElement.focus({ preventScroll: true });
+    // A mall security card under the pause panel is drawn again.
+    this.mallPanel = '';
     if (this.state === 'playing' || this.state === 'mall' || this.state === 'driving' || this.state === 'coffee' || this.state === 'paper'
       || this.state === 'story' && this.story.chapter !== 'break') audioSystem.startMusic('game');
   }
@@ -1558,7 +1570,7 @@ export class Belt3d {
     }
     for (const button of frame.pressed) {
       if (this.padMenu(button)) continue;
-      const code = padKey(this.state, button);
+      const code = padKey(this.state === 'mall' && this.mallAsking() ? 'mall-quiz' : this.state, button);
       if (!code) continue;
       // The same path as a key press, so every screen behaves exactly as it does for the keyboard.
       window.dispatchEvent(new KeyboardEvent('keydown', { code }));
@@ -1754,8 +1766,12 @@ export class Belt3d {
     } else if (this.state === 'mall' && this.mall) {
       this.mall.update(dt * 1000, this.movement());
       for (const event of this.mall.drainEvents()) this.handleMallEvent(event);
+      this.syncMallPanel();
+      this.chaseYells(dt);
       if (this.mall.finished) {
-        this.mallBonus = this.mall.signatures * MALL_RULES.pointsPerSignature;
+        // Seven signatures at 50; getting away from mall security earns 100 more, being marched out costs 100.
+        this.mallBonus = this.mall.signatures * MALL_RULES.pointsPerSignature + (this.mall.getaway === 'escaped' ? 100 : this.mall.getaway === 'busted' ? -100 : 0);
+        this.overlay.clearCenter();
         this.story.go('to-ups');
         this.playScene(DRIVE_TO_UPS);
       }
@@ -1903,7 +1919,8 @@ export class Belt3d {
       const mall = this.mall;
       this.overlay.chapterHud([
         ['RUN', `${Math.min(mall.runCount, mall.run + 1)} / ${mall.runCount}`], ['DELIVERED', `${mall.delivered} / ${mall.stores.length}`], ['SIGNED', `${mall.signatures} / ${mall.stores.length}`],
-        ['CART', mall.cart.load.length === 0 ? 'EMPTY' : mall.cart.load.map((id) => mall.store(id).name).join(' + ')],
+        mall.chase ? ['HITS', `${mall.chase.hits} / ${CHASE.hitsToCatch}`]
+          : ['CART', mall.cart.load.length === 0 ? 'EMPTY' : mall.cart.load.map((id) => mall.store(id).name).join(' + ')],
       ], mall.interaction.label === mall.objective ? mall.objective : `${mall.interaction.label} · ${mall.objective}`, 'WASD MOVE · SPACE TAKE / LOAD / GRAB CART / DROP / SIGN · E ALSO GRABS CART · ESC PAUSE');
     } else if (this.state === 'lot' && this.lot) {
       this.overlay.chapterHud([['MALL', `${MALL_3D_STOPS} / ${MALL_3D_STOPS} SIGNED`], ['FIVE-TON', this.lot.done ? 'RETURNED' : 'PARKED']],
@@ -1940,7 +1957,8 @@ export class Belt3d {
       case 'paper': case 'ralph-done': return 'ralph';
       // The Ralph run's drive back keeps its surf guitar.
       case 'driving': return this.ralph ? 'ralph' : 'drive';
-      case 'mall': return 'mall';
+      // Running from mall security, the rush's track.
+      case 'mall': return this.mall?.chase ? 'rush' : 'mall';
       case 'lot': return 'lot';
       // The last minute of a timed shift is the rush.
       case 'playing': return !this.model.endless && this.model.elapsedMs >= 120_000 && !this.model.ended ? 'rush' : 'depot';
@@ -2202,12 +2220,17 @@ export class Belt3d {
     const sounds: Record<MallEvent['type'], SoundEffect> = {
       pick: 'grab', load: 'drop', cart: 'switch', drop: 'bulk', sign: 'sign', wrong: 'wrong', run: 'event-alert', done: 'correct',
       refuse: 'wrong', security: 'grab', handover: 'drop',
+      quiz: 'npc-talk', right: 'correct', denied: 'wrong', grab: 'warning', aim: 'event-alert', shot: 'gunshot', hit: 'gunshot',
+      caught: 'wrong', escape: 'correct', busted: 'wrong',
     };
     if (event.type !== 'wrong' || /Nothing on the cart for|goes out on run/.test(event.message)) audioSystem.play(sounds[event.type]);
     this.chapterHint = event.message;
     if (event.type === 'run' || event.type === 'done') this.overlay.showToast(event.message, 2600);
     // The Bentley run's turns, long enough to read: the refusal (and where to go), the box from security, the hand-over.
-    if (event.type === 'refuse' || event.type === 'security' || event.type === 'handover') this.overlay.showToast(event.message, 4200);
+    if (['refuse', 'security', 'denied', 'grab', 'caught', 'escape', 'busted'].includes(event.type) || (event.type === 'handover' && !this.mall?.chase)) {
+      this.overlay.showToast(event.message, 4200);
+    }
+    if (event.type === 'aim') this.overlay.showToast(event.message, 900);
     const mall = this.mall;
     if (!mall) return;
     const at = this.stage.mallEvent(mall, event);
@@ -2216,16 +2239,116 @@ export class Belt3d {
     }
     if (event.type === 'sign' && event.storeId) {
       const store = mall.store(event.storeId);
-      this.overlay.say(`clerk-${store.id}`, `${store.name} CLERK`, store.clerkLine, 3000, () => at ?? new THREE.Vector3());
+      // Signing on the run, Bentley's clerk has no idea what is going on.
+      const line = mall.chase && store.id === 'bentley' ? 'WHAT IS GOING ON?!\n...FINE. SIGNED.' : store.clerkLine;
+      this.overlay.say(`clerk-${store.id}`, `${store.name} CLERK`, line, 3000, () => at ?? new THREE.Vector3());
     }
-    // Bentley yells and will not sign; mall security has the box. (Handed over, the clerk signs with "Finally.")
+    // Bentley yells and will not sign: a box is missing, and the clerk has no idea where. Skanky freaks out (a cartoon
+    // swear, no words). Mall security has it in lost and found, but asks questions first; a wrong answer, and Skanky can
+    // grab it and run, with the guard after him. (Handed over, the clerk signs with "Finally.")
+    const skankyAt = new THREE.Vector3((mall.skanky.x - 640) / 32, 2.3, (mall.skanky.y - 400) / 32);
+    const guard = (copy: string, ms: number): void => this.guardSays(copy, ms);
     if (event.type === 'refuse' && at) {
-      // Skanky's stress, over his head (the clerk's bubble carries the why).
-      this.overlay.pop('STRESSED!', '#e0705a', new THREE.Vector3((mall.skanky.x - 640) / 32, 2.3, (mall.skanky.y - 400) / 32), 1.3);
-      this.overlay.say('clerk-bentley', 'BENTLEY CLERK', "A BOX IS MISSING. I'M NOT SIGNING.\nSECURITY HAS IT. BACK HALLWAY.", 4200, () => at);
-    } else if (event.type === 'security' && at) {
-      this.overlay.say('mall-security', 'SECURITY', 'THIS CAME IN LAST NIGHT.\nBENTLEY, RIGHT?', 3400, () => at);
+      // Beside him, clear of his bubble.
+      this.overlay.pop('FREAKING OUT!', '#e0705a', skankyAt.clone().add(new THREE.Vector3(-1.4, -0.9, 0)), 1.3);
+      this.overlay.say('clerk-bentley', 'BENTLEY CLERK', "A BOX IS MISSING!\nI'M NOT SIGNING FOR A SHORT ORDER.", 4200, () => at);
+      this.overlay.say('skanky', 'SKANKY', '#@$%&!?', 2600, () => new THREE.Vector3((mall.skanky.x - 640) / 32, 2.3, (mall.skanky.y - 400) / 32));
+    } else if (event.type === 'wrong' && event.storeId === 'bentley' && mall.bentley === 'refused' && at) {
+      this.overlay.say('clerk-bentley', 'BENTLEY CLERK', 'NOT UNTIL ALL TWENTY ARE HERE.', 2400, () => at);
+    } else if (event.type === 'quiz' && mall.quiz?.index === 0) {
+      guard("LOST AND FOUND? YEAH, A BOX TURNED UP.\nPROVE IT'S YOURS.", 3400);
+    } else if (event.type === 'right') {
+      guard('MM-HM.', 1200);
+    } else if (event.type === 'denied') {
+      guard('WRONG. THAT BOX STAYS RIGHT HERE.', 3000);
+    } else if (event.type === 'security') {
+      guard("ALRIGHT. IT'S YOURS. GO ON.", 2600);
+    } else if (event.type === 'grab') {
+      guard("HEY! THAT'S LOST PROPERTY!", 2200);
+      this.chaseYellMs = 3000;
+    } else if (event.type === 'shot' || event.type === 'hit') {
+      if (at) this.overlay.pop('BANG!', '#f2c14e', this.stage.mallGuardAnchor(), 1.2);
+      if (event.type === 'hit') {
+        this.overlay.pop('HIT!', '#ff5a4a', skankyAt, 1.5);
+        this.gamepad.rumble(0.7, 220);
+      }
+    } else if (event.type === 'caught') {
+      this.mallCaught = true;
+      guard('GOTCHA. BACK TO THE DESK.', 2600);
+    } else if (event.type === 'busted') {
+      guard("YOU'RE DONE HERE.", 2600);
+    } else if (event.type === 'escape') {
+      guard('AND STAY OUT!', 2400);
     }
+  }
+
+  /** Mall security's card: the current question, or (after a wrong answer, or being caught) grab it or ask again. */
+  private syncMallPanel(): void {
+    const mall = this.mall;
+    if (this.state !== 'mall' || !mall) return;
+    const question = mall.question;
+    const key = question && mall.quiz ? `quiz-${mall.quiz.index}-${question.question}` : mall.bentley === 'denied' ? `denied-${this.mallCaught}` : '';
+    if (key === this.mallPanel) return;
+    const shown = this.mallPanel !== '';
+    this.mallPanel = key;
+    if (!key) {
+      if (shown) this.overlay.clearCenter();
+      return;
+    }
+    const pad = this.pad.connected;
+    const hint = (keys: string): string => `<p style="color:#8da7ac;font-size:12px;letter-spacing:1px">${this.touch.enabled ? 'TAP A CHOICE' : pad ? keys : `${keys} · OR CLICK A CHOICE`}</p>`;
+    if (question && mall.quiz) {
+      const keys = pad ? ['A', 'B', 'Y'] : ['1', '2', '3'];
+      this.overlay.showPanel(`<div class="kicker">MALL SECURITY · QUESTION ${mall.quiz.index + 1} OF ${mall.quiz.questions.length}</div>
+        <h1>${escapeHtml(question.question)}</h1>
+        ${hint(pad ? 'A · B · Y' : 'PRESS 1, 2 OR 3')}
+        <div class="b3d-choices" style="flex-direction:column;gap:0">${question.options.map((option, index) =>
+          `<button type="button" data-action="${index}">${keys[index]} · ${escapeHtml(option)}</button>`).join('')}</div>`,
+      Object.fromEntries(question.options.map((_, index) => [String(index), () => this.mallChoice(index)])), { docked: true });
+      return;
+    }
+    this.overlay.showPanel(`<div class="kicker">MALL SECURITY</div>
+      <h1>${this.mallCaught ? 'CAUGHT. BACK AT THE DESK.' : "HE WON'T HAND IT OVER"}</h1>
+      <p>${this.mallCaught ? 'The guard has the BENTLEY box back on his desk.' : 'Wrong answer. The BENTLEY box is right there on his desk.'}</p>
+      ${hint(pad ? 'A GRAB IT AND RUN · B ASK AGAIN' : '1 GRAB IT AND RUN · 2 ASK AGAIN')}
+      <div class="b3d-choices"><button type="button" class="leave" data-action="grab">${pad ? 'A' : '1'} · GRAB IT AND RUN</button><button type="button" class="steal" data-action="again">${pad ? 'B' : '2'} · ASK AGAIN</button></div>`,
+    { grab: () => this.mallChoice(0), again: () => this.mallChoice(1) }, { docked: true });
+  }
+
+  /** At the security desk, 1/2/3 (Numpad too) answer; after a wrong answer, 1 grabs the box and runs and 2 asks again. */
+  private mallChoiceKey(code: string): boolean {
+    const index = ['Digit1', 'Digit2', 'Digit3'].indexOf(code) >= 0 ? ['Digit1', 'Digit2', 'Digit3'].indexOf(code) : ['Numpad1', 'Numpad2', 'Numpad3'].indexOf(code);
+    if (index < 0 || !this.mallAsking()) return false;
+    this.mallChoice(index);
+    return true;
+  }
+
+  private mallAsking(): boolean {
+    return this.mall?.bentley === 'quiz' || this.mall?.bentley === 'denied';
+  }
+
+  private mallChoice(index: number): void {
+    const mall = this.mall;
+    if (this.state !== 'mall' || !mall) return;
+    if (mall.bentley === 'quiz') mall.answer(index);
+    else if (mall.bentley === 'denied' && index < 2) {
+      this.mallCaught = false;
+      mall.decide(index === 0 ? 'grab' : 'again');
+    }
+  }
+
+  /** On the chase the guard yells every few seconds, from wherever he is. */
+  private chaseYells(dt: number): void {
+    if (!this.mall?.chase || (this.chaseYellMs -= dt * 1000) > 0) return;
+    const yells = ['STOP!', 'GET BACK HERE!', 'DROP THE BOX!', 'STOP OR I SHOOT!', "YOU CAN'T OUTRUN ME!"];
+    this.chaseYellMs = 3200;
+    this.guardSays(yells[this.chaseYell++ % yells.length], 1700);
+  }
+
+  /** The mall security guard's line, over his head wherever he is; his last line goes, so they never stack. */
+  private guardSays(copy: string, ms: number): void {
+    this.overlay.dropSpeech((key) => key === 'mall-security');
+    this.overlay.say('mall-security', 'SECURITY', copy, ms, () => this.stage.mallGuardAnchor());
   }
 
   private updateBanter(): void {
@@ -2933,7 +3056,7 @@ export class Belt3d {
       ${m.inspectionsHeld ? `<p>INSPECTIONS · ${m.inspectionLoads} clean ${m.inspectionLoads === 1 ? 'load' : 'loads'} watched · +${m.inspectionBonus}</p>` : ''}
       ${this.coffeeResult ? `<p>TIMMIES RUN · ${this.coffeeResult.cups} of ${COFFEE_RUN.cups} coffees made it · +${this.coffeeResult.points}</p>` : ''}
       <p>${m.thrownDeliveries} thrown in clean · ${m.damaged} broken (−${m.breakagePenalty} points${m.damaged > THROWING.gradeForgivenBreaks ? `, ${m.gradedBreaks} counted against the grade` : ''})</p>
-      ${mall ? `<p>MALL RUN · ${mall.delivered}/${mall.stores.length} delivered · ${mall.signatures}/${mall.stores.length} signed · five-ton ${home ? 'returned' : 'not returned'} · +${this.mallBonus}</p>
+      ${mall ? `<p>MALL RUN · ${mall.delivered}/${mall.stores.length} delivered · ${mall.signatures}/${mall.stores.length} signed · five-ton ${home ? 'returned' : 'not returned'}${mall.getaway === 'escaped' ? ' · got away from mall security' : mall.getaway === 'busted' ? ' · busted by mall security' : ''} · +${this.mallBonus}</p>
       <p>DRIVING · ${this.drivingCollisions} bumps${this.drivingRedLights ? ` · ${this.drivingRedLights} red lights` : ''} · −${this.drivingPenalty} points · cargo safe${this.driveTimes.length ? ` · ${this.driveTimes.map(driveClock).join(' and ')}${this.driveBonus ? ` · against par +${this.driveBonus}` : ''}` : ''}</p>
       <p class="b3d-sum">SHIFT ${m.score} + NIGHT GOALS ${judged.bonus} + MALL RUN ${this.mallBonus} + ON PAR ${this.driveBonus} − ROAD ${this.drivingPenalty}</p>
       <p><b>NIGHT TOTAL ${String(total).padStart(5, '0')}</b> · ${m.gradeQuote}</p>` : ''}
