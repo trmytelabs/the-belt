@@ -111,6 +111,108 @@ function addressBadge(parcel: Parcel): THREE.Mesh {
   return badge;
 }
 
+/**
+ * A lobster about 0.36 m long facing +z: a carapace with a short rostrum and stalked eyes, a tail of six segments
+ * curling under to a five-blade fan, four pairs of walking legs, long antennae, and two claws on jointed arms (a
+ * bigger crusher and a cutter), each a palm with a fixed finger and a moving one. The claws' pivots are `claws`.
+ */
+function lobster(shell: THREE.Material, belly: THREE.Material, dark: THREE.Material): { body: THREE.Group; claws: THREE.Group[] } {
+  const body = new THREE.Group();
+  const carapace = new THREE.Mesh(new THREE.CapsuleGeometry(0.042, 0.09, 6, 12), shell);
+  carapace.rotation.x = Math.PI / 2;
+  carapace.scale.set(1, 1, 0.86);
+  carapace.position.set(0, 0.04, 0.03);
+  const rostrum = new THREE.Mesh(new THREE.ConeGeometry(0.014, 0.05, 6), shell);
+  rostrum.rotation.x = Math.PI / 2;
+  rostrum.position.set(0, 0.05, 0.12);
+  body.add(carapace, rostrum);
+  for (const side of [-1, 1]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.008, 6, 5), dark);
+    eye.position.set(side * 0.018, 0.068, 0.1);
+    // Long antennae sweeping back over the body, and short antennules forward.
+    const antenna = new THREE.Mesh(new THREE.CylinderGeometry(0.0025, 0.004, 0.3, 4), shell);
+    antenna.position.set(side * 0.06, 0.07, 0.17);
+    antenna.rotation.set(Math.PI / 2 - 0.35, 0, side * -0.9);
+    const antennule = new THREE.Mesh(new THREE.CylinderGeometry(0.002, 0.003, 0.07, 4), shell);
+    antennule.position.set(side * 0.012, 0.055, 0.15);
+    antennule.rotation.set(Math.PI / 2 - 0.2, 0, side * -0.3);
+    body.add(eye, antenna, antennule);
+    // Four walking legs a side, bending down to the floor of the crate.
+    for (let leg = 0; leg < 4; leg += 1) {
+      const limb = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.006, 0.075, 5), shell);
+      limb.position.set(side * 0.05, 0.02, 0.06 - leg * 0.026);
+      limb.rotation.set(0, 0, side * (1.15 + leg * 0.05));
+      body.add(limb);
+    }
+  }
+  // The tail: segments shrinking and curling under, then the fan.
+  let z = -0.035, y = 0.035;
+  for (let i = 0; i < 6; i += 1) {
+    const radius = 0.038 - i * 0.003;
+    const segment = new THREE.Mesh(new THREE.SphereGeometry(radius, 12, 8), i % 2 ? shell : belly);
+    segment.scale.set(1.05, 0.62, 0.72);
+    segment.position.set(0, y, z);
+    body.add(segment);
+    z -= radius * 0.95;
+    y -= 0.002 + i * 0.0015;
+  }
+  for (let blade = -2; blade <= 2; blade += 1) {
+    const fan = new THREE.Mesh(new THREE.SphereGeometry(0.024, 8, 6), shell);
+    fan.scale.set(0.55, 0.12, 1);
+    fan.position.set(blade * 0.016, y - 0.004, z - 0.016);
+    fan.rotation.y = blade * 0.32;
+    body.add(fan);
+  }
+  // The claws: an arm out and forward to each, the right (crusher) heavier than the left (cutter).
+  const claws: THREE.Group[] = [];
+  for (const side of [-1, 1]) {
+    const size = side > 0 ? 1.15 : 0.9;
+    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.009, 0.012, 0.07, 6), shell);
+    arm.position.set(side * 0.05, 0.035, 0.1);
+    arm.rotation.set(Math.PI / 2, 0, side * -0.7);
+    body.add(arm);
+    const claw = new THREE.Group();
+    claw.position.set(side * 0.075, 0.035, 0.13);
+    const palm = new THREE.Mesh(new THREE.SphereGeometry(0.03 * size, 10, 8), shell);
+    palm.scale.set(0.8, 0.6, 1.5);
+    palm.position.z = 0.04 * size;
+    const fixed = new THREE.Mesh(new THREE.ConeGeometry(0.014 * size, 0.07 * size, 6), shell);
+    fixed.rotation.x = Math.PI / 2;
+    fixed.position.set(side * 0.008, 0, 0.1 * size);
+    const finger = new THREE.Mesh(new THREE.ConeGeometry(0.012 * size, 0.065 * size, 6), shell);
+    finger.rotation.set(Math.PI / 2, 0, 0);
+    finger.position.set(side * -0.012, 0.004, 0.098 * size);
+    finger.rotation.y = side * 0.25;
+    const tip = new THREE.Mesh(new THREE.SphereGeometry(0.006 * size, 5, 4), dark);
+    tip.position.set(side * 0.008, 0, 0.135 * size);
+    claw.add(palm, fixed, finger, tip);
+    body.add(claw);
+    claws.push(claw);
+  }
+  return { body, claws };
+}
+
+/** A woven speaker-grille cloth, drawn once. */
+let grilleCloth: THREE.CanvasTexture | null = null;
+function grilleTexture(): THREE.CanvasTexture {
+  if (grilleCloth) return grilleCloth;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = 64;
+  const g = canvas.getContext('2d')!;
+  g.fillStyle = '#26231e';
+  g.fillRect(0, 0, 64, 64);
+  // A basket weave of lighter threads.
+  for (let y = 0; y < 64; y += 4) for (let x = 0; x < 64; x += 4) {
+    g.fillStyle = (x + y) % 8 ? '#3d382f' : '#4a4438';
+    g.fillRect(x, y, (x + y) % 8 ? 3 : 2, (x + y) % 8 ? 2 : 3);
+  }
+  grilleCloth = new THREE.CanvasTexture(canvas);
+  grilleCloth.colorSpace = THREE.SRGBColorSpace;
+  grilleCloth.wrapS = grilleCloth.wrapT = THREE.RepeatWrapping;
+  grilleCloth.repeat.set(5, 3);
+  return grilleCloth;
+}
+
 function buildBody(parcel: Parcel, parts: Record<string, THREE.Object3D>): { group: THREE.Group; height: number; top: number } {
   const group = new THREE.Group();
   switch (parcel.kind) {
@@ -151,26 +253,33 @@ function buildBody(parcel: Parcel, parts: Record<string, THREE.Object3D>): { gro
     }
     case 'lobsters': {
       group.add(crate(0.74, 0.4, 0.54));
-      const shell = standard(0xd24a32, 0.45);
-      for (const offset of [-0.15, 0.17]) {
-        const lobster = new THREE.Group();
-        const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.06, 0.26, 4, 8), shell);
-        torso.rotation.x = Math.PI / 2;
-        lobster.add(torso);
-        for (const side of [-1, 1]) {
-          const claw = new THREE.Group();
-          const pincer = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), shell);
-          pincer.scale.set(1, 0.6, 1.4);
-          pincer.position.z = 0.09;
-          claw.add(pincer);
-          claw.position.set(side * 0.08, 0.02, 0.17);
-          claw.rotation.y = side * 0.4;
-          lobster.add(claw);
-          parts[`claw${offset}${side}`] = claw;
-        }
-        lobster.position.set(offset, 0.36, 0);
-        lobster.rotation.y = offset > 0 ? 2.7 : 0.3;
-        group.add(lobster);
+      // Live lobsters on crushed ice with a little seaweed: dark red-brown shells, orange undersides, black tips.
+      const ice = standard(0xdcecf2, 0.25);
+      const bed = new THREE.Mesh(new THREE.BoxGeometry(0.66, 0.03, 0.46), ice);
+      bed.position.y = 0.33;
+      group.add(bed);
+      let seed = 3;
+      const next = (): number => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+      for (let i = 0; i < 14; i += 1) {
+        const chunk = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.03, 0.035), ice);
+        chunk.position.set(-0.3 + next() * 0.6, 0.35, -0.2 + next() * 0.4);
+        chunk.rotation.set(next() * 2, next() * 2, next() * 2);
+        group.add(chunk);
+      }
+      const weed = standard(0x2f4a24, 0.8);
+      for (let i = 0; i < 5; i += 1) {
+        const strand = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.006, 0.22), weed);
+        strand.position.set(-0.28 + i * 0.14, 0.352, -0.12 + (i % 2) * 0.22);
+        strand.rotation.y = next() * 3;
+        group.add(strand);
+      }
+      const shell = standard(0x8a2f1f, 0.42), belly = standard(0xc8683a, 0.5), dark = standard(0x1e1310, 0.35);
+      for (const [offset, z, turn] of [[-0.17, 0.06, 0.25], [0.15, -0.07, 2.8], [0.02, 0.13, -1.4]] as const) {
+        const { body, claws } = lobster(shell, belly, dark);
+        claws.forEach((claw, index) => { parts[`claw${offset}${index ? 1 : -1}`] = claw; });
+        body.position.set(offset, 0.345, z);
+        body.rotation.y = turn;
+        group.add(body);
       }
       return { group, height: 0.44, top: 0.42 };
     }
@@ -211,36 +320,117 @@ function buildBody(parcel: Parcel, parts: Record<string, THREE.Object3D>): { gro
       return { group, height: 0.5, top: 0.36 };
     }
     case 'mesa': {
-      const cabinet = rounded(0.82, 0.62, 0.42, standard(0x1b1b1d, 0.55), 0.04);
+      // A Mesa/Boogie combo: black tolex, chrome corners, woven grille cloth with the logo, a control strip of
+      // chrome knobs and a red jewel light, a strap handle and rubber feet.
+      const tolex = standard(0x161618, 0.82);
+      const chrome = standard(0xd9dde0, 0.18, 0.95);
+      const cabinet = rounded(0.82, 0.62, 0.42, tolex, 0.035);
       cabinet.position.y = 0.31;
-      const grille = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.38), standard(0x4b4334, 0.95));
+      const grille = new THREE.Mesh(new THREE.PlaneGeometry(0.72, 0.4), new THREE.MeshStandardMaterial({ map: grilleTexture(), roughness: 0.95 }));
       grille.position.set(0, 0.25, 0.212);
-      const panel = rounded(0.7, 0.1, 0.03, standard(0xc7b278, 0.35, 0.6), 0.01);
-      panel.position.set(0, 0.52, 0.205);
-      const plate = textPlane(['MESA BOOGIE'], 0.4, 0.07, { width: 160, height: 28, background: '#1b1b1d', color: '#e7d8a8' });
-      plate.position.set(0, 0.25, 0.214);
-      const handle = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.018, 6, 14, Math.PI), standard(0x111111, 0.4));
-      handle.position.set(0, 0.62, 0);
-      group.add(cabinet, grille, panel, plate, handle);
+      const piping = standard(0xd8cfa8, 0.5);
+      for (const [w, h, x, y] of [[0.73, 0.008, 0, 0.452], [0.73, 0.008, 0, 0.048], [0.008, 0.41, -0.365, 0.25], [0.008, 0.41, 0.365, 0.25]] as const) {
+        const edge = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.006), piping);
+        edge.position.set(x, y, 0.213);
+        group.add(edge);
+      }
+      const plate = textPlane(['MESA/BOOGIE'], 0.3, 0.06, { width: 160, height: 32, background: '#161618', color: '#e9d9a0' });
+      plate.position.set(0.18, 0.39, 0.216);
+      // The control strip along the top of the front.
+      const panel = rounded(0.74, 0.085, 0.02, standard(0x0d0d0f, 0.4), 0.008);
+      panel.position.set(0, 0.53, 0.212);
+      group.add(cabinet, grille, plate, panel);
+      for (let i = 0; i < 9; i += 1) {
+        const knob = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.016, 0.022, 12), chrome);
+        knob.rotation.x = Math.PI / 2;
+        knob.position.set(-0.3 + i * 0.065, 0.53, 0.228);
+        group.add(knob);
+      }
+      const jewel = new THREE.Mesh(new THREE.SphereGeometry(0.011, 10, 8), new THREE.MeshStandardMaterial({ color: 0xff2a1a, emissive: 0xff1a0a, emissiveIntensity: 2.2, roughness: 0.2 }));
+      jewel.position.set(0.33, 0.53, 0.224);
+      group.add(jewel);
+      // Chrome corner caps on all eight corners.
+      for (const sx of [-1, 1]) for (const sy of [0, 1]) for (const sz of [-1, 1]) {
+        const corner = new THREE.Mesh(new THREE.SphereGeometry(0.03, 8, 6), chrome);
+        corner.scale.set(1, 1, 1);
+        corner.position.set(sx * 0.4, 0.01 + sy * 0.6, sz * 0.2);
+        group.add(corner);
+      }
+      // A leather strap handle on the top.
+      const strap = rounded(0.24, 0.025, 0.05, standard(0x111111, 0.55), 0.012);
+      strap.position.set(0, 0.64, 0);
+      const ends = standard(0x8a8f92, 0.3, 0.8);
+      for (const sx of [-1, 1]) {
+        const bracket = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.02, 0.06), ends);
+        bracket.position.set(sx * 0.13, 0.625, 0);
+        group.add(bracket);
+      }
+      group.add(strap);
       return { group, height: 0.66, top: 0.62 };
     }
     case 'atv': {
-      const paint = standard(0xc23a2e, 0.35, 0.3);
-      const tyre = standard(0x1a1a1a, 0.9);
-      const frame = rounded(0.5, 0.18, 0.86, paint, 0.06);
-      frame.position.y = 0.32;
-      const seat = rounded(0.26, 0.08, 0.34, standard(0x222222, 0.7), 0.03);
-      seat.position.set(0, 0.45, -0.08);
-      const bars = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.5, 6), standard(0x999999, 0.3, 0.8));
+      // A small quad: red plastics with fenders over knobby tyres, a tank and seat, chrome racks front and back,
+      // handlebars with grips, and twin headlights.
+      const paint = standard(0xc23a2e, 0.32, 0.25);
+      const black = standard(0x1c1c1e, 0.7);
+      const tyre = standard(0x161616, 0.92);
+      const steelTube = standard(0xa9b0b4, 0.3, 0.8);
+      const chassis = rounded(0.3, 0.1, 0.78, black, 0.03);
+      chassis.position.y = 0.2;
+      const body = rounded(0.42, 0.12, 0.5, paint, 0.05);
+      body.position.set(0, 0.33, 0.02);
+      const tank = rounded(0.22, 0.1, 0.18, paint, 0.04);
+      tank.position.set(0, 0.42, 0.14);
+      const seat = rounded(0.22, 0.07, 0.32, black, 0.03);
+      seat.position.set(0, 0.42, -0.12);
+      group.add(chassis, body, tank, seat);
+      for (const sz of [-1, 1]) {
+        // A fender arching over each axle, and a rack of tubes above it.
+        const fender = rounded(0.6, 0.05, 0.26, paint, 0.025);
+        fender.position.set(0, 0.34, sz * 0.31);
+        group.add(fender);
+        for (const x of [-0.18, 0, 0.18]) {
+          const rail = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.2, 6), steelTube);
+          rail.rotation.x = Math.PI / 2;
+          rail.position.set(x, 0.39, sz * 0.33);
+          group.add(rail);
+        }
+        const crossbar = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.38, 6), steelTube);
+        crossbar.rotation.z = Math.PI / 2;
+        crossbar.position.set(0, 0.39, sz * 0.43);
+        group.add(crossbar);
+      }
+      // Handlebars on a stem, with grips.
+      const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.16, 6), steelTube);
+      stem.position.set(0, 0.5, 0.2);
+      const bars = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.011, 0.44, 6), steelTube);
       bars.rotation.z = Math.PI / 2;
-      bars.position.set(0, 0.55, 0.28);
-      const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.2, 6), bars.material);
-      stem.position.set(0, 0.46, 0.28);
-      group.add(frame, seat, bars, stem);
+      bars.position.set(0, 0.58, 0.2);
+      group.add(stem, bars);
+      for (const sx of [-1, 1]) {
+        const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.08, 8), black);
+        grip.rotation.z = Math.PI / 2;
+        grip.position.set(sx * 0.2, 0.58, 0.2);
+        const lamp = new THREE.Mesh(new THREE.CircleGeometry(0.03, 12), new THREE.MeshStandardMaterial({ color: 0xfff1c8, emissive: 0xfff0c0, emissiveIntensity: 0.8 }));
+        lamp.position.set(sx * 0.1, 0.34, 0.272);
+        group.add(grip, lamp);
+      }
+      // Knobby tyres: a tyre with blocks of tread round it, on a red-and-grey hub.
+      const hub = standard(0x8f969a, 0.35, 0.6);
       for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
-        const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.12, 14), tyre);
+        const wheel = new THREE.Group();
+        wheel.position.set(sx * 0.27, 0.15, sz * 0.31);
         wheel.rotation.z = Math.PI / 2;
-        wheel.position.set(sx * 0.3, 0.15, sz * 0.3);
+        const rubber = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.13, 16), tyre);
+        const rim = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.135, 10), hub);
+        wheel.add(rubber, rim);
+        for (let k = 0; k < 12; k += 1) {
+          const knob = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.12, 0.022), tyre);
+          const a = (k / 12) * Math.PI * 2;
+          knob.position.set(Math.cos(a) * 0.142, 0, Math.sin(a) * 0.142);
+          knob.rotation.y = -a;
+          wheel.add(knob);
+        }
         group.add(wheel);
       }
       return { group, height: 0.6, top: 0.5 };
