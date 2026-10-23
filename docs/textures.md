@@ -21,6 +21,10 @@ required, but it is recorded here so every file can be traced back to its source
 | Cardboard parcels, truck cargo and bulk crates | `cardboard_color.webp`, `cardboard_normal.webp`, `cardboard_arm.webp` | ambientCG, [Cardboard004](https://ambientcg.com/view?id=Cardboard004), 1K-JPG: Color, NormalGL, Roughness | [CC0](https://docs.ambientcg.com/license/) |
 | Arrival lot paving, city roads and dock aprons | `asphalt_color.webp`, `asphalt_normal.webp`, `asphalt_arm.webp` | Poly Haven, [Asphalt Snow](https://polyhaven.com/a/asphalt_snow) (`asphalt_snow`, by eye-candy.xyz, files hash `bb9360a6`), 1k JPG: diff, nor_gl, arm | [CC0](https://polyhaven.com/license) |
 | City sidewalks (packed snow) | `snowpack_color.webp`, `snowpack_normal.webp`, `snowpack_arm.webp` | Poly Haven, [Snow Floor](https://polyhaven.com/a/snow_floor) (`snow_floor`, by eye-candy.xyz, files hash `8cd3f01d`), 1k JPG: diff, nor_gl, arm | [CC0](https://polyhaven.com/license) |
+| The drives' brick blocks and the road's passing brick | `brick_color.webp`, `brick_normal.webp`, `brick_arm.webp` | Poly Haven, [Red Brick 03](https://polyhaven.com/a/red_brick_03) (`red_brick_03`, Rob Tuytel), 1k JPG: diff, nor_gl, arm | [CC0](https://polyhaven.com/license) |
+| The drives' plastered blocks, the house (stucco outside, plaster inside), Cha for Tea's walls and the mall's plaster and paint | `plaster_color.webp`, `plaster_normal.webp`, `plaster_arm.webp` | Poly Haven, [Beige Wall 001](https://polyhaven.com/a/beige_wall_001) (`beige_wall_001`, photography Dimitrios Savva, processing Rico Cilliers), 1k JPG: diff, nor_gl, arm | [CC0](https://polyhaven.com/license) |
+| The depot's corrugated wall in the lot | `siding_color.webp`, `siding_normal.webp`, `siding_arm.webp` | Poly Haven, [Corrugated Iron 02](https://polyhaven.com/a/corrugated_iron_02) (`corrugated_iron_02`, photography Sergej Majboroda, processing Jenelle van Heerden), 1k JPG: diff, nor_gl, arm | [CC0](https://polyhaven.com/license) |
+| The house's floor, Cha for Tea's wainscot, the mall's wood | `wood_color.webp`, `wood_normal.webp`, `wood_arm.webp` | Poly Haven, [Wood Floor](https://polyhaven.com/a/wood_floor) (`wood_floor`, Dimitrios Savva), 1k JPG: diff, nor_gl, arm | [CC0](https://polyhaven.com/license) |
 
 The depot sets were downloaded 2026-10-18 and the outdoor sets 2026-10-20,
 each Poly Haven file matching the MD5 its API publishes. SHA-256 of the
@@ -41,6 +45,25 @@ original downloads:
 | `snow_floor_diff_1k.jpg` | `8d016825951e84d03417e8e8cf563144539ecc4588a30a0c35b0134d508b58b8` |
 | `snow_floor_nor_gl_1k.jpg` | `356b7194e9a20975a8ca3398daa5f2ba53aebb02644314c7a0a9c0cc22b5fb58` |
 | `snow_floor_arm_1k.jpg` | `09a92eff6a150723981d80a36a653f11f28e0e79ef64ef34d246824abf496cd5` |
+| `red_brick_03_diff_1k.jpg` | `9c58254c099b2d211478f50a427fcdde622af24249ff2e94da41fb836f8c857f` |
+| `red_brick_03_nor_gl_1k.jpg` | `9bfd45e24720d851017c1e1678b70219c72239b2ac6b25e11d57d458bdab8503` |
+| `red_brick_03_arm_1k.jpg` | `31d8d33a9c44af49cd082eae8f49016aaca6d55f2fd80be2183e2ba9185bd8cf` |
+| `beige_wall_001_diff_1k.jpg` | `72104704d0b9bd3713c5f6238971252b63eccf6e61263059c674caa8f3d0fa6d` |
+| `beige_wall_001_nor_gl_1k.jpg` | `cec747be50f91da0693986080b6f59ef868d53cb2ab7d577982165ece63ed75e` |
+| `beige_wall_001_arm_1k.jpg` | `2382c7cccde8baedb61830a3c61264c5567aca4fbf825425fcc0544d40323f3d` |
+| `corrugated_iron_02_diff_1k.jpg` | `7a7b43099d015c1b08ebb175da5965caeae44b86de65a727b3fffa20a7c69a93` |
+| `corrugated_iron_02_nor_gl_1k.jpg` | `9743c93668689c36a67e9c4dc8d6a0870fe91202f82dcdaf70ddc330c12f9ecb` |
+| `corrugated_iron_02_arm_1k.jpg` | `da4197f5b3e199ef693082836ca803f9d5cad2b4998a1c1c3dc4ac384f93a890` |
+| `wood_floor_diff_1k.jpg` | `2a1c07687b6dbb214c4b9213739c6d92d425f1f0fc8ab3ac157f105d78240789` |
+| `wood_floor_nor_gl_1k.jpg` | `452247f0d0d1b7fc7f8324ff3b6ed60bcc6de1405f4284eeb8d9bce90d4939c2` |
+| `wood_floor_arm_1k.jpg` | `a84d9457fa35a76cf8a41da8bcef55387230c6b236819de878799585eda76059` |
+
+The building and interior sets (brick, plaster, siding, wood) were downloaded 2026-10-22, each file matching
+the MD5 Poly Haven's API publishes, and converted the same way at 512 px (colour and normal) and 256 px (packed
+maps). They took the textures from about 1.25 MB to about 1.5 MB. The city's blocks are vertex-coloured, so they use
+`vertexSurfaceMaterial` (the photo's grain under each block's tint), and the photo is also drawn, lifted to a light
+grey, into the wall round each window cell; brick tints get brick, the rest plaster. A photo's real size is
+`SURFACE_TILE` (brick 1 m, the others 2 m).
 
 ## How the files were prepared
 

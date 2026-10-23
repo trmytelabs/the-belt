@@ -5,6 +5,7 @@ import { MALL_STORES } from '../game/slice/StoryScript';
 import { mergeStatic } from './merge';
 import { placeProp } from './propModels';
 import { standard, textTexture } from './space';
+import { SURFACE_TILE, boxUVs, scaleUVs, surfaceMaterial } from './textures';
 
 /**
  * Skanky's mall, built in code as an original approximation of a south
@@ -201,20 +202,24 @@ export function buildSouthgateMall(scene: THREE.Scene, quality: 'high' | 'low', 
   const boards: THREE.Mesh[] = [];
 
   // ---------------------------------------------------------------- materials
+  // Photo surfaces (plaster, concrete block, wood) and the size of one tile of each: boxes and panels size their UVs
+  // to it, so the photos keep their real scale on walls of any length.
+  const photoTile = new Map<THREE.Material, number>();
+  const photo = (material: THREE.MeshStandardMaterial, tile: number): THREE.MeshStandardMaterial => { photoTile.set(material, tile); return material; };
   const m = {
     stone: standard(0xb9ab95, 0.55),
     stoneDark: standard(0x8c8070, 0.6),
-    plaster: standard(0xe8e2d8, 0.85),
-    paint: standard(0xd2d4d0, 0.85),
-    block: standard(0xa4abae, 0.9),
+    plaster: photo(surfaceMaterial('plaster', { color: 0xe8e2d8, roughness: 0.85 }), SURFACE_TILE.plaster),
+    paint: photo(surfaceMaterial('plaster', { color: 0xd2d4d0, roughness: 0.85 }), SURFACE_TILE.plaster),
+    block: photo(surfaceMaterial('concrete', { color: 0xa4abae, roughness: 0.9 }), 3),
     blockBand: standard(0x4f5f68, 0.8),
     bronze: standard(0x4a3a2c, 0.4, 0.5),
     steel: standard(0x9aa2a8, 0.35, 0.7),
     white: standard(0xf2f2ee, 0.5),
     cap: standard(0x23282c, 0.9),
     rubber: standard(0x151718, 0.95),
-    wood: standard(0x9a6a40, 0.6),
-    darkWood: standard(0x5e3e26, 0.6),
+    wood: photo(surfaceMaterial('wood', { color: 0x9a6a40, roughness: 0.6 }), SURFACE_TILE.wood),
+    darkWood: photo(surfaceMaterial('wood', { color: 0x5e3e26, roughness: 0.6 }), SURFACE_TILE.wood),
     yellow: standard(0xe0b23c, 0.6),
     green: standard(0x3c6e3a, 0.9),
     leaf: new THREE.MeshStandardMaterial({ color: 0x3f7a3c, roughness: 0.9, flatShading: true }),
@@ -240,14 +245,18 @@ export function buildSouthgateMall(scene: THREE.Scene, quality: 'high' | 'low', 
 
   // ---------------------------------------------------------------- helpers
   const box = (parent: THREE.Object3D, material: THREE.Material, [x0, y0, z0, x1, y1, z1]: Box): THREE.Mesh => {
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(Math.abs(x1 - x0), Math.abs(y1 - y0), Math.abs(z1 - z0)), material);
+    const geometry = new THREE.BoxGeometry(Math.abs(x1 - x0), Math.abs(y1 - y0), Math.abs(z1 - z0));
+    const tile = photoTile.get(material);
+    const mesh = new THREE.Mesh(tile ? boxUVs(geometry, tile) : geometry, material);
     mesh.position.set((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
     parent.add(mesh);
     return mesh;
   };
   /** A flat panel; `facing` is the side it can be seen from. */
   const panel = (parent: THREE.Object3D, material: THREE.Material, w: number, h: number, x: number, y: number, z: number, facing: '+x' | '-x' | '+z' | '-z' | 'up' | 'down'): THREE.Mesh => {
-    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), material);
+    const tile = photoTile.get(material);
+    const plane = new THREE.PlaneGeometry(w, h);
+    const mesh = new THREE.Mesh(tile ? scaleUVs(plane, w / tile, h / tile) : plane, material);
     mesh.position.set(x, y, z);
     if (facing === '-z') mesh.rotation.y = Math.PI;
     else if (facing === '+x') mesh.rotation.y = Math.PI / 2;

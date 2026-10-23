@@ -9,7 +9,7 @@ import { disposeObject3D } from '../src/three/resources.ts';
 import { boxUVs, cardboardMaterial, scaleUVs, surfaceMaterial } from '../src/three/textures.ts';
 
 const TEXTURES = 'public/textures';
-const SURFACES = ['concrete', 'rubber', 'steel', 'paint', 'cardboard', 'asphalt', 'snowpack'];
+const SURFACES = ['concrete', 'rubber', 'steel', 'paint', 'cardboard', 'asphalt', 'snowpack', 'brick', 'plaster', 'siding', 'wood'];
 const MAPS = ['color', 'normal', 'arm'];
 
 test('every surface ships three small WebP maps, each recorded with its source and licence', () => {
@@ -17,7 +17,7 @@ test('every surface ships three small WebP maps, each recorded with its source a
   const expected = SURFACES.flatMap((surface) => MAPS.map((map) => `${surface}_${map}.webp`)).sort();
   assert.deepEqual(files, expected);
   const total = files.reduce((sum, file) => sum + statSync(join(TEXTURES, file)).size, 0);
-  // About 1.25 MB today; a phone-sized budget that a 2K or PNG export would break.
+  // About 1.5 MB today; a phone-sized budget that a 2K or PNG export would break.
   assert.ok(total < 2 * 1024 * 1024, `textures total ${total} bytes`);
   for (const file of files) {
     const bytes = readFileSync(join(TEXTURES, file));
@@ -26,7 +26,8 @@ test('every surface ships three small WebP maps, each recorded with its source a
   }
   const doc = readFileSync('docs/textures.md', 'utf8');
   for (const file of files) assert.ok(doc.includes(file), `docs/textures.md lists ${file}`);
-  for (const source of ['concrete_floor_worn_001', 'Rubber004', 'Metal038', 'PaintedMetal001', 'Cardboard004', 'asphalt_snow', 'snow_floor']) {
+  for (const source of ['concrete_floor_worn_001', 'Rubber004', 'Metal038', 'PaintedMetal001', 'Cardboard004', 'asphalt_snow', 'snow_floor',
+    'red_brick_03', 'beige_wall_001', 'corrugated_iron_02', 'wood_floor']) {
     assert.ok(doc.includes(source), `docs/textures.md credits ${source}`);
   }
   assert.ok(doc.includes('CC0'), 'docs/textures.md states the licence');
