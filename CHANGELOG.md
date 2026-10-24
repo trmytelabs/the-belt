@@ -3,7 +3,7 @@
 ## 1.1.0 — 2026-10-24 — Bentley, and online play
 
 Published at https://trmytelabs.github.io/the-belt/ (the repository stays
-private). Everything since 1.0.0, #104 to #110:
+private). Everything since 1.0.0, #104 to #109 and #111:
 
 - PLAY ONLINE (#106, #109): Termite and Skanky on the belt from two
   computers, an endless shift that speeds up until recovery overflows. One
@@ -29,7 +29,7 @@ private). Everything since 1.0.0, #104 to #110:
   (`?mode=3d&minigame=mall`, #108): the mall run on its own, from the truck or
   straight to BENTLEY's run with the six other stores signed, ending on a card
   with the mall bonus, AGAIN and PLAY THE FULL NIGHT.
-- Fixes (#108, #110): online, the joining player's keys are let go when their
+- Fixes (#108, #111): online, the joining player's keys are let go when their
   page goes quiet or hidden, a room still opening can be cancelled, and voice
   never holds up the picture; the shot's black and siren stop on pause or
   END NIGHT; the practice briefings start only their own game (N and Y no
