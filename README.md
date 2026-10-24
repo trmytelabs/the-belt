@@ -8,9 +8,10 @@ owner explicitly requests another version.
 Players switch between workers, pick up packages and sort them to the appropriate
 dock. The game includes keyboard, mouse and touch controls.
 
-This private repository contains the current development snapshot (`0.1.0`). It
-has a working production build and a browser smoke suite, with no published
-release. Review playability in the browser when changing game behavior.
+This private repository holds The Belt 1.1.0 (see CHANGELOG.md; releases are on
+GitHub with a packaged web build). The game is published from `main` at
+https://trmytelabs.github.io/the-belt/. Review playability in the browser when
+changing game behavior.
 
 ## Run locally
 
