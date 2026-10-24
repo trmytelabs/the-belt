@@ -1,17 +1,21 @@
 # Changelog
 
-## Unreleased
+## 1.1.0 — 2026-10-24 — Bentley, and online play
 
-- PLAY ONLINE: Termite and Skanky on the belt from two computers, an endless
-  shift that speeds up until recovery overflows. One player hosts and plays
-  Termite; the other joins from a link or a six-character room code and plays
-  Skanky (player 2), seeing the host's game streamed to a light page and
-  playing with keys, a controller or touch. Voice chat included (K mutes).
-  Connected through PeerJS's free service, then directly between the two
-  browsers.
-- The mall run gets BENTLEY, on a fourth run of its own with the cart full of
-  its freight. Delivered, the clerk yells about a missing box (with no idea
-  where it went) and will not sign, and Skanky freaks out and sweats. Mall
+Published at https://trmytelabs.github.io/the-belt/ (the repository stays
+private). Everything since 1.0.0, #104 to #109 and #111:
+
+- PLAY ONLINE (#106, #109): Termite and Skanky on the belt from two
+  computers, an endless shift that speeds up until recovery overflows. One
+  player hosts and plays Termite; the other joins from a link or a
+  six-character room code and plays Skanky (player 2), seeing the host's game
+  streamed to a light page and playing with keys, a controller or touch. Voice
+  chat included (K mutes). Connected through PeerJS's free service, then
+  directly between the two browsers.
+- The mall run gets BENTLEY (#104, #105, #108), on a fourth run of its own
+  with the cart full of its freight. Delivered, the clerk yells about a
+  missing box (with no idea where it went) and will not sign, and Skanky
+  freaks out and sweats. Mall
   security's lost and found has it, through the staff doors and down a long
   L-shaped service hallway. The guard asks three questions about the night
   first: answer them right and Skanky carries the box back by hand before
@@ -22,9 +26,17 @@
   stretcher, an ambulance takes him away with its lights and siren, and the
   night is lost. The mall is now seven stores on four runs, in the 3D game only.
 - TRY THE MALL RUN · SKANKY'S DELIVERIES on the 3D briefing
-  (`?mode=3d&minigame=mall`): the mall run on its own, from the truck or
+  (`?mode=3d&minigame=mall`, #108): the mall run on its own, from the truck or
   straight to BENTLEY's run with the six other stores signed, ending on a card
   with the mall bonus, AGAIN and PLAY THE FULL NIGHT.
+- Fixes (#108, #111): online, the joining player's keys are let go when their
+  page goes quiet or hidden, a room still opening can be cancelled, and voice
+  never holds up the picture; the shot's black and siren stop on pause or
+  END NIGHT; the practice briefings start only their own game (N and Y no
+  longer start an endless shift or the daily challenge there); the getaway no
+  longer says "back to UPS" in the mall practice.
+- CI skips re-testing a merge whose code its pull request already passed, so
+  the site publishes about a minute after a merge instead of ~23 (#107).
 
 ## 1.0.0 — 2026-10-23 — first public release
 

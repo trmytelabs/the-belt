@@ -289,6 +289,10 @@ export class Belt3d {
   private readonly practiceCoffee = new URLSearchParams(window.location.search).get('minigame') === 'coffee';
   /** `?minigame=mall`: Skanky's mall run on its own, from its own briefing; and where it starts, at the truck or at BENTLEY. */
   private readonly practiceMall = new URLSearchParams(window.location.search).get('minigame') === 'mall';
+  /** Any of the practice pages (the drive, the Timmies run, the Ralph run, the mall run): their briefings start only their own game. */
+  private get practising(): boolean {
+    return Boolean(this.practiceDestination) || this.practiceCoffee || this.practiceRalph || this.practiceMall;
+  }
   private mallStart: 'truck' | 'bentley' = 'truck';
   private breakAlertMs = 0;
   /**
@@ -808,7 +812,7 @@ export class Belt3d {
    */
   private startEndless(): void {
     // Online (the belt, endless) it needs no finished night first.
-    if (this.state !== 'briefing' || (this.record.completed === 0 && !this.online) || this.practiceDestination) return;
+    if (this.state !== 'briefing' || (this.record.completed === 0 && !this.online) || this.practising) return;
     this.model = new ShiftModel3D({ endless: true });
     this.story = story3d(Math.random, { ...this.forcedStory, breakAtMs: Infinity });
     this.applyPlayers();
@@ -826,7 +830,7 @@ export class Belt3d {
    * rule. It counts as a night like any other, and keeps today's best and the days in a row besides.
    */
   private startDaily(): void {
-    if (this.state !== 'briefing' || this.practiceDestination) return;
+    if (this.state !== 'briefing' || this.practising) return;
     if (this.online) { this.startEndless(); return; }
     const night = dailyNight(dailyDate());
     this.daily = night;

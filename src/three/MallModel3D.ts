@@ -556,7 +556,7 @@ export class MallModel3D extends MallModel {
     this.getaway = outcome;
     this.finished = true;
     this.cart.pushed = false;
-    if (outcome === 'escaped') this.emit('escape', 'GOT AWAY! · into the five-ton and gone · back to UPS');
+    if (outcome === 'escaped') this.emit('escape', 'GOT AWAY! · into the five-ton and gone');
     else this.emit('busted', 'BUSTED · mall security marches Skanky out to the five-ton');
   }
 
