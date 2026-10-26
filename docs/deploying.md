@@ -6,28 +6,32 @@ public to anyone with the address; the repository itself stays private.
 
 ## The server (thebelt.patchnotes.ca)
 
-`.github/workflows/deploy.yml` runs on GitHub-hosted runners (a few Actions
-minutes per run):
+`.github/workflows/deploy.yml` runs on the owner's PC (the `belt-pc` runner,
+like CI and Pages: GitHub-hosted runners are not available to this private
+repository without paid minutes) on every push to `main`, or by hand:
 
-1. **Container image**, on every pull request and every push to `main`: the
-   `Dockerfile` builds the game for the root of a domain (`npm run build`,
-   Node 24) and packs `dist/` into a Caddy image that listens on port 8080 as
-   an unprivileged user, with `/version.txt` holding the commit. The job then
-   runs the image as production does (read-only, every Linux capability
-   dropped) and checks `/health`, `/version.txt`, the page, `?mode=3d`, the
-   security headers and a model, texture and track from `public/`.
-2. **Deploy to production**, on `main` only: the image is streamed over SSH
-   to the server's `deploy` user. That user's key for this project is forced
-   to one command, `the-belt <commit sha>` (`deploy/server/deploy-the-belt-gate`),
-   which hands the stream to `deploy-the-belt` as root: `docker load`, replace
-   the running container on `127.0.0.1:8081`, wait for its health check, and
-   put the previous image back if it never gets healthy. The workflow then
-   waits until `https://thebelt.patchnotes.ca/version.txt`, read through
-   Cloudflare, reports the commit. The image never goes to a registry, so the
-   private repository needs no package or pull token.
+1. **Build**: `npm ci --ignore-scripts` and `npm run build` for the root of a
+   domain (the default base, unlike the Pages build), then a bundle of the
+   `Dockerfile`, `deploy/container.Caddyfile` and `dist/` as one gzipped tar.
+2. **Deploy**: the bundle is streamed over SSH to the server's `deploy` user.
+   That user's key for this project is forced to one command,
+   `the-belt <commit sha>` (`deploy/server/deploy-the-belt-gate`), which hands
+   the stream to `deploy-the-belt` as root: `docker build` the image there (a
+   Caddy image serving `dist/` on port 8080 as an unprivileged user, with
+   `/version.txt` holding the commit), replace the running container on
+   `127.0.0.1:8081` (read-only, every Linux capability dropped), wait for its
+   health check and confirm it serves that commit; if not, the previous image
+   goes back and the deploy fails.
+3. **Verify**: the workflow waits until `https://thebelt.patchnotes.ca/version.txt`,
+   read through Cloudflare, reports the commit, then checks the page and
+   `?mode=3d`.
 
-The merge to `main` was already gated by CI on the owner's PC, so the deploy
-does not re-run the suites. A failed deploy leaves the previous build live.
+The merge to `main` was already gated by CI, so the deploy does not re-run the
+suites. The `Dockerfile` is exercised on the server at deploy time, behind the
+rollback, since the owner's PC has no Docker. A failed deploy leaves the
+previous build live. With one runner, the deploy queues behind CI's quick
+already-tested check and the Pages publish. No registry is involved, so the
+private repository needs no package or pull token.
 
 `deploy/container.Caddyfile` holds the Content-Security-Policy, the other
 security headers and the caching rules, versioned with the code: if the game
@@ -60,7 +64,7 @@ Level's (same TLS, Cloudflare-only rule and logging) that proxies to port 8081.
 
 To redeploy or roll back by hand, run the workflow from the Actions tab on
 `main` or on an earlier tag (`v1.1.0`); on the server, `deploy-the-belt <sha>`
-with a saved image on stdin does the same.
+with a site bundle on stdin does the same.
 
 ## GitHub Pages mirror
 

@@ -116,4 +116,4 @@ PY
 fi
 
 say "done. Next: a proxied A record for $DOMAIN at Cloudflare, the repository's production secrets, then push to main."
-say "By hand: deploy-the-belt <sha> < the-belt-image.tar.gz   (docker save ghcr.io/trmytelabs/the-belt:<sha> | gzip)"
+say "By hand: deploy-the-belt <sha> < the-belt-site.tar.gz   (a gzipped tar of Dockerfile, deploy/container.Caddyfile and a built dist/)"
