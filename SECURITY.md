@@ -14,4 +14,4 @@ game's keys, controller buttons and a clamped stick from the joining page
 (`src/three/onlineRules.ts`): player 2's moves on the belt, and pausing.
 Keep dependencies reviewed and test changes before using a build outside local
 development. CI does not deploy or publish this repository. The Pages workflow publishes the built game
-from main to https://trmytelabs.github.io/the-belt/. The repository itself has been public since 2026-10-26, at the owner's choice.
+from main to https://thebelt.fun/. The repository itself has been public since 2026-10-26, at the owner's choice.

@@ -1,22 +1,29 @@
 # Deploying a build
 
-**The game is live at https://trmytelabs.github.io/the-belt/** (the owner turned
-this on, 2026-10-23). The Pages workflow (`.github/workflows/pages.yml`)
-publishes it from `main` after every merge: it builds with
-`--base=/the-belt/` on a GitHub-hosted runner and deploys to GitHub Pages. The
-site is public to anyone with the address, as is the repository since
-2026-10-26. To publish again without a
-merge, run the workflow by hand from the repository's Actions tab (Pages, Run
-workflow). To take the site down, turn Pages off in the repository's settings.
+**The game is live at https://thebelt.fun/**, the repository's custom domain
+on GitHub Pages (the owner turned Pages on 2026-10-23 and chose the domain
+2026-10-26). The Pages workflow (`.github/workflows/pages.yml`) publishes it
+from `main` after every merge: it builds for the root of the domain on a
+GitHub-hosted runner and deploys to GitHub Pages. The site is public to anyone
+with the address, as is the repository since 2026-10-26. To publish again
+without a merge, run the workflow by hand from the repository's Actions tab
+(Pages, Run workflow). To take the site down, turn Pages off in the
+repository's settings.
 
-CI does not re-test an ordinary merge. A pull request merges only after both checks pass on a branch that is up to date
-with `main`, so when it merges with a merge commit (the usual way here), that
-commit's tree is exactly the tree the checks just passed. CI's first job on a
-push to `main` compares the merge commit's tree with its second parent's (the
-pull request's head) and, when they match, skips the build and browser jobs;
-they show as skipped. Pull request checks
-always run in full. A direct push, a squash or rebase merge, or a merge whose
-tree differs still runs every check on `main`. The skip relies on `main`'s
+The domain's DNS is at Cloudflare: `A` and `AAAA` records on the apex for
+GitHub Pages' addresses and a `CNAME` from `www` to `trmytelabs.github.io`,
+left unproxied so GitHub can issue the certificate; the repository's Pages
+settings name `thebelt.fun` and enforce HTTPS. `https://trmytelabs.github.io/the-belt/`
+redirects there.
+
+CI does not re-test an ordinary merge. A pull request merges only after both
+checks pass on a branch that is up to date with `main`, so when it merges with
+a merge commit (the usual way here), that commit's tree is exactly the tree the
+checks just passed. CI's first job on a push to `main` compares the merge
+commit's tree with its second parent's (the pull request's head) and, when they
+match, skips the build and browser jobs; they show as skipped. Pull request
+checks always run in full. A direct push, a squash or rebase merge, or a merge
+whose tree differs still runs every check on `main`. The skip relies on `main`'s
 ruleset requiring both checks on up-to-date branches; remove it if that rule
 ever changes.
 
@@ -42,11 +49,11 @@ play a little.
 Upload the contents of `dist/` (not the folder itself) to the site's root, so
 `index.html` is at `https://example.com/index.html`. Any static host works.
 
-## In a folder (GitHub Pages, a sub-path)
+## In a folder (a sub-path)
 
 A host that serves the game from a folder, such as a GitHub Pages project
-site at `https://<user>.github.io/the-belt/`, needs the build to know that
-folder:
+site without a custom domain (`https://<user>.github.io/the-belt/`), needs the
+build to know that folder:
 
 ```sh
 npm run build -- --base=/the-belt/

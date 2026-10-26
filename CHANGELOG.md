@@ -2,8 +2,9 @@
 
 ## Unreleased
 
-- The repository is public (2026-10-26, at the owner's choice); the game was
-  already public at https://trmytelabs.github.io/the-belt/.
+- The game's address is https://thebelt.fun/, the repository's custom domain on
+  GitHub Pages; the build is for a domain root again. The repository is public
+  (2026-10-26, at the owner's choice).
 - CI and Pages run on GitHub-hosted runners again; the self-hosted runner on
   the owner's PC (`belt-pc`, #64) is retired.
 

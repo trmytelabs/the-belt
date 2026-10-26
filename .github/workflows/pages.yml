@@ -1,7 +1,7 @@
 name: Pages
 
-# Publishes the game from main to GitHub Pages, at https://trmytelabs.github.io/the-belt/ (the owner's
-# choice, 2026-10-23). See docs/deploying.md.
+# Publishes the game from main to GitHub Pages at https://thebelt.fun/, the repository's custom domain
+# (the owner's choice, 2026-10-26; Pages itself since 2026-10-23). See docs/deploying.md.
 on:
   push:
     branches: [main]
@@ -30,8 +30,8 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
       - run: npm ci --ignore-scripts
-      # The site is served from /the-belt/, so the build's asset paths start there (src/three/assetBase.ts).
-      - run: npm run build -- --base=/the-belt/
+      # The custom domain serves the site from its root, so the default base (/) is right (src/three/assetBase.ts).
+      - run: npm run build
       # The artifact deploy-pages expects: the site as one tar named github-pages.
       - name: Archive the site
         run: tar -cf "$RUNNER_TEMP/artifact.tar" -C dist .
