@@ -16,7 +16,6 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -65,10 +64,10 @@ jobs:
           curl -sfI http://localhost:8080/audio/music/after-hours.mp3 | head -1
           docker rm -f smoke
       - name: Save the image for the deploy job
-        if: github.event_name != 'pull_request'
+        if: ${{ github.event_name != 'pull_request' }}
         run: docker save "$IMAGE:${{ github.sha }}" | gzip -1 > the-belt-image.tar.gz && ls -l the-belt-image.tar.gz
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: github.event_name != 'pull_request'
+        if: ${{ github.event_name != 'pull_request' }}
         with:
           name: the-belt-image
           path: the-belt-image.tar.gz
@@ -78,7 +77,7 @@ jobs:
   deploy:
     name: Deploy to production
     needs: image
-    if: github.event_name != 'pull_request'
+    if: ${{ github.event_name != 'pull_request' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment:
