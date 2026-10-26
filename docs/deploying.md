@@ -2,7 +2,7 @@
 
 **The game is live at https://thebelt.patchnotes.ca**, the owner's own server,
 and mirrored at https://trmytelabs.github.io/the-belt/ (GitHub Pages). Both are
-public to anyone with the address; the repository itself stays private.
+public to anyone with the address, as is the repository since 2026-10-26.
 
 ## The server (thebelt.patchnotes.ca)
 
@@ -70,7 +70,7 @@ with a site bundle on stdin does the same.
 this on, 2026-10-23). The Pages workflow (`.github/workflows/pages.yml`)
 publishes it from `main` after every merge: it builds with
 `--base=/the-belt/` on a GitHub-hosted runner and deploys to GitHub Pages. The site is public to anyone with the
-address; the repository itself stays private. To publish again without a
+address. To publish again without a
 merge, run the workflow by hand from the repository's Actions tab (Pages, Run
 workflow). To take the site down, turn Pages off in the repository's settings.
 
@@ -90,8 +90,8 @@ The game is a static site: `npm run build` writes everything it needs into
 about 100 MB). There is no server component. The CI workflow never deploys; the
 deploy workflow ships the server image and the Pages workflow publishes the mirror.
 
-Publishing a build makes it public to anyone with the address, even though the
-repository stays private. Check the build first:
+Publishing a build makes it public to anyone with the address. Check the build
+first:
 
 ```sh
 npm ci
@@ -122,7 +122,7 @@ Upload `dist/`'s contents into that folder. In Git Bash on Windows, write
 `MSYS_NO_PATHCONV=1 npm run build -- --base=/the-belt/` so the shell does not
 turn `/the-belt/` into a Windows path.
 
-GitHub Pages can publish from a private repository on GitHub Pro, but the
+GitHub Pages can publish from a private repository on GitHub Pro too, but the
 site itself is public once published. Setting it up is the owner's decision; the repository's
 workflows do not publish anything.
 

@@ -8,7 +8,7 @@ owner explicitly requests another version.
 Players switch between workers, pick up packages and sort them to the appropriate
 dock. The game includes keyboard, mouse and touch controls.
 
-This private repository holds The Belt 1.1.0 (see CHANGELOG.md; releases are on
+This repository (public since 2026-10-26, at the owner's choice) holds The Belt 1.1.0 (see CHANGELOG.md; releases are on
 GitHub with a packaged web build). The game is published from `main` at
 https://trmytelabs.github.io/the-belt/. Review playability in the browser when
 changing game behavior.

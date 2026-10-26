@@ -10,8 +10,9 @@ rules and layout separate; changes to shared code must preserve legacy behavior.
 Apply this scope to future plans, implementation instructions and pull requests
 unless the owner explicitly requests work on another version.
 
-Read CONTRIBUTING.md, README.md and SECURITY.md before changes. The private
-GitHub repository's `main` is the source of truth. Follow the Git and version
+Read CONTRIBUTING.md, README.md and SECURITY.md before changes. The GitHub
+repository (public since 2026-10-26, at the owner's explicit choice) has `main`
+as the source of truth. Follow the Git and version
 workflow in CONTRIBUTING.md: preserve existing work, update a clean `main` with
 a fast-forward pull, use a focused branch, and submit a checked pull request.
 Never force-push `main` or discard unrelated work. Merge only with the owner's
