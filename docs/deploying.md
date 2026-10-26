@@ -1,6 +1,70 @@
 # Deploying a build
 
-**The game is live at https://trmytelabs.github.io/the-belt/** (the owner turned
+**The game is live at https://thebelt.patchnotes.ca**, the owner's own server,
+and mirrored at https://trmytelabs.github.io/the-belt/ (GitHub Pages). Both are
+public to anyone with the address; the repository itself stays private.
+
+## The server (thebelt.patchnotes.ca)
+
+`.github/workflows/deploy.yml` runs on GitHub-hosted runners (a few Actions
+minutes per run):
+
+1. **Container image**, on every pull request and every push to `main`: the
+   `Dockerfile` builds the game for the root of a domain (`npm run build`,
+   Node 24) and packs `dist/` into a Caddy image that listens on port 8080 as
+   an unprivileged user, with `/version.txt` holding the commit. The job then
+   runs the image as production does (read-only, every Linux capability
+   dropped) and checks `/health`, `/version.txt`, the page, `?mode=3d`, the
+   security headers and a model, texture and track from `public/`.
+2. **Deploy to production**, on `main` only: the image is streamed over SSH
+   to the server's `deploy` user. That user's key for this project is forced
+   to one command, `the-belt <commit sha>` (`deploy/server/deploy-the-belt-gate`),
+   which hands the stream to `deploy-the-belt` as root: `docker load`, replace
+   the running container on `127.0.0.1:8081`, wait for its health check, and
+   put the previous image back if it never gets healthy. The workflow then
+   waits until `https://thebelt.patchnotes.ca/version.txt`, read through
+   Cloudflare, reports the commit. The image never goes to a registry, so the
+   private repository needs no package or pull token.
+
+The merge to `main` was already gated by CI on the owner's PC, so the deploy
+does not re-run the suites. A failed deploy leaves the previous build live.
+
+`deploy/container.Caddyfile` holds the Content-Security-Policy, the other
+security headers and the caching rules, versioned with the code: if the game
+ever talks to a new outside origin (today only Google Fonts and PeerJS's public
+service for PLAY ONLINE), add it there or the browser blocks it.
+
+### Setting the server up (once)
+
+The server already runs Docker, Caddy and the `deploy` user for Next Level.
+Copy `deploy/server/` there and run, as root:
+
+```sh
+DEPLOY_PUBKEY="$(cat thebelt_deploy.pub)" bash setup.sh --dry-run
+DEPLOY_PUBKEY="$(cat thebelt_deploy.pub)" bash setup.sh
+```
+
+It installs the two scripts under `/usr/local/bin`, a sudo rule so `deploy`
+can run `deploy-the-belt` (and nothing else) as root, the deploy key forced to
+the gate, and a Caddy site block for `thebelt.patchnotes.ca` cloned from Next
+Level's (same TLS, Cloudflare-only rule and logging) that proxies to port 8081.
+`--dry-run` prints every change first. Then:
+
+- At Cloudflare, add a proxied `A` record `thebelt` pointing at the server.
+- On the owner's PC, `deploy\set-github-secrets.cmd` stores `DEPLOY_HOST`
+  (the server's own address, since SSH does not go through Cloudflare),
+  `DEPLOY_USER`, `DEPLOY_SSH_KEY` (`~/.ssh/thebelt_deploy`, generated on that
+  PC; the private half never leaves it) and `DEPLOY_KNOWN_HOSTS` in the
+  repository's `production` environment.
+- Merge to `main`, or run "Deploy to the server" from the Actions tab.
+
+To redeploy or roll back by hand, run the workflow from the Actions tab on
+`main` or on an earlier tag (`v1.1.0`); on the server, `deploy-the-belt <sha>`
+with a saved image on stdin does the same.
+
+## GitHub Pages mirror
+
+**The mirror is at https://trmytelabs.github.io/the-belt/** (the owner turned
 this on, 2026-10-23). The Pages workflow (`.github/workflows/pages.yml`)
 publishes it from `main` after every merge: it builds with
 `--base=/the-belt/` on the owner's PC (the `belt-pc` runner, no Actions
@@ -24,8 +88,8 @@ ever changes.
 
 The game is a static site: `npm run build` writes everything it needs into
 `dist/` (the page, the scripts, and `public/`'s models, textures and audio,
-about 50 MB). There is no server component. The CI workflow never deploys; only
-the Pages workflow publishes.
+about 100 MB). There is no server component. The CI workflow never deploys; the
+deploy workflow ships the server image and the Pages workflow publishes the mirror.
 
 Publishing a build makes it public to anyone with the address, even though the
 repository stays private. Check the build first:

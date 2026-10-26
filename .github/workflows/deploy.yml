@@ -1,0 +1,122 @@
+name: Deploy to the server
+
+# Continuous deployment to https://thebelt.patchnotes.ca, the owner's VPS (docs/deploying.md).
+#
+# Every pull request and every push to main builds the production image (Dockerfile) on a GitHub-hosted runner and
+# smoke-tests it locked down as in production. Pushes to main then ship it: the image is streamed over SSH to the
+# server's `deploy` user, whose key for this project is forced to one command (`the-belt <commit sha>`), which runs
+# deploy-the-belt (deploy/server/): load the image, replace the running container, wait for its healthcheck, roll
+# back on failure. The pipeline then waits until /version.txt on the live site (through Cloudflare) reports this
+# commit. The image never goes to a registry, so the private repository needs no package or pull token.
+#
+# The merge itself was already gated by CI on the owner's PC (main's ruleset), so this does not re-run the suites.
+# Secrets (environment "production"): DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY, DEPLOY_KNOWN_HOSTS.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-${{ github.event.pull_request.number || github.ref }}
+  # superseded pull request runs can stop; runs on main always finish so a deploy is never cut off halfway
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  IMAGE: ghcr.io/trmytelabs/the-belt
+  SITE: https://thebelt.patchnotes.ca
+
+jobs:
+  image:
+    name: Container image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          load: true
+          tags: ${{ env.IMAGE }}:${{ github.sha }}
+          build-args: GIT_SHA=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Smoke test the image (read-only, no capabilities, like production)
+        run: |
+          docker run -d --name smoke --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges:true \
+            -p 8080:8080 "$IMAGE:${{ github.sha }}"
+          for i in $(seq 1 30); do curl -sf http://localhost:8080/health && break; sleep 1; done
+          test "$(curl -sf http://localhost:8080/version.txt)" = "${{ github.sha }}"
+          curl -sf -o /dev/null http://localhost:8080/
+          curl -sf -o /dev/null "http://localhost:8080/?mode=3d"
+          curl -sfI http://localhost:8080/ | grep -i '^content-security-policy'
+          # the 3D depot's files came along: a character, a texture and a track
+          curl -sfI http://localhost:8080/models/characters/aj.glb | head -1
+          curl -sfI http://localhost:8080/textures/asphalt_color.webp | head -1
+          curl -sfI http://localhost:8080/audio/music/after-hours.mp3 | head -1
+          docker rm -f smoke
+      - name: Save the image for the deploy job
+        if: github.event_name != 'pull_request'
+        run: docker save "$IMAGE:${{ github.sha }}" | gzip -1 > the-belt-image.tar.gz && ls -l the-belt-image.tar.gz
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: github.event_name != 'pull_request'
+        with:
+          name: the-belt-image
+          path: the-belt-image.tar.gz
+          retention-days: 1
+          if-no-files-found: error
+
+  deploy:
+    name: Deploy to production
+    needs: image
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: production
+      url: https://thebelt.patchnotes.ca
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: the-belt-image
+      - name: Install the deploy key
+        env:
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/deploy && chmod 600 ~/.ssh/deploy
+          printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts_deploy
+      - name: Deploy (the server loads the image, waits for healthy, rolls back on failure)
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          ssh -i ~/.ssh/deploy -o UserKnownHostsFile=~/.ssh/known_hosts_deploy -o StrictHostKeyChecking=yes \
+            -o BatchMode=yes -o ConnectTimeout=20 "$USER@$HOST" "the-belt ${{ github.sha }}" < the-belt-image.tar.gz
+      - name: Verify the live site serves this commit
+        run: |
+          for i in $(seq 1 24); do
+            live=$(curl -sf "$SITE/version.txt?nocache=$RANDOM$RANDOM" || true)
+            [ "$live" = "${{ github.sha }}" ] && break
+            sleep 5
+          done
+          echo "live version: ${live:-unreachable}"
+          test "$live" = "${{ github.sha }}"
+          curl -sSf -o /dev/null -w "home page: HTTP %{http_code} in %{time_total}s\n" "$SITE/"
+          curl -sSf -o /dev/null -w "3D depot: HTTP %{http_code}\n" "$SITE/?mode=3d"
+      - name: Remove the deploy key
+        if: always()
+        run: rm -f ~/.ssh/deploy

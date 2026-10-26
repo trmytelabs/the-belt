@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- The game deploys to the owner's own server, https://thebelt.patchnotes.ca:
+  every merge to `main` builds a read-only container image (Caddy serving
+  the site, `Dockerfile`), smoke-tests it, streams it to the server over an
+  SSH key that can only run the deploy command, waits for the new container's
+  health check (rolling back if it fails) and confirms the live site reports
+  the commit (`.github/workflows/deploy.yml`, `deploy/`, docs/deploying.md).
+  GitHub Pages stays as a mirror.
+
 ## 1.1.0 — 2026-10-24 — Bentley, and online play
 
 Published at https://trmytelabs.github.io/the-belt/ (the repository stays

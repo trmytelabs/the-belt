@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+# Puts one build of The Belt live on this server. Runs as root (through sudo from deploy-the-belt-gate when the
+# pipeline deploys, or by hand):
+#
+#   deploy-the-belt <commit sha> < the-belt-image.tar.gz
+#
+# Reads a `docker save` stream (plain or gzipped) of ghcr.io/trmytelabs/the-belt:<sha> from stdin, loads it,
+# replaces the running container, waits for the new one's healthcheck and, if it never gets healthy, puts the
+# previous image back. Exits 0 only when <sha> is live. deploy/server/setup.sh installs this as
+# /usr/local/bin/deploy-the-belt.
+set -euo pipefail
+
+NAME=the-belt
+IMAGE=ghcr.io/trmytelabs/the-belt
+# Loopback only: the server's Caddy proxies thebelt.patchnotes.ca to this port (setup.sh writes that site block).
+PORT=${THE_BELT_PORT:-8081}
+SHA=${1:-}
+[[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "usage: deploy-the-belt <40-hex commit sha> < image.tar(.gz)" >&2; exit 2; }
+TAG="$IMAGE:$SHA"
+log() { echo "[deploy-the-belt] $*"; }
+
+start_container() {
+  docker run -d --name "$NAME" --restart unless-stopped \
+    --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges:true \
+    --log-opt max-size=10m --log-opt max-file=3 \
+    -p "127.0.0.1:$PORT:8080" "$1" >/dev/null
+}
+
+# The image's HEALTHCHECK polls every 10 s with 6 retries; allow 90 s before calling it dead.
+wait_healthy() {
+  local i status
+  for i in $(seq 1 90); do
+    status=$(docker inspect -f '{{.State.Health.Status}}' "$NAME" 2>/dev/null || echo missing)
+    case "$status" in
+      healthy) return 0 ;;
+      unhealthy|missing) return 1 ;;
+    esac
+    sleep 1
+  done
+  return 1
+}
+
+log "loading $TAG from stdin"
+docker load
+docker image inspect "$TAG" >/dev/null 2>&1 || { echo "the stream did not contain $TAG" >&2; exit 1; }
+
+previous=$(docker inspect -f '{{.Config.Image}}' "$NAME" 2>/dev/null || true)
+if [ "$previous" = "$TAG" ] && [ "$(docker inspect -f '{{.State.Health.Status}}' "$NAME")" = healthy ]; then
+  log "$SHA is already live"
+  exit 0
+fi
+
+if [ -n "$previous" ]; then
+  log "replacing $previous"
+  docker rm -f "$NAME" >/dev/null
+fi
+start_container "$TAG"
+if wait_healthy; then
+  log "$SHA is live on 127.0.0.1:$PORT"
+  # keep the image that just went out and the one before it; drop older builds
+  docker images "$IMAGE" --format '{{.Repository}}:{{.Tag}}' | grep -v -e "^$TAG\$" -e "^${previous:-none}\$" \
+    | xargs -r docker rmi >/dev/null 2>&1 || true
+  exit 0
+fi
+
+log "new container never became healthy; its last log lines:"
+docker logs --tail 40 "$NAME" 2>&1 | sed 's/^/    /' || true
+docker rm -f "$NAME" >/dev/null 2>&1 || true
+if [ -n "$previous" ]; then
+  start_container "$previous"
+  if wait_healthy; then log "rolled back to $previous"; else log "ROLLBACK FAILED: $previous is not healthy either"; fi
+fi
+exit 1

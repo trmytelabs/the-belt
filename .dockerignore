@@ -1,0 +1,14 @@
+# Only what the build needs goes into the image build context (index.html, src/, public/, the configs).
+.git
+.github
+.claude
+.driving.local
+node_modules
+dist
+docs
+tests
+tools
+deploy/server
+deploy/*.cmd
+*.md
+*.log

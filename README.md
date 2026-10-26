@@ -319,8 +319,9 @@ npm run preview
 The build runs TypeScript checking and then creates the production bundle in
 `dist/`. Preview serves that bundle locally. Generated output and dependency
 folders are ignored; the GitHub workflow only installs from `package-lock.json`
-and runs the build and browser checks. It does not deploy or publish a release; the separate Pages workflow
-publishes `main` to https://trmytelabs.github.io/the-belt/ (public).
+and runs the build and browser checks. It does not deploy or publish a release; the separate deploy workflow
+ships `main` to the owner's server at https://thebelt.patchnotes.ca, and the Pages workflow publishes it to
+https://trmytelabs.github.io/the-belt/ (both public).
 
 To put a build online (at a domain's root or in a folder such as a GitHub Pages site), see
 [docs/deploying.md](docs/deploying.md).
