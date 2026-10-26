@@ -2,16 +2,10 @@
 
 ## Unreleased
 
-- The game deploys to the owner's own server, https://thebelt.patchnotes.ca:
-  every merge to `main` builds the site, builds and smoke-tests its read-only
-  container image (Caddy serving the site, `Dockerfile`), streams the bundle
-  to the server over an SSH key that can only run the deploy command, where
-  the same image replaces the running one once its health check passes
-  (rolling back if it fails), and confirms the live site reports the commit
-  (`.github/workflows/deploy.yml`, `deploy/`, docs/deploying.md). GitHub Pages
-  stays as a mirror.
-- CI, Pages and the deploy run on GitHub-hosted runners again; the self-hosted
-  runner on the owner's PC (`belt-pc`, #64) is retired.
+- The repository is public (2026-10-26, at the owner's choice); the game was
+  already public at https://trmytelabs.github.io/the-belt/.
+- CI and Pages run on GitHub-hosted runners again; the self-hosted runner on
+  the owner's PC (`belt-pc`, #64) is retired.
 
 ## 1.1.0 — 2026-10-24 — Bentley, and online play
 

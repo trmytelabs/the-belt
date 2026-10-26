@@ -15,6 +15,3 @@ game's keys, controller buttons and a clamped stick from the joining page
 Keep dependencies reviewed and test changes before using a build outside local
 development. CI does not deploy or publish this repository. The Pages workflow publishes the built game
 from main to https://trmytelabs.github.io/the-belt/. The repository itself has been public since 2026-10-26, at the owner's choice.
-The deploy workflow ships the same build to the owner's server at https://thebelt.patchnotes.ca as a
-read-only container behind Cloudflare (`Dockerfile`, `deploy/`); the SSH key it uses can run only that one
-deploy command, and the image never passes through a registry.
