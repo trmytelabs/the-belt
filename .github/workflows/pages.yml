@@ -1,7 +1,7 @@
 name: Pages
 
 # Publishes the game from main to GitHub Pages, at https://trmytelabs.github.io/the-belt/ (the owner's
-# choice, 2026-10-23). The site is public; the repository stays private. See docs/deploying.md.
+# choice, 2026-10-23), the mirror of https://thebelt.patchnotes.ca. See docs/deploying.md.
 on:
   push:
     branches: [main]
@@ -18,8 +18,7 @@ concurrency:
 jobs:
   build:
     name: Build the site
-    # On the owner's PC, like CI, so publishing uses no GitHub Actions minutes.
-    runs-on: [self-hosted, belt-pc]
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -33,11 +32,9 @@ jobs:
       - run: npm ci --ignore-scripts
       # The site is served from /the-belt/, so the build's asset paths start there (src/three/assetBase.ts).
       - run: npm run build -- --base=/the-belt/
-      # The artifact deploy-pages expects: the site as one tar named github-pages. Archived with Windows' own
-      # tar here (upload-pages-artifact's Windows step needs a Git Bash on the PATH this runner may not have).
+      # The artifact deploy-pages expects: the site as one tar named github-pages.
       - name: Archive the site
-        shell: powershell
-        run: tar -cf "$env:RUNNER_TEMP\artifact.tar" -C dist .
+        run: tar -cf "$RUNNER_TEMP/artifact.tar" -C dist .
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: github-pages
@@ -48,7 +45,7 @@ jobs:
   deploy:
     name: Publish to GitHub Pages
     needs: build
-    runs-on: [self-hosted, belt-pc]
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       pages: write

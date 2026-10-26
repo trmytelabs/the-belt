@@ -6,32 +6,30 @@ public to anyone with the address; the repository itself stays private.
 
 ## The server (thebelt.patchnotes.ca)
 
-`.github/workflows/deploy.yml` runs on the owner's PC (the `belt-pc` runner,
-like CI and Pages: GitHub-hosted runners are not available to this private
-repository without paid minutes) on every push to `main`, or by hand:
+`.github/workflows/deploy.yml` runs on GitHub-hosted runners:
 
-1. **Build**: `npm ci --ignore-scripts` and `npm run build` for the root of a
+1. **Site bundle and container image**, on every pull request and every push
+   to `main`: `npm ci --ignore-scripts` and `npm run build` for the root of a
    domain (the default base, unlike the Pages build), then a bundle of the
    `Dockerfile`, `deploy/container.Caddyfile` and `dist/` as one gzipped tar.
-2. **Deploy**: the bundle is streamed over SSH to the server's `deploy` user.
-   That user's key for this project is forced to one command,
-   `the-belt <commit sha>` (`deploy/server/deploy-the-belt-gate`), which hands
-   the stream to `deploy-the-belt` as root: `docker build` the image there (a
-   Caddy image serving `dist/` on port 8080 as an unprivileged user, with
-   `/version.txt` holding the commit), replace the running container on
-   `127.0.0.1:8081` (read-only, every Linux capability dropped), wait for its
-   health check and confirm it serves that commit; if not, the previous image
-   goes back and the deploy fails.
-3. **Verify**: the workflow waits until `https://thebelt.patchnotes.ca/version.txt`,
-   read through Cloudflare, reports the commit, then checks the page and
-   `?mode=3d`.
+   The job builds the image from that bundle (Caddy serving `dist/` on port
+   8080 as an unprivileged user, with `/version.txt` holding the commit), runs
+   it as production does (read-only, every Linux capability dropped) and checks
+   `/health`, `/version.txt`, the page, `?mode=3d`, the security headers and a
+   model, texture and track from `public/`.
+2. **Deploy to production**, on `main` only: the bundle is streamed over SSH
+   to the server's `deploy` user. That user's key for this project is forced
+   to one command, `the-belt <commit sha>` (`deploy/server/deploy-the-belt-gate`),
+   which hands the stream to `deploy-the-belt` as root: `docker build` the
+   same image there, replace the running container on `127.0.0.1:8081`, wait
+   for its health check and confirm it serves that commit; if not, the
+   previous image goes back and the deploy fails. The workflow then waits
+   until `https://thebelt.patchnotes.ca/version.txt`, read through Cloudflare,
+   reports the commit, and checks the page and `?mode=3d`.
 
 The merge to `main` was already gated by CI, so the deploy does not re-run the
-suites. The `Dockerfile` is exercised on the server at deploy time, behind the
-rollback, since the owner's PC has no Docker. A failed deploy leaves the
-previous build live. With one runner, the deploy queues behind CI's quick
-already-tested check and the Pages publish. No registry is involved, so the
-private repository needs no package or pull token.
+suites. A failed deploy leaves the previous build live. No registry is
+involved: the server builds the image from the bundle it receives.
 
 `deploy/container.Caddyfile` holds the Content-Security-Policy, the other
 security headers and the caching rules, versioned with the code: if the game
@@ -71,20 +69,17 @@ with a site bundle on stdin does the same.
 **The mirror is at https://trmytelabs.github.io/the-belt/** (the owner turned
 this on, 2026-10-23). The Pages workflow (`.github/workflows/pages.yml`)
 publishes it from `main` after every merge: it builds with
-`--base=/the-belt/` on the owner's PC (the `belt-pc` runner, no Actions
-minutes) and deploys to GitHub Pages. The site is public to anyone with the
+`--base=/the-belt/` on a GitHub-hosted runner and deploys to GitHub Pages. The site is public to anyone with the
 address; the repository itself stays private. To publish again without a
 merge, run the workflow by hand from the repository's Actions tab (Pages, Run
 workflow). To take the site down, turn Pages off in the repository's settings.
 
-CI does not hold the publish up. CI and Pages share the one runner, and CI used
-to re-test every merge on `main` for about 23 minutes while the publish waited.
-A pull request merges only after both checks pass on a branch that is up to date
+CI does not re-test an ordinary merge. A pull request merges only after both checks pass on a branch that is up to date
 with `main`, so when it merges with a merge commit (the usual way here), that
 commit's tree is exactly the tree the checks just passed. CI's first job on a
 push to `main` compares the merge commit's tree with its second parent's (the
 pull request's head) and, when they match, skips the build and browser jobs;
-they show as skipped and the runner moves on to the publish. Pull request checks
+they show as skipped. Pull request checks
 always run in full. A direct push, a squash or rebase merge, or a merge whose
 tree differs still runs every check on `main`. The skip relies on `main`'s
 ruleset requiring both checks on up-to-date branches; remove it if that rule

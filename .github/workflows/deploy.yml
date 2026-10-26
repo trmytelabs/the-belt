@@ -2,41 +2,41 @@ name: Deploy to the server
 
 # Continuous deployment to https://thebelt.patchnotes.ca, the owner's VPS (docs/deploying.md).
 #
-# Every push to main (and a manual run) builds the game on the owner's PC, the belt-pc runner, like CI and Pages:
-# GitHub-hosted runners are not available to this private repository (no paid minutes). The build, with the
-# Dockerfile and the container's Caddyfile, is bundled and streamed over SSH to the server's `deploy` user, whose key
+# Every pull request and every push to main builds the game on a GitHub-hosted runner, bundles it with the
+# Dockerfile and the container's Caddyfile, builds that image locally and smoke-tests it locked down as in
+# production. Pushes to main then ship the bundle: it is streamed over SSH to the server's `deploy` user, whose key
 # for this project is forced to one command (`the-belt <commit sha>`). That runs deploy-the-belt (deploy/server/):
-# build the image there, replace the running container, wait for its healthcheck, roll back on failure. This job
-# then waits until /version.txt on the live site (through Cloudflare) reports the commit. No registry is involved.
+# build the same image there, replace the running container, wait for its healthcheck, roll back on failure. The
+# pipeline then waits until /version.txt on the live site (through Cloudflare) reports this commit. No registry is
+# involved, and pull requests never deploy.
 #
-# The merge itself was already gated by CI (main's ruleset), so this does not re-run the suites. With one runner,
-# it queues behind CI's quick already-tested check and the Pages publish.
+# The merge itself was already gated by CI (main's ruleset), so this does not re-run the suites. This repository
+# allows GitHub-owned actions only, so the image is built with plain docker commands.
 # Secrets (environment "production"): DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY, DEPLOY_KNOWN_HOSTS.
 
 on:
   push:
+    branches: [main]
+  pull_request:
     branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
 
-# One deploy at a time, and a newer main never cancels one that is going out.
 concurrency:
-  group: deploy-production
-  cancel-in-progress: false
+  group: deploy-${{ github.event.pull_request.number || github.ref }}
+  # superseded pull request runs can stop; runs on main always finish so a deploy is never cut off halfway
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   SITE: https://thebelt.patchnotes.ca
 
 jobs:
-  deploy:
-    name: Build and deploy to production
-    runs-on: [self-hosted, belt-pc]
-    timeout-minutes: 30
-    environment:
-      name: production
-      url: https://thebelt.patchnotes.ca
+  image:
+    name: Site bundle and container image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -50,61 +50,76 @@ jobs:
       # For the root of the domain (the default base), unlike the Pages build.
       - run: npm run build
       - name: Bundle the site with its container recipe
-        shell: powershell
         run: |
-          $stage = Join-Path $env:RUNNER_TEMP 'the-belt-site'
-          if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
-          New-Item -ItemType Directory -Force (Join-Path $stage 'deploy') | Out-Null
-          Copy-Item Dockerfile $stage
-          Copy-Item deploy\container.Caddyfile (Join-Path $stage 'deploy')
-          Copy-Item -Recurse dist (Join-Path $stage 'dist')
-          tar -czf "$env:RUNNER_TEMP\the-belt-site.tar.gz" -C $stage .
-          Get-Item "$env:RUNNER_TEMP\the-belt-site.tar.gz" | Select-Object Name, Length | Format-List
+          mkdir -p bundle/deploy
+          cp Dockerfile bundle/ && cp deploy/container.Caddyfile bundle/deploy/ && cp -r dist bundle/dist
+          tar -czf the-belt-site.tar.gz -C bundle .
+          ls -l the-belt-site.tar.gz
+      - name: Build the image from the bundle and smoke test it (read-only, no capabilities, like production)
+        run: |
+          docker build --build-arg "GIT_SHA=${{ github.sha }}" -t the-belt:smoke bundle
+          docker run -d --name smoke --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges:true \
+            -p 8080:8080 the-belt:smoke
+          for i in $(seq 1 30); do curl -sf http://localhost:8080/health && break; sleep 1; done
+          test "$(curl -sf http://localhost:8080/version.txt)" = "${{ github.sha }}"
+          curl -sf -o /dev/null http://localhost:8080/
+          curl -sf -o /dev/null "http://localhost:8080/?mode=3d"
+          curl -sfI http://localhost:8080/ | grep -i '^content-security-policy'
+          # the 3D depot's files came along: a character, a texture and a track
+          curl -sfI http://localhost:8080/models/characters/aj.glb | head -1
+          curl -sfI http://localhost:8080/textures/asphalt_color.webp | head -1
+          curl -sfI http://localhost:8080/audio/music/after-hours.mp3 | head -1
+          docker rm -f smoke
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ github.event_name != 'pull_request' }}
+        with:
+          name: the-belt-site
+          path: the-belt-site.tar.gz
+          retention-days: 1
+          if-no-files-found: error
+
+  deploy:
+    name: Deploy to production
+    needs: image
+    if: ${{ github.event_name != 'pull_request' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: production
+      url: https://thebelt.patchnotes.ca
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: the-belt-site
       - name: Install the deploy key
-        shell: powershell
         env:
           KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           KNOWN: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
         run: |
-          $dir = Join-Path $env:RUNNER_TEMP 'deploy-ssh'
-          New-Item -ItemType Directory -Force $dir | Out-Null
-          [IO.File]::WriteAllText("$dir\key", $env:KEY.Replace("`r`n", "`n").TrimEnd() + "`n")
-          [IO.File]::WriteAllText("$dir\known_hosts", $env:KNOWN.TrimEnd() + "`n")
-          # Windows OpenSSH refuses a private key other accounts can read
-          icacls "$dir\key" /inheritance:r /grant:r "$($env:USERNAME):R" | Out-Null
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/deploy && chmod 600 ~/.ssh/deploy
+          printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts_deploy
       - name: Deploy (the server builds the image, waits for healthy, rolls back on failure)
-        shell: powershell
         env:
           HOST: ${{ secrets.DEPLOY_HOST }}
           USER: ${{ secrets.DEPLOY_USER }}
         run: |
-          $dir = Join-Path $env:RUNNER_TEMP 'deploy-ssh'
-          $ssh = Join-Path $env:SystemRoot 'System32\OpenSSH\ssh.exe'
-          $sshArgs = @('-i', "`"$dir\key`"", '-o', "`"UserKnownHostsFile=$dir\known_hosts`"", '-o', 'StrictHostKeyChecking=yes',
-            '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=20', "$env:USER@$env:HOST", '"the-belt ${{ github.sha }}"')
-          $p = Start-Process -FilePath $ssh -ArgumentList $sshArgs -RedirectStandardInput "$env:RUNNER_TEMP\the-belt-site.tar.gz" -NoNewWindow -Wait -PassThru
-          if ($p.ExitCode -ne 0) { Write-Output "deploy failed with exit code $($p.ExitCode)"; exit $p.ExitCode }
+          ssh -i ~/.ssh/deploy -o UserKnownHostsFile=~/.ssh/known_hosts_deploy -o StrictHostKeyChecking=yes \
+            -o BatchMode=yes -o ConnectTimeout=20 "$USER@$HOST" "the-belt ${{ github.sha }}" < the-belt-site.tar.gz
       - name: Verify the live site serves this commit
-        shell: powershell
         run: |
-          $sha = '${{ github.sha }}'
-          $live = ''
-          foreach ($i in 1..24) {
-            try { $live = (Invoke-WebRequest -UseBasicParsing "$env:SITE/version.txt?nocache=$(Get-Random)" -TimeoutSec 15).Content.Trim() } catch { $live = '' }
-            if ($live -eq $sha) { break }
-            Start-Sleep -Seconds 5
-          }
-          if ($live) { Write-Output "live version: $live" } else { Write-Output "live version: unreachable" }
-          if ($live -ne $sha) { exit 1 }
-          $page = Invoke-WebRequest -UseBasicParsing "$env:SITE/" -TimeoutSec 30
-          Write-Output "home page: HTTP $($page.StatusCode)"
-          $depot = Invoke-WebRequest -UseBasicParsing "$env:SITE/?mode=3d" -TimeoutSec 30
-          Write-Output "3D depot: HTTP $($depot.StatusCode)"
-      - name: Remove the deploy key and the bundle
+          for i in $(seq 1 24); do
+            live=$(curl -sf "$SITE/version.txt?nocache=$RANDOM$RANDOM" || true)
+            [ "$live" = "${{ github.sha }}" ] && break
+            sleep 5
+          done
+          echo "live version: ${live:-unreachable}"
+          test "$live" = "${{ github.sha }}"
+          curl -sSf -o /dev/null -w "home page: HTTP %{http_code} in %{time_total}s\n" "$SITE/"
+          curl -sSf -o /dev/null -w "3D depot: HTTP %{http_code}\n" "$SITE/?mode=3d"
+      - name: Remove the deploy key
         if: always()
-        shell: powershell
-        run: |
-          Remove-Item -Recurse -Force (Join-Path $env:RUNNER_TEMP 'deploy-ssh') -ErrorAction SilentlyContinue
-          Remove-Item -Recurse -Force (Join-Path $env:RUNNER_TEMP 'the-belt-site') -ErrorAction SilentlyContinue
-          Remove-Item -Force "$env:RUNNER_TEMP\the-belt-site.tar.gz" -ErrorAction SilentlyContinue
-          exit 0
+        run: rm -f ~/.ssh/deploy

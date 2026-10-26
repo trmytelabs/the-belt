@@ -358,15 +358,15 @@ for later events and edge cases. TypeScript strict checking is enabled. Dependab
 compatible dependencies; major upgrades require a separate planned review.
 Dependabot waits a week after each release before proposing it, and CI installs
 packages with `--ignore-scripts`, so a hijacked update has a smaller window and
-cannot run an install script on the PC that hosts the runner.
+cannot run an install script on a runner.
 
-CI runs on the owner's own Windows PC, a self-hosted GitHub Actions runner
-labelled `belt-pc`, so checks use no GitHub Actions minutes; that PC has to be on
-and logged in for checks to run, and they wait in a queue otherwise. Pull requests
+CI runs on GitHub-hosted runners (a Linux job for the build, the model checks and
+the 3D browser suites in Playwright's Chromium; a Windows job for the classic
+game's checks in Edge). Pull requests
 always get the full checks; after a merge, main's run skips them when the merge
 commit's tree is the one its pull request just passed (see
 [docs/deploying.md](docs/deploying.md)). The browser
-suites use Edge with software WebGL there, as on GPU-free hosted runners, so CI
+suites use software WebGL there, so CI
 still checks the real Canvas fallback. Local
 checks retain the default renderer unless `BELT_BROWSER_RENDERER=canvas` is set.
 The Windows job runs the original game's smoke and audio checks; neither job

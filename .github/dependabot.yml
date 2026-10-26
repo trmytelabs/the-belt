@@ -11,7 +11,7 @@ updates:
     schedule:
       interval: weekly
     # A new release waits a week before it is proposed. Hijacked versions are usually
-    # caught and pulled within days, and CI runs every proposal on the owner's PC.
+    # caught and pulled within days, and CI runs every proposal with --ignore-scripts.
     cooldown:
       default-days: 7
     ignore:
