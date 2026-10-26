@@ -9,7 +9,6 @@ public
 tests
 tools
 docs
-deploy/server
 deploy/*.cmd
 *.md
 *.log

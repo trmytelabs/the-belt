@@ -3,12 +3,12 @@ name: Deploy to the server
 # Continuous deployment to https://thebelt.fun, the owner's VPS (docs/deploying.md).
 #
 # Every pull request and every push to main builds the game on a GitHub-hosted runner, bundles it with the
-# Dockerfile and the container's Caddyfile, builds that image locally and smoke-tests it locked down as in
-# production. Pushes to main then ship the bundle: it is streamed over SSH to the server's `deploy` user, whose key
-# for this project is forced to one command (`the-belt <commit sha>`). That runs deploy-the-belt (deploy/server/):
-# build the same image there, replace the running container, wait for its healthcheck, roll back on failure. The
-# pipeline then waits until /version.txt on the live site (through Cloudflare) reports this commit. No registry is
-# involved, and pull requests never deploy.
+# Dockerfile and the container's Caddyfile, builds that image and smoke-tests it locked down as in production.
+# Pushes to main then push the image to ghcr.io/trmytelabs/the-belt:<commit sha> and ask the server over SSH to
+# deploy it: the `deploy` user's key is forced to a gate that accepts only `the-belt <commit sha>` and runs the
+# server's deploy-app, which pulls that image, swaps the container, waits for its healthcheck and rolls back on
+# failure. The pipeline then waits until /version.txt on the live site (through Cloudflare) reports this commit.
+# Pull requests never push or deploy.
 #
 # The merge itself was already gated by CI (main's ruleset), so this does not re-run the suites. This repository
 # allows GitHub-owned actions only, so the image is built with plain docker commands.
@@ -31,12 +31,16 @@ concurrency:
 
 env:
   SITE: https://thebelt.fun
+  IMAGE: ghcr.io/trmytelabs/the-belt
 
 jobs:
   image:
     name: Site bundle and container image
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write   # push to ghcr.io on main only (the push step skips pull requests)
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -57,7 +61,9 @@ jobs:
           ls -l the-belt-site.tar.gz
       - name: Build the image from the bundle and smoke test it (read-only, no capabilities, like production)
         run: |
-          docker build --build-arg "GIT_SHA=${{ github.sha }}" -t the-belt:smoke bundle
+          # the source label links the GHCR package to this (public) repository
+          docker build --build-arg "GIT_SHA=${{ github.sha }}" \
+            --label "org.opencontainers.image.source=https://github.com/${{ github.repository }}" -t the-belt:smoke bundle
           docker run -d --name smoke --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges:true \
             -p 8080:8080 the-belt:smoke
           for i in $(seq 1 30); do curl -sf http://localhost:8080/health && break; sleep 1; done
@@ -70,13 +76,15 @@ jobs:
           curl -sfI http://localhost:8080/textures/asphalt_color.webp | head -1
           curl -sfI http://localhost:8080/audio/music/after-hours.mp3 | head -1
           docker rm -f smoke
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      - name: Push the image to GHCR
         if: ${{ github.event_name != 'pull_request' }}
-        with:
-          name: the-belt-site
-          path: the-belt-site.tar.gz
-          retention-days: 1
-          if-no-files-found: error
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          printf '%s' "$TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker tag the-belt:smoke "$IMAGE:${{ github.sha }}"
+          docker push "$IMAGE:${{ github.sha }}"
+          docker logout ghcr.io
 
   deploy:
     name: Deploy to production
@@ -91,9 +99,6 @@ jobs:
       group: deploy-production
       cancel-in-progress: false
     steps:
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: the-belt-site
       - name: Install the deploy key
         env:
           KEY: ${{ secrets.DEPLOY_SSH_KEY }}
@@ -102,13 +107,13 @@ jobs:
           install -d -m 700 ~/.ssh
           printf '%s\n' "$KEY" > ~/.ssh/deploy && chmod 600 ~/.ssh/deploy
           printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts_deploy
-      - name: Deploy (the server builds the image, waits for healthy, rolls back on failure)
+      - name: Deploy (the server pulls the image, waits for healthy, rolls back on failure)
         env:
           HOST: ${{ secrets.DEPLOY_HOST }}
           USER: ${{ secrets.DEPLOY_USER }}
         run: |
           ssh -i ~/.ssh/deploy -o UserKnownHostsFile=~/.ssh/known_hosts_deploy -o StrictHostKeyChecking=yes \
-            -o BatchMode=yes -o ConnectTimeout=20 "$USER@$HOST" "the-belt ${{ github.sha }}" < the-belt-site.tar.gz
+            -o BatchMode=yes -o ConnectTimeout=20 -n "$USER@$HOST" "the-belt ${{ github.sha }}"
       - name: Verify the live site serves this commit
         run: |
           for i in $(seq 1 24); do

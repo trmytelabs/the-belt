@@ -10,62 +10,49 @@ public to anyone with the address, as is the repository since 2026-10-26.
 
 1. **Site bundle and container image**, on every pull request and every push
    to `main`: `npm ci --ignore-scripts` and `npm run build` for the root of a
-   domain (the default base, unlike the Pages build), then a bundle of the
-   `Dockerfile`, `deploy/container.Caddyfile` and `dist/` as one gzipped tar.
-   The job builds the image from that bundle (Caddy serving `dist/` on port
-   8080 as an unprivileged user, with `/version.txt` holding the commit), runs
-   it as production does (read-only, every Linux capability dropped) and checks
-   `/health`, `/version.txt`, the page, `?mode=3d`, the security headers and a
-   model, texture and track from `public/`.
-2. **Deploy to production**, on `main` only: the bundle is streamed over SSH
-   to the server's `deploy` user. That user's key for this project is forced
-   to one command, `the-belt <commit sha>` (`deploy/server/deploy-the-belt-gate`),
-   which hands the stream to `deploy-the-belt` as root: `docker build` the
-   same image there, replace the running container on `127.0.0.1:8081`, wait
-   for its health check and confirm it serves that commit; if not, the
-   previous image goes back and the deploy fails. The workflow then waits
-   until `https://thebelt.fun/version.txt`, read through Cloudflare,
-   reports the commit, and checks the page and `?mode=3d`.
+   domain (the default base, unlike the Pages build), then the image from the
+   `Dockerfile`, `deploy/container.Caddyfile` and `dist/` (Caddy serving
+   `dist/` on port 8080 as an unprivileged user, with `/version.txt` holding
+   the commit). The job runs it as production does (read-only, every Linux
+   capability dropped) and checks `/health`, `/version.txt`, the page,
+   `?mode=3d`, the security headers and a model, texture and track from
+   `public/`. On `main` it then pushes the image to
+   `ghcr.io/trmytelabs/the-belt:<commit sha>` (a public package).
+2. **Deploy to production**, on `main` only: the workflow connects over SSH as
+   the server's `deploy` user and asks for `the-belt <commit sha>`. That user's
+   keys are forced to a gate on the server that accepts only `<app> <commit
+   sha>` and runs the server's `deploy-app` for it: pull that image, swap the
+   container, wait for its health check and go back to the previous image if
+   it never becomes healthy. The workflow then waits until
+   `https://thebelt.fun/version.txt`, read through Cloudflare, reports the
+   commit, and checks the page and `?mode=3d`.
 
 The merge to `main` was already gated by CI, so the deploy does not re-run the
-suites. A failed deploy leaves the previous build live. No registry is
-involved: the server builds the image from the bundle it receives.
+suites. A failed deploy leaves the previous build live. Pull requests never
+push or deploy.
 
 `deploy/container.Caddyfile` holds the Content-Security-Policy, the other
 security headers and the caching rules, versioned with the code: if the game
 ever talks to a new outside origin (today only Google Fonts and PeerJS's public
 service for PLAY ONLINE), add it there or the browser blocks it.
 
-### Setting the server up (once)
+### The server side
 
-The server already runs Docker, Caddy and the `deploy` user for Next Level.
-Copy `deploy/server/` there and run, as root:
+The server's own setup (its front Caddy for `thebelt.fun`, the app folder
+`/srv/apps/the-belt/`, the gate and the sudo rule) lives on the server and is
+recorded in its ops changelog, not in this repository. The repository needs:
 
-```sh
-DEPLOY_PUBKEY="$(cat thebelt_deploy.pub)" bash setup.sh --dry-run
-DEPLOY_PUBKEY="$(cat thebelt_deploy.pub)" bash setup.sh
-```
+- The `production` environment secrets `DEPLOY_HOST` (the server's own
+  address, since SSH does not go through Cloudflare), `DEPLOY_USER`,
+  `DEPLOY_SSH_KEY` (a key used only for this deploy, its public half forced to
+  the gate on the server; the private half is kept only in this secret) and
+  `DEPLOY_KNOWN_HOSTS`. `deploy\set-github-secrets.cmd` sets them from the
+  owner's PC if the key is ever rotated there.
+- The GHCR package `the-belt` public, so the server can pull without a login.
 
-It installs the two scripts under `/usr/local/bin`, a sudo rule so `deploy`
-can run `deploy-the-belt` (and nothing else) as root, the deploy key forced to
-the gate, and a Caddy site block for `thebelt.fun` cloned from Next
-Level's (same TLS, Cloudflare-only rule and logging) that proxies to port 8081.
-`--dry-run` prints every change first. Then:
-
-- At Cloudflare, `thebelt.fun`'s `A` record points at the server, proxied like
-  Next Level's, and the server's Caddy block holds a certificate that covers
-  `thebelt.fun` (a Cloudflare origin certificate for that zone; `setup.sh` takes
-  it as `TLS_CERT` and `TLS_KEY`).
-- On the owner's PC, `deploy\set-github-secrets.cmd` stores `DEPLOY_HOST`
-  (the server's own address, since SSH does not go through Cloudflare),
-  `DEPLOY_USER`, `DEPLOY_SSH_KEY` (`~/.ssh/thebelt_deploy`, generated on that
-  PC; the private half never leaves it) and `DEPLOY_KNOWN_HOSTS` in the
-  repository's `production` environment.
-- Merge to `main`, or run "Deploy to the server" from the Actions tab.
-
-To redeploy or roll back by hand, run the workflow from the Actions tab on
-`main` or on an earlier tag (`v1.1.0`); on the server, `deploy-the-belt <sha>`
-with a site bundle on stdin does the same.
+To redeploy or roll back, run the workflow from the Actions tab on `main` or on
+an earlier tag (`v1.1.0`); on the server, `sudo deploy-app the-belt <sha>` does
+the same for any image already in GHCR.
 
 ## GitHub Pages mirror
 
