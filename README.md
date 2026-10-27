@@ -5,9 +5,10 @@ nights on the belt. Termite and Skanky sort the parcels with the crew, then take
 the five-ton out after the shift. Built with Three.js, TypeScript and Vite; the
 original 2D game (Phaser) is kept alongside it.
 
-**Play it at https://trmytelabs.github.io/the-belt/** · Current version: **1.1.0**
-(see [CHANGELOG.md](CHANGELOG.md) and the GitHub Releases, which carry a packaged
-web build).
+**Play it at https://thebelt.fun/** (mirrored at
+https://trmytelabs.github.io/the-belt/) · Current version: **1.1.0** (see
+[CHANGELOG.md](CHANGELOG.md) and the GitHub Releases, which carry a packaged web
+build).
 
 Active development targets **the 3D game only**. The original full shift is kept as
 a legacy version; new gameplay requests apply to 3D unless the owner asks
@@ -245,14 +246,23 @@ npm run preview
 ```
 
 The build type-checks (strict TypeScript) and writes the production bundle to
-`dist/`. Every merge to `main` is published to
-https://trmytelabs.github.io/the-belt/ by the Pages workflow. To host a build
-elsewhere (at a domain's root or under a path), see
+`dist/`. Every merge to `main` goes live within a few minutes:
+
+- **https://thebelt.fun**, the owner's own server behind Cloudflare. The deploy
+  workflow builds the site into a read-only container image (Caddy, from the
+  `Dockerfile`), smoke-tests it, pushes it to GHCR and asks the server, over an
+  SSH key that can run only the deploy command, to pull it. The server swaps
+  the container once its health check passes and rolls back if it never does;
+  the workflow then confirms the live site reports the new commit.
+- **https://trmytelabs.github.io/the-belt/**, the GitHub Pages mirror.
+
+To host a build elsewhere (at a domain's root or under a path), see
 [docs/deploying.md](docs/deploying.md).
 
 ### Tests
 
 ```sh
+npx playwright install chromium
 npm run test:model
 npm run test:browser
 ```
@@ -271,20 +281,20 @@ Timed events use controlled fixtures. See the
 
 ### CI
 
-CI runs on the owner's own Windows PC, a self-hosted GitHub Actions runner
-labelled `belt-pc`, so checks use no GitHub Actions minutes; the PC has to be on
-for checks to run. Every pull request gets the full checks (the TypeScript build
-and the browser suites for the 3D and original games, in Edge with software
-WebGL so the fallback path is covered). Branch protection requires them, up to
-date with `main`. After a merge, main's run skips them when the merge's code is
-exactly what its pull request already passed, so the site publishes about a
-minute after merging. Dependabot proposes updates a week after each release,
-and CI installs packages with `--ignore-scripts`.
+CI runs on GitHub-hosted runners: a Linux job for the TypeScript build, the
+model tests and the 3D browser suites (Playwright's Chromium), and a Windows job
+for the original game's checks in Edge. The browser suites use software WebGL,
+so the fallback path is covered. Every pull request gets the full checks, and
+branch protection requires them, up to date with `main`. After a merge, main's
+run skips them when the merge's code is exactly what its pull request already
+passed. Dependabot proposes updates a week after each release, and CI installs
+packages with `--ignore-scripts`.
 
 ### Network use and privacy
 
-The game keeps no account and sends nothing about the player anywhere. The
-original scenes load Google Fonts when online. PLAY ONLINE contacts PeerJS's
+The game keeps no account, and its record and settings stay in the browser.
+At https://thebelt.fun, Cloudflare's Web Analytics beacon counts page visits.
+The original scenes load Google Fonts when online. PLAY ONLINE contacts PeerJS's
 public server (0.peerjs.com), its STUN/TURN servers and Google's STUN server,
 only once a player hosts or joins. See [SECURITY.md](SECURITY.md).
 
@@ -297,15 +307,17 @@ commit.
 
 ## Source and history
 
-The source was recovered from a local checkout originally associated with
+The repository has been public since 2026-10-26, at the owner's choice. The
+source was recovered from a local checkout originally associated with
 [`RecursiveDelete/thebelt`](https://github.com/RecursiveDelete/thebelt). Its old
 Git metadata could not resolve the recorded HEAD and was preserved locally in the
 ignored `.git-recovery-backup/`. This repository starts from a reviewed snapshot
 of the source rather than a reconstruction of that history; the old remote stays
 recorded as `upstream` for provenance.
 
-No licence has been established. Repository privacy does not grant permission to
-redistribute the source or its assets.
+No licence has been established for the source: being public does not grant
+permission to reuse or redistribute it or its assets. Third-party assets keep
+their own licences, recorded beside them.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for making changes and
 [SECURITY.md](SECURITY.md) for private security reporting.

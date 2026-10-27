@@ -1,6 +1,6 @@
 # Contributing
 
-This is a private development repository. Pull the latest changes, work on a
+This is a public development repository (since 2026-10-26); treat every commit as published. Pull the latest changes, work on a
 focused branch and open a pull request against `main`. The owner reviews and
 merges changes. Describe the behavior changed and the checks you ran.
 

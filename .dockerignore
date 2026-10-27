@@ -1,0 +1,14 @@
+# The image only needs the Dockerfile, deploy/container.Caddyfile and a built dist/ (see Dockerfile).
+.git
+.github
+.claude
+.driving.local
+node_modules
+src
+public
+tests
+tools
+docs
+deploy/*.cmd
+*.md
+*.log

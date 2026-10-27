@@ -1,22 +1,75 @@
 # Deploying a build
 
-**The game is live at https://trmytelabs.github.io/the-belt/** (the owner turned
+**The game is live at https://thebelt.fun**, the owner's own server,
+and mirrored at https://trmytelabs.github.io/the-belt/ (GitHub Pages). Both are
+public to anyone with the address, as is the repository since 2026-10-26.
+
+## The server (thebelt.fun)
+
+`.github/workflows/deploy.yml` runs on GitHub-hosted runners:
+
+1. **Site bundle and container image**, on every pull request and every push
+   to `main`: `npm ci --ignore-scripts` and `npm run build` for the root of a
+   domain (the default base, unlike the Pages build), then the image from the
+   `Dockerfile`, `deploy/container.Caddyfile` and `dist/` (Caddy serving
+   `dist/` on port 8080 as an unprivileged user, with `/version.txt` holding
+   the commit). The job runs it as production does (read-only, every Linux
+   capability dropped) and checks `/health`, `/version.txt`, the page,
+   `?mode=3d`, the security headers and a model, texture and track from
+   `public/`. On `main` it then pushes the image to
+   `ghcr.io/trmytelabs/the-belt:<commit sha>` (a public package).
+2. **Deploy to production**, on `main` only: the workflow connects over SSH as
+   the server's `deploy` user and asks for `the-belt <commit sha>`. That user's
+   keys are forced to a gate on the server that accepts only `<app> <commit
+   sha>` and runs the server's `deploy-app` for it: pull that image, swap the
+   container, wait for its health check and go back to the previous image if
+   it never becomes healthy. The workflow then waits until
+   `https://thebelt.fun/version.txt`, read through Cloudflare, reports the
+   commit, and checks the page and `?mode=3d`.
+
+The merge to `main` was already gated by CI, so the deploy does not re-run the
+suites. A failed deploy leaves the previous build live. Pull requests never
+push or deploy.
+
+`deploy/container.Caddyfile` holds the Content-Security-Policy, the other
+security headers and the caching rules, versioned with the code: if the game
+ever talks to a new outside origin (today only Google Fonts and PeerJS's public
+service for PLAY ONLINE), add it there or the browser blocks it.
+
+### The server side
+
+The server's own setup (its front Caddy for `thebelt.fun`, the app folder
+`/srv/apps/the-belt/`, the gate and the sudo rule) lives on the server and is
+recorded in its ops changelog, not in this repository. The repository needs:
+
+- The `production` environment secrets `DEPLOY_HOST` (the server's own
+  address, since SSH does not go through Cloudflare), `DEPLOY_USER`,
+  `DEPLOY_SSH_KEY` (a key used only for this deploy, its public half forced to
+  the gate on the server; the private half is kept only in this secret) and
+  `DEPLOY_KNOWN_HOSTS`. `deploy\set-github-secrets.cmd` sets them from the
+  owner's PC if the key is ever rotated there.
+- The GHCR package `the-belt` public, so the server can pull without a login.
+
+To redeploy or roll back, run the workflow from the Actions tab on `main` or on
+an earlier tag (`v1.1.0`); on the server, `sudo deploy-app the-belt <sha>` does
+the same for any image already in GHCR.
+
+## GitHub Pages mirror
+
+**The mirror is at https://trmytelabs.github.io/the-belt/** (the owner turned
 this on, 2026-10-23). The Pages workflow (`.github/workflows/pages.yml`)
 publishes it from `main` after every merge: it builds with
-`--base=/the-belt/` on the owner's PC (the `belt-pc` runner, no Actions
-minutes) and deploys to GitHub Pages. The site is public to anyone with the
-address; the repository itself stays private. To publish again without a
+`--base=/the-belt/` on a GitHub-hosted runner and deploys to GitHub Pages. The site is public to anyone with the
+address. To publish again without a
 merge, run the workflow by hand from the repository's Actions tab (Pages, Run
 workflow). To take the site down, turn Pages off in the repository's settings.
 
-CI does not hold the publish up. CI and Pages share the one runner, and CI used
-to re-test every merge on `main` for about 23 minutes while the publish waited.
-A pull request merges only after both checks pass on a branch that is up to date
+CI does not re-test an ordinary merge. A pull request merges only after both checks pass on a branch that is up to date
 with `main`, so when it merges with a merge commit (the usual way here), that
 commit's tree is exactly the tree the checks just passed. CI's first job on a
 push to `main` compares the merge commit's tree with its second parent's (the
 pull request's head) and, when they match, skips the build and browser jobs;
-they show as skipped and the runner moves on to the publish. Pull request checks
+they show as skipped. Pull request checks
 always run in full. A direct push, a squash or rebase merge, or a merge whose
 tree differs still runs every check on `main`. The skip relies on `main`'s
 ruleset requiring both checks on up-to-date branches; remove it if that rule
@@ -24,11 +77,11 @@ ever changes.
 
 The game is a static site: `npm run build` writes everything it needs into
 `dist/` (the page, the scripts, and `public/`'s models, textures and audio,
-about 50 MB). There is no server component. The CI workflow never deploys; only
-the Pages workflow publishes.
+about 100 MB). There is no server component. The CI workflow never deploys; the
+deploy workflow ships the server image and the Pages workflow publishes the mirror.
 
-Publishing a build makes it public to anyone with the address, even though the
-repository stays private. Check the build first:
+Publishing a build makes it public to anyone with the address. Check the build
+first:
 
 ```sh
 npm ci
@@ -59,7 +112,7 @@ Upload `dist/`'s contents into that folder. In Git Bash on Windows, write
 `MSYS_NO_PATHCONV=1 npm run build -- --base=/the-belt/` so the shell does not
 turn `/the-belt/` into a Windows path.
 
-GitHub Pages can publish from a private repository on GitHub Pro, but the
+GitHub Pages can publish from a private repository on GitHub Pro too, but the
 site itself is public once published. Setting it up is the owner's decision; the repository's
 workflows do not publish anything.
 

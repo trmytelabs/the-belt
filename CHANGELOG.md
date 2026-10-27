@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased
+
+- The README is rewritten around how the game plays at 1.1.0: the start
+  screen, the night, the shift, the mall run with BENTLEY, the drives and
+  mini-games, two players and online, one controls table, and where the game
+  is published (#112).
+- The live site's Content-Security-Policy allows WebAssembly, so the
+  character models (meshopt-compressed, decoded in WASM) load at
+  https://thebelt.fun instead of leaving the white procedural figures; it
+  also lets Cloudflare's analytics beacon run, and the game's own files
+  answer 404 when missing (`deploy/container.Caddyfile`).
+- The game deploys to the owner's own server, https://thebelt.fun:
+  every merge to `main` builds the site, builds and smoke-tests its read-only
+  container image (Caddy serving the site, `Dockerfile`), pushes it to
+  GHCR and asks the server, over an SSH key that can only run the deploy
+  command, to pull it and replace the running one once its health check passes
+  (rolling back if it fails), and confirms the live site reports the commit
+  (`.github/workflows/deploy.yml`, `deploy/`, docs/deploying.md). GitHub Pages
+  stays as a mirror.
+- CI, Pages and the deploy run on GitHub-hosted runners again; the self-hosted
+  runner on the owner's PC (`belt-pc`, #64) is retired.
+
 ## 1.1.0 — 2026-10-24 — Bentley, and online play
 
 Published at https://trmytelabs.github.io/the-belt/ (the repository stays
