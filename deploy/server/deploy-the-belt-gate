@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# The only thing The Belt's deploy key can run: authorized_keys forces this command for that key, and it accepts
+# exactly "the-belt <commit sha>" with the site bundle on stdin, then hands both to deploy-the-belt as root.
+set -euo pipefail
+read -r app sha extra <<< "${SSH_ORIGINAL_COMMAND:-}"
+if [ "${app:-}" != "the-belt" ] || [ -n "${extra:-}" ] || ! [[ "${sha:-}" =~ ^[0-9a-f]{40}$ ]]; then
+  echo "refused: this key only runs 'the-belt <commit sha>'" >&2
+  exit 2
+fi
+exec sudo -n /usr/local/bin/deploy-the-belt "$sha"

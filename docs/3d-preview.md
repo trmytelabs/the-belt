@@ -237,10 +237,11 @@ Present in 3D:
 
 `tests/three-browser.mjs` runs in `npm run test:browser` (or on its own with
 `npm run test:browser:3d`). It launches its own SwiftShader WebGL, so it runs
-in CI's build job without a GPU, in Edge on the self-hosted Windows runner. The
+in CI's Linux build job without a GPU, in Playwright's Chromium. The
 separate Windows job runs the classic suites only (`test:browser:classic`). On
 GitHub's hosted Windows runners software WebGL delayed input and page round
-trips by seconds at unpredictable times; real Windows PCs are unaffected, and
+trips by seconds at unpredictable times, which is why the 3D suites stay on
+Linux; real Windows PCs are unaffected, and
 the game itself is identical on every platform. It checks:
 
 - The WebGL fallback.

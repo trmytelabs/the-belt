@@ -8,7 +8,7 @@ owner explicitly requests another version.
 Players switch between workers, pick up packages and sort them to the appropriate
 dock. The game includes keyboard, mouse and touch controls.
 
-This private repository holds The Belt 1.1.0 (see CHANGELOG.md; releases are on
+This repository (public since 2026-10-26, at the owner's choice) holds The Belt 1.1.0 (see CHANGELOG.md; releases are on
 GitHub with a packaged web build). The game is published from `main` at
 https://trmytelabs.github.io/the-belt/. Review playability in the browser when
 changing game behavior.
@@ -319,8 +319,9 @@ npm run preview
 The build runs TypeScript checking and then creates the production bundle in
 `dist/`. Preview serves that bundle locally. Generated output and dependency
 folders are ignored; the GitHub workflow only installs from `package-lock.json`
-and runs the build and browser checks. It does not deploy or publish a release; the separate Pages workflow
-publishes `main` to https://trmytelabs.github.io/the-belt/ (public).
+and runs the build and browser checks. It does not deploy or publish a release; the separate deploy workflow
+ships `main` to the owner's server at https://thebelt.fun, and the Pages workflow publishes it to
+https://trmytelabs.github.io/the-belt/ (both public).
 
 To put a build online (at a domain's root or in a folder such as a GitHub Pages site), see
 [docs/deploying.md](docs/deploying.md).
@@ -357,15 +358,15 @@ for later events and edge cases. TypeScript strict checking is enabled. Dependab
 compatible dependencies; major upgrades require a separate planned review.
 Dependabot waits a week after each release before proposing it, and CI installs
 packages with `--ignore-scripts`, so a hijacked update has a smaller window and
-cannot run an install script on the PC that hosts the runner.
+cannot run an install script on a runner.
 
-CI runs on the owner's own Windows PC, a self-hosted GitHub Actions runner
-labelled `belt-pc`, so checks use no GitHub Actions minutes; that PC has to be on
-and logged in for checks to run, and they wait in a queue otherwise. Pull requests
+CI runs on GitHub-hosted runners (a Linux job for the build, the model checks and
+the 3D browser suites in Playwright's Chromium; a Windows job for the classic
+game's checks in Edge). Pull requests
 always get the full checks; after a merge, main's run skips them when the merge
 commit's tree is the one its pull request just passed (see
 [docs/deploying.md](docs/deploying.md)). The browser
-suites use Edge with software WebGL there, as on GPU-free hosted runners, so CI
+suites use software WebGL there, so CI
 still checks the real Canvas fallback. Local
 checks retain the default renderer unless `BELT_BROWSER_RENDERER=canvas` is set.
 The Windows job runs the original game's smoke and audio checks; neither job
