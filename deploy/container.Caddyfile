@@ -16,9 +16,12 @@
 		# PLAY ONLINE needs the microphone (voice chat) and tab capture (the host's picture); nothing else.
 		Permissions-Policy "camera=(), geolocation=(), microphone=(self), display-capture=(self)"
 		# Three.js, Phaser and Web Audio from the bundle; Google Fonts from index.html; no inline scripts.
+		# 'wasm-unsafe-eval': the character models are meshopt-compressed and their decoder is WebAssembly; without it
+		# every model load fails and the white procedural figures stay (seen live on 2026-10-27). The Cloudflare
+		# entries let the zone's Web Analytics beacon load and report.
 		# connect-src: PLAY ONLINE asks PeerJS's public service (0.peerjs.com) for an id and a signalling socket
 		# before the two browsers talk directly over WebRTC, which CSP does not govern.
-		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://0.peerjs.com wss://0.peerjs.com; worker-src 'self' blob:; frame-ancestors 'self'; base-uri 'self'; form-action 'self'"
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://0.peerjs.com wss://0.peerjs.com https://cloudflareinsights.com; worker-src 'self' blob:; frame-ancestors 'self'; base-uri 'self'; form-action 'self'"
 		-Server
 	}
 
@@ -34,6 +37,11 @@
 	# healthcheck for Docker and the deploy script's automatic rollback
 	handle /health {
 		respond "ok" 200
+	}
+	# The game's own files answer 404 when missing, so a wrong path shows up as one instead of as the page.
+	@appfiles path /assets/* /models/* /textures/* /audio/*
+	handle @appfiles {
+		file_server
 	}
 	handle {
 		try_files {path} {path}/ /index.html

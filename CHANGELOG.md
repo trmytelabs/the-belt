@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- The live site's Content-Security-Policy allows WebAssembly, so the
+  character models (meshopt-compressed, decoded in WASM) load at
+  https://thebelt.fun instead of leaving the white procedural figures; it
+  also lets Cloudflare's analytics beacon run, and the game's own files
+  answer 404 when missing (`deploy/container.Caddyfile`).
 - The game deploys to the owner's own server, https://thebelt.fun:
   every merge to `main` builds the site, builds and smoke-tests its read-only
   container image (Caddy serving the site, `Dockerfile`), pushes it to
