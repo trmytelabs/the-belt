@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- The live site's Content-Security-Policy lets the game fetch `blob:` URLs,
+  where three.js unpacks the textures embedded in its models, so the crew,
+  cars and props are textured at https://thebelt.fun instead of plain grey. A
+  new browser check, `tests/csp-browser.mjs`, loads the 3D game and the
+  original game under the production policy and fails on any violation.
 - The README is rewritten around how the game plays at 1.1.0: the start
   screen, the night, the shift, the mall run with BENTLEY, the drives and
   mini-games, two players and online, one controls table, and where the game

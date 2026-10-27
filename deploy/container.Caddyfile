@@ -20,8 +20,11 @@
 		# every model load fails and the white procedural figures stay (seen live on 2026-10-27). The Cloudflare
 		# entries let the zone's Web Analytics beacon load and report.
 		# connect-src: PLAY ONLINE asks PeerJS's public service (0.peerjs.com) for an id and a signalling socket
-		# before the two browsers talk directly over WebRTC, which CSP does not govern.
-		Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://0.peerjs.com wss://0.peerjs.com https://cloudflareinsights.com; worker-src 'self' blob:; frame-ancestors 'self'; base-uri 'self'; form-action 'self'"
+		# before the two browsers talk directly over WebRTC, which CSP does not govern. blob: is for the models'
+		# textures: three.js unpacks each texture embedded in a .glb into a blob: URL and fetches it from there, so
+		# without blob: every texture fails and the crew, cars and props draw untextured grey (seen live on
+		# 2026-10-27). tests/csp-browser.mjs loads the game under this policy.
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' blob: https://0.peerjs.com wss://0.peerjs.com https://cloudflareinsights.com; worker-src 'self' blob:; frame-ancestors 'self'; base-uri 'self'; form-action 'self'"
 		-Server
 	}
 
