@@ -10,7 +10,7 @@ dock. The game includes keyboard, mouse and touch controls.
 
 This repository (public since 2026-10-26, at the owner's choice) holds The Belt 1.1.0 (see CHANGELOG.md; releases are on
 GitHub with a packaged web build). The game is published from `main` at
-https://thebelt.fun/. Review playability in the browser when
+https://trmytelabs.github.io/the-belt/. Review playability in the browser when
 changing game behavior.
 
 ## Run locally
@@ -319,8 +319,9 @@ npm run preview
 The build runs TypeScript checking and then creates the production bundle in
 `dist/`. Preview serves that bundle locally. Generated output and dependency
 folders are ignored; the GitHub workflow only installs from `package-lock.json`
-and runs the build and browser checks. It does not deploy or publish a release; the separate Pages workflow
-publishes `main` to https://thebelt.fun/.
+and runs the build and browser checks. It does not deploy or publish a release; the separate deploy workflow
+ships `main` to the owner's server at https://thebelt.fun, and the Pages workflow publishes it to
+https://trmytelabs.github.io/the-belt/ (both public).
 
 To put a build online (at a domain's root or in a folder such as a GitHub Pages site), see
 [docs/deploying.md](docs/deploying.md).

@@ -1,36 +1,97 @@
 # Deploying a build
 
-**The game is live at https://thebelt.fun/**, the repository's custom domain
-on GitHub Pages (the owner turned Pages on 2026-10-23 and chose the domain
-2026-10-26). The Pages workflow (`.github/workflows/pages.yml`) publishes it
-from `main` after every merge: it builds for the root of the domain on a
-GitHub-hosted runner and deploys to GitHub Pages. The site is public to anyone
-with the address, as is the repository since 2026-10-26. To publish again
-without a merge, run the workflow by hand from the repository's Actions tab
-(Pages, Run workflow). To take the site down, turn Pages off in the
-repository's settings.
+**The game is live at https://thebelt.fun**, the owner's own server,
+and mirrored at https://trmytelabs.github.io/the-belt/ (GitHub Pages). Both are
+public to anyone with the address, as is the repository since 2026-10-26.
 
-The domain's DNS is at Cloudflare: `A` and `AAAA` records on the apex for
-GitHub Pages' addresses and a `CNAME` from `www` to `trmytelabs.github.io`,
-left unproxied so GitHub can issue the certificate; the repository's Pages
-settings name `thebelt.fun` and enforce HTTPS. `https://trmytelabs.github.io/the-belt/`
-redirects there.
+## The server (thebelt.fun)
 
-CI does not re-test an ordinary merge. A pull request merges only after both
-checks pass on a branch that is up to date with `main`, so when it merges with
-a merge commit (the usual way here), that commit's tree is exactly the tree the
-checks just passed. CI's first job on a push to `main` compares the merge
-commit's tree with its second parent's (the pull request's head) and, when they
-match, skips the build and browser jobs; they show as skipped. Pull request
-checks always run in full. A direct push, a squash or rebase merge, or a merge
-whose tree differs still runs every check on `main`. The skip relies on `main`'s
+`.github/workflows/deploy.yml` runs on GitHub-hosted runners:
+
+1. **Site bundle and container image**, on every pull request and every push
+   to `main`: `npm ci --ignore-scripts` and `npm run build` for the root of a
+   domain (the default base, unlike the Pages build), then a bundle of the
+   `Dockerfile`, `deploy/container.Caddyfile` and `dist/` as one gzipped tar.
+   The job builds the image from that bundle (Caddy serving `dist/` on port
+   8080 as an unprivileged user, with `/version.txt` holding the commit), runs
+   it as production does (read-only, every Linux capability dropped) and checks
+   `/health`, `/version.txt`, the page, `?mode=3d`, the security headers and a
+   model, texture and track from `public/`.
+2. **Deploy to production**, on `main` only: the bundle is streamed over SSH
+   to the server's `deploy` user. That user's key for this project is forced
+   to one command, `the-belt <commit sha>` (`deploy/server/deploy-the-belt-gate`),
+   which hands the stream to `deploy-the-belt` as root: `docker build` the
+   same image there, replace the running container on `127.0.0.1:8081`, wait
+   for its health check and confirm it serves that commit; if not, the
+   previous image goes back and the deploy fails. The workflow then waits
+   until `https://thebelt.fun/version.txt`, read through Cloudflare,
+   reports the commit, and checks the page and `?mode=3d`.
+
+The merge to `main` was already gated by CI, so the deploy does not re-run the
+suites. A failed deploy leaves the previous build live. No registry is
+involved: the server builds the image from the bundle it receives.
+
+`deploy/container.Caddyfile` holds the Content-Security-Policy, the other
+security headers and the caching rules, versioned with the code: if the game
+ever talks to a new outside origin (today only Google Fonts and PeerJS's public
+service for PLAY ONLINE), add it there or the browser blocks it.
+
+### Setting the server up (once)
+
+The server already runs Docker, Caddy and the `deploy` user for Next Level.
+Copy `deploy/server/` there and run, as root:
+
+```sh
+DEPLOY_PUBKEY="$(cat thebelt_deploy.pub)" bash setup.sh --dry-run
+DEPLOY_PUBKEY="$(cat thebelt_deploy.pub)" bash setup.sh
+```
+
+It installs the two scripts under `/usr/local/bin`, a sudo rule so `deploy`
+can run `deploy-the-belt` (and nothing else) as root, the deploy key forced to
+the gate, and a Caddy site block for `thebelt.fun` cloned from Next
+Level's (same TLS, Cloudflare-only rule and logging) that proxies to port 8081.
+`--dry-run` prints every change first. Then:
+
+- At Cloudflare, `thebelt.fun`'s `A` record points at the server, proxied like
+  Next Level's, and the server's Caddy block holds a certificate that covers
+  `thebelt.fun` (a Cloudflare origin certificate for that zone; `setup.sh` takes
+  it as `TLS_CERT` and `TLS_KEY`).
+- On the owner's PC, `deploy\set-github-secrets.cmd` stores `DEPLOY_HOST`
+  (the server's own address, since SSH does not go through Cloudflare),
+  `DEPLOY_USER`, `DEPLOY_SSH_KEY` (`~/.ssh/thebelt_deploy`, generated on that
+  PC; the private half never leaves it) and `DEPLOY_KNOWN_HOSTS` in the
+  repository's `production` environment.
+- Merge to `main`, or run "Deploy to the server" from the Actions tab.
+
+To redeploy or roll back by hand, run the workflow from the Actions tab on
+`main` or on an earlier tag (`v1.1.0`); on the server, `deploy-the-belt <sha>`
+with a site bundle on stdin does the same.
+
+## GitHub Pages mirror
+
+**The mirror is at https://trmytelabs.github.io/the-belt/** (the owner turned
+this on, 2026-10-23). The Pages workflow (`.github/workflows/pages.yml`)
+publishes it from `main` after every merge: it builds with
+`--base=/the-belt/` on a GitHub-hosted runner and deploys to GitHub Pages. The site is public to anyone with the
+address. To publish again without a
+merge, run the workflow by hand from the repository's Actions tab (Pages, Run
+workflow). To take the site down, turn Pages off in the repository's settings.
+
+CI does not re-test an ordinary merge. A pull request merges only after both checks pass on a branch that is up to date
+with `main`, so when it merges with a merge commit (the usual way here), that
+commit's tree is exactly the tree the checks just passed. CI's first job on a
+push to `main` compares the merge commit's tree with its second parent's (the
+pull request's head) and, when they match, skips the build and browser jobs;
+they show as skipped. Pull request checks
+always run in full. A direct push, a squash or rebase merge, or a merge whose
+tree differs still runs every check on `main`. The skip relies on `main`'s
 ruleset requiring both checks on up-to-date branches; remove it if that rule
 ever changes.
 
 The game is a static site: `npm run build` writes everything it needs into
 `dist/` (the page, the scripts, and `public/`'s models, textures and audio,
-about 50 MB). There is no server component. The CI workflow never deploys; only
-the Pages workflow publishes.
+about 100 MB). There is no server component. The CI workflow never deploys; the
+deploy workflow ships the server image and the Pages workflow publishes the mirror.
 
 Publishing a build makes it public to anyone with the address. Check the build
 first:
@@ -49,11 +110,11 @@ play a little.
 Upload the contents of `dist/` (not the folder itself) to the site's root, so
 `index.html` is at `https://example.com/index.html`. Any static host works.
 
-## In a folder (a sub-path)
+## In a folder (GitHub Pages, a sub-path)
 
 A host that serves the game from a folder, such as a GitHub Pages project
-site without a custom domain (`https://<user>.github.io/the-belt/`), needs the
-build to know that folder:
+site at `https://<user>.github.io/the-belt/`, needs the build to know that
+folder:
 
 ```sh
 npm run build -- --base=/the-belt/
