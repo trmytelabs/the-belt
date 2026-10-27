@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- The README is rewritten around how the game plays at 1.1.0: the start
+  screen, the night, the shift, the mall run with BENTLEY, the drives and
+  mini-games, two players and online, one controls table, and where the game
+  is published (#112).
 - The live site's Content-Security-Policy allows WebAssembly, so the
   character models (meshopt-compressed, decoded in WASM) load at
   https://thebelt.fun instead of leaving the white procedural figures; it
