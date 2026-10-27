@@ -1,5 +1,5 @@
 @echo off
-REM Run once on the owner's PC after deploy/server/setup.sh ran on the server. Stores the belt's deploy secrets in
+REM Run once on the owner's PC once the server accepts this key (thebelt_deploy.pub). Stores the belt's deploy secrets in
 REM the repository's "production" environment. Usage: set-github-secrets.cmd [server host or IP]
 REM The host must be the server itself (not the Cloudflare-proxied name): SSH does not go through Cloudflare.
 setlocal

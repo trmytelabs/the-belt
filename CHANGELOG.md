@@ -4,9 +4,9 @@
 
 - The game deploys to the owner's own server, https://thebelt.fun:
   every merge to `main` builds the site, builds and smoke-tests its read-only
-  container image (Caddy serving the site, `Dockerfile`), streams the bundle
-  to the server over an SSH key that can only run the deploy command, where
-  the same image replaces the running one once its health check passes
+  container image (Caddy serving the site, `Dockerfile`), pushes it to
+  GHCR and asks the server, over an SSH key that can only run the deploy
+  command, to pull it and replace the running one once its health check passes
   (rolling back if it fails), and confirms the live site reports the commit
   (`.github/workflows/deploy.yml`, `deploy/`, docs/deploying.md). GitHub Pages
   stays as a mirror.

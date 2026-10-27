@@ -2,8 +2,8 @@
 # Production image for https://thebelt.fun: Caddy serving an already-built dist/ on :8080 as an
 # unprivileged user. The server's own Caddy terminates HTTPS in front of it and only accepts Cloudflare.
 #
-# The deploy workflow builds dist/ on the owner's PC and sends this file, deploy/container.Caddyfile and dist/ to the
-# server, where deploy-the-belt runs `docker build` (docs/deploying.md). The same works locally after a build:
+# The deploy workflow builds this image, pushes it to ghcr.io/trmytelabs/the-belt:<sha> and the server pulls it
+# (docs/deploying.md). The same works locally after a build:
 #   npm run build && docker build --build-arg GIT_SHA=$(git rev-parse HEAD) -t the-belt .
 FROM caddy:2.11.7
 # The image's caddy binary carries a file capability (cap_net_bind_service, for ports below 1024). Under
